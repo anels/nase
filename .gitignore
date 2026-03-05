@@ -1,0 +1,13 @@
+.omc
+work/
+.backup-target
+.full-review/
+
+# OS / IDE temporary files
+.DS_Store
+Thumbs.db
+*.tmp
+*.orig
+.vscode/
+*.swp
+.claude/settings.local.json
