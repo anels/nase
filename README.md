@@ -116,7 +116,7 @@ In Claude Code, run:
 ```
 /nase:init
 ```
-This sets your AI engineer name, configures the backup location, and creates the `work/` skeleton. The workspace name is auto-derived from the actual folder name and saved to `work/config.md` — no manual config needed.
+This sets your AI engineer name, configures the backup location, and creates the `work/` skeleton. The workspace name is auto-derived from the actual folder name and saved to `work/config.md` — no manual config needed. If the configured backup target already contains a previous workspace, init will offer to restore from it before creating the skeleton.
 
 ### 3. Onboard your first repo
 ```
@@ -153,7 +153,7 @@ And at end of day:
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:init [name]` | First-time setup: set AI name, configure backup, initialize `work/` |
+| `/nase:init [name]` | First-time setup: set AI name, configure backup, initialize `work/`; offers to restore from backup on fresh init |
 | `/nase:doctor` | Self-diagnostic: verify hooks, backup config, work/ structure, tools |
 | `/nase:help` | Show usage guide and command overview |
 

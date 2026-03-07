@@ -18,7 +18,7 @@ Report what was found:
 - "AI name: {current name or 'not set'}"
 - "Backup: {configured to {path} / not configured}"
 
-### 1–2. Collect all inputs (AskUserQuestion)
+### 1. Collect all inputs (AskUserQuestion)
 
 Use the `AskUserQuestion` tool to collect inputs interactively. Users can pick a preset option or select "Other" to type a custom value.
 
@@ -32,11 +32,14 @@ options:
 ```
 
 **Question 2 — Backup location:**
+
+Only include "Keep current" as an option if `.backup-target` already exists and has a non-empty path. If no backup is configured yet, omit it — "Keep current: not configured" is a nonsensical choice.
+
 ```
-question: "Where should work/ be backed up? (current: {path})"
+question: "Where should work/ be backed up? (current: {path or 'not configured'})"
 header: "Backup"
 options:
-  - label: "Keep current"                    , description: "{current path}"
+  - label: "Keep current"                    , description: "{current path}"  ← omit if not configured
   - label: "~/Documents/{workspace-name}-backup" , description: "Default local location (uses actual folder name)"
   - label: "Other"                           , description: "Type a custom path"
 ```
@@ -47,7 +50,38 @@ options:
 - **Backup**: if changed, convert Windows path to bash format (`C:\foo\bar` → `/c/foo/bar`); write to `.backup-target`; verify reachable with `mkdir -p {target} && ls {target}`
 - If the answer matches current value, skip writing
 
-### 2.5. Initialize automation metadata
+### 2. Offer restore if backup has content
+
+This step only applies on a **fresh init** — skip it entirely if `work/context.md` already exists locally (the workspace is already populated and a restore would be destructive, not helpful).
+
+After the backup target is confirmed (new or unchanged), check whether it already contains data:
+
+```bash
+# Sentinel check — context.md indicates a valid nase backup
+ls "{backup-target}/context.md" 2>/dev/null
+```
+
+If `work/context.md` does NOT exist locally AND the sentinel exists in the backup:
+- Count the files: `find "{backup-target}" -type f | wc -l`
+- Find the most recently modified file: `find "{backup-target}" -type f -printf '%T@ %p\n' | sort -n | tail -1`
+- Show the user:
+  > "Backup found at `{backup-target}` ({N} files, last modified {timestamp})."
+
+Then ask:
+```
+question: "A backup exists at {backup-target}. Restore work/ from it now?"
+header: "Restore from backup"
+options:
+  - label: "Yes — restore now"  , description: "Overwrites current work/ with the backup"
+  - label: "No — skip"          , description: "Continue init without restoring"
+```
+
+**If user chooses Yes**: invoke `/nase:restore` — it handles snapshot, overwrite, and verification.
+**If user chooses No**: continue with the remaining init steps as normal.
+
+If the backup target does not contain `context.md` (empty or non-existent directory): skip this step silently.
+
+### 3. Initialize automation metadata
 - Check if `work/logs/.report-status` exists
 - If not, create it with empty entries:
   ```
@@ -57,22 +91,23 @@ options:
 - Show current values (if any)
 - No user input needed — this file is updated automatically by /nase:weekly-report and /nase:monthly-report
 
-### 3. Verify hook installation
+### 4. Verify hook installation
 Run these checks:
 ```bash
 bash -n .claude/hooks/session-start.sh
 bash -n .claude/hooks/stop-backup.sh
-python -m json.tool .claude/settings.json > /dev/null
+python -m json.tool .claude/settings.json > /dev/null || python3 -m json.tool .claude/settings.json > /dev/null
 ```
+If both `python` and `python3` fail, note "Python not available — JSON validation skipped" and continue.
 Also verify settings.json references both scripts (grep for `session-start.sh` and `stop-backup.sh`).
 
 - If all pass: "Hooks: OK"
 - If any fail: list what's wrong with fix instructions (e.g., "Re-run from a clean clone" or "Run /doctor for details")
 
-### 4. Initialize work/ skeleton
+### 5. Initialize work/ skeleton
 Create the following structure if it does not already exist. Preserve existing files — only create missing ones.
 ```bash
-mkdir -p work/kb/projects work/kb/general work/logs work/tasks
+mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals
 ```
 
 Create stub files only if missing (do not overwrite existing content):
@@ -94,10 +129,10 @@ Create stub files only if missing (do not overwrite existing content):
 
 Report: "work/ structure: {N} directories and files created / already existed"
 
-### 5. Run doctor
+### 6. Run doctor
 Invoke `/nase:doctor` to verify the complete workspace state.
 
-### 5.5. Star on GitHub (optional)
+### 7. Star on GitHub (optional)
 
 This workspace lives at `https://github.com/anels/nase` — the known repo for nase.
 
@@ -123,7 +158,7 @@ MSYS_NO_PATHCONV=1 gh api --method PUT /user/starred/{owner}/{repo}
 
 If **no**: skip silently.
 
-### 6. Confirm and suggest next steps
+### 8. Confirm and suggest next steps
 Report a summary:
 - AI name: {name}
 - Backup target: {path}
