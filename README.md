@@ -16,12 +16,118 @@ Most Claude Code setups are a collection of prompts. nase is a **persistent AI e
 
 Every session, nase reads your knowledge base, stays up to date with tech news in your stack, and logs what it did. Every time you solve a hard problem, you can capture it — as a lesson, as a KB entry, or as a new slash command for future use. The workspace gets smarter the longer you use it.
 
+### How it works
+
+Two feedback loops drive continuous improvement: **knowledge accumulation** feeds into **daily workflow**, and daily work feeds back into knowledge.
+
+```mermaid
+flowchart TD
+    %% ════════════════════════════════════════
+    %% Layer 1: External inputs
+    %% ════════════════════════════════════════
+    subgraph inputs [" "]
+        direction LR
+        article(["🌐 Web articles"])
+        repo(["📦 GitHub repos"])
+        confluence(["📄 Confluence"])
+        tech(["📰 Tech news"])
+        jira(["🎫 Jira · optional"])
+        chat(["💬 Conversation"])
+    end
+
+    %% ════════════════════════════════════════
+    %% Layer 2: Knowledge accumulation
+    %% ════════════════════════════════════════
+    subgraph knowledge ["Knowledge Growth"]
+        direction LR
+        onboard["/onboard · repo deep-dive"]
+        learn["/learn · extract & save"]
+        reflect["/reflect · post-task lessons"]
+        techdigest["/tech-digest · curate & filter"]
+    end
+
+    article & repo & confluence --> learn
+    tech --> techdigest
+    learn & onboard & reflect & techdigest --> KB
+
+    KB[("Knowledge Base")]
+
+    %% ════════════════════════════════════════
+    %% Layer 3: Daily work cycle
+    %% ════════════════════════════════════════
+    subgraph daily ["Daily Workflow"]
+        today["/today · morning kickoff"]
+        prioritize["Prioritize · pick next task"]
+        work["Brainstorm → Implement · plan, code, review"]
+        decide{Done?}
+        todo[("Todo List")]
+        wrapup["/wrap-up · reflect + report"]
+        extract["/extract-skills · self-improvement"]
+
+        today --> prioritize
+        prioritize --> work --> decide
+        decide -- "✓ complete" --> todo
+        decide -- "✗ blocked" --> todo
+        todo -- "next" --> prioritize
+        todo -- "all done" --> wrapup
+        wrapup --> extract
+    end
+
+    KB -- "context & insights" --> today
+    wrapup -- "lessons & patterns" --> KB
+    decide -. "new questions" .-> learn
+
+    jira -- "import" --> todo
+    chat -- "capture" --> todo
+    decide -. "sync status" .-> jira
+
+    %% ════════════════════════════════════════
+    %% Layer 4: Reporting (below daily)
+    %% ════════════════════════════════════════
+    subgraph reporting ["Reporting & Logs"]
+        direction LR
+        dailylog["📋 Daily log · auto"]
+        dailyreport["/daily-report"]
+        weeklyreport["/weekly-report"]
+        monthlyreport["/monthly-report"]
+    end
+
+    wrapup --> dailylog
+    dailylog --> dailyreport --> weeklyreport --> monthlyreport
+
+    %% ════════════════════════════════════════
+    %% Side output: Personal Skills
+    %% ════════════════════════════════════════
+    skills[("🛠️ Personal Skills")]
+    extract --> skills
+    skills -. "enhance" .-> work
+
+    %% ════════════════════════════════════════
+    %% Styles
+    %% ════════════════════════════════════════
+    style inputs fill:none,stroke:none
+    style knowledge fill:#1a1a2e,stroke:#e94560,color:#fff
+    style daily fill:#1a1a2e,stroke:#0f3460,color:#fff
+    style reporting fill:#1a1a2e,stroke:#16213e,color:#fff
+    style KB fill:#e94560,stroke:#e94560,color:#fff
+    style todo fill:#0f3460,stroke:#0f3460,color:#fff
+    style skills fill:#533483,stroke:#533483,color:#fff
+```
+
+> **Knowledge growth** (top): `/onboard`, `/learn`, `/reflect`, and `/tech-digest` continuously feed the Knowledge Base from internal docs, external articles, GitHub repos, and tech news.
+>
+> **Daily workflow** (middle): `/today` kicks off the day → prioritize from the todo list → brainstorm & plan → implement. Each task either completes or gets marked as blocked — both update the todo list and loop back to pick the next item. When all tasks are done, `/wrap-up` closes the day, feeds lessons back into the KB, and triggers `/extract-skills` to capture reusable patterns as personal skills that enhance future work.
+>
+> **Reporting** (bottom): daily logs accumulate automatically per session, then roll up into `/daily-report` → `/weekly-report` → `/monthly-report`.
+>
+> The loops reinforce each other: richer knowledge → better daily decisions → more lessons captured → even richer knowledge.
+
 ### What makes it different
 
 | Other setups | nase |
 |---|---|
 | Stateless — Claude forgets everything between sessions | Persistent KB survives session resets; loaded on demand |
-| Generic prompts for any task | Opinionated workflow for backend engineers (`.NET`, `Azure`, `Spark`, `K8s`) |
+| Generic prompts for any task | Opinionated workflow shaped to your stack — customize KB domains to match |
 | Manual context management | Auto-onboards repos, auto-backs up work, auto-digests tech news |
 | You write the commands | Commands write new commands (`/nase:extract-skills`) |
 | One assistant, one task | Named AI identity with daily lifecycle: morning → work → wrap-up → backup |
@@ -89,6 +195,8 @@ nase/
       weekly-report.md
       monthly-report.md
       estimate-eta.md
+      improve-commit-message.md
+      update-changelog.md
       restore.md
     hooks/              ← Hook scripts (called by settings.json)
       session-start.sh
@@ -128,7 +236,6 @@ Accepts a local path (Windows or Git Bash format) **or** a GitHub URL (`https://
 This will:
 - Explore the repo and create `work/kb/projects/<repo>.md`
 - Add the repo to `work/context.md`
-- Prompt once for a backup location (stored in `.backup-target`)
 
 ### 4. Start your first session
 ```
