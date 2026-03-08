@@ -165,11 +165,11 @@ Quick reference:
 | `/nase:onboard <path-or-url>` | Adding a new repo to the KB (local path or GitHub URL) |
 | `/nase:kb-update [domain]` | After learning something worth keeping |
 | `/nase:tech-digest` | First session of the day (auto-prompted by rule above) |
-| `/nase:learn [tip\|url]` | Capture a tip or feed a URL → auto-extract learnings → `lessons.md` + KB |
+| `/nase:learn [tip\|url]` | Capture a tip, web article, GitHub repo, or Confluence page → auto-extract learnings → `lessons.md` + KB |
 | **Learning & Reflection** | |
 | `/nase:today` | Morning kickoff — today's focus, priorities, blockers |
 | `/nase:reflect [task]` | Post-task reflection — capture lessons from what just happened |
-| `/nase:extract-skills` | Analyze current session → extract reusable patterns → `work/skills/` |
+| `/nase:extract-skills` | Analyze current session → extract reusable patterns as personal skills → `work/skills/` |
 | `/nase:wrap-up` | End of day — fully autonomous: reflect → learn → extract-skills → kb-update → daily-report |
 | **Reporting** | |
 | `/nase:daily-report` | Today's AI-assisted work summary |
