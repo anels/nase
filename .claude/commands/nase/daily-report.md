@@ -1,4 +1,5 @@
 Generate a clear daily work report for today based on AI-assisted work only.
+The report covers only AI-assisted work (from session logs), not all git activity — this keeps it focused on what this workspace actually contributed.
 
 ## Steps
 

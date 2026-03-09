@@ -1,5 +1,6 @@
 Fetch and summarize the latest tech news relevant to this workspace.
 Run only when today's entry is absent from `work/kb/general/tech-trends.md` (deduplication enforced in Step 0).
+The deduplication check exists because this command may be triggered multiple times per day (session start rule, manual invocation) — running it twice would waste API calls and produce duplicate entries.
 
 ## Steps
 

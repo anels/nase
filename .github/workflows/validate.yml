@@ -20,11 +20,13 @@ jobs:
       - name: Bash syntax check
         run: |
           bash -n .claude/hooks/session-start.sh
+          bash -n .claude/hooks/stop-todos.sh
           bash -n .claude/hooks/stop-backup.sh
 
       - name: shellcheck
         run: |
           shellcheck -S warning .claude/hooks/session-start.sh
+          shellcheck -S warning .claude/hooks/stop-todos.sh
           shellcheck -S warning .claude/hooks/stop-backup.sh
 
       - name: JSON validation
@@ -34,6 +36,7 @@ jobs:
       - name: Hook wiring check
         run: |
           grep -q "session-start.sh" .claude/settings.json || { echo "FAIL: session-start.sh not wired in settings.json"; exit 1; }
+          grep -q "stop-todos.sh" .claude/settings.json     || { echo "FAIL: stop-todos.sh not wired in settings.json"; exit 1; }
           grep -q "stop-backup.sh" .claude/settings.json    || { echo "FAIL: stop-backup.sh not wired in settings.json"; exit 1; }
 
       - name: Command inventory check

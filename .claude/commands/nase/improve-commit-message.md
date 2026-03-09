@@ -1,4 +1,5 @@
 Analyze the last commit and rewrite its message following conventional commits / commitlint rules.
+Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why — without opening the diff.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
@@ -65,12 +66,20 @@ Rules:
 
 ### 6. Show comparison and amend
 
-Display:
-- Current message
-- Proposed message (+ body if applicable)
-- Brief explanation of changes
+Display the current vs proposed message, then confirm using AskUserQuestion:
+```
+question: "Current: {current subject}\nProposed: {proposed subject}"
+header: "Amend Commit Message"
+options:
+  - label: "Yes — amend"   , description: "Rewrite the commit message"
+  - label: "Edit"           , description: "Adjust the proposed message first"
+  - label: "Skip"           , description: "Keep the original message"
+```
+- **Yes**: proceed to amend
+- **Edit**: ask what to change, re-propose, then re-confirm
+- **Skip**: stop, no changes
 
-After user confirms, amend:
+Amend:
 ```
 git commit --amend -m "type(scope): subject"
 ```

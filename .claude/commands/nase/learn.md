@@ -23,13 +23,7 @@ Parse $ARGUMENTS:
 - Article / blog post URL → fetch full content. Focus on: key insights, concrete techniques, tradeoffs discussed.
 - Extract the context hint from $ARGUMENTS if provided (text after the URL and a comma/dash).
 
-**2b. Filter for relevance** — keep only content related to:
-- .NET / Azure / ASP.NET Core
-- Spark / Databricks / Delta Lake / data engineering
-- AI/LLM engineering, agent design, MCP
-- Kubernetes / container orchestration
-- Claude Code workflow, hooks, skills
-- General engineering principles with direct applicability
+**2b. Filter for relevance** — keep only content related to the workspace's tech stack and interests. Read `work/tech-digest-config.md` for the user's configured filter topics. If unavailable, infer from `work/context.md` and existing KB files.
 
 Discard marketing content, unrelated domains, and obvious filler.
 
@@ -38,11 +32,18 @@ Discard marketing content, unrelated domains, and obvious filler.
 - Why does it matter / what problem does it solve?
 - Is it directly applicable to our stack or workflow?
 
-Show the extracted learnings to the user before saving. Ask:
-> "Save these learnings? (yes / no / edit)"
-- **no**: stop, nothing is written
-- **edit**: adjust per user feedback, then re-confirm
-- **yes**: proceed to Step 3
+Show the extracted learnings to the user, then confirm using AskUserQuestion:
+```
+question: "Save these learnings?"
+header: "Confirm Learnings"
+options:
+  - label: "Yes — save all"    , description: "Write to lessons.md and KB"
+  - label: "Edit"               , description: "Adjust before saving"
+  - label: "No — discard"       , description: "Nothing is written"
+```
+- **Yes**: proceed to Step 3
+- **Edit**: ask what to change, then re-confirm
+- **No**: stop, nothing is written
 
 ### 3. Categorize each learning
 

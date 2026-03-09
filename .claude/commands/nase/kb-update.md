@@ -1,5 +1,7 @@
 Update the knowledge base with new learnings from this session or task.
 
+The KB is the workspace's long-term memory — it outlives individual sessions. Use `/kb-update` for durable knowledge about repos, patterns, and constraints. For capturing quick tips, articles, or mistake patterns, use `/learn` instead — it handles lessons.md and may also route to KB.
+
 **Input:** $ARGUMENTS
 (If empty, reflect on recent work and identify what's worth capturing.)
 
@@ -29,6 +31,7 @@ Update the knowledge base with new learnings from this session or task.
 **Links:** {preserve any original PR, Jira, Confluence, or pipeline URLs from the source material}
 ```
 Omit the `**Links:**` line if there are no relevant links.
+Include links because future sessions can't search conversation history — the KB entry is the only record.
 
 5. If the learning is cross-cutting (affects multiple kb files), update all relevant files.
 

@@ -1,4 +1,5 @@
 Generate a monthly work report covering the past 30 days (or the current calendar month).
+Provides a high-level view of AI-assisted productivity, KB health, and accumulated learnings. The KB freshness audit catches documentation that has gone stale.
 
 ## Steps
 

@@ -16,6 +16,8 @@ Key capabilities:
 - **Resolves cherry-pick commits** to their original PRs/commits for accurate traceability
 - Supports any versioning scheme (sprint `S189`, semver `v1.2.3`, date-based `v2024.10.9`, etc.)
 
+The changelog is a user-facing document — it answers "what changed in this release?" for developers, PMs, and support teams. Code-level accuracy matters because commit messages alone are often cryptic or misleading.
+
 ## Argument Parsing
 
 **Input:** $ARGUMENTS — `[version] [from <base-ref>] [to <head-ref>]`
@@ -275,7 +277,15 @@ Read current `CHANGELOG.md` (if it exists).
 
 **If it DOES exist**:
 - Check if an entry for the same version already exists
-  - If yes, ask the user: "An entry for [version] already exists. Replace it or append a new one?"
+  - If yes, confirm using AskUserQuestion:
+    ```
+    question: "An entry for [version] already exists in CHANGELOG.md."
+    header: "Duplicate Changelog Entry"
+    options:
+      - label: "Replace"  , description: "Overwrite the existing entry with the new one"
+      - label: "Append"    , description: "Add as a separate entry above the existing one"
+      - label: "Cancel"    , description: "Do not write anything"
+    ```
 - Prepend the new entry after the header/intro but before the first existing `## [...]` section
 
 ### Step 8: Commit and Deliver

@@ -2,46 +2,43 @@ Analyze the current session and extract reusable problem-solving patterns as new
 
 **Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `auto` to skip the confirmation gate and auto-approve all candidates)
 
-## Purpose
+## Why this matters
 
-After solving a non-trivial problem or discovering a useful pattern, run this skill to capture it as a reusable pattern file under `work/skills/`. This is the "cognitive flywheel" step: good solutions compound over time.
-
-## Quality Bar
-
-Only extract a pattern if ALL of these are true:
-- It is **reusable** — the same workflow or technique will apply in future sessions
-- It is **non-obvious** — not already covered by an existing skill or CLAUDE.md rule
-- It is **self-contained** — can be described as a clear sequence of steps
-
-Skip if the pattern is: a one-time fix, a project-specific hack, or already documented.
+Every hard problem you solve is an investment. Without capture, that knowledge evaporates when the session ends. This skill is the "cognitive flywheel" — it turns one-off solutions into reusable patterns that compound over time. The bar is intentionally high: a few excellent skills are worth more than a pile of mediocre ones.
 
 ## Steps
 
 <workflow>
 
-### 1. Identify candidate patterns
+### 1. Mine the session for patterns
 
-Review the current conversation (or focus on $ARGUMENTS if provided). Look for:
-- Workflows repeated across multiple steps that could be templated
-- Diagnostic or debugging techniques that proved effective
-- Sequences of tool calls that solved a class of problem
-- Any "I wish I had a command for this" moments
+Review the conversation history (or focus on $ARGUMENTS if provided). The richest sources of patterns are:
+
+- **User corrections** — when the user redirected your approach, that delta between "what you tried" and "what worked" is often a reusable insight
+- **Multi-step tool sequences** — if you chained 3+ tool calls to achieve something, that sequence might be worth templating
+- **Repeated workflows** — the same shape of work appearing across different parts of the session
+- **Debugging breakthroughs** — diagnostic techniques that cracked a non-obvious problem
+- **"I wish I had a command for this" moments** — friction points that slowed the work down
 
 List 1-3 candidates with one-line descriptions.
 
-### 2. Filter by quality bar
+### 2. Apply the quality bar
 
-For each candidate, check against the quality bar above. Discard any that don't pass all three criteria.
+For each candidate, it must pass all three:
+
+- **Reusable** — will this come up again in future sessions, across different repos or tasks? A pattern that only applies to one specific codebase isn't worth extracting.
+- **Non-obvious** — is this already covered by a `/nase:*` command, a CLAUDE.md rule, or an existing `work/skills/` file? If so, consider updating the existing one instead.
+- **Self-contained** — can another Claude instance follow the steps cold, without context from this session? If it requires too much implicit knowledge, it's not ready to extract.
 
 If zero candidates pass: report "No extractable skills found in this session." and stop.
 
 ### 3. Check for duplicates
 
 For each remaining candidate:
-- Scan `.claude/commands/nase/` and `work/skills/` file names to check if a similar skill already exists
+- Scan `.claude/commands/nase/` and `work/skills/` file names for similar skills
 - If a near-duplicate exists: propose updating that file instead of creating a new one
 
-### 4. Propose skill(s) to the user
+### 4. Propose to the user
 
 For each skill to create or update, show:
 ```
@@ -51,21 +48,33 @@ Summary: {one-line description}
 Steps: {brief outline of the workflow}
 ```
 
-If $ARGUMENTS contains `auto`, skip this gate and auto-approve all proposed skills.
+If $ARGUMENTS contains `auto`, skip this gate and proceed directly to Step 5.
 
-Otherwise ask: "Create these skills? (yes / no / edit)"
-- **yes**: proceed to Step 5
-- **no**: stop, nothing is written
-- **edit**: ask what to change, then re-propose
+Otherwise confirm using AskUserQuestion:
+```
+question: "Create these skills?"
+header: "Confirm Skills"
+options:
+  - label: "Yes — create all"  , description: "Write skill files to work/skills/"
+  - label: "Edit"               , description: "Adjust before creating"
+  - label: "No — skip"          , description: "Nothing is written"
+```
+- **Yes**: proceed to Step 5
+- **Edit**: ask what to change, then re-propose
+- **No**: stop, nothing is written
 
-### 5. Write skill file(s)
+### 5. Write the skill file(s)
 
-For each approved skill, create `work/skills/{name}.md` using this template:
+Create `work/skills/{name}.md` for each approved skill:
 
 ```markdown
-{One-sentence description of what this skill does.}
+{One-sentence description — what this skill does and when to reach for it.}
 
-**Input:** $ARGUMENTS (describe what the input is, or "no input required")
+**Input:** $ARGUMENTS (describe expected input, or "no input required")
+
+## When to use
+
+{1-2 sentences describing the trigger — what situation or symptom tells you this skill is the right tool.}
 
 ## Steps
 
@@ -74,24 +83,21 @@ For each approved skill, create `work/skills/{name}.md` using this template:
 3. ...
 
 ## Notes
-- {any important constraints or gotchas}
+- {important constraints, gotchas, or things that look like they'd work but don't}
 ```
 
-Rules for the skill file:
-- First line must be a plain one-sentence description (no heading)
-- Use `$ARGUMENTS` for user-provided input
-- Steps should be concrete and self-contained — another Claude instance should be able to follow them cold
-- Keep it focused: one skill = one goal
+Writing guidelines:
+- First line: plain sentence, no heading — this is what future sessions scan to decide relevance
+- Steps must be concrete enough that a fresh Claude instance can execute them without asking clarifying questions
+- Explain **why** each step matters, not just **what** to do — this helps the model adapt when the situation doesn't match exactly
+- One skill = one goal; if you're cramming two workflows into one file, split them
 
-### 6. Record in lessons.md (if applicable)
+### 6. Cross-reference lessons
 
-If the extracted skill captures a lesson worth remembering (not just a procedural template), append a brief entry to `work/tasks/lessons.md` noting what pattern was extracted and why.
+If the extracted skill captures a hard-won lesson (not just a procedural template), append a brief entry to `work/tasks/lessons.md` noting the pattern and why it matters.
 
-### 7. Confirm
+### 7. Report
 
-Report:
-- Skills created (file paths)
-- Skills updated (file paths + what changed)
-- Skills skipped (reason)
+List skills created (with file paths), skills updated (with what changed), and skills skipped (with reason).
 
 </workflow>

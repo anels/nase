@@ -1,4 +1,5 @@
 Generate a weekly work report covering the past 7 days (Monday to today).
+Aggregates session logs (not raw git history) to show what was accomplished through AI-assisted work this week. Useful for standups and self-review.
 
 ## Steps
 
