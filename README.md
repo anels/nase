@@ -121,95 +121,72 @@ Two feedback loops drive continuous improvement: **knowledge accumulation** feed
 
 ```mermaid
 flowchart TD
-    %% ════════════════════════════════════════
-    %% Layer 1: External inputs
-    %% ════════════════════════════════════════
-    subgraph inputs [" "]
+    %% ── External Sources ──
+    subgraph sources ["External Sources"]
         direction LR
-        article(["🌐 Web articles"])
-        repo(["📦 GitHub repos"])
-        confluence(["📄 Confluence"])
-        tech(["📰 Tech news"])
-        jira(["🎫 Jira · optional"])
-        chat(["💬 Conversation"])
+        web(["Web & Articles"])
+        repos(["GitHub Repos"])
+        docs(["Confluence"])
+        news(["Tech News"])
     end
 
-    %% ════════════════════════════════════════
-    %% Layer 2: Knowledge accumulation
-    %% ════════════════════════════════════════
+    %% ── Knowledge Layer ──
     subgraph knowledge ["Knowledge Growth"]
         direction LR
-        onboard["/onboard · repo deep-dive"]
-        learn["/learn · extract & save"]
-        reflect["/reflect · post-task lessons"]
-        techdigest["/tech-digest · curate & filter"]
+        onboard["/onboard<br><small>repo deep-dive</small>"]
+        learn["/learn<br><small>extract & save</small>"]
+        reflect["/reflect<br><small>post-task lessons</small>"]
+        digest["/tech-digest<br><small>curate & filter</small>"]
     end
 
-    article & repo & confluence --> learn
-    tech --> techdigest
-    learn & onboard & reflect & techdigest --> KB
+    web & repos & docs --> learn
+    news --> digest
+    onboard & learn & reflect & digest --> KB[("Knowledge<br>Base")]
 
-    KB[("Knowledge Base")]
-
-    %% ════════════════════════════════════════
-    %% Layer 3: Daily work cycle
-    %% ════════════════════════════════════════
+    %% ── Daily Work Cycle ──
     subgraph daily ["Daily Workflow"]
-        today["/today · morning kickoff"]
-        prioritize["Prioritize · pick next task"]
-        work["Brainstorm → Implement · plan, code, review"]
-        decide{Done?}
-        todo[("Todo List")]
-        wrapup["/wrap-up · reflect + report"]
-        extract["/extract-skills · self-improvement"]
+        today["/today<br><small>morning kickoff</small>"]
+        pick["Pick next task"]
+        impl["Plan & Implement"]
+        done{Done?}
+        tasks[("Task List")]
+        wrapup["/wrap-up<br><small>reflect + report</small>"]
+        extract["/extract-skills<br><small>self-improvement</small>"]
 
-        today --> prioritize
-        prioritize --> work --> decide
-        decide -- "✓ complete" --> todo
-        decide -- "✗ blocked" --> todo
-        todo -- "next" --> prioritize
-        todo -- "all done" --> wrapup
-        wrapup --> extract
+        today --> pick --> impl --> done
+        done -- "complete" --> tasks
+        done -- "blocked" --> tasks
+        tasks -- "next" --> pick
+        tasks -- "all done" --> wrapup --> extract
     end
 
     KB -- "context & insights" --> today
     wrapup -- "lessons & patterns" --> KB
-    decide -. "new questions" .-> learn
+    done -. "new questions" .-> learn
 
-    jira -- "import" --> todo
-    chat -- "capture" --> todo
-    decide -. "sync status" .-> jira
-
-    %% ════════════════════════════════════════
-    %% Layer 4: Reporting (below daily)
-    %% ════════════════════════════════════════
-    subgraph reporting ["Reporting & Logs"]
+    %% ── Reporting ──
+    subgraph reporting ["Reporting"]
         direction LR
-        dailylog["📋 Daily log · auto"]
-        dailyreport["/daily-report"]
-        weeklyreport["/weekly-report"]
-        monthlyreport["/monthly-report"]
+        log["Auto daily log"]
+        dr["/daily-report"]
+        wr["/weekly-report"]
+        mr["/monthly-report"]
     end
 
-    wrapup --> dailylog
-    dailylog --> dailyreport --> weeklyreport --> monthlyreport
+    wrapup --> log --> dr --> wr --> mr
 
-    %% ════════════════════════════════════════
-    %% Side output: Personal Skills
-    %% ════════════════════════════════════════
-    skills[("🛠️ Personal Skills")]
+    %% ── Skills feedback ──
+    skills[("Learned<br>Skills")]
     extract --> skills
-    skills -. "enhance" .-> work
+    skills -. "enhance" .-> impl
 
-    %% ════════════════════════════════════════
-    %% Styles
-    %% ════════════════════════════════════════
-    style inputs fill:none,stroke:none
+    %% ── Styles ──
+    style sources fill:#16213e,stroke:#0f3460,color:#e0e0e0
     style knowledge fill:#1a1a2e,stroke:#e94560,color:#fff
     style daily fill:#1a1a2e,stroke:#0f3460,color:#fff
-    style reporting fill:#1a1a2e,stroke:#16213e,color:#fff
+    style reporting fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style KB fill:#e94560,stroke:#e94560,color:#fff
-    style todo fill:#0f3460,stroke:#0f3460,color:#fff
+    style tasks fill:#0f3460,stroke:#0f3460,color:#fff
     style skills fill:#533483,stroke:#533483,color:#fff
 ```
 
