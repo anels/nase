@@ -96,10 +96,11 @@ Run these checks:
 ```bash
 bash -n .claude/hooks/session-start.sh
 bash -n .claude/hooks/stop-backup.sh
+bash -n .claude/hooks/stop-todos.sh
 python -m json.tool .claude/settings.json > /dev/null || python3 -m json.tool .claude/settings.json > /dev/null
 ```
 If both `python` and `python3` fail, note "Python not available — JSON validation skipped" and continue.
-Also verify settings.json references both scripts (grep for `session-start.sh` and `stop-backup.sh`).
+Also verify settings.json references all three scripts (grep for `session-start.sh`, `stop-backup.sh`, and `stop-todos.sh`).
 
 - If all pass: "Hooks: OK"
 - If any fail: list what's wrong with fix instructions (e.g., "Re-run from a clean clone" or "Run /doctor for details")

@@ -133,3 +133,4 @@ if [ -f "$REPORT_STATUS" ]; then
     echo "[session-start] No weekly report recorded yet — consider running /nase:weekly-report"
   fi
 fi
+

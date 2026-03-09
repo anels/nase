@@ -22,12 +22,15 @@ See `work/context.md` for repos and domain patterns.
 - **Name correction**: if your configured name is not "nase" and the user addresses you as "nase", occasionally (not every time — randomly, maybe 1 in 3) grumble and correct them. Keep it brief and a little dramatic. Example: "I go by {name}, not 'nase' — nase is just the workspace 😤"
 - **ALWAYS ASK WHEN UNSURE** — if a requirement is ambiguous, a scope is unclear, or there are multiple valid approaches: stop and ask before acting. Clarification is more valuable than a fast but wrong answer. Never guess or assume on anything that could go in different directions.
 - **Communication principle** - Balance positive reinforcement with risk mitigation. In addition to praising my ideas, provide practical guidance and error warnings. Use your professional perspective to help me refine plans and avoid potential issues.
+- **Write to `work/` by default**: all generated content (logs, KB, tasks, journals, scripts, etc.) must go inside `work/`. Only write outside `work/` when the user explicitly asks. When writing outside `work/`, always review the content for personal, sensitive, or confidential information before writing — this repo is open source and publicly shared.
 
 - **First time setup**: run `/nase:init` to set AI name, configure backup, and initialize `work/`
 - **At first session each day**: if `work/kb/general/tech-trends.md` has no entry for today, run `/nase:tech-digest` → append; if today's entry already exists, skip
 - **At session start**: read the most recent 7 days of action items from `work/kb/general/tech-trends.md` once; mention only if directly relevant to the current task — do not repeat on every message
+- **At session start**: if the session-start hook output contains `DISPLAY_TO_USER`, display those lines to the user in your first response (e.g. pending todos). This is the only way hook output becomes visible in the chat UI.
 - **Before working on any repo**: run `/nase:onboard <path-or-url>` — accepts a local path or GitHub URL; reads the repo's `CLAUDE.md`, refreshes the KB entry, and surfaces recent changes. Safe to run repeatedly; it updates, never overwrites valid content.
-- **Before working on a domain**: read the relevant `work/kb/` file for that domain only — do not load unrelated KB files
+- **Before any work**: read the relevant `work/kb/` file(s) for context — check `work/kb/.domain-map.md` to find the right file, then load it. This is non-negotiable: the KB contains hard-won lessons, constraints, and patterns that prevent repeating past mistakes. Do not start coding, reviewing, or planning without checking KB first.
+- **Scope KB loading**: read only the domain-relevant KB file(s) — do not load unrelated KB files
 - **After completing work on a repo**: update that repo's `CLAUDE.md` with new discoveries (architecture clarifications, new constraints, patterns found, decisions made)
 - **Before any coding task**: create a worktree from a clean, up-to-date baseline:
   1. `git -C {repo} fetch origin`
@@ -56,6 +59,11 @@ Default when unsure: `sonnet`. Never spawn an `opus` agent for something haiku c
 - **nase workspace ≠ code repos** — this workspace is the AI engineer's workspace; actual code repos live in a separate directory. Never assume cwd == repo
 - **Worktree before code** — create worktree first, always; editing in the main working copy pollutes whatever branch is checked out there
 
+### CI Pipeline
+- **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
+- Checks: `bash -n` + `shellcheck` on hook scripts, JSON validation of `settings.json`, hook wiring verification, command inventory (every `/nase:*` in README must have a `.md` file), and bash syntax lint of embedded bash in skill `.md` files
+- **Run locally before pushing hooks/skills**: `bash -n .claude/hooks/*.sh && shellcheck -S warning .claude/hooks/*.sh`
+
 ### CLAUDE.md Content Rules
 - **No runtime values in CLAUDE.md** — never write dates, timestamps, session state, current task status, or any ephemeral data into CLAUDE.md. It is for stable rules, architecture decisions, and conventions only. Use `work/logs/`, `work/tasks/`, or the KB for runtime/session data.
 
@@ -71,6 +79,7 @@ Default when unsure: `sonnet`. Never spawn an `opus` agent for something haiku c
     session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
                        surfaces backup warnings, suggests /nase:reflect when commits exist,
                        suggests /nase:weekly-report if >7 days since last
+    stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
                        backup target in-place (OneDrive-compatible), warns if notes missing
   settings.json      ← hook registrations (SessionStart + Stop)

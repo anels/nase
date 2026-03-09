@@ -1,4 +1,5 @@
 Restore `work/` from the configured backup location.
+The pre-restore snapshot ensures you can always roll back — restoring from a corrupted or outdated backup won't leave you worse off than before.
 
 ## Steps
 
@@ -22,13 +23,16 @@ comm -23 <(cd "$WORKSPACE/work" && find . -type f | sort) <(cd "$TARGET" && find
 ```
 If any such files exist, warn: "The following files exist locally but not in the backup and will be DELETED by the restore."
 
-Then ask:
-> Restore will overwrite your current `work/` with the backup at `{TARGET}`.
-> Last backup: {timestamp of most recently modified file}
-> Files to be deleted (not in backup): {N files listed above, or "none"}
-> Proceed? (yes/no)
-
-If user says no — abort with no changes.
+Then confirm using AskUserQuestion:
+```
+question: "Restore will overwrite work/ with backup at {TARGET}. Last backup: {timestamp}. Files to be deleted (not in backup): {N or 'none'}."
+header: "Confirm Restore"
+options:
+  - label: "Yes — restore now"  , description: "Overwrites work/ with backup; snapshot created first"
+  - label: "No — abort"          , description: "No changes made"
+```
+- **Yes**: proceed to Step 3b (snapshot) then Step 4 (restore)
+- **No**: abort with no changes
 
 ### 3b. Create pre-restore snapshot (before any changes)
 Before running the restore, create a local snapshot so the user can roll back if needed:

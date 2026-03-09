@@ -1,4 +1,5 @@
 Display a usage guide for this AI engineer workspace.
+This command pulls from README.md dynamically so the help output always matches the actual available commands — no manual sync needed.
 
 ## Steps
 

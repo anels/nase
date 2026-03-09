@@ -1,11 +1,15 @@
 Plan today's work — quick morning kickoff focused on what to do today.
 
+## Why
+A focused kickoff prevents drift. The goal is to pick 1–3 things and start — not to plan the whole week. Spend 2 minutes here, not 20.
+
 ## Steps
 
 <workflow>
 
 ### 1. Context
 - Read `work/tasks/todo.md` — identify In Progress + top Pending items
+- Rank by impact × urgency. In-progress items take priority over new ones — context-switching is expensive.
 - Read `work/logs/{yesterday}.md` (last working day) — one-line summary of what was done
 
 ### 2. Today's commits so far (if any)

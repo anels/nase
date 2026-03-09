@@ -13,10 +13,14 @@ Run a structured post-task reflection to extract learnings and improve future pe
    - **What pattern or rule can I extract?** — generalizable to future tasks
    - **Any new tool/technique discovered?** — worth remembering
 
+   Focus on the question with the strongest signal — not every question needs a deep answer every time.
+
 3. Score the task on:
    - Accuracy (did the output match requirements?) 1-5
    - Efficiency (unnecessary steps taken?) 1-5
    - Code quality (clean, simple, correct?) 1-5
+
+   Scores are a calibration tool, not a grade. They help detect patterns over time — if efficiency is consistently low, it signals a workflow issue worth addressing.
 
 4. Save key learnings to `work/tasks/lessons.md` using the format defined in `/nase:learn` (ensure file exists, create with header if missing).
    - If the extracted pattern is a reusable rule, also use `<remember>` to persist it as a behavioral directive.
