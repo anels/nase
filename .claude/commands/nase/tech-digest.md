@@ -6,7 +6,7 @@ Deduplication is enforced in Step 0: if today's entry already exists in tech-tre
 <workflow>
 
 0. **Deduplication check (run first — fast exit)**:
-   - Search `work/kb/general/tech-trends.md` for a header matching `## Tech Digest — {today's date}` (create the file if it doesn't exist). Use grep or full-file read — never use `tail`, as the file is ordered newest-first and today's header will be near the top, invisible to tail.
+   - Search `work/kb/general/tech-trends.md` for a header matching `## Tech Digest — {today's date}` (create the file if it doesn't exist). Prefer using the Read tool over raw grep — the file may have CRLF line endings on Windows, which cause `grep` to miss matches even when the header visually appears present.
    - If the header is found, stop immediately and report: "Today's digest already recorded. Skipping."
    - Only proceed to Step 1 if today's entry is absent.
 
