@@ -1,4 +1,4 @@
-Generate a weekly work report covering the past 7 days (Monday to today).
+Generate a weekly work report covering the past 7 days (Monday to today). Use for end-of-week review, standup preparation, or when asked "what did I accomplish this week?". Reads session logs — not raw git history — so it reflects AI-assisted work only.
 Aggregates session logs (not raw git history) to show what was accomplished through AI-assisted work this week. Useful for standups and self-review.
 
 ## Steps
@@ -35,9 +35,6 @@ Aggregates session logs (not raw git history) to show what was accomplished thro
 **Key Decisions & Learnings**
 - Notable architectural or workflow decisions made
 - Lessons from tasks/lessons.md added this week
-
-**Files Most Changed**
-- Top files by change frequency
 
 **Next Week Focus**
 - Suggest 2-3 priorities based on pending tasks and blockers

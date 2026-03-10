@@ -1,4 +1,4 @@
-Run a self-diagnostic check to verify the workspace is properly configured and healthy.
+Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use whenever something feels off — hooks not firing, backup warnings, or after a machine migration. Run proactively before starting a new sprint or after updating skills.
 
 ## Checks
 
@@ -79,7 +79,7 @@ command -v git
 - Flag any of the expected core commands that are missing:
   `doctor`, `help`, `init`, `onboard`, `kb-update`, `tech-digest`, `restore`,
   `learn`, `reflect`, `extract-skills`, `daily-report`, `weekly-report`, `monthly-report`,
-  `estimate-eta`, `improve-commit-message`, `update-changelog`, `today`, `wrap-up`
+  `estimate-eta`, `improve-commit-message`, `update-changelog`, `today`, `wrap-up`, `stats`
 
 </parallel>
 
@@ -99,7 +99,7 @@ command -v git
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
 | 6 | work/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
 | 7 | Tools | OK / FAIL | {git status} |
-| 8 | Commands | {N}/18 found | {missing names if any} |
+| 8 | Commands | {N}/19 found | {missing names if any} |
 
 **Result: {X}/8 checks passed**
 

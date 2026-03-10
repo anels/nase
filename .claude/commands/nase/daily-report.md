@@ -1,4 +1,4 @@
-Generate a clear daily work report for today based on AI-assisted work only.
+Generate a clear daily work report for today based on AI-assisted work only. Use when asked for a daily summary, at the end of a work session, or to see what was accomplished today. Also invoked automatically by /wrap-up.
 The report covers only AI-assisted work (from session logs), not all git activity — this keeps it focused on what this workspace actually contributed.
 
 ## Steps

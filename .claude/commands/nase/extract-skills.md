@@ -1,4 +1,4 @@
-Analyze the current session and extract reusable problem-solving patterns as new nase skills.
+Analyze the current session and extract reusable problem-solving patterns as new nase skills. Run at the end of any session where you solved a non-trivial problem, debugged something tricky, or found a useful technique. Don't skip it — captured patterns compound into lasting productivity gains.
 
 **Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `auto` to skip the confirmation gate and auto-approve all candidates)
 

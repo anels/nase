@@ -1,4 +1,4 @@
-Analyze the last commit and rewrite its message following conventional commits / commitlint rules.
+Analyze the last commit and rewrite its message following conventional commits / commitlint rules. Always invoke before git push — it's the second step in the standard commit sequence: /simplify → /improve-commit-message → git push.
 Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why — without opening the diff.
 
 <investigate_before_acting>

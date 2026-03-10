@@ -1,4 +1,4 @@
-Consolidate end-of-day routine: reflect, learn, kb-update, and daily-report in one command with smart auto-skip.
+Run at end of day to capture everything in one autonomous pass: reflection, lessons, KB updates, and daily report. Use instead of running /reflect, /learn, /kb-update, and /daily-report separately — wrap-up handles all of them with smart auto-skip. Invoke whenever the day's work is done.
 Each step feeds the next: reflection identifies patterns → learn captures them → kb-update persists domain knowledge → daily-report summarizes. Skipping early steps is fine when there's nothing to capture — the conditional logic handles this automatically.
 
 <investigate_before_acting>

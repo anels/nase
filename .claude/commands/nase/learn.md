@@ -1,4 +1,4 @@
-Capture a tip, lesson, article, or repo as structured knowledge and save it to the knowledge base.
+Capture a tip, mistake pattern, article URL, or GitHub repo as structured knowledge. Use for quick learnings, articles worth distilling, or mistakes to avoid repeating. For durable codebase-specific architecture decisions or constraints, use /kb-update instead.
 
 **Input:** $ARGUMENTS — one of:
 - A raw tip or insight: `"always check X before doing Y"`

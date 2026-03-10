@@ -1,4 +1,4 @@
-Estimate the effort and ETA for a given task or feature request.
+Estimate the effort and ETA for a given task or feature request. Use whenever someone asks "how long will this take?", "when can we ship X?", or before committing to a timeline. Explores the codebase and compares against past similar tasks for grounded estimates.
 
 **Task to estimate:** $ARGUMENTS
 
