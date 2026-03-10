@@ -148,7 +148,7 @@ Parse this output to build:
 
 #### 3b. Detect and resolve cherry-pick commits
 
-**Detection patterns** (check in order):
+**Detection patterns** — check in order 1→2→3; stop at the **first match** for each commit. Do not apply multiple patterns to the same commit:
 
 1. **Title pattern — `Cherry-Pick:` prefix**
    ```

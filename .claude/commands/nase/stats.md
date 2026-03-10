@@ -120,11 +120,13 @@ Save `$TMPDIR_STATS` path for use in steps 3–5.
 
 Use the per-day session data from `$TMPDIR_STATS/daily.csv`. Read it into a lookup map by date, then iterate through all days in range.
 
-Density characters:
+Density characters (Unicode block chars — preferred):
 - `░` = 0 sessions
 - `▒` = 1 session
 - `▓` = 2 sessions
 - `█` = 3+ sessions
+
+If the terminal or environment doesn't render Unicode block characters correctly (they appear as `?` or boxes), fall back to ASCII: `.` = 0, `+` = 1, `o` = 2, `#` = 3+. Update the legend accordingly.
 
 **7-day format** — single column with a proportional bar (max 8 `█` characters, scaled to the highest session count in the range):
 

@@ -27,8 +27,16 @@ List 1-3 candidates with one-line descriptions.
 For each candidate, it must pass all three:
 
 - **Reusable** — will this come up again in future sessions, across different repos or tasks? A pattern that only applies to one specific codebase isn't worth extracting.
+  - ✅ Pass: "How to resolve a diverged git worktree before onboarding" — could happen in any repo
+  - ❌ Fail: "How to fix the ADF pipeline for the Mercy tenant" — specific to one customer/env
+
 - **Non-obvious** — is this already covered by a `/nase:*` command, a CLAUDE.md rule, or an existing `work/skills/` file? If so, consider updating the existing one instead.
+  - ✅ Pass: A multi-step sequence for safely testing hook changes without triggering the Stop backup — not in any existing skill
+  - ❌ Fail: "Run `/nase:doctor` when something feels broken" — already in CLAUDE.md
+
 - **Self-contained** — can another Claude instance follow the steps cold, without context from this session? If it requires too much implicit knowledge, it's not ready to extract.
+  - ✅ Pass: Step-by-step bash script + expected output for each step
+  - ❌ Fail: "Do what we did earlier with the JSON" — requires session context to understand
 
 If zero candidates pass: report "No extractable skills found in this session." and stop.
 

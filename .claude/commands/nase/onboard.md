@@ -54,7 +54,7 @@ Before reading any files, ensure the repo is up-to-date on its default branch:
    - Warn: "Repo is on branch `{current}`, not `{default}` — switching to `{default}` before onboarding."
    - Run `git -C {repo} checkout {default}` — if this fails (e.g. uncommitted changes), stop and report the error to the user. Do NOT force-checkout.
 4. Run `git -C {repo} pull --ff-only origin {default}` to pull the latest commits.
-   - If `--ff-only` fails (diverged history), warn the user and skip the pull rather than force-merging.
+   - If `--ff-only` fails (diverged history), **stop and report**: "Cannot fast-forward `{default}` — local and remote have diverged. Resolve the divergence manually before onboarding." Do NOT proceed with stale code; a KB entry built from an out-of-date repo is worse than no update.
 5. Confirm: "Repo synced to `{default}` (latest commit: `{short sha} {subject}`)."
 
 Skip this step entirely if $ARGUMENTS resolved to a GitHub URL with no local path (remote-only scenario).

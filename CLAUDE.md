@@ -36,8 +36,10 @@ See `work/context.md` for repos and domain patterns.
   - If the current branch **is** the default branch **and** the working tree is clean → create a worktree directly (no need to ask):
     1. `git -C {repo} fetch origin`
     2. `git -C {repo} worktree add ../{RepoName}-{task} -b feature/{task} origin/{default-branch}`
+    3. Use the `EnterWorktree` tool to switch the session context into the new worktree
   - If the current branch **is not** the default branch **or** has uncommitted changes → ask the user first (AskUserQuestion) whether to create a worktree or work in-place.
   Always base worktrees on `origin/{default-branch}` — never on a stale local branch.
+  When finished with work in the worktree, use the `ExitWorktree` tool to return to the main session context.
 - **When creating docs**: use structured sub-files with an index, not one flat file
 - **Commit sequence**: `/simplify` → `/nase:improve-commit-message` → `git push`
   - `/simplify` is a [bundled Claude Code skill](https://code.claude.com/docs/en/skills#bundled-skills) — always available
@@ -59,7 +61,7 @@ Default when unsure: `sonnet`. Never spawn an `opus` agent for something haiku c
 ### Bash / Path Rules (hard-won)
 - **Bash tool resets `cwd` between calls** — always use `git -C /absolute/path <cmd>` instead of `cd /path && git`
 - **nase workspace ≠ code repos** — this workspace is the AI engineer's workspace; actual code repos live in a separate directory. Never assume cwd == repo
-- **Worktree before code** — create a worktree for feature work; if the repo is on a non-default branch or has uncommitted changes, ask the user first before proceeding
+- **Worktree before code** — create a worktree for feature work; use `EnterWorktree` after `git worktree add` to switch session context; use `ExitWorktree` when done; if the repo is on a non-default branch or has uncommitted changes, ask the user first before proceeding
 
 ### CI Pipeline
 - **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
@@ -84,9 +86,9 @@ Default when unsure: `sonnet`. Never spawn an `opus` agent for something haiku c
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
                        backup target in-place (OneDrive-compatible), warns if notes missing
-    track-skill.sh   ← runs at PostToolUse:Skill: records /nase:* invocations to
+    track-command.sh ← runs at UserPromptSubmit: records /nase:* invocations to
                        work/stats/skill-usage.jsonl for /nase:stats reporting
-  settings.json      ← hook registrations (SessionStart + Stop + PostToolUse)
+  settings.json      ← hook registrations (SessionStart + Stop + UserPromptSubmit)
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
                        lives at workspace root (NOT inside work/); managed by /nase:init
 work/               ← entirely git-ignored; never committed
@@ -205,8 +207,8 @@ Quick reference:
 <!-- Format: ### YYYY-MM-DD — {topic} -->
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
 
-### 2026-03-09 — Skill usage tracking via PostToolUse hook
-`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. Tracking lives entirely in the hook — per-skill step-0 instructions were removed to avoid double-counting (hook fires at invocation time T+0; step-0 would fire seconds later at a different timestamp, defeating the dedup guard). Stats are surfaced by `/nase:stats`.
+### 2026-03-10 — Skill usage tracking moved to UserPromptSubmit
+`track-command.sh` fires on `UserPromptSubmit` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. Replaced `PostToolUse:Skill` (`track-skill.sh`) which missed slash commands auto-injected into the conversation as `<command-name>` blocks — those bypass the Skill tool entirely, so no `PostToolUse` event fired. `UserPromptSubmit` fires on every user message, catching all `/nase:*` invocations regardless of how the skill content is loaded. Stats are surfaced by `/nase:stats`.
 
 ### 2026-03-06 — Fix backup mv failure on OneDrive
 `stop-backup.sh` previously used `rm -rf $TARGET && mv $STAGING $TARGET`. OneDrive holds a handle on the directory entry even after `rm -rf`, causing `mv` to fail with "Permission denied". Fixed: keep `$TARGET` dir alive, clear its contents with `find -mindepth 1 -maxdepth 1 ! -name '.backup-lock' -exec rm -rf {} \;`, then `cp -rp $STAGING/. $TARGET/` in-place.
