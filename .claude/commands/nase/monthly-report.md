@@ -1,4 +1,4 @@
-Generate a monthly work report covering the past 30 days (or the current calendar month).
+Generate a monthly work report covering the past 30 days (or the current calendar month). Use at end of month, when asked for a month-in-review, or to audit productivity trends. Includes a KB freshness audit to flag stale documentation.
 Provides a high-level view of AI-assisted productivity, KB health, and accumulated learnings. The KB freshness audit catches documentation that has gone stale.
 
 ## Steps

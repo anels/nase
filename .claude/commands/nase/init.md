@@ -1,6 +1,4 @@
-Initialize or reconfigure the nase workspace.
-
-Safe to re-run — all steps check for existing state before making changes. Nothing is overwritten without confirmation.
+Initialize or reconfigure the nase workspace. Use for first-time setup, after cloning on a new machine, or when work/config.md is missing. Safe to re-run — all steps check for existing state before making changes. Nothing is overwritten without confirmation.
 
 **Input:** $ARGUMENTS (optional: AI engineer name, e.g. `/init Alice`)
 

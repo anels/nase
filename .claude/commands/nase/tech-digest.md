@@ -1,6 +1,5 @@
-Fetch and summarize the latest tech news relevant to this workspace.
-Run only when today's entry is absent from `work/kb/general/tech-trends.md` (deduplication enforced in Step 0).
-The deduplication check exists because this command may be triggered multiple times per day (session start rule, manual invocation) — running it twice would waste API calls and produce duplicate entries.
+Fetch and summarize the latest tech news from configured sources, filtered to workspace topics. Auto-skips if today's digest already exists — safe to invoke multiple times. Use at the start of each day or whenever you want a quick check on relevant tech developments.
+Deduplication is enforced in Step 0: if today's entry already exists in tech-trends.md, the skill exits immediately.
 
 ## Steps
 

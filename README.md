@@ -103,6 +103,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | `/nase:weekly-report` | Week-in-review across all repos |
 | `/nase:monthly-report` | Monthly recap (includes KB freshness audit) |
 | `/nase:estimate-eta <task>` | Effort estimate |
+| `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `work/stats/report-YYYY-MM-DD.md` |
 
 ### Backup & restore
 
@@ -208,6 +209,7 @@ flowchart TD
 |------|------|--------------|
 | `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today; prompts `/nase:weekly-report` if >7 days since last |
 | `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; syncs `work/` → backup target (in-place, OneDrive-compatible); writes status to `work/logs/.backup-status` |
+| `PostToolUse` | After every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; used by `/nase:stats` for heatmap and usage reports |
 
 The `Stop` hook reads `.backup-target` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
 
@@ -245,7 +247,8 @@ nase/
       session-start.sh
       stop-todos.sh
       stop-backup.sh
-    settings.json       ← Claude Code hooks (SessionStart + Stop)
+      track-skill.sh
+    settings.json       ← Claude Code hooks (SessionStart + Stop + PostToolUse)
   CLAUDE.md             ← AI identity + operating rules (loaded by Claude Code automatically)
   README.md             ← this file
 ```
@@ -266,6 +269,9 @@ work/
       <your-stack>.md ← patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
       tech-trends.md  ← monthly rolling tech digest (auto-appended by /nase:tech-digest)
       tech-trends-archive-YYYY.md  ← entries older than 30 days (auto-archived)
+  stats/
+    skill-usage.jsonl ← append-only log of /nase:* invocations (auto-written by PostToolUse hook)
+    report-YYYY-MM-DD.md ← detailed stats report (written by /nase:stats)
   logs/               ← daily work logs + .backup-status (auto-managed by hooks)
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)

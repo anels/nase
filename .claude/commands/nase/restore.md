@@ -1,4 +1,4 @@
-Restore `work/` from the configured backup location.
+Restore `work/` from the configured backup location. Use after a machine migration, accidental deletion, or when work/ is out of sync with the backup. Creates a pre-restore snapshot so you can always roll back.
 The pre-restore snapshot ensures you can always roll back — restoring from a corrupted or outdated backup won't leave you worse off than before.
 
 ## Steps
@@ -7,7 +7,7 @@ The pre-restore snapshot ensures you can always roll back — restoring from a c
 - Look for the backup target in this order:
   1. `$WORKSPACE/.backup-target` (workspace root — preferred location)
   2. `work/.backup-target` (legacy location — backward compatible)
-- If neither file exists, tell the user: no backup target configured — run `/onboard` first
+- If neither file exists, tell the user: no backup target configured — run `/nase:init` first
 - If the legacy location is used, note: "Consider moving `.backup-target` to the workspace root."
 
 ### 2. Inspect backup

@@ -1,4 +1,4 @@
-Plan today's work — quick morning kickoff focused on what to do today.
+Plan today's work — quick morning kickoff focused on what to do today. Run at the start of each work session or when asked "what should I work on?", "what's my plan for today?", or "morning standup". Reads todo.md and yesterday's log to surface the top 1–3 priorities.
 
 ## Why
 A focused kickoff prevents drift. The goal is to pick 1–3 things and start — not to plan the whole week. Spend 2 minutes here, not 20.

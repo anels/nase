@@ -32,10 +32,12 @@ See `work/context.md` for repos and domain patterns.
 - **Before any work**: read the relevant `work/kb/` file(s) for context — check `work/kb/.domain-map.md` to find the right file, then load it. This is non-negotiable: the KB contains hard-won lessons, constraints, and patterns that prevent repeating past mistakes. Do not start coding, reviewing, or planning without checking KB first.
 - **Scope KB loading**: read only the domain-relevant KB file(s) — do not load unrelated KB files
 - **After completing work on a repo**: update that repo's `CLAUDE.md` with new discoveries (architecture clarifications, new constraints, patterns found, decisions made)
-- **Before any coding task**: create a worktree from a clean, up-to-date baseline:
-  1. `git -C {repo} fetch origin`
-  2. `git -C {repo} worktree add ../{RepoName}-{task} -b feature/{task} origin/{default-branch}`
-  Always base the worktree on `origin/{default-branch}` — never on a stale local branch. This works regardless of uncommitted changes in the main working copy.
+- **Before any coding task**: check the repo's current state:
+  - If the current branch **is** the default branch **and** the working tree is clean → create a worktree directly (no need to ask):
+    1. `git -C {repo} fetch origin`
+    2. `git -C {repo} worktree add ../{RepoName}-{task} -b feature/{task} origin/{default-branch}`
+  - If the current branch **is not** the default branch **or** has uncommitted changes → ask the user first (AskUserQuestion) whether to create a worktree or work in-place.
+  Always base worktrees on `origin/{default-branch}` — never on a stale local branch.
 - **When creating docs**: use structured sub-files with an index, not one flat file
 - **Commit sequence**: `/simplify` → `/nase:improve-commit-message` → `git push`
   - `/simplify` is a [bundled Claude Code skill](https://code.claude.com/docs/en/skills#bundled-skills) — always available
@@ -57,7 +59,7 @@ Default when unsure: `sonnet`. Never spawn an `opus` agent for something haiku c
 ### Bash / Path Rules (hard-won)
 - **Bash tool resets `cwd` between calls** — always use `git -C /absolute/path <cmd>` instead of `cd /path && git`
 - **nase workspace ≠ code repos** — this workspace is the AI engineer's workspace; actual code repos live in a separate directory. Never assume cwd == repo
-- **Worktree before code** — create worktree first, always; editing in the main working copy pollutes whatever branch is checked out there
+- **Worktree before code** — create a worktree for feature work; if the repo is on a non-default branch or has uncommitted changes, ask the user first before proceeding
 
 ### CI Pipeline
 - **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
@@ -82,7 +84,9 @@ Default when unsure: `sonnet`. Never spawn an `opus` agent for something haiku c
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
                        backup target in-place (OneDrive-compatible), warns if notes missing
-  settings.json      ← hook registrations (SessionStart + Stop)
+    track-skill.sh   ← runs at PostToolUse:Skill: records /nase:* invocations to
+                       work/stats/skill-usage.jsonl for /nase:stats reporting
+  settings.json      ← hook registrations (SessionStart + Stop + PostToolUse)
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
                        lives at workspace root (NOT inside work/); managed by /nase:init
 work/               ← entirely git-ignored; never committed
@@ -148,6 +152,9 @@ work/                   ← entirely git-ignored; never committed
     todo.md               ← current task tracking
   journals/
     YYYY-MM-DD.md         ← end-of-day wrap-up output (written by /nase:wrap-up)
+  stats/
+    skill-usage.jsonl     ← append-only JSONL: {skill, ts} per /nase:* invocation (auto-written by hook)
+    report-YYYY-MM-DD.md  ← detailed stats report (written by /nase:stats)
   logs/
     YYYY-MM-DD.md         ← daily work logs (auto-created by SessionStart hook)
     .backup-status        ← timestamped backup results (written by Stop hook)
@@ -185,6 +192,7 @@ Quick reference:
 | `/nase:weekly-report` | Week-in-review across all repos |
 | `/nase:monthly-report` | Monthly recap (includes KB freshness audit) |
 | `/nase:estimate-eta <task>` | Effort and ETA estimate for a task |
+| `/nase:stats [7\|30\|all]` | Workspace usage statistics with heatmap |
 | **Git Workflow** | |
 | `/nase:improve-commit-message` | Rewrite last commit to conventional commits format (used in commit sequence) |
 | `/nase:update-changelog [ver]` | Generate/update CHANGELOG.md from code diff between two refs |
@@ -196,6 +204,9 @@ Quick reference:
 ## Key Decisions & Architecture Notes
 <!-- Format: ### YYYY-MM-DD — {topic} -->
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
+
+### 2026-03-09 — Skill usage tracking via PostToolUse hook
+`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. Tracking lives entirely in the hook — per-skill step-0 instructions were removed to avoid double-counting (hook fires at invocation time T+0; step-0 would fire seconds later at a different timestamp, defeating the dedup guard). Stats are surfaced by `/nase:stats`.
 
 ### 2026-03-06 — Fix backup mv failure on OneDrive
 `stop-backup.sh` previously used `rm -rf $TARGET && mv $STAGING $TARGET`. OneDrive holds a handle on the directory entry even after `rm -rf`, causing `mv` to fail with "Permission denied". Fixed: keep `$TARGET` dir alive, clear its contents with `find -mindepth 1 -maxdepth 1 ! -name '.backup-lock' -exec rm -rf {} \;`, then `cp -rp $STAGING/. $TARGET/` in-place.
