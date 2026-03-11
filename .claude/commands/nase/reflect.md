@@ -26,7 +26,7 @@ Run a structured post-task reflection to extract learnings and improve future pe
    - If the extracted pattern is a reusable rule, also use `<remember>` to persist it as a behavioral directive.
    - Verify the append: read back the last entry to confirm it was written correctly.
 
-5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md`.
+5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes).
 
 6. Output a brief reflection summary to the conversation.
 

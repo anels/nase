@@ -12,7 +12,7 @@ Provides a high-level view of AI-assisted productivity, KB health, and accumulat
 2. Read `work/tasks/todo.md` — full task status overview.
 3. Read `work/tasks/lessons.md` — all lessons logged this month.
 4. Identify major milestones, themes, and patterns across the month.
-5. Read CLAUDE.md "Key Decisions & Architecture Notes" section for architectural notes.
+5. Read `.claude/docs/reference.md` "Key Decisions & Architecture Notes" section for architectural notes.
 
 6. KB freshness audit:
    - For each KB file in `work/kb/`, check for a `<!-- Last reviewed: YYYY-MM-DD -->` comment.
