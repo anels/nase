@@ -77,7 +77,7 @@ If the input was a URL, always write learnings to the KB. Skip only for plain-te
 
 If any learning is an important reusable rule or principle:
 - Use `<remember>` to persist it as a behavioral directive
-- Suggest updating `CLAUDE.md` under "Key Decisions & Architecture Notes" if warranted
+- Suggest updating `.claude/docs/reference.md` under "Key Decisions & Architecture Notes" if warranted
 
 ### 7. Confirm
 
