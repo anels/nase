@@ -31,7 +31,7 @@ If $ARGUMENTS starts with `https://github.com/` or `git@github.com:`:
 <workflow>
 
 ### 0. Configure backup target (first-time only)
-- Check if `.backup-target` exists at the workspace root (`nase/.backup-target`)
+- Check if `.backup-target` exists at the workspace root (`$WORKSPACE/.backup-target`)
 - Also check legacy location `work/.backup-target` — if found there, note it should be migrated
 - If neither exists:
   - Suggest a default path: `~/Documents/nase-backup`
@@ -138,7 +138,7 @@ Use this structure:
 ### 5. Update Workspace Files
 <parallel>
 
-**`nase/work/context.md`** — add repo to the Repos section (idempotency: check if the repo path already appears before appending — skip if already present):
+**`work/context.md`** — add repo to the Repos section (idempotency: check if the repo path already appears before appending — skip if already present):
 ```
 - `{repo path}` — {purpose} (see `work/kb/projects/{domain}.md`)
 ```

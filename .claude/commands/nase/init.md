@@ -80,12 +80,13 @@ options:
 If the backup target does not contain `context.md` (empty or non-existent directory): skip this step silently.
 
 ### 3. Initialize automation metadata
-- Check if `work/logs/.report-status` exists
+- Check if `work/reports/.report-status` exists
 - If not, create it with empty entries:
   ```
   weekly-report=
   monthly-report=
   ```
+- Ensure directories exist: `work/reports/daily/`, `work/reports/weekly/`, `work/reports/monthly/`
 - Show current values (if any)
 - No user input needed — this file is updated automatically by /nase:weekly-report and /nase:monthly-report
 
@@ -95,10 +96,11 @@ Run these checks:
 bash -n .claude/hooks/session-start.sh
 bash -n .claude/hooks/stop-backup.sh
 bash -n .claude/hooks/stop-todos.sh
+bash -n .claude/hooks/track-skill.sh
 python -m json.tool .claude/settings.json > /dev/null || python3 -m json.tool .claude/settings.json > /dev/null
 ```
 If both `python` and `python3` fail, note "Python not available — JSON validation skipped" and continue.
-Also verify settings.json references all three scripts (grep for `session-start.sh`, `stop-backup.sh`, and `stop-todos.sh`).
+Also verify settings.json references all four scripts (grep for `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, and `track-skill.sh`).
 
 - If all pass: "Hooks: OK"
 - If any fail: list what's wrong with fix instructions (e.g., "Re-run from a clean clone" or "Run /doctor for details")
@@ -106,7 +108,7 @@ Also verify settings.json references all three scripts (grep for `session-start.
 ### 5. Initialize work/ skeleton
 Create the following structure if it does not already exist. Preserve existing files — only create missing ones.
 ```bash
-mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals
+mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals work/skills work/stats
 ```
 
 Create stub files only if missing (do not overwrite existing content):
@@ -167,7 +169,7 @@ Report a summary:
 Suggest next steps based on what's missing:
 - If no repos onboarded: "Run `/onboard <repo-path>` to add your first repository"
 - If tech-trends.md is missing: "Run `/tech-digest` to bootstrap the tech news feed"
-- If `.report-status` has no `weekly-report` date: "Run `/nase:weekly-report` to initialize the weekly report schedule"
+- If `work/reports/.report-status` has no `weekly-report` date: "Run `/nase:weekly-report` to initialize the weekly report schedule"
 - If doctor found issues: "Address the items listed by /doctor above"
 
 ## Notes

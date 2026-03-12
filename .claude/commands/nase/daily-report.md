@@ -6,6 +6,10 @@ The report covers only AI-assisted work (from session logs), not all git activit
 `$ARGUMENTS` may contain a date in `YYYY-MM-DD` format to report on a specific day.
 If empty or absent, default to **today**.
 
+## IMPORTANT
+
+**You MUST display the full report in the chat AND write it to file. Both are required — never skip the chat output.**
+
 ## Steps
 
 <workflow>
@@ -45,9 +49,9 @@ If empty or absent, default to **today**.
 If no `## Sessions` entries are found for the target date, say so clearly and suggest appending a session log entry.
 
 5. **Write output to file**:
-   Write the report to `work/logs/{target-date}.md` under a `## Daily Report` section.
-   - If the section already exists in the file, skip (do not duplicate).
-   - If the file does not exist, create it with `# Work Log — {target-date}\n` header first.
+   - Ensure directory exists: `work/reports/daily/`
+   - Write the report to `work/reports/daily/{target-date}.md`.
+   - Overwrite if the file already exists.
    - **Also display the full report on screen.**
 
 </workflow>
