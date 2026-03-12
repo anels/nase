@@ -7,6 +7,10 @@ Generate a monthly work report covering a natural calendar month (1st–last day
 - The word `this` — report on the **current (incomplete) month** (1st to today).
 - Empty or absent — report on **last complete month**.
 
+## IMPORTANT
+
+**You MUST display the full report in the chat AND write it to file. Both are required — never skip the chat output.**
+
 ## Steps
 
 <workflow>
@@ -20,15 +24,16 @@ Generate a monthly work report covering a natural calendar month (1st–last day
 
 2. **Collect weekly reports first**:
    For each natural week (Monday–Sunday) that overlaps with the target month:
-   - Check for `work/logs/weekly-{Monday YYYY-MM-DD}.md`.
+   - Check for `work/reports/weekly/{Monday YYYY-MM-DD}.md`.
    - If found, use it as a summarized source for that week's activity.
    - Track which days are already covered by weekly reports.
 
 3. **Fill gaps with daily data**:
    For days NOT covered by a weekly report:
-   - Check `work/logs/{YYYY-MM-DD}.md`:
-     - **First**, look for a `## Daily Report` section — use as summarized source.
-     - **If no daily report**, fall back to `## Sessions` section.
+   - **First**, check for a daily report at `work/reports/daily/{YYYY-MM-DD}.md`.
+   - **If no daily report file**, fall back to `work/logs/{YYYY-MM-DD}.md`:
+     - Look for a `## Daily Report` section first.
+     - If absent, fall back to `## Sessions` section.
    - Skip days with no data.
 
 4. Read `work/tasks/todo.md` — full task status overview.
@@ -90,10 +95,11 @@ Generate a monthly work report covering a natural calendar month (1st–last day
 If no activity is found for the target month, say so clearly.
 
 10. **Write output to file**:
-    Write the report to `work/logs/monthly-{YYYY-MM}.md` (e.g. `monthly-2026-02.md`).
-    Overwrite if the file already exists.
-    Update `work/logs/.report-status` — set or replace the line `monthly-report={YYYY-MM}`.
-    Create the status file if it doesn't exist.
-    **Also display the full report on screen.**
+    - Ensure directory exists: `work/reports/monthly/`
+    - Write the report to `work/reports/monthly/{YYYY-MM}.md` (e.g. `2026-03.md`).
+    - Overwrite if the file already exists.
+    - Update `work/reports/.report-status` — set or replace the line `monthly-report={YYYY-MM}`.
+      Create the status file if it doesn't exist.
+    - **Also display the full report on screen.**
 
 </workflow>

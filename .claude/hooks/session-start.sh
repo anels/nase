@@ -116,7 +116,7 @@ if [ -f "$WORKSPACE/work/context.md" ]; then
 fi
 
 # Item 7 — suggest /nase:weekly-report if >7 days since last
-REPORT_STATUS="$WORKSPACE/work/logs/.report-status"
+REPORT_STATUS="$WORKSPACE/work/reports/.report-status"
 if [ -f "$REPORT_STATUS" ]; then
   LAST_WEEKLY=$(grep "^weekly-report=" "$REPORT_STATUS" | cut -d= -f2 | tr -d '\r\n' || true)
   if [ -n "$LAST_WEEKLY" ]; then

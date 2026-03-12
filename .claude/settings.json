@@ -1,4 +1,5 @@
 {
+  "autoMemoryDirectory": "work/memory",
   "hooks": {
     "SessionStart": [
       {
@@ -28,12 +29,13 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
+    "PostToolUse": [
       {
+        "matcher": "Skill",
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-command.sh\"'"
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-skill.sh\"'"
           }
         ]
       }

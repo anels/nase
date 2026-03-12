@@ -17,9 +17,9 @@ Read this file on demand when you need details about workspace layout, skills, K
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
                        backup target in-place (OneDrive-compatible), warns if notes missing
-    track-command.sh ← runs at UserPromptSubmit: records /nase:* invocations to
+    track-skill.sh   ← runs at PostToolUse (Skill): records /nase:* invocations to
                        work/stats/skill-usage.jsonl for /nase:stats reporting
-  settings.json      ← hook registrations (SessionStart + Stop + UserPromptSubmit)
+  settings.json      ← hook registrations (SessionStart + Stop + PostToolUse)
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
                        lives at workspace root (NOT inside work/); managed by /nase:init
 work/               ← entirely git-ignored; never committed
@@ -59,7 +59,14 @@ work/                   ← entirely git-ignored; never committed
   logs/
     YYYY-MM-DD.md         ← daily work logs (auto-created by SessionStart hook)
     .backup-status        ← timestamped backup results (written by Stop hook)
-    .report-status        ← tracks last weekly-report date (used by SessionStart to prompt)
+  reports/
+    .report-status        ← tracks last weekly/monthly report date (used by SessionStart to prompt)
+    daily/
+      YYYY-MM-DD.md       ← daily reports (written by /nase:daily-report)
+    weekly/
+      YYYY-MM-DD.md       ← weekly reports, Monday date as filename (written by /nase:weekly-report)
+    monthly/
+      YYYY-MM.md          ← monthly reports (written by /nase:monthly-report)
 ```
 
 ---

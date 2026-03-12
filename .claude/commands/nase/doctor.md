@@ -19,7 +19,8 @@ git rev-parse --show-toplevel
 - Check `.claude/hooks/session-start.sh` exists
 - Check `.claude/hooks/stop-backup.sh` exists
 - Check `.claude/hooks/stop-todos.sh` exists
-- Run `bash -n` on each: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`
+- Check `.claude/hooks/track-skill.sh` exists
+- Run `bash -n` on each: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`
 - Pass: all files exist and pass syntax check
 - Fail: missing or syntax error (report which)
 
@@ -32,6 +33,7 @@ python -m json.tool .claude/settings.json > /dev/null
 - Check SessionStart hook command contains `session-start.sh`
 - Check Stop hook command contains `stop-backup.sh`
 - Check Stop hook command contains `stop-todos.sh`
+- Check PostToolUse hook command contains `track-skill.sh`
 - Pass: valid JSON + all scripts referenced
 - Fail: file missing / invalid JSON / scripts not wired up
 
