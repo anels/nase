@@ -1,22 +1,31 @@
-Generate a clear daily work report for today based on AI-assisted work only. Use when asked for a daily summary, at the end of a work session, or to see what was accomplished today. Also invoked automatically by /wrap-up.
+Generate a clear daily work report for today (or a specified date) based on AI-assisted work only. Use when asked for a daily summary, at the end of a work session, or to see what was accomplished today. Also invoked automatically by /wrap-up.
 The report covers only AI-assisted work (from session logs), not all git activity — this keeps it focused on what this workspace actually contributed.
+
+## Arguments
+
+`$ARGUMENTS` may contain a date in `YYYY-MM-DD` format to report on a specific day.
+If empty or absent, default to **today**.
 
 ## Steps
 
 <workflow>
 
-1. Read `work/logs/{today's date}.md`.
+1. Determine the **target date**:
+   - If `$ARGUMENTS` contains a `YYYY-MM-DD` value, use that.
+   - Otherwise use today's date.
+
+2. Read `work/logs/{target-date}.md`.
    - The `## Sessions` section is the **primary source** — it captures everything worked on via AI in this workspace.
-   - If the file doesn't exist or has no `## Sessions` entries, report that no AI-assisted work was logged today.
+   - If the file doesn't exist or has no `## Sessions` entries, report that no AI-assisted work was logged for that date.
 
-2. Read `work/tasks/todo.md` if it exists — note any items marked complete today.
+3. Read `work/tasks/todo.md` if it exists — note any items marked complete on the target date.
 
-3. Read `work/tasks/lessons.md` if it exists — note any lessons added today.
+4. Read `work/tasks/lessons.md` if it exists — note any lessons added on the target date.
 
 ## Output Format
 
 ---
-**Daily Report — {today's date}**
+**Daily Report — {target-date}**
 
 **Work Done (AI-assisted)**
 - Summarize each session entry from `## Sessions` — one bullet per major task/topic.
@@ -33,11 +42,12 @@ The report covers only AI-assisted work (from session logs), not all git activit
 - Any issues, decisions made, or things to watch (drawn from session entries)
 ---
 
-If no `## Sessions` entries are found for today, say so clearly and suggest appending a session log entry.
+If no `## Sessions` entries are found for the target date, say so clearly and suggest appending a session log entry.
 
-4. **Write output to log**:
-   Append the report to `work/logs/{today}.md` under a `## Daily Report` section.
+5. **Write output to file**:
+   Write the report to `work/logs/{target-date}.md` under a `## Daily Report` section.
    - If the section already exists in the file, skip (do not duplicate).
-   - If the file does not exist, create it with `# Work Log — {today}\n` header first.
+   - If the file does not exist, create it with `# Work Log — {target-date}\n` header first.
+   - **Also display the full report on screen.**
 
 </workflow>
