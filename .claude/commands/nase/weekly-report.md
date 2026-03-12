@@ -1,31 +1,44 @@
-Generate a weekly work report covering the past 7 days (Monday to today). Use for end-of-week review, standup preparation, or when asked "what did I accomplish this week?". Reads session logs — not raw git history — so it reflects AI-assisted work only.
-Aggregates session logs (not raw git history) to show what was accomplished through AI-assisted work this week. Useful for standups and self-review.
+Generate a weekly work report covering a natural week (Monday–Sunday). Use for end-of-week review, standup preparation, or when asked "what did I accomplish this week?". Reads session logs and daily reports — not raw git history — so it reflects AI-assisted work only.
+
+## Arguments
+
+`$ARGUMENTS` may contain:
+- A date in `YYYY-MM-DD` format — report on the **natural week containing that date** (Monday–Sunday).
+- The word `this` — report on the **current (incomplete) week** (Monday of this week to today).
+- Empty or absent — report on **last complete week** (previous Monday–Sunday).
 
 ## Steps
 
 <workflow>
 
-1. Read the daily log files for this week from `work/logs/YYYY-MM-DD.md` (Monday to today).
-   Extract commits and activities only from the `## Sessions` sections — these represent work done in nase sessions.
-   Do not run git log or pull commits from repos directly.
+1. **Determine target week boundaries**:
+   - Parse `$ARGUMENTS` per the rules above.
+   - Calculate the **Monday** and **Sunday** of the target week.
+   - If the target week is the current week and `$ARGUMENTS` is empty/absent, use **last week** instead.
+     (Use `this` explicitly to report on the current incomplete week.)
+   - Display: "Reporting on week: {Monday} to {Sunday}"
 
-2. Read `work/tasks/todo.md` — summarize completed vs pending items.
-3. Read `work/tasks/lessons.md` — highlight key lessons learned this week.
-4. Identify recurring themes across the session work (e.g., bug fixes, features, refactors).
-5. Record that the weekly report was generated today:
-   Update `work/logs/.report-status` — set or replace the line `weekly-report=YYYY-MM-DD` (today's date).
-   Create the file if it doesn't exist.
+2. **Collect daily data** (Monday through Sunday, or through today if current week):
+   For each day in the range, check for the daily log `work/logs/{YYYY-MM-DD}.md`:
+   - **First**, look for a `## Daily Report` section — if it exists, use that as the summarized source for that day (avoid re-parsing raw sessions).
+   - **If no daily report section**, fall back to reading the `## Sessions` section directly.
+   - Skip days with no log file.
+
+3. Read `work/tasks/todo.md` — summarize completed vs pending items.
+4. Read `work/tasks/lessons.md` — highlight key lessons learned during the target week.
+5. Identify recurring themes across the session work (e.g., bug fixes, features, refactors).
 
 ## Output Format
 
 ---
-**Weekly Report — Week of {Monday's date} to {today's date}**
+**Weekly Report — {Monday YYYY-MM-DD} to {Sunday YYYY-MM-DD}**
 
 **Summary**
 - One sentence overview of what this week focused on
 
 **Work by Day**
-- {YYYY-MM-DD} [{repo/topic}] {what was done}
+- {YYYY-MM-DD (day-of-week)} [{repo/topic}] {what was done}
+  (Group by day; skip days with no activity)
 
 **Tasks**
 - Completed: ...
@@ -42,10 +55,13 @@ Aggregates session logs (not raw git history) to show what was accomplished thro
 
 **Link preservation:** Keep all original URLs (PR links, Jira tickets, Confluence pages, pipeline links, release IDs) exactly as they appear in the session logs. Do not paraphrase or drop them.
 
-If no activity is found, say so and suggest next steps.
+If no activity is found for the target week, say so and suggest next steps.
 
-6. **Write output to log**:
-   Write the report to `work/logs/weekly-{Monday's date}.md` (e.g. `weekly-2026-03-02.md`).
+6. **Write output to file**:
+   Write the report to `work/logs/weekly-{Monday YYYY-MM-DD}.md` (e.g. `weekly-2026-03-02.md`).
    Overwrite if the file already exists.
+   Update `work/logs/.report-status` — set or replace the line `weekly-report={Monday date}` (the Monday of the reported week).
+   Create the status file if it doesn't exist.
+   **Also display the full report on screen.**
 
 </workflow>
