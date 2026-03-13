@@ -93,15 +93,16 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | Command | Purpose |
 |---------|---------|
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
+| `/nase:request-review <PR-URL(s)>` | Find code owners for a PR and send Slack DMs asking them to review or approve |
 | `/nase:update-changelog [version] [from <ref>] [to <ref>]` | Generate or update `CHANGELOG.md` by analyzing code changes between two git refs |
 
 ### Reporting
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:daily-report` | Today's AI-assisted work summary |
-| `/nase:weekly-report` | Week-in-review across all repos |
-| `/nase:monthly-report` | Monthly recap (includes KB freshness audit) |
+| `/nase:daily-report [YYYY-MM-DD]` | Today's (or a past date's) AI-assisted work summary |
+| `/nase:weekly-report [date\|this]` | Week-in-review; defaults to last week, `this` = current week |
+| `/nase:monthly-report [YYYY-MM\|this]` | Monthly recap; defaults to last month, `this` = current month |
 | `/nase:estimate-eta <task>` | Effort estimate |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `work/stats/report-YYYY-MM-DD.md` |
 
@@ -274,6 +275,14 @@ work/
     report-YYYY-MM-DD.md ← detailed stats report (written by /nase:stats)
   logs/               ← daily work logs + .backup-status (auto-managed by hooks)
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
+  reports/
+    .report-status        ← tracks last weekly/monthly report date (SessionStart uses this to prompt)
+    daily/
+      YYYY-MM-DD.md       ← daily reports (written by /nase:daily-report)
+    weekly/
+      YYYY-MM-DD.md       ← weekly reports, Monday date as filename
+    monthly/
+      YYYY-MM.md          ← monthly reports
   skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
   tasks/
     lessons.md        ← accumulated lessons from /nase:learn and /nase:reflect

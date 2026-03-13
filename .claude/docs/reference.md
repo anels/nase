@@ -135,8 +135,8 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 <!-- Format: ### YYYY-MM-DD — {topic} -->
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
 
-### 2026-03-10 — Skill usage tracking moved to UserPromptSubmit
-`track-command.sh` fires on `UserPromptSubmit` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. Replaced `PostToolUse:Skill` (`track-skill.sh`) which missed slash commands auto-injected into the conversation as `<command-name>` blocks — those bypass the Skill tool entirely, so no `PostToolUse` event fired. `UserPromptSubmit` fires on every user message, catching all `/nase:*` invocations regardless of how the skill content is loaded. Stats are surfaced by `/nase:stats`.
+### 2026-03-12 — Skill usage tracking restored to PostToolUse (track-skill.sh)
+`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. The previous attempt to use `UserPromptSubmit` (`track-command.sh`) was reverted because it could not reliably detect the exact skill name invoked — regex parsing of user messages is fragile. PostToolUse provides the exact Skill tool call input, which is the authoritative source for `/nase:*` invocations. Stats are surfaced by `/nase:stats`.
 
 ### 2026-03-06 — Fix backup mv failure on OneDrive
 `stop-backup.sh` previously used `rm -rf $TARGET && mv $STAGING $TARGET`. OneDrive holds a handle on the directory entry even after `rm -rf`, causing `mv` to fail with "Permission denied". Fixed: keep `$TARGET` dir alive, clear its contents with `find -mindepth 1 -maxdepth 1 ! -name '.backup-lock' -exec rm -rf {} \;`, then `cp -rp $STAGING/. $TARGET/` in-place.

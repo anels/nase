@@ -44,6 +44,7 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
 | `/nase:kb-update [domain]` | After learning something worth keeping |
 | `/nase:wrap-up` | End of day — autonomous reflect + report |
 | `/nase:improve-commit-message` | Part of commit sequence |
+| `/nase:request-review <PR-URL(s)>` | Find code owners and DM them on Slack to review/approve |
 | `/nase:doctor` | Workspace health check |
 
 For full skills table, workspace layout, KB structure, and architecture notes → read `.claude/docs/reference.md`
