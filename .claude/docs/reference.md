@@ -128,6 +128,11 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 | `/nase:update-changelog [ver]` | Generate/update CHANGELOG.md from code diff between two refs |
 | **Backup & Restore** | |
 | `/nase:restore` | Restore `work/` from the configured backup location |
+| **Context & Debugging** | |
+| `/context` | Show token usage, loaded tools/skills/MCP servers |
+| `/context-heavy` | Identify which tools are consuming the most context |
+| `/summarize-from-here` | Partially summarize the conversation from the current point |
+| `/debug` | Toggle verbose debug logging mid-session |
 
 ---
 
