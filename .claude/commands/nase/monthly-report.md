@@ -42,8 +42,11 @@ Generate a monthly work report covering a natural calendar month (1st–last day
 7. Read `.claude/docs/reference.md` "Key Decisions & Architecture Notes" section for architectural notes.
 
 8. KB freshness audit:
-   - For each KB file in `work/kb/`, check for a `<!-- Last reviewed: YYYY-MM-DD -->` comment.
-   - Any file missing this comment, or with a date older than 90 days, is stale.
+   - Find KB files not modified in the last 90 days:
+     ```bash
+     find work/kb/ -name '*.md' -not -newermt "$(date -d '90 days ago' +%Y-%m-%d 2>/dev/null || date -v-90d +%Y-%m-%d)"
+     ```
+   - Any file returned is stale (not edited in 90+ days).
    - Include a "KB Maintenance" section in the report listing stale files.
 
 9. Lessons distillation (run if lessons.md has entries older than 90 days):
@@ -83,8 +86,8 @@ Generate a monthly work report covering a natural calendar month (1st–last day
 - Patterns in bugs or rework that suggest process improvements
 
 **KB Maintenance**
-- Stale files (90+ days since review): [list or "none"]
-- Action: add `<!-- Last reviewed: {date} -->` to each file after reviewing
+- Stale files (90+ days since last edit): [list with age, or "none"]
+- Action: review and update each stale file, then run `/nase:kb-update` to refresh entries
 
 **Next Month Goals**
 - 3-5 suggested priorities based on current state

@@ -32,16 +32,14 @@ Deduplication is enforced in Step 0: if today's entry already exists in tech-tre
 (one ### block per section defined in config)
 ```
 
-5. Proceed directly to Step 6 — no user confirmation needed before writing.
+5. Ensure `{WORKSPACE}/work/kb/general/tech-trends.md` exists (create with `# Tech Trends\n` header if missing; use an absolute path resolved from the workspace root, not a relative path). Then prepend the digest (newest-first ordering).
 
-6. Ensure `{WORKSPACE}/work/kb/general/tech-trends.md` exists (create with `# Tech Trends\n` header if missing; use an absolute path resolved from the workspace root, not a relative path). Then prepend the digest (newest-first ordering).
-
-7. Lifecycle management — keep tech-trends.md focused (run after appending):
+6. Lifecycle management — keep tech-trends.md focused (run after appending):
    - Count digest entries (headers matching `## Tech Digest — YYYY-MM-DD`) older than 30 days.
    - If any exist, move them to `{WORKSPACE}/work/kb/general/tech-trends-archive-{YYYY}.md` (create with `# Tech Trends Archive — {YYYY}\n` header if missing).
    - Report: "Archived N entries older than 30 days to tech-trends-archive-{YYYY}.md."
 
-8. If any item is directly actionable (e.g., new Claude Code feature we should adopt, .NET API change), flag it explicitly.
+7. If any item is directly actionable (e.g., new Claude Code feature we should adopt, .NET API change), flag it explicitly.
 
 </workflow>
 

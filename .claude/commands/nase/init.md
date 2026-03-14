@@ -97,10 +97,11 @@ bash -n .claude/hooks/session-start.sh
 bash -n .claude/hooks/stop-backup.sh
 bash -n .claude/hooks/stop-todos.sh
 bash -n .claude/hooks/track-skill.sh
+bash -n .claude/hooks/worktree-log.sh
 python -m json.tool .claude/settings.json > /dev/null || python3 -m json.tool .claude/settings.json > /dev/null
 ```
 If both `python` and `python3` fail, note "Python not available — JSON validation skipped" and continue.
-Also verify settings.json references all four scripts (grep for `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, and `track-skill.sh`).
+Also verify settings.json references all five scripts (grep for `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, and `worktree-log.sh`).
 
 - If all pass: "Hooks: OK"
 - If any fail: list what's wrong with fix instructions (e.g., "Re-run from a clean clone" or "Run /doctor for details")
