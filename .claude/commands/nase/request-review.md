@@ -22,16 +22,24 @@ Save: title, url, base branch, changed file paths, additions/deletions count, bo
 
 ## Step 3 — Resolve code owners
 
-For each repo involved:
+Use this priority order — stop as soon as you have confident owners. Always reach the KB before going to GitHub.
 
-**3a. Read CODEOWNERS**
+**3a. Read project KB**
 
-Check if the repo is cloned locally (look in `work/context.md` for the local path). If yes, read directly. Otherwise fetch via:
+Read `work/kb/projects/<repo-name>.md` once. Extract ownership signals in a single pass:
+1. Look for the `## Ownership Map` table — match each changed file path to a row (directory prefix or module name); collect Primary Owner and Secondary Owner GitHub handles.
+2. Also scan for ownership notes, team sections, or "who to ping for X" annotations anywhere else in the file.
+
+If the KB has no Ownership Map (repo not yet onboarded), skip to 3b.
+
+If the KB yields confident owners for all changed areas → proceed to 3c (skip CODEOWNERS).
+
+**3b. Read CODEOWNERS (fallback)**
+
+Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `work/context.md` for the local path). If yes, read directly. Otherwise fetch via:
 ```bash
 gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 -d
 ```
-
-**3b. Match files to owners**
 
 For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd).
 
@@ -40,11 +48,7 @@ Matching rules (simplified gitignore-style):
 - `*.ext` — matches by extension anywhere
 - `*` catch-all — matches everything, but more specific rules below it override
 
-**3c. Cross-reference the project KB**
-
-Read `work/kb/projects/<repo-name>.md`. Look for ownership notes, team sections, or "who to ping for X" annotations. Surface any additional GitHub handles or names not already found in CODEOWNERS.
-
-**3d. Exclude the PR author and alumni** — skip the PR author's handle. Also check the KB for an "Alumni" or "no longer on team" section and skip anyone listed there.
+**3c. Exclude the PR author and alumni** — skip the PR author's handle. Also check the KB for an "Alumni" or "no longer on team" section and skip anyone listed there.
 
 ## Step 4 — Resolve Slack users
 
