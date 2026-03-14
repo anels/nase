@@ -1,7 +1,4 @@
-Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo — not just the first time. Projects evolve; keeping the KB current prevents working from stale assumptions. Safe to re-run repeatedly — enriches existing entries rather than overwriting.
-
-Run this command **before starting work on any repo** — not just the first time. Projects evolve; running `/nase:onboard` keeps the KB current with the latest architecture, constraints, and patterns.
-Re-running is cheap and safe — the skill enriches existing KB entries rather than overwriting. A stale KB entry is worse than a slightly redundant refresh.
+Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo — not just the first time. Projects evolve; keeping the KB current prevents working from stale assumptions. Safe to re-run repeatedly — enriches existing entries rather than overwriting. A stale KB entry is worse than a slightly redundant refresh.
 
 <investigate_before_acting>
 Read workspace state (context.md, team profiles, recent logs) before generating output.

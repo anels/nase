@@ -211,6 +211,7 @@ flowchart TD
 | `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today; prompts `/nase:weekly-report` if >7 days since last |
 | `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; syncs `work/` → backup target (in-place, OneDrive-compatible); writes status to `work/logs/.backup-status` |
 | `PostToolUse` | After every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; used by `/nase:stats` for heatmap and usage reports |
+| `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
 
 The `Stop` hook reads `.backup-target` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
 
@@ -243,13 +244,15 @@ nase/
       estimate-eta.md
       improve-commit-message.md
       update-changelog.md
+      request-review.md
       restore.md
     hooks/              ← Hook scripts (called by settings.json)
       session-start.sh
       stop-todos.sh
       stop-backup.sh
       track-skill.sh
-    settings.json       ← Claude Code hooks (SessionStart + Stop + PostToolUse)
+      worktree-log.sh
+    settings.json       ← Claude Code hooks (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
   CLAUDE.md             ← AI identity + operating rules (loaded by Claude Code automatically)
   README.md             ← this file
 ```
@@ -339,5 +342,6 @@ git push
 |-----|----------|-------|
 | **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian MCP](https://github.com/atlassian/mcp-atlassian) |
 | **GitHub** | PR links in reports; code review commands | [GitHub MCP](https://github.com/github/github-mcp-server) |
+| **Slack** | `/nase:request-review` — resolves GitHub handles to Slack users and sends DMs | [Slack MCP](https://github.com/modelcontextprotocol/servers/tree/main/src/slack) |
 
 Configure in your Claude Code `settings.json` (or `settings.local.json`) under `mcpServers`.

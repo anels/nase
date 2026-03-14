@@ -66,8 +66,14 @@ Default: `sonnet`. Never spawn `opus` for something haiku can answer.
 
 ### CI Pipeline
 - **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
-- Checks: `bash -n` + `shellcheck` on hooks, JSON validation, hook wiring, command inventory, bash syntax in skills
+- Checks: `bash -n` + `shellcheck` on hooks (`session-start`, `stop-todos`, `stop-backup`, `track-skill`), JSON validation, hook wiring, command inventory, bash syntax in skills
+- Note: `worktree-log.sh` (WorktreeCreate/WorktreeRemove → daily log) is wired in `settings.json` but not yet covered by CI checks — update `validate.yml` if you modify it
 - **Run locally before pushing**: `bash -n .claude/hooks/*.sh && shellcheck -S warning .claude/hooks/*.sh`
+
+### Runtime Dependencies
+- **`jq`** — required by `track-skill.sh`; skill usage tracking silently fails without it
+- **`python3`** — optional; used by `session-start.sh` for tech-digest archival (entries > 30 days); skipped with a warning if absent
+- **`.backup-target`** — plain-text file at workspace root (not inside `work/`), one line: the backup destination path in bash format (e.g. `/c/Users/me/OneDrive/backup/nase-backup`); managed by `/nase:init`
 
 ### CLAUDE.md Content Rules
 - **No runtime values** — no dates, timestamps, session state. Use `work/logs/`, `work/tasks/`, or KB for runtime data.
