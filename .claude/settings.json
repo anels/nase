@@ -29,6 +29,26 @@
         ]
       }
     ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/worktree-log.sh\"'"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/worktree-log.sh\"'"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Skill",
