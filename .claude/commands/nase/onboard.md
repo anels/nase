@@ -90,6 +90,34 @@ Build mental model of:
 - **Key constraints**: from CLAUDE.md (Step 1) or inferred from code patterns
 - **Recent changes**: what has shifted since the last onboard (if refreshing)
 
+### 3b. Ownership Analysis
+
+Read `work/context.md` to get the team roster and GitHub handles.
+
+For each top-level directory (or logical module if monorepo-style), run:
+```bash
+git -C {repo} log --no-merges --format="%ae" -- {dir}/ | sort | uniq -c | sort -rn | head -5
+```
+
+Then, for each team member with a known GitHub handle:
+```bash
+git -C {repo} log --no-merges --author="{github_handle}" --format="%H" --since="6 months ago" -- . | wc -l
+```
+and spot the top directories they touched:
+```bash
+git -C {repo} log --no-merges --author="{github_handle}" --name-only --format="" --since="6 months ago" | grep '/' | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -10
+```
+
+Synthesize ownership signals:
+- **Primary Owner**: person with the most commits to that directory/module in the last 6 months
+- **Secondary Owner**: next most active contributor
+- **Dormant areas**: directories with no commits in 6 months — flag for coverage gap
+- **New hire ramp**: if a team member has < 10 commits total, note them as onboarding rather than an owner
+
+Cross-reference with the team member `Focus Area` in `work/context.md` — if git data conflicts with the declared focus, note the discrepancy.
+
+If refreshing, re-run this analysis and note any ownership shifts since the last update.
+
 ### 4. Create or Update Knowledge Base Entry
 - If **first-time**: write `work/kb/projects/{domain}.md` fresh.
 - If **refreshing**: update the existing file — enrich architecture notes, update constraints, add new decisions. Do not wipe content that is still valid. Update the `<!-- Last updated -->` date.
@@ -107,6 +135,20 @@ Use this structure:
 
 ## Architecture
 {description of services, data flow, key components}
+
+## Ownership Map
+<!-- Updated by /nase:onboard — based on git log analysis (last 6 months) -->
+<!-- Use this to assign tasks: match the area to the primary owner first -->
+
+| Area / Module | Primary Owner | Secondary Owner | Notes |
+|---------------|--------------|-----------------|-------|
+| `{dir/module}` | {name} (@{github_handle}) | {name or —} | {e.g. "active", "dormant since YYYY-MM", "onboarding"} |
+
+### Coverage Gaps
+- {directory or module with no clear owner or no recent commits — flag for attention}
+
+### Discrepancies
+- {any conflict between git ownership data and declared focus area in context.md}
 
 ## Key Files
 - `{path}` — {purpose}
