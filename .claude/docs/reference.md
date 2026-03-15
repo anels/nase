@@ -18,13 +18,15 @@ Read this file on demand when you need details about workspace layout, skills, K
                        backup target in-place (OneDrive-compatible), warns if notes missing
     track-skill.sh   ← runs at PostToolUse (Skill): records /nase:* invocations to
                        work/stats/skill-usage.jsonl for /nase:stats reporting
-  settings.json      ← hook registrations (SessionStart + Stop + PostToolUse)
+    worktree-log.sh  ← runs at WorktreeCreate/WorktreeRemove: appends timestamped
+                       entry to today's daily log
+  settings.json      ← hook registrations (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
                        lives at workspace root (NOT inside work/); managed by /nase:init
 work/               ← entirely git-ignored; never committed
   config.md          ← format: AI engineer: <name> / workspace: <folder-name>  (managed by /nase:init)
   journals/          ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
-  scripts/           ← one-off utility scripts (e.g. deploy-uptime-kuma.ps1)
+  scripts/           ← utility scripts (e.g. deploy-uptime-kuma.ps1, stats-collect.sh)
 ```
 
 ---
@@ -112,7 +114,11 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 | `/nase:estimate-eta <task>` | Effort and ETA estimate for a task |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with heatmap |
 | **Git Workflow** | |
+| `/nase:fsd <task>` | Full Self-Drive — autonomous implement → build → test → commit → push → draft PR |
 | `/nase:improve-commit-message` | Rewrite last commit to conventional commits format (used in commit sequence) |
+| `/nase:request-review <PR-URL(s)>` | Find code owners, resolve Slack users, DM them to review/approve |
+| `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
+| `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
 | `/nase:update-changelog [ver]` | Generate/update CHANGELOG.md from code diff between two refs |
 | **Backup & Restore** | |
 | `/nase:restore` | Restore `work/` from the configured backup location |

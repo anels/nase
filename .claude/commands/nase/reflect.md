@@ -1,3 +1,8 @@
+---
+name: nase:reflect
+description: Run a structured post-task reflection to extract learnings and improve future performance. Use after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong.
+---
+
 Run a structured post-task reflection to extract learnings and improve future performance. Invoke after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong. Fresh reflections capture more than end-of-day summaries. Also invoked by /wrap-up.
 
 **Context:** $ARGUMENTS (optional — name of the task or feature just completed)

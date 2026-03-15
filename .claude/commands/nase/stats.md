@@ -1,3 +1,8 @@
+---
+name: nase:stats
+description: Display workspace usage statistics with a GitHub-style activity heatmap. Use when asked "show stats", "how active am I", "productivity", "how much have I done", or to review activity patterns over 7/30/all-time windows.
+---
+
 Display workspace usage statistics with a GitHub-style activity heatmap. Shows sessions, commits, PRs, skill usage rankings, and knowledge entries over 7/30/all-time windows. Use to review productivity patterns, check which skills are used most, or get a quick sense of recent activity.
 
 **Input:** $ARGUMENTS — optional: `7` (default), `30`, or `all`
@@ -27,92 +32,18 @@ For `all`, find the earliest log file: `ls work/logs/????-??-??.md | sort | head
 
 ### 2. Scan data sources
 
-Run all scans as a single bash script to collect per-day data into temp files for the report.
+Run the data collection script:
 
 ```bash
-START_DATE="<start>"
-END_DATE="<end>"
-TMPDIR_STATS="/tmp/nase-stats-$$"
-mkdir -p "$TMPDIR_STATS"
-trap "rm -rf '$TMPDIR_STATS'" EXIT
-
-# 2a. Scan log files — collect per-day data
-total_sessions=0; total_commits=0; total_prs=0; active_days=0
-for log_file in work/logs/????-??-??.md; do
-  [ ! -f "$log_file" ] && continue
-  log_date=$(basename "$log_file" .md)
-  # POSIX-safe date comparison
-  if [ "$log_date" \< "$START_DATE" ] || [ "$log_date" \> "$END_DATE" ]; then continue; fi
-
-  # Sessions: count ### headers
-  # NOTE: grep -c exits with code 1 when 0 matches; use || assignment to handle that.
-  sessions=$(grep -c "^### " "$log_file" 2>/dev/null) || sessions=0
-  [ "$sessions" -gt 0 ] && active_days=$((active_days + 1))
-  total_sessions=$((total_sessions + sessions))
-
-  # Commits: deduplicate SHAs (7+ hex chars at line start)
-  commits=$(grep -oE '^[0-9a-f]{7,40}[[:space:]]' "$log_file" 2>/dev/null | sort -u | wc -l | tr -d ' ')
-  commits=${commits:-0}
-  total_commits=$((total_commits + commits))
-
-  # PRs: unique github.com pull URLs
-  prs=$(grep -oE 'github\.com/[^/]+/[^/]+/pull/[0-9]+' "$log_file" 2>/dev/null | sort -u | wc -l | tr -d ' ')
-  prs=${prs:-0}
-  total_prs=$((total_prs + prs))
-
-  # Store per-day stats (csv: date,sessions,commits,prs)
-  echo "$log_date,$sessions,$commits,$prs" >> "$TMPDIR_STATS/daily.csv"
-done
-
-# 2b. Tasks (current totals, not date-filtered)
-completed_tasks=$(grep -c "^- \[x\]" work/tasks/todo.md 2>/dev/null) || completed_tasks=0
-in_progress_tasks=$(grep -c "^- \[ \]" work/tasks/todo.md 2>/dev/null) || in_progress_tasks=0
-
-# 2c. Knowledge entries — grep finds UTF-8 em-dash lines, awk filters by date
-# Note: awk character classes don't match UTF-8 multibyte chars reliably in MINGW.
-# Use grep for pattern matching, awk for date range filtering.
-knowledge_entries=0
-if [ -f "work/tasks/lessons.md" ]; then
-  knowledge_entries=$(grep -E '^## [a-zA-Z]+ — [0-9]{4}-[0-9]{2}-[0-9]{2}' work/tasks/lessons.md 2>/dev/null \
-    | awk -v start="$START_DATE" -v end="$END_DATE" '
-      { d = $NF; if (d >= start && d <= end) count++ }
-      END { print count+0 }
-    ')
-fi
-
-# 2d. KB file updates by mtime
-kb_updates=0
-if [ -d "work/kb/" ]; then
-  next_day=$(date -d "$END_DATE + 1 day" +%Y-%m-%d)
-  kb_updates=$(find work/kb/ -name '*.md' -type f -newermt "$START_DATE" ! -newermt "$next_day" 2>/dev/null | wc -l | tr -d ' ')
-fi
-
-# 2e. Skill usage from JSONL
-skill_top=""
-if [ -f "work/stats/skill-usage.jsonl" ]; then
-  skill_top=$(awk -v start="$START_DATE" -v end="$END_DATE" '
-    {
-      match($0, /"skill":"([^"]*)"/, sa); skill = sa[1]
-      match($0, /"ts":"([^"]*)"/, ta);  ts = ta[1]
-      d = substr(ts, 1, 10)
-      if (d >= start && d <= end) counts[skill]++
-    }
-    END { for (s in counts) print counts[s] " " s }
-  ' work/stats/skill-usage.jsonl | sort -rn | head -3)
-fi
-
-# Write env for reuse
-cat > "$TMPDIR_STATS/env.sh" << ENV_EOF
-TOTAL_SESSIONS=$total_sessions
-TOTAL_COMMITS=$total_commits
-TOTAL_PRS=$total_prs
-ACTIVE_DAYS=$active_days
-COMPLETED_TASKS=$completed_tasks
-IN_PROGRESS_TASKS=$in_progress_tasks
-KNOWLEDGE_ENTRIES=$knowledge_entries
-KB_UPDATES=$kb_updates
-ENV_EOF
+bash work/scripts/stats-collect.sh "<start>" "<end>"
 ```
+
+This script outputs all metrics to `$TMPDIR_STATS` (a temp directory that auto-cleans on exit). It collects:
+- Per-day stats (sessions, commits, PRs) → `$TMPDIR_STATS/daily.csv`
+- Aggregate metrics → `$TMPDIR_STATS/env.sh`
+- Skill usage rankings
+
+If the script doesn't exist, create it first (see `work/scripts/stats-collect.sh`).
 
 Save `$TMPDIR_STATS` path for use in steps 3–5.
 
@@ -178,9 +109,12 @@ Completed tasks: {N}/{completed+in_progress}
 New knowledge: {N} entries
 KB updates: {N} files
 
-Top Skills:
-  {skill1} ×{N}  |  {skill2} ×{N}  |  {skill3} ×{N}
-  (or "No data yet" if skill-usage.jsonl is empty/missing)
+Skills (ranked by usage):
+  {skill1} ×{N}  |  {skill2} ×{N}  |  {skill3} ×{N}  |  ...
+  Show ALL skills from the JSONL, ordered by invocation count (descending).
+  Format as pipe-separated on one or more lines (wrap if needed).
+  If skill-usage.jsonl is empty/missing: "No data yet"
+  Note: counts may undercount — PostToolUse hook doesn't fire for all invocations.
 
 {heatmap}
 ░ = 0  ▒ = 1  ▓ = 2  █ = 3+

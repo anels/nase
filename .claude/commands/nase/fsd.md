@@ -1,4 +1,9 @@
-Full Self-Drive — fully autonomous task execution from plan to merged-ready PR. Confirm execution options upfront (team mode, worktree, PR), then drive autonomously: implement → build → test (fix loop) → simplify → commit → push → PR → cleanup. Use whenever the user says "fsd", "full self-drive", "just do it", "run it autonomously", "fire and forget", or hands off a feature/fix task end-to-end without wanting to babysit the process.
+---
+name: nase:fsd
+description: Fully autonomous task execution from plan to merged-ready PR. Use whenever the user says "fsd", "full self-drive", "just do it", "run it autonomously", "fire and forget", or hands off a feature/fix task end-to-end. Also trigger when someone gives a task and clearly expects autonomous completion without babysitting.
+---
+
+Full Self-Drive — confirm execution options upfront (team mode, worktree, PR), then drive autonomously: implement → build → test (fix loop) → simplify → commit → push → PR → cleanup.
 
 Inspired by Tesla FSD: you describe the destination, buckle up, and it drives.
 
@@ -79,11 +84,11 @@ Print: `FSD engaged — driving autonomously from here. 🚗`
 **If worktree = Yes:**
 1. Generate a branch name from the task: lowercase kebab-case, prefix `feat/` or `fix/` based on task type (default to `feat/` if ambiguous). Max 50 chars total. Strip articles and filler words. Examples: "add user avatar upload" → `feat/user-avatar-upload`, "fix null pointer in auth flow" → `fix/null-ptr-auth-flow`. If the branch already exists locally or on the remote (`git show-ref refs/heads/{branch_name} refs/remotes/origin/{branch_name}`), append `-v2`, `-v3`, etc.
 2. Determine worktree path: sibling directory to repo, e.g. `{repo_parent}/{repo_name}-fsd` (if that path already exists, append `-1`, `-2`, etc. until available).
-3. Create and enter:
+3. Create the worktree:
    ```bash
    git -C {repo} worktree add {worktree_path} -b {branch_name} origin/{default_branch}
    ```
-4. Use `EnterWorktree` to switch context to the worktree. All subsequent git and file operations happen inside it.
+4. All subsequent git and file operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` — it creates its own worktree and won't adopt this one.
 
 **If worktree = No:**
 - Confirm repo is on the default branch with a clean working tree. If not: stop and tell the user to clean up first (do not force-checkout or stash without asking).
@@ -172,12 +177,11 @@ Report the PR URL.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 
-1. `ExitWorktree` to return to the main workspace context.
-2. Remove the worktree (safe since the branch is already pushed):
-   ```bash
-   git -C {repo} worktree remove {worktree_path} --force
-   ```
-3. Confirm: "Worktree removed."
+Remove the worktree (safe since the branch is already pushed):
+```bash
+git -C {repo} worktree remove {worktree_path} --force
+```
+Confirm: "Worktree removed."
 
 ---
 

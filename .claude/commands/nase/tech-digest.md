@@ -1,3 +1,8 @@
+---
+name: nase:tech-digest
+description: Fetch and summarize the latest tech news from configured sources, filtered to workspace topics. Auto-skips if today's entry exists. Use at the start of each day or when asked for "tech news", "what's new", or "tech digest".
+---
+
 Fetch and summarize the latest tech news from configured sources, filtered to workspace topics. Auto-skips if today's digest already exists — safe to invoke multiple times. Use at the start of each day or whenever you want a quick check on relevant tech developments.
 Deduplication is enforced in Step 0: if today's entry already exists in tech-trends.md, the skill exits immediately.
 

@@ -1,3 +1,8 @@
+---
+name: nase:wrap-up
+description: Run at end of day to capture everything in one autonomous pass — reflection, lessons, KB updates, and a journal entry. Use when the user says "wrap up", "end of day", "EOD", "done for today", "closing out", or wants to summarize today's work.
+---
+
 Run at end of day to capture everything in one autonomous pass: reflection, lessons, KB updates, and a journal entry. Use instead of running /reflect, /learn, and /kb-update separately — wrap-up handles all of them with smart auto-skip. Invoke whenever the day's work is done.
 Each step feeds the next: reflection identifies patterns → learn captures them → kb-update persists domain knowledge → journal entry summarizes. Skipping early steps is fine when there's nothing to capture — the conditional logic handles this automatically.
 
@@ -25,7 +30,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 
 ### Step 1: Reflect (conditional)
 
-**Condition:** today's commits exist OR today's log file has substantive entries (beyond the auto-created header).
+**Condition:** today's log file has substantive `## Sessions` entries (beyond the auto-created header).
 - If $ARGUMENTS contains "force", run regardless.
 
 **If condition met:**

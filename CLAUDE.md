@@ -29,7 +29,7 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
 - **Scope KB loading**: read only the domain-relevant KB file(s)
 - **After completing work on a repo**: update that repo's `CLAUDE.md` with new discoveries
 - **Before any coding task**: check repo state:
-  - Default branch + clean → create worktree directly (`git worktree add` + `EnterWorktree`)
+  - Default branch + clean → create worktree directly (`git worktree add`); use absolute paths to the worktree for all subsequent operations
   - Non-default branch or uncommitted changes → ask user first
   - Always base worktrees on `origin/{default-branch}`
 - **Commit sequence**: `/simplify` → `/nase:improve-commit-message` → `git push`
@@ -46,6 +46,8 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
 | `/nase:wrap-up` | End of day — autonomous reflect + journal entry |
 | `/nase:improve-commit-message` | Part of commit sequence |
 | `/nase:request-review <PR-URL(s)>` | Find code owners and DM them on Slack to review/approve |
+| `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
+| `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
 | `/nase:doctor` | Workspace health check |
 
 For full skills table, workspace layout, KB structure, and architecture notes → read `.claude/docs/reference.md`
@@ -63,7 +65,8 @@ Default: `sonnet`. Never spawn `opus` for something haiku can answer.
 ### Bash / Path Rules
 - **Bash tool resets `cwd` between calls** — always use `git -C /absolute/path <cmd>`
 - **nase workspace ≠ code repos** — never assume cwd == repo
-- **Worktree before code** — use `EnterWorktree`/`ExitWorktree`; ask user first if non-default branch or uncommitted changes
+- **Worktree before code** — create with `git worktree add`, use absolute paths; ask user first if non-default branch or uncommitted changes
+- **Worktree cleanup** — after push, remove with `git -C {repo} worktree remove {path} --force`
 
 ### CI Pipeline
 - **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
