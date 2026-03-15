@@ -48,7 +48,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 **Persistent knowledge base** — Each repo gets its own `work/kb/projects/<repo>.md`. Stack-level patterns go in `work/kb/general/`. Knowledge is loaded surgically — only the relevant domain file is read, keeping context lean.
 
-**Daily workflow out of the box** — Morning: `/nase:today`. Work: `/nase:onboard <repo>` before touching any repo; `/nase:learn <url>` to ingest an article mid-session. Evening: `/nase:wrap-up` — fully autonomous: reflect → learn → extract-skills → kb-update → daily-report, written to `work/journals/`.
+**Daily workflow out of the box** — Morning: `/nase:today`. Work: `/nase:onboard <repo>` before touching any repo; `/nase:learn <url>` to ingest an article mid-session. Evening: `/nase:wrap-up` — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry, written to `work/journals/`.
 
 **Learn from anything** — `/nase:learn` accepts plain text, a GitHub repo URL, or an article URL. For URLs, it fetches the content, filters for relevance to your stack, extracts concrete learnings, shows them to you for review, then writes to both `lessons.md` and the appropriate KB domain file.
 
@@ -86,7 +86,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | `/nase:learn [tip\|url]` | Capture a tip, or feed a URL (article/repo) → auto-extract learnings → `work/tasks/lessons.md` + relevant KB file |
 | `/nase:reflect [task]` | Post-task reflection |
 | `/nase:extract-skills` | Analyze current session → extract reusable patterns as files under `work/skills/` |
-| `/nase:wrap-up [force]` | End-of-day routine: reflect → learn → extract-skills → kb-update → daily-report → `work/journals/YYYY-MM-DD.md` |
+| `/nase:wrap-up [force]` | End-of-day routine: reflect → learn → extract-skills → kb-update → journal entry → `work/journals/YYYY-MM-DD.md` |
 
 ### Git workflow
 
@@ -100,9 +100,6 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:daily-report [YYYY-MM-DD]` | Today's (or a past date's) AI-assisted work summary |
-| `/nase:weekly-report [date\|this]` | Week-in-review; defaults to last week, `this` = current week |
-| `/nase:monthly-report [YYYY-MM\|this]` | Monthly recap; defaults to last month, `this` = current month |
 | `/nase:estimate-eta <task>` | Effort estimate |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `work/stats/report-YYYY-MM-DD.md` |
 
@@ -166,17 +163,6 @@ flowchart TD
     wrapup -- "lessons & patterns" --> KB
     done -. "new questions" .-> learn
 
-    %% ── Reporting ──
-    subgraph reporting ["Reporting"]
-        direction LR
-        log["Auto daily log"]
-        dr["/daily-report"]
-        wr["/weekly-report"]
-        mr["/monthly-report"]
-    end
-
-    wrapup --> log --> dr --> wr --> mr
-
     %% ── Skills feedback ──
     skills[("Learned<br>Skills")]
     extract --> skills
@@ -186,7 +172,6 @@ flowchart TD
     style sources fill:#16213e,stroke:#0f3460,color:#e0e0e0
     style knowledge fill:#1a1a2e,stroke:#e94560,color:#fff
     style daily fill:#1a1a2e,stroke:#0f3460,color:#fff
-    style reporting fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style KB fill:#e94560,stroke:#e94560,color:#fff
     style tasks fill:#0f3460,stroke:#0f3460,color:#fff
     style skills fill:#533483,stroke:#533483,color:#fff
@@ -198,8 +183,6 @@ flowchart TD
 >
 > **Daily workflow** (middle): `/today` kicks off the day → prioritize from the todo list → brainstorm & plan → implement. Each task either completes or gets marked as blocked — both update the todo list and loop back to pick the next item. When all tasks are done, `/wrap-up` closes the day, feeds lessons back into the KB, and triggers `/extract-skills` to capture reusable patterns as personal skills that enhance future work.
 >
-> **Reporting** (bottom): daily logs accumulate automatically per session, then roll up into `/daily-report` → `/weekly-report` → `/monthly-report`.
->
 > The loops reinforce each other: richer knowledge → better daily decisions → more lessons captured → even richer knowledge.
 
 ---
@@ -208,7 +191,7 @@ flowchart TD
 
 | Hook | When | What it does |
 |------|------|--------------|
-| `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today; prompts `/nase:weekly-report` if >7 days since last |
+| `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today |
 | `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; syncs `work/` → backup target (in-place, OneDrive-compatible); writes status to `work/logs/.backup-status` |
 | `PostToolUse` | After every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; used by `/nase:stats` for heatmap and usage reports |
 | `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
@@ -238,9 +221,6 @@ nase/
       reflect.md
       extract-skills.md
       wrap-up.md
-      daily-report.md
-      weekly-report.md
-      monthly-report.md
       estimate-eta.md
       improve-commit-message.md
       update-changelog.md
@@ -278,14 +258,6 @@ work/
     report-YYYY-MM-DD.md ← detailed stats report (written by /nase:stats)
   logs/               ← daily work logs + .backup-status (auto-managed by hooks)
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
-  reports/
-    .report-status        ← tracks last weekly/monthly report date (SessionStart uses this to prompt)
-    daily/
-      YYYY-MM-DD.md       ← daily reports (written by /nase:daily-report)
-    weekly/
-      YYYY-MM-DD.md       ← weekly reports, Monday date as filename
-    monthly/
-      YYYY-MM.md          ← monthly reports
   skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
   tasks/
     lessons.md        ← accumulated lessons from /nase:learn and /nase:reflect

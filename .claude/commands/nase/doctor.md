@@ -80,8 +80,8 @@ command -v git
 - Report count
 - Flag any of the expected core commands that are missing:
   `doctor`, `help`, `init`, `onboard`, `kb-update`, `tech-digest`, `restore`,
-  `learn`, `reflect`, `extract-skills`, `daily-report`, `weekly-report`, `monthly-report`,
-  `estimate-eta`, `improve-commit-message`, `update-changelog`, `today`, `wrap-up`, `stats`
+  `learn`, `reflect`, `extract-skills`, `estimate-eta`, `improve-commit-message`,
+  `update-changelog`, `today`, `wrap-up`, `stats`
 
 </parallel>
 

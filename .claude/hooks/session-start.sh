@@ -115,22 +115,4 @@ if [ -f "$WORKSPACE/work/context.md" ]; then
   fi
 fi
 
-# Item 7 — suggest /nase:weekly-report if >7 days since last
-REPORT_STATUS="$WORKSPACE/work/reports/.report-status"
-if [ -f "$REPORT_STATUS" ]; then
-  LAST_WEEKLY=$(grep "^weekly-report=" "$REPORT_STATUS" | cut -d= -f2 | tr -d '\r\n' || true)
-  if [ -n "$LAST_WEEKLY" ]; then
-    LAST_TS=$(date -d "$LAST_WEEKLY" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "$LAST_WEEKLY" +%s 2>/dev/null || echo 0)
-    if [ "$LAST_TS" -eq 0 ] && [ -n "$PYTHON" ]; then
-      LAST_TS=$("$PYTHON" -c "from datetime import datetime; print(int(datetime.strptime('$LAST_WEEKLY','%Y-%m-%d').timestamp()))" 2>/dev/null || echo 0)
-    fi
-    NOW_TS=$(date +%s)
-    DAYS_AGO=$(( (NOW_TS - LAST_TS) / 86400 ))
-    if [ "$DAYS_AGO" -ge 7 ]; then
-      echo "[session-start] Last weekly report was ${DAYS_AGO} days ago — consider running /nase:weekly-report"
-    fi
-  else
-    echo "[session-start] No weekly report recorded yet — consider running /nase:weekly-report"
-  fi
-fi
 
