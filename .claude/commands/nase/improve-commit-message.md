@@ -1,6 +1,12 @@
 Analyze the last commit and rewrite its message following conventional commits / commitlint rules. Always invoke before git push — it's the second step in the standard commit sequence: /simplify → /improve-commit-message → git push.
 Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why — without opening the diff.
 
+**Input:** $ARGUMENTS — optional flags (see below)
+
+## Flags
+
+- `--auto-accept` — skip the confirmation prompt and amend immediately with the proposed message. Use this when called from automated workflows (e.g., `/nase:fsd`) that should not pause for user input. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
 Never assume repository state — check it with git commands first.
@@ -66,6 +72,12 @@ Rules:
 
 ### 6. Show comparison and amend
 
+**If `--auto-accept` flag is present in $ARGUMENTS:**
+- If current message equals proposed message: output "Commit message already well-formed." and stop.
+- Otherwise: display the current vs proposed message for visibility, then amend immediately — no confirmation prompt.
+
+**Otherwise (interactive mode, default):**
+
 Display the current vs proposed message, then confirm using AskUserQuestion:
 ```
 question: "Current: {current subject}\nProposed: {proposed subject}"
@@ -75,9 +87,11 @@ options:
   - label: "Edit"           , description: "Adjust the proposed message first"
   - label: "Skip"           , description: "Keep the original message"
 ```
-- **Yes**: proceed to amend
-- **Edit**: ask what to change, re-propose, then re-confirm
-- **Skip**: stop, no changes
+
+**After receiving the selection, immediately act on it — do not wait for further user input:**
+- **Yes — amend**: run `git commit --amend` immediately
+- **Edit**: ask a single follow-up question about what to change, then re-propose and re-confirm
+- **Skip**: output "Keeping original message." and stop
 
 Amend:
 ```
