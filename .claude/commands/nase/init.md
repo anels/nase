@@ -79,18 +79,7 @@ options:
 
 If the backup target does not contain `context.md` (empty or non-existent directory): skip this step silently.
 
-### 3. Initialize automation metadata
-- Check if `work/reports/.report-status` exists
-- If not, create it with empty entries:
-  ```
-  weekly-report=
-  monthly-report=
-  ```
-- Ensure directories exist: `work/reports/daily/`, `work/reports/weekly/`, `work/reports/monthly/`
-- Show current values (if any)
-- No user input needed — this file is updated automatically by /nase:weekly-report and /nase:monthly-report
-
-### 4. Verify hook installation
+### 3. Verify hook installation
 Run these checks:
 ```bash
 bash -n .claude/hooks/session-start.sh
@@ -106,7 +95,7 @@ Also verify settings.json references all five scripts (grep for `session-start.s
 - If all pass: "Hooks: OK"
 - If any fail: list what's wrong with fix instructions (e.g., "Re-run from a clean clone" or "Run /doctor for details")
 
-### 5. Initialize work/ skeleton
+### 4. Initialize work/ skeleton
 Create the following structure if it does not already exist. Preserve existing files — only create missing ones.
 ```bash
 mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals work/skills work/stats
@@ -131,10 +120,10 @@ Create stub files only if missing (do not overwrite existing content):
 
 Report: "work/ structure: {N} directories and files created / already existed"
 
-### 6. Run doctor
+### 5. Run doctor
 Invoke `/nase:doctor` to verify the complete workspace state.
 
-### 7. Star on GitHub (optional)
+### 6. Star on GitHub (optional)
 
 This workspace lives at `https://github.com/anels/nase` — the known repo for nase.
 
@@ -160,7 +149,7 @@ MSYS_NO_PATHCONV=1 gh api --method PUT /user/starred/{owner}/{repo}
 
 If **no**: skip silently.
 
-### 8. Confirm and suggest next steps
+### 7. Confirm and suggest next steps
 Report a summary:
 - AI name: {name}
 - Backup target: {path}
@@ -170,7 +159,6 @@ Report a summary:
 Suggest next steps based on what's missing:
 - If no repos onboarded: "Run `/onboard <repo-path>` to add your first repository"
 - If tech-trends.md is missing: "Run `/tech-digest` to bootstrap the tech news feed"
-- If `work/reports/.report-status` has no `weekly-report` date: "Run `/nase:weekly-report` to initialize the weekly report schedule"
 - If doctor found issues: "Address the items listed by /doctor above"
 
 ## Notes

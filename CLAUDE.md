@@ -42,7 +42,7 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
 |---------|------------|
 | `/nase:onboard <path>` | Before working on any repo |
 | `/nase:kb-update [domain]` | After learning something worth keeping |
-| `/nase:wrap-up` | End of day — autonomous reflect + report |
+| `/nase:wrap-up` | End of day — autonomous reflect + journal entry |
 | `/nase:improve-commit-message` | Part of commit sequence |
 | `/nase:request-review <PR-URL(s)>` | Find code owners and DM them on Slack to review/approve |
 | `/nase:doctor` | Workspace health check |

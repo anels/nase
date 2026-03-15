@@ -12,8 +12,7 @@ Read this file on demand when you need details about workspace layout, skills, K
   commands/nase/     ← all /nase:* skills (one .md file per command)
   hooks/
     session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
-                       surfaces backup warnings, suggests /nase:reflect when commits exist,
-                       suggests /nase:weekly-report if >7 days since last
+                       surfaces backup warnings, suggests /nase:reflect when commits exist
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
                        backup target in-place (OneDrive-compatible), warns if notes missing
@@ -59,14 +58,6 @@ work/                   ← entirely git-ignored; never committed
   logs/
     YYYY-MM-DD.md         ← daily work logs (auto-created by SessionStart hook)
     .backup-status        ← timestamped backup results (written by Stop hook)
-  reports/
-    .report-status        ← tracks last weekly/monthly report date (used by SessionStart to prompt)
-    daily/
-      YYYY-MM-DD.md       ← daily reports (written by /nase:daily-report)
-    weekly/
-      YYYY-MM-DD.md       ← weekly reports, Monday date as filename (written by /nase:weekly-report)
-    monthly/
-      YYYY-MM.md          ← monthly reports (written by /nase:monthly-report)
 ```
 
 ---
@@ -81,9 +72,9 @@ Proceed through git commands, file reads, and data gathering without asking perm
 
 <execution_style>
 Engineering commands fall into three categories:
-- **Data gathering** (daily-report, weekly-report, doctor): collect all data first, then present — execute deterministically.
+- **Data gathering** (doctor, stats): collect all data first, then present — execute deterministically.
 - **Interactive** (kb-update, onboard): gather context automatically, then pause at marked checkpoints for user input.
-- **Autonomous** (wrap-up): runs all steps without pausing — reflect → learn → extract-skills → kb-update → daily-report, writes output to `work/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
+- **Autonomous** (wrap-up): runs all steps without pausing — reflect → learn → extract-skills → kb-update → journal entry, writes output to `work/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
 In both cases, start executing immediately. Reserve deliberation for synthesis steps (writing summaries, identifying patterns).
 </execution_style>
 
@@ -116,11 +107,8 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 | `/nase:today` | Morning kickoff — today's focus, priorities, blockers |
 | `/nase:reflect [task]` | Post-task reflection — capture lessons from what just happened |
 | `/nase:extract-skills` | Analyze current session → extract reusable patterns as personal skills → `work/skills/` |
-| `/nase:wrap-up` | End of day — fully autonomous: reflect → learn → extract-skills → kb-update → daily-report |
+| `/nase:wrap-up` | End of day — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry → `work/journals/YYYY-MM-DD.md` |
 | **Reporting** | |
-| `/nase:daily-report` | Today's AI-assisted work summary |
-| `/nase:weekly-report` | Week-in-review across all repos |
-| `/nase:monthly-report` | Monthly recap (includes KB freshness audit) |
 | `/nase:estimate-eta <task>` | Effort and ETA estimate for a task |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with heatmap |
 | **Git Workflow** | |

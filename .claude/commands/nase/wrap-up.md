@@ -1,5 +1,5 @@
-Run at end of day to capture everything in one autonomous pass: reflection, lessons, KB updates, and daily report. Use instead of running /reflect, /learn, /kb-update, and /daily-report separately — wrap-up handles all of them with smart auto-skip. Invoke whenever the day's work is done.
-Each step feeds the next: reflection identifies patterns → learn captures them → kb-update persists domain knowledge → daily-report summarizes. Skipping early steps is fine when there's nothing to capture — the conditional logic handles this automatically.
+Run at end of day to capture everything in one autonomous pass: reflection, lessons, KB updates, and a journal entry. Use instead of running /reflect, /learn, and /kb-update separately — wrap-up handles all of them with smart auto-skip. Invoke whenever the day's work is done.
+Each step feeds the next: reflection identifies patterns → learn captures them → kb-update persists domain knowledge → journal entry summarizes. Skipping early steps is fine when there's nothing to capture — the conditional logic handles this automatically.
 
 <investigate_before_acting>
 Read workspace state (context.md, team profiles, recent logs) before generating output.
@@ -80,11 +80,15 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 - Print: "No repos touched today — skipping KB update."
 - Set `kb-update=skipped`.
 
-### Step 4: Daily Report (always runs)
+### Step 4: Journal Entry (always runs)
 
-1. Run the daily report process (same as `/nase:daily-report`):
-   - Reads today's session log, tasks completed/in-progress from todo.md, lessons added today.
-2. Set `daily-report=done`.
+Generate today's journal entry from the data already gathered in Step 0:
+
+1. From today's session log (`work/logs/{YYYY-MM-DD}.md`), summarize each `## Sessions` entry — one bullet per major task/topic: what was done and the outcome/decision. **Preserve all original links** (PR URLs, Jira tickets, Confluence pages, pipeline links) exactly as they appear.
+2. From `work/tasks/todo.md` (if it exists): list items marked complete today under **Tasks Completed**, and any still in-progress under **In Progress**.
+3. From `work/tasks/lessons.md` (if it exists): note any lessons added today under **Blockers / Notes**.
+4. If no `## Sessions` entries exist for today, note that no AI-assisted work was logged.
+5. Set `daily-report=done`.
 
 ### Step 5: Write output file
 
