@@ -1,3 +1,8 @@
+---
+name: nase:update-changelog
+description: Generate or update CHANGELOG.md by analyzing actual code changes between two git refs, with GitHub commit/PR links. Use when preparing a release, after cherry-picking hotfixes, or when asked "what changed in this version?", "update changelog", or "generate changelog".
+---
+
 Generate or update `CHANGELOG.md` by analyzing actual code changes between two git refs, with GitHub commit/PR links. Use when preparing a release, after cherry-picking hotfixes, or when asked "what changed in this version?". Resolves cherry-picks to their original PRs for accurate traceability.
 
 <investigate_before_acting>

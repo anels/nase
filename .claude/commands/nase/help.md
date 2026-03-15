@@ -1,3 +1,8 @@
+---
+name: nase:help
+description: Display a usage guide for this AI engineer workspace. Use when asked "what commands are available?", "how does nase work?", "help", or for an overview of skills and hooks.
+---
+
 Display a usage guide for this AI engineer workspace. Use when asked "what commands are available?", "how does nase work?", or for an overview of skills and hooks.
 This command pulls from README.md dynamically so the help output always matches the actual available commands — no manual sync needed.
 

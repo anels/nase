@@ -1,3 +1,8 @@
+---
+name: nase:kb-update
+description: Persist durable knowledge about a repo's architecture, constraints, or established technical patterns to the KB. Use when the insight is about a specific codebase's design, a hard constraint, or a cross-project pattern — not a quick tip (use /learn for that).
+---
+
 Persist durable knowledge about a repo's architecture, constraints, or established technical patterns to the KB. Use this (not /learn) when the insight is about a specific codebase's design, a hard constraint, or a cross-project pattern — not a quick tip or article. For tips, URLs, and mistake patterns, use /learn instead.
 
 The KB is the workspace's long-term memory — it outlives individual sessions. Use `/kb-update` for durable knowledge about repos, patterns, and constraints. For capturing quick tips, articles, or mistake patterns, use `/learn` instead — it handles lessons.md and may also route to KB.

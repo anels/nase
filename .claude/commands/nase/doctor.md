@@ -1,3 +1,8 @@
+---
+name: nase:doctor
+description: Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint.
+---
+
 Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use whenever something feels off — hooks not firing, backup warnings, or after a machine migration. Run proactively before starting a new sprint or after updating skills.
 
 ## Checks
@@ -20,7 +25,8 @@ git rev-parse --show-toplevel
 - Check `.claude/hooks/stop-backup.sh` exists
 - Check `.claude/hooks/stop-todos.sh` exists
 - Check `.claude/hooks/track-skill.sh` exists
-- Run `bash -n` on each: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`
+- Check `.claude/hooks/worktree-log.sh` exists
+- Run `bash -n` on each: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, `worktree-log.sh`
 - Pass: all files exist and pass syntax check
 - Fail: missing or syntax error (report which)
 
@@ -34,6 +40,7 @@ python -m json.tool .claude/settings.json > /dev/null
 - Check Stop hook command contains `stop-backup.sh`
 - Check Stop hook command contains `stop-todos.sh`
 - Check PostToolUse hook command contains `track-skill.sh`
+- Check WorktreeCreate/WorktreeRemove hook command contains `worktree-log.sh`
 - Pass: valid JSON + all scripts referenced
 - Fail: file missing / invalid JSON / scripts not wired up
 
@@ -81,7 +88,8 @@ command -v git
 - Flag any of the expected core commands that are missing:
   `doctor`, `help`, `init`, `onboard`, `kb-update`, `tech-digest`, `restore`,
   `learn`, `reflect`, `extract-skills`, `estimate-eta`, `improve-commit-message`,
-  `update-changelog`, `today`, `wrap-up`, `stats`
+  `update-changelog`, `today`, `wrap-up`, `stats`, `fsd`, `request-review`,
+  `address-comments`, `prep-merge`
 
 </parallel>
 
@@ -101,7 +109,7 @@ command -v git
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
 | 6 | work/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
 | 7 | Tools | OK / FAIL | {git status} |
-| 8 | Commands | {N}/19 found | {missing names if any} |
+| 8 | Commands | {N}/20 found | {missing names if any} |
 
 **Result: {X}/8 checks passed**
 

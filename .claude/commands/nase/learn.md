@@ -1,3 +1,8 @@
+---
+name: nase:learn
+description: Capture a tip, mistake pattern, article URL, or GitHub repo as structured knowledge. Use for quick learnings, articles worth distilling, or mistakes to avoid repeating. Also triggers on "remember this", "save this tip", "learn from this".
+---
+
 Capture a tip, mistake pattern, article URL, or GitHub repo as structured knowledge. Use for quick learnings, articles worth distilling, or mistakes to avoid repeating. For durable codebase-specific architecture decisions or constraints, use /kb-update instead.
 
 **Input:** $ARGUMENTS — one of:

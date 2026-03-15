@@ -1,3 +1,8 @@
+---
+name: nase:today
+description: Plan today's work — quick morning kickoff focused on what to do today. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", or "what's my plan for today?".
+---
+
 Plan today's work — quick morning kickoff focused on what to do today. Run at the start of each work session or when asked "what should I work on?", "what's my plan for today?", or "morning standup". Reads todo.md and yesterday's log to surface the top 1–3 priorities.
 
 ## Why

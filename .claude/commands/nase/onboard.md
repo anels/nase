@@ -1,3 +1,8 @@
+---
+name: nase:onboard
+description: Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "add repo", or "update knowledge base" for a project.
+---
+
 Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo — not just the first time. Projects evolve; keeping the KB current prevents working from stale assumptions. Safe to re-run repeatedly — enriches existing entries rather than overwriting. A stale KB entry is worse than a slightly redundant refresh.
 
 <investigate_before_acting>
@@ -188,10 +193,11 @@ Use this structure:
 ```
 (Never modify `.claude/commands/kb-update.md` directly — the domain map is now managed via this file.)
 
-**MEMORY.md** — add repo to Quick Reference using `<remember priority>` tag:
+**MEMORY.md** — add repo to Quick Reference section. Read `~/.claude/projects/.../memory/MEMORY.md`, then use the Edit tool to append a bullet under the `## Quick Reference` section:
 ```
-<remember priority>- `{RepoName}` (`{path}`) — {one-line purpose}</remember>
+- `{RepoName}` (`{path}`) — {one-line purpose}
 ```
+If the repo is already listed, skip this update.
 
 </parallel>
 

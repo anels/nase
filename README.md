@@ -100,6 +100,8 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 |---------|---------|
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
 | `/nase:request-review <PR-URL(s)>` | Find code owners for a PR and send Slack DMs asking them to review or approve |
+| `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
+| `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
 | `/nase:update-changelog [version] [from <ref>] [to <ref>]` | Generate or update `CHANGELOG.md` by analyzing code changes between two git refs |
 
 ### Reporting
@@ -232,7 +234,10 @@ nase/
       improve-commit-message.md
       update-changelog.md
       request-review.md
+      address-comments.md
+      prep-merge.md
       restore.md
+      stats.md
     hooks/              ← Hook scripts (called by settings.json)
       session-start.sh
       stop-todos.sh
