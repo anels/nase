@@ -88,6 +88,12 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | `/nase:extract-skills` | Analyze current session → extract reusable patterns as files under `work/skills/` |
 | `/nase:wrap-up [force]` | End-of-day routine: reflect → learn → extract-skills → kb-update → journal entry → `work/journals/YYYY-MM-DD.md` |
 
+### Autonomous execution
+
+| Command | Purpose |
+|---------|---------|
+| `/nase:fsd <task>` | Full Self-Drive — ask options upfront, then implement → build → test (fix loop) → simplify → commit → push → draft PR → cleanup, fully autonomous |
+
 ### Git workflow
 
 | Command | Purpose |
@@ -221,6 +227,7 @@ nase/
       reflect.md
       extract-skills.md
       wrap-up.md
+      fsd.md
       estimate-eta.md
       improve-commit-message.md
       update-changelog.md
