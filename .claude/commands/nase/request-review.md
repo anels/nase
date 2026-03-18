@@ -54,7 +54,7 @@ Matching rules (simplified gitignore-style):
 
 For each GitHub handle:
 1. Try to find the real name — check KB file first (often has `@githubhandle` → real name mappings), then infer from the handle itself.
-2. Search Slack: `mcp__claude_ai_Slack__slack_search_users` with the real name or inferred name.
+2. Search Slack: `mcp__plugin_slack_slack__slack_search_users` with the real name or inferred name.
 3. If unresolvable, note it — don't block the whole flow.
 
 ## Step 5 — Classify PR complexity
@@ -126,12 +126,10 @@ Show the drafted message and ask "Send this message to the selected people?"
 - `Send` — proceed
 - `Cancel` — abort
 
-**Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__claude_ai_Slack__slack_search_users`) and add them to the send list. If the search is ambiguous, surface the candidates and ask the user to clarify before sending.
+**Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__plugin_slack_slack__slack_search_users`) and add them to the send list. If the search is ambiguous, surface the candidates and ask the user to clarify before sending.
 
 Only send to the people the user confirmed in question 1.
 
 ## Step 9 — Send DMs (parallel)
 
-Use `mcp__claude_ai_Slack__slack_send_message` with each person's Slack user ID as `channel_id`.
-
-Report which DMs succeeded and which failed.
+Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed.

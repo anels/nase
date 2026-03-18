@@ -35,6 +35,7 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
 - **Commit sequence**: `/simplify` → `/nase:improve-commit-message` → `git push`
 - **Daily log**: after significant tasks, append to `work/logs/YYYY-MM-DD.md`
 - **Workspace health**: run `/nase:doctor` when something feels off
+- **Slack messages**: NEVER use `slack_send_message` to post directly — ALWAYS use `slack_send_message_draft` so the user can review and send manually. No exceptions.
 
 ### Core Skills
 

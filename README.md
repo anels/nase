@@ -265,6 +265,7 @@ work/
       <your-stack>.md ← patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
       tech-trends.md  ← monthly rolling tech digest (auto-appended by /nase:tech-digest)
       tech-trends-archive-YYYY.md  ← entries older than 30 days (auto-archived)
+    ops/              ← deployment/ops knowledge by deployment type (see work/kb/.domain-map.md for known types)
   stats/
     skill-usage.jsonl ← append-only log of /nase:* invocations (auto-written by PostToolUse hook)
     report-YYYY-MM-DD.md ← detailed stats report (written by /nase:stats)
