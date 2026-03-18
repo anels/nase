@@ -17,7 +17,11 @@ The KB is the workspace's long-term memory — it outlives individual sessions. 
    Read `work/kb/.domain-map.md` — all known domains (general and project) are listed there.
    Each line has format: `- {domain} → {path}`. Match the domain key against entries in that file.
 
-   **Fallback:** If no match, list all known domains from `.domain-map.md` and ask the user to clarify.
+   **Fallback:** If no match, infer the best category:
+   - Deployment/ops runbooks → `work/kb/ops/{deployment-type}.md`
+   - General stack patterns → `work/kb/general/{domain}.md`
+   - Project-specific → `work/kb/projects/{repo}.md`
+   Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
 2. Read the target kb file to understand current state.
 

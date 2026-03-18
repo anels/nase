@@ -226,14 +226,25 @@ PR ready for merge ✓
   Commits:      {original_count} → 1 (squashed)
   Title:        {new_title}
   Force-pushed: ✓ (--force-with-lease)
+```
 
-Next: review the PR one more time, then merge.
+Then ask:
+
+```
+question: "Request a review now?"
+header: "Request Review"
+options:
+  - label: "Yes — ping reviewers"
+  - label: "No — I'll handle it"
 ```
 
 Append to `work/logs/{YYYY-MM-DD}.md`:
 ```
 - Prep merge: {repo_name}#{pr_number} — squashed {N} commits, updated title/description
 ```
+
+**If "Yes":** run `/nase:request-review {pr_url}` immediately.
+**If "No":** print `PR is ready — merge once approved.` and stop.
 
 ---
 

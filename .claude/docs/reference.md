@@ -47,6 +47,8 @@ work/                   ← entirely git-ignored; never committed
       <your-stack>.md          ← general patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
       tech-trends.md           ← rolling 30-day tech digest (auto-managed by /nase:tech-digest)
       tech-trends-archive-YYYY.md ← entries older than 30 days (auto-archived)
+    ops/
+      <deployment-type>.md     ← ops runbooks by deployment type (see work/kb/.domain-map.md for known types)
   skills/
     {name}.md             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
   tasks/

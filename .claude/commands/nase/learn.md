@@ -72,7 +72,7 @@ Ensure `work/tasks/lessons.md` exists (create with `# Lessons Learned\n` header 
 
 If the input was a URL, always write learnings to the KB. Skip only for plain-text tips.
 
-1. **Identify the matching KB file** using the domain lookup logic in `/nase:kb-update` Step 1 (read `work/kb/.domain-map.md`). **Override**: if no match is found, infer the best domain name from the content (e.g. "llm", "kubernetes", "azure"), create `work/kb/general/{domain}.md` with a minimal header, and add it to `.domain-map.md` automatically — do NOT ask the user.
+1. **Identify the matching KB file** using the domain lookup logic in `/nase:kb-update` Step 1 (read `work/kb/.domain-map.md`). If no match, apply the same fallback categories defined there — infer, create with a minimal header, add to `.domain-map.md`. Do NOT ask the user.
 
 2. Append using the KB entry format defined in `/nase:kb-update` Step 4. Since the source is a URL, always include the `**Links:**` field.
 
