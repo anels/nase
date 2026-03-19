@@ -100,6 +100,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 |---------|---------|
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
 | `/nase:request-review <PR-URL(s)>` | Find code owners for a PR and send Slack DMs asking them to review or approve |
+| `/nase:discuss-pr <PR-URL>` | Deep review discussion in chat — no GitHub posting; produces inline comment drafts for manual posting |
 | `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
 | `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
 | `/nase:update-changelog [version] [from <ref>] [to <ref>]` | Generate or update `CHANGELOG.md` by analyzing code changes between two git refs |
@@ -108,6 +109,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 | Command | Purpose |
 |---------|---------|
+| `/nase:recap [week\|last week\|month\|last month\|YYYY-MM-DD to YYYY-MM-DD]` | Structured recap of work over a period (weekly Mon–Sun, monthly 1st–last day) → chat + auto-saves to `work/recaps/` |
 | `/nase:estimate-eta <task>` | Effort estimate |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `work/stats/report-YYYY-MM-DD.md` |
 
@@ -201,7 +203,7 @@ flowchart TD
 |------|------|--------------|
 | `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today |
 | `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; syncs `work/` → backup target (in-place, OneDrive-compatible); writes status to `work/logs/.backup-status` |
-| `PostToolUse` | After every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; used by `/nase:stats` for heatmap and usage reports |
+| `PreToolUse` + `PostToolUse` | Before/after every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; dual-hook improves coverage (PostToolUse alone misses some invocations); same-second dedup prevents double-counting; used by `/nase:stats` |
 | `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
 
 The `Stop` hook reads `.backup-target` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
@@ -234,6 +236,7 @@ nase/
       improve-commit-message.md
       update-changelog.md
       request-review.md
+      discuss-pr.md
       address-comments.md
       prep-merge.md
       restore.md

@@ -3,7 +3,7 @@ name: nase:onboard
 description: Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "add repo", or "update knowledge base" for a project.
 ---
 
-Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo — not just the first time. Projects evolve; keeping the KB current prevents working from stale assumptions. Safe to re-run repeatedly — enriches existing entries rather than overwriting. A stale KB entry is worse than a slightly redundant refresh.
+Run before EVERY work session on a repo — not just the first time. Projects evolve; keeping the KB current prevents working from stale assumptions. Enriches existing entries rather than overwriting.
 
 <investigate_before_acting>
 Read workspace state (context.md, team profiles, recent logs) before generating output.

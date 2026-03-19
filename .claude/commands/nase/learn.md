@@ -3,7 +3,7 @@ name: nase:learn
 description: Capture a tip, mistake pattern, article URL, or GitHub repo as structured knowledge. Use for quick learnings, articles worth distilling, or mistakes to avoid repeating. Also triggers on "remember this", "save this tip", "learn from this".
 ---
 
-Capture a tip, mistake pattern, article URL, or GitHub repo as structured knowledge. Use for quick learnings, articles worth distilling, or mistakes to avoid repeating. For durable codebase-specific architecture decisions or constraints, use /kb-update instead.
+For durable codebase-specific architecture decisions or constraints, use `/kb-update` instead.
 
 **Input:** $ARGUMENTS — one of:
 - A raw tip or insight: `"always check X before doing Y"`
@@ -72,16 +72,23 @@ Ensure `work/tasks/lessons.md` exists (create with `# Lessons Learned\n` header 
 
 If the input was a URL, always write learnings to the KB. Skip only for plain-text tips.
 
-1. **Identify the matching KB file** using the domain lookup logic in `/nase:kb-update` Step 1 (read `work/kb/.domain-map.md`). If no match, apply the same fallback categories defined there — infer, create with a minimal header, add to `.domain-map.md`. Do NOT ask the user.
+1. **Identify the matching KB file** — read `work/kb/.domain-map.md` and match the domain. If no match, infer the best category, create the file with a minimal header, and add to `.domain-map.md`. Do NOT ask the user. (Same lookup logic as `/nase:kb-update` Step 1.)
 
-2. Append using the KB entry format defined in `/nase:kb-update` Step 4. Since the source is a URL, always include the `**Links:**` field.
+2. Append using this KB entry format:
+   ```
+   ### YYYY-MM-DD — {topic}
+   **What:** {one-line summary}
+   **Why it matters:** {context and impact}
+   **Details:** {specifics, examples}
+   **Links:** {source URL}
+   ```
 
 3. If learnings span multiple domains, update all relevant files.
 
 ### 6. Flag reusable rules
 
 If any learning is an important reusable rule or principle:
-- Use `<remember>` to persist it as a behavioral directive
+- If `<remember>` tags are available (OMC environment), use one to persist it as a behavioral directive. Otherwise, save it to auto-memory (`~/.claude/projects/.../memory/`) as a feedback-type memory file.
 - Suggest updating `.claude/docs/reference.md` under "Key Decisions & Architecture Notes" if warranted
 
 ### 7. Confirm

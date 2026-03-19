@@ -3,9 +3,7 @@ name: nase:fsd
 description: Fully autonomous task execution from plan to merged-ready PR. Use whenever the user says "fsd", "full self-drive", "just do it", "run it autonomously", "fire and forget", or hands off a feature/fix task end-to-end. Also trigger when someone gives a task and clearly expects autonomous completion without babysitting.
 ---
 
-Full Self-Drive — confirm execution options upfront (team mode, worktree, PR), then drive autonomously: implement → build → test (fix loop) → simplify → commit → push → PR → cleanup.
-
-Inspired by Tesla FSD: you describe the destination, buckle up, and it drives.
+Inspired by Tesla FSD: you describe the destination, buckle up, and it drives. Confirm execution options upfront (team mode, worktree, PR), then drive autonomously.
 
 **Input:** $ARGUMENTS — the task description or implementation plan
 

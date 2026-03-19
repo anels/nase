@@ -3,8 +3,6 @@ name: nase:address-comments
 description: Address unresolved PR review comments — fetch, analyze, fix code or reply, then push and resolve. Use when given a PR URL and asked to handle, address, fix, or respond to review comments. Also triggers on "address comments", "fix review comments", "handle PR feedback", "resolve comments", or when the user pastes a PR URL and mentions comments, feedback, or review.
 ---
 
-Address unresolved PR review comments — fetch, analyze, fix code or reply, then push and resolve.
-
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
 ---
@@ -73,32 +71,57 @@ Filter to only threads where `isResolved == false`. Also capture `headRefName` (
 
 If there are zero unresolved threads: report "No unresolved comments found" and stop.
 
-## Phase 3: Analyze Comments & Present Plan
+## Phase 3: Critically Evaluate & Present Plan
 
-For each unresolved thread, read the comment chain and the referenced file + line range. Classify each thread into one of:
+For each unresolved thread, read the full comment chain AND the surrounding code context (not just the referenced line — read enough to understand the design intent). Then evaluate whether the suggestion genuinely improves the code.
 
-| Category | Meaning | Action |
-|----------|---------|--------|
-| **code-change** | Reviewer pointed out a real issue or requested a concrete change | Modify the code |
-| **reply-only** | Question, discussion point, or the existing code is already correct | Write a reply explaining the reasoning |
+**Evaluation criteria — ask these questions for each suggestion:**
+
+1. **Correctness**: Does the reviewer's suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
+2. **Context**: Does the reviewer have full context? Sometimes a suggestion makes sense locally but conflicts with constraints elsewhere (e.g., API contracts, performance requirements, framework limitations).
+3. **Substance vs. style**: Is this a meaningful improvement to correctness, readability, or maintainability? Or is it a cosmetic/stylistic preference that doesn't materially improve the code?
+4. **Risk**: Could accepting this change introduce a regression, break an invariant, or conflict with the broader design?
+
+**Classify each thread based on the evaluation:**
+
+| Category | When to use | Action |
+|----------|-------------|--------|
+| **accept** | Suggestion fixes a real issue, improves correctness, or meaningfully improves clarity/maintainability | Modify the code |
+| **decline** | Current code is correct and the suggestion is stylistic, based on incomplete context, or would introduce risk | Reply explaining why the current approach is intentional |
+| **reply-only** | Question, discussion point, or acknowledgment needed — no code involved | Write a reply |
 | **unclear** | Cannot determine intent or requires design discussion | Ask the user |
 
-Present the analysis to the user:
+The bar for `accept` is: "this change makes the code measurably better." If a suggestion is reasonable but the current code is equally valid, that's a `decline`.
+
+**Present the plan to the user:**
 
 ```
 Found {N} unresolved review threads:
 
-  1. [{path}:{line}] {first_comment_summary} → code-change: {what_you_plan_to_do}
-  2. [{path}:{line}] {first_comment_summary} → reply-only: {draft_reply_summary}
-  3. [{path}:{line}] {first_comment_summary} → unclear: {why}
+  1. ✅ [{path}:{line}] {first_comment_summary} → accept: {what_you_plan_to_do}
+  2. ↩️ [{path}:{line}] {first_comment_summary} → decline: {why current code is correct/better}
+  3. 💬 [{path}:{line}] {first_comment_summary} → reply-only: {draft_reply_summary}
+  4. ❓ [{path}:{line}] {first_comment_summary} → unclear: {why}
   ...
 ```
 
 For **unclear** threads, use AskUserQuestion to get guidance — present the full comment chain and ask what to do.
 
-## Phase 4: Confirm Execution Mode
+## Phase 4: User Override & Confirm Execution
 
-After the plan is presented and all unclear items are resolved, ask:
+After presenting the plan, ask the user to review the classifications. They may want to reclassify items (e.g., flip a `decline` to `accept` or vice versa):
+
+```
+question: "Review the plan above. Want to change any classifications before I proceed?"
+header: "Plan Review"
+options:
+  - label: "Looks good"
+    description: "Proceed as planned"
+  - label: "I have changes"
+    description: "Let me adjust some items"
+```
+
+If the user wants changes, accept reclassifications and update the plan. Then ask for execution mode:
 
 ```
 question: "How should I proceed?"
@@ -130,13 +153,19 @@ git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 
 ## Phase 6: Execute Changes
 
-### For code-change threads:
+### For accept threads:
 
 Read the file at the referenced path and line range. Apply the planned change — keep the diff minimal and focused on what the reviewer asked. Follow the repo's coding standards from KB / `CLAUDE.md`.
 
+### For decline threads:
+
+Draft a direct, constructive reply that explains why the current approach is intentional. Structure: state the reason clearly, provide technical context if needed. No hedging or apologies — but acknowledge the reviewer's perspective where it adds value.
+
+Example tone: "The current approach handles X because [reason]. Changing to Y would [specific downside]." — not "Great suggestion, but..."
+
 ### For reply-only threads:
 
-Draft the reply text. Replies should be concise, professional, and explain the reasoning clearly. Do not be defensive — acknowledge good points, explain technical decisions.
+Draft the reply text. Replies should be concise and explain the reasoning clearly. Do not be defensive — acknowledge good points, explain technical decisions.
 
 Hold all replies until Phase 9 (post-push) so the reviewer sees both the code fix and the reply together.
 
@@ -195,20 +224,23 @@ git -C {worktree_path} push origin {pr_branch}
 
 ## Phase 9: Reply & Resolve Comments
 
-After push succeeds, handle each thread:
+After push succeeds, handle each thread using the same two-step pattern: **reply first, then resolve**.
 
-### For code-change threads:
+For each thread, compose the reply body based on its category:
+- **accept**: `"Fixed — {brief description of what was changed}."`
+- **decline**: the explanation drafted in Phase 6
+- **reply-only**: the reply drafted in Phase 6
 
-Reply acknowledging the fix, then resolve:
+Then execute both API calls in sequence:
 
 ```bash
-# Reply
+# Step 1: Reply
 gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
-  -f body="Fixed — {brief description of what was changed}." \
+  -f body="{reply_body}" \
   -f in_reply_to={comment_id} \
   --method POST
 
-# Resolve the thread
+# Step 2: Resolve the thread
 gh api graphql -f query='
 mutation {
   resolveReviewThread(input: { threadId: "{thread_graphql_id}" }) {
@@ -217,25 +249,7 @@ mutation {
 }'
 ```
 
-### For reply-only threads:
-
-Post the reply, then resolve:
-
-```bash
-# Reply
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
-  -f body="{reply_text}" \
-  -f in_reply_to={comment_id} \
-  --method POST
-
-# Resolve
-gh api graphql -f query='
-mutation {
-  resolveReviewThread(input: { threadId: "{thread_graphql_id}" }) {
-    thread { isResolved }
-  }
-}'
-```
+Process all threads — accept, decline, and reply-only — using this same pattern.
 
 ## Phase 10: Cleanup & Report
 
@@ -250,7 +264,8 @@ Print summary:
 PR comments addressed ✓
 
   PR:              {pr_url}
-  Code changes:    {N} threads
+  Accepted:        {N} threads (code changed)
+  Declined:        {N} threads (replied with reasoning)
   Replies:         {N} threads
   Resolved:        {total_resolved} / {total_threads}
   Build/test:      passed (iteration {N})
@@ -260,7 +275,7 @@ PR comments addressed ✓
 
 Append to `work/logs/{YYYY-MM-DD}.md`:
 ```
-- Address comments: {repo_name}#{pr_number} — {N} resolved ({M} code changes, {K} replies)
+- Address comments: {repo_name}#{pr_number} — {N} resolved ({M} accepted, {K} declined, {J} replies)
 ```
 
 ---

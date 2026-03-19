@@ -1,9 +1,7 @@
 ---
 name: nase:today
-description: Plan today's work — quick morning kickoff focused on what to do today. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", or "what's my plan for today?".
+description: Plan today's work — quick morning kickoff focused on what to do today. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff".
 ---
-
-Plan today's work — quick morning kickoff focused on what to do today. Run at the start of each work session or when asked "what should I work on?", "what's my plan for today?", or "morning standup". Reads todo.md and yesterday's log to surface the top 1–3 priorities.
 
 ## Why
 A focused kickoff prevents drift. The goal is to pick 1–3 things and start — not to plan the whole week. Spend 2 minutes here, not 20.
@@ -17,10 +15,19 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 - Rank by impact × urgency. In-progress items take priority over new ones — context-switching is expensive.
 - Read `work/logs/{yesterday}.md` (last working day) — one-line summary of what was done
 
-### 2. Today's commits so far (if any)
-- For each repo in `work/context.md`: `git -C {repo} log --since="midnight" --oneline --branches 2>/dev/null`
+### 2. Stale KB Check
+- Read `work/kb/.domain-map.md` — collect all `## Projects` entries
+- For each project KB file, extract the `<!-- Last updated: YYYY-MM-DD -->` date
+  - If the date is **older than 7 days**: add to stale list
+  - If the date is missing: also add to stale list (note: "no update date found")
+- If any stale entries exist, include a **Stale KB** section in the output (see Step 4)
 
-### 3. Output
+### 3. Today's commits so far (if any)
+<parallel>
+- For each repo in `work/context.md`: `git -C {repo} log --since="midnight" --oneline --branches 2>/dev/null`
+</parallel>
+
+### 4. Output
 
 ```
 **Today's Plan — {YYYY-MM-DD}**
@@ -37,6 +44,10 @@ Yesterday: [one-line summary]
 
 **Blockers**
 - [any open questions or waiting-on, or "None"]
+
+**Stale KB** (not updated in 7+ days)
+- `{domain}` — last updated {date} → run `/nase:onboard {repo-path}`
+[omit this section entirely if all KB entries are fresh]
 ```
 
 </workflow>

@@ -3,8 +3,7 @@ name: nase:wrap-up
 description: Run at end of day to capture everything in one autonomous pass — reflection, lessons, KB updates, and a journal entry. Use when the user says "wrap up", "end of day", "EOD", "done for today", "closing out", or wants to summarize today's work.
 ---
 
-Run at end of day to capture everything in one autonomous pass: reflection, lessons, KB updates, and a journal entry. Use instead of running /reflect, /learn, and /kb-update separately — wrap-up handles all of them with smart auto-skip. Invoke whenever the day's work is done.
-Each step feeds the next: reflection identifies patterns → learn captures them → kb-update persists domain knowledge → journal entry summarizes. Skipping early steps is fine when there's nothing to capture — the conditional logic handles this automatically.
+End-of-day autonomous pass: reflection → lessons → skill extraction → KB updates → journal entry. Each step feeds the next; skipping early steps is fine — the conditional logic handles this automatically.
 
 <investigate_before_acting>
 Read workspace state (context.md, team profiles, recent logs) before generating output.
@@ -33,41 +32,27 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 **Condition:** today's log file has substantive `## Sessions` entries (beyond the auto-created header).
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:**
-1. Run the reflection process (same as `/nase:reflect`):
-   - What went well, what was harder than expected, what would I do differently, patterns extracted, new tools/techniques.
-   - Score: Accuracy, Efficiency, Quality (1-5 each).
-2. Save the reflection output to `work/tasks/lessons.md`. Set `reflect=done`.
+**If condition met:** invoke `/nase:reflect` with today's work as context. Capture its output for the journal. Set `reflect=done`.
 
-**If condition NOT met:**
-- Print: "No significant work detected today — skipping reflect."
-- Set `reflect=skipped-no-activity`.
+**If condition NOT met:** print "No significant work detected today — skipping reflect." Set `reflect=skipped-no-activity`.
 
 ### Step 2: Learn (conditional)
 
-**Condition:** Step 1 produced insights (reflect=done) OR the user encountered mistakes/discoveries in today's log.
+**Condition:** reflect=done OR the user encountered mistakes/discoveries in today's log.
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:**
-1. Auto-extract learnings from the reflect output and today's activity.
-2. Categorize each learning (workflow / code / debugging / architecture / project).
-3. Append to `work/tasks/lessons.md`. Set `learn=done`.
-4. If a learning is an important reusable rule, also use `<remember>` to persist it.
+**If condition met:** invoke `/nase:learn` (empty args — auto-reflect mode). Treat all extracted insights as plain text tips; do not trigger URL-fetch or confirmation gates. Set `learn=done`.
 
-**If condition NOT met:**
-- Skip silently (no message needed). Set `learn=skipped`.
+**If condition NOT met:** skip silently. Set `learn=skipped`.
 
 ### Step 2.5: Extract Reusable Skills (conditional)
 
-**Condition:** reflect=done OR learn=done (i.e., today had substantive work worth capturing as skills).
+**Condition:** reflect=done OR learn=done.
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:**
-1. Run `/nase:extract-skills auto` — it analyzes the current session and extracts reusable patterns as new pattern files under `work/skills/`. The `auto` flag bypasses the interactive confirmation gate.
-2. Report any skills created (name + one-line description). Set `learner=done`.
+**If condition met:** invoke `/nase:extract-skills auto`. Report any skills created. Set `extract-skills=done`.
 
-**If condition NOT met:**
-- Skip silently. Set `learner=skipped`.
+**If condition NOT met:** skip silently. Set `extract-skills=skipped`.
 
 ### Step 3: KB Update (conditional)
 
@@ -122,11 +107,11 @@ Generate today's journal entry from the data already gathered in Step 0:
 
 Status line format:
 ```
-Wrap-up complete — reflect | learn | learner | kb-update | daily-report
+Wrap-up complete — reflect | learn | extract-skills | kb-update | daily-report
 ```
 Use ~~strikethrough~~ for skipped steps. Example:
-- Full day: `reflect | learn | learner | kb-update | daily-report`
-- Light day: `~~reflect~~ | ~~learn~~ | ~~learner~~ | ~~kb-update~~ | daily-report`
+- Full day: `reflect | learn | extract-skills | kb-update | daily-report`
+- Light day: `~~reflect~~ | ~~learn~~ | ~~extract-skills~~ | ~~kb-update~~ | daily-report`
 
 After writing the file, print only:
 ```

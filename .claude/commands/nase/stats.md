@@ -3,8 +3,6 @@ name: nase:stats
 description: Display workspace usage statistics with a GitHub-style activity heatmap. Use when asked "show stats", "how active am I", "productivity", "how much have I done", or to review activity patterns over 7/30/all-time windows.
 ---
 
-Display workspace usage statistics with a GitHub-style activity heatmap. Shows sessions, commits, PRs, skill usage rankings, and knowledge entries over 7/30/all-time windows. Use to review productivity patterns, check which skills are used most, or get a quick sense of recent activity.
-
 **Input:** $ARGUMENTS — optional: `7` (default), `30`, or `all`
 
 ## Steps
@@ -32,7 +30,7 @@ For `all`, find the earliest log file: `ls work/logs/????-??-??.md | sort | head
 
 ### 2. Scan data sources
 
-Run the data collection script:
+Check if `work/scripts/stats-collect.sh` exists. If it does, run it:
 
 ```bash
 bash work/scripts/stats-collect.sh "<start>" "<end>"
@@ -43,9 +41,15 @@ This script outputs all metrics to `$TMPDIR_STATS` (a temp directory that auto-c
 - Aggregate metrics → `$TMPDIR_STATS/env.sh`
 - Skill usage rankings
 
-If the script doesn't exist, create it first (see `work/scripts/stats-collect.sh`).
-
 Save `$TMPDIR_STATS` path for use in steps 3–5.
+
+**If the script does NOT exist**, collect data inline:
+1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)`
+2. For each date in range, count sessions from `work/logs/{date}.md` (count `## Session` headers), commits across all repos in `work/context.md` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).
+3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
+4. Read `work/stats/skill-usage.jsonl` for skill rankings (if exists).
+5. Count knowledge entries from `work/tasks/lessons.md` matching the date range.
+6. Count KB files modified: `find work/kb -name "*.md" -newer` (approximate).
 
 ### 3. Build heatmap
 

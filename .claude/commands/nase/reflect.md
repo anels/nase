@@ -3,7 +3,7 @@ name: nase:reflect
 description: Run a structured post-task reflection to extract learnings and improve future performance. Use after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong.
 ---
 
-Run a structured post-task reflection to extract learnings and improve future performance. Invoke after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong. Fresh reflections capture more than end-of-day summaries. Also invoked by /wrap-up.
+Fresh reflections capture more than end-of-day summaries. Also invoked by `/wrap-up`.
 
 **Context:** $ARGUMENTS (optional — name of the task or feature just completed)
 
@@ -28,7 +28,7 @@ Run a structured post-task reflection to extract learnings and improve future pe
    Scores are a calibration tool, not a grade. They help detect patterns over time — if efficiency is consistently low, it signals a workflow issue worth addressing.
 
 4. Save key learnings to `work/tasks/lessons.md` using the format defined in `/nase:learn` (ensure file exists, create with header if missing).
-   - If the extracted pattern is a reusable rule, also use `<remember>` to persist it as a behavioral directive.
+   - If the extracted pattern is a reusable rule: use `<remember>` tags if available (OMC environment), otherwise save to auto-memory (`~/.claude/projects/.../memory/`) as a feedback-type memory file.
    - Verify the append: read back the last entry to confirm it was written correctly.
 
 5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes).

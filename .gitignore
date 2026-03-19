@@ -11,4 +11,5 @@ Thumbs.db
 .vscode/
 *.swp
 .claude/settings.local.json
+.claude/commands/nase/work/
 .serena/

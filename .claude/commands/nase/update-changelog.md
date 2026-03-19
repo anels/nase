@@ -3,7 +3,7 @@ name: nase:update-changelog
 description: Generate or update CHANGELOG.md by analyzing actual code changes between two git refs, with GitHub commit/PR links. Use when preparing a release, after cherry-picking hotfixes, or when asked "what changed in this version?", "update changelog", or "generate changelog".
 ---
 
-Generate or update `CHANGELOG.md` by analyzing actual code changes between two git refs, with GitHub commit/PR links. Use when preparing a release, after cherry-picking hotfixes, or when asked "what changed in this version?". Resolves cherry-picks to their original PRs for accurate traceability.
+Resolves cherry-picks to their original PRs for accurate traceability.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
@@ -153,31 +153,9 @@ Parse this output to build:
 
 #### 3b. Detect and resolve cherry-pick commits
 
-**Detection patterns** — check in order 1→2→3; stop at the **first match** for each commit. Do not apply multiple patterns to the same commit:
-
-1. **Title pattern — `Cherry-Pick:` prefix**
-   ```
-   Cherry-Pick: fix(deps): upgrade packages (#4153) -> release/v2024.10.9 (#4156)
-   ```
-   Regex: `^Cherry-Pick:\s*(.+?)\s*\(#(\d+)\)\s*->\s*.+?\s*\(#(\d+)\)$`
-
-2. **Title pattern — `[cherry-pick → ...]` suffix**
-   ```
-   build(clientapp): migrate to pnpm [cherry-pick → release/v2024.10.9] (#4161)
-   ```
-   Regex: `^(.+?)\s*\[cherry-pick\s*→\s*.+?\]\s*\(#(\d+)\)$`
-
-3. **Body pattern — `(cherry picked from commit <SHA>)`**
-   ```
-   git log --format="%h %s" <original_sha> -1
-   ```
+Read `.claude/docs/changelog-reference.md` → **Cherry-Pick Detection Patterns** section for the three detection patterns, their regexes, and resolution priority.
 
 Build `cherry_pick_map` — `{ cherry_sha → { original_pr, original_sha, original_subject } }`
-
-**Resolution priority** for each commit:
-1. If `cherry_pick_map[sha]` exists → use `original_pr` from the map
-2. Else if `pr_map` has a PR number → use it directly
-3. Else → fall back to commit SHA link
 
 #### 3c. Cross-reference base branch changelog
 
@@ -195,18 +173,7 @@ Cross-referenced base changelog (<base_ref>):
 
 ### Step 4: Classify Files by Area
 
-| Signal | Area label |
-|---|---|
-| `*.test.*`, `*.spec.*`, `test/`, `tests/`, `__tests__/`, `Tests/` | Tests |
-| `*.md`, `docs/`, `documentation/` | Documentation |
-| `package.json`, `*.csproj`, `*.toml`, `requirements.txt`, `go.mod` | Dependencies |
-| `.github/`, `*.yml` CI, `Dockerfile`, `.pipelines/` | Build & CI |
-| Paths with `controller`, `handler`, `router`, `endpoint`, `api/` | API / Endpoints |
-| Paths with `service`, `provider`, `client` (non-test) | Services |
-| Paths with `model`, `schema`, `migration`, `repository`, `db/` | Data Layer |
-| Paths with `view`, `component`, `page`, `ui/`, `frontend/` | Frontend |
-| Paths with `auth`, `permission`, `access`, `security` | Permissions / Auth |
-| Everything else | `<top-level dir name>` |
+Read `.claude/docs/changelog-reference.md` → **File Classification Table** for the signal → area label mapping.
 
 ### Step 5: Analyze Code Changes (Staged Depth)
 
@@ -236,23 +203,7 @@ git diff --stat <base_ref>..<head_ref> -- <area_path_pattern>
 
 ### Step 6: Generate Categorized Changelog
 
-| What the code change does | Changelog section |
-|---|---|
-| New feature, UI, API endpoint, user-visible behavior | ✨ Features |
-| Fixed incorrect behavior, crash, wrong output | 🐛 Bug Fixes |
-| Faster queries, reduced memory, better throughput | ⚡ Performance |
-| Input validation, auth check, secrets handling | 🔒 Security |
-| Internal restructure with no behavioral change | ♻️ Refactoring |
-| New or upgraded dependency | 📦 Dependencies |
-| Pipeline, build, tooling changes | 🔧 Build & CI |
-| New or improved test coverage | 🧪 Tests |
-
-**Writing rules:**
-- Describe **what the user or developer gains**, not what lines changed
-- Use present tense and active voice; be specific about component/service names
-- Multi-file changes for one feature → ONE entry
-- Omit pure internal refactors unless they affect API or performance
-- Cherry-pick resolution: always link to the **original** PR, not the cherry-pick PR
+Read `.claude/docs/changelog-reference.md` → **Changelog Section Mapping** and **Writing Rules** for section categories and writing guidelines.
 
 **Output format** (Keep a Changelog style):
 
