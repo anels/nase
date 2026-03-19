@@ -1,10 +1,9 @@
 ---
 name: nase:restore
-description: Restore work/ from the configured backup location. Use after a machine migration, accidental deletion, or when work/ is out of sync with the backup.
+description: Restore work/ from the configured backup location. Use after a machine migration, accidental deletion, when work/ is out of sync with the backup, or when asked to "sync work/", "recover workspace", "restore from backup", or "pull backup".
 ---
 
-Restore `work/` from the configured backup location. Use after a machine migration, accidental deletion, or when work/ is out of sync with the backup. Creates a pre-restore snapshot so you can always roll back.
-The pre-restore snapshot ensures you can always roll back — restoring from a corrupted or outdated backup won't leave you worse off than before.
+Creates a pre-restore snapshot before overwriting, so you can always roll back if the backup turns out to be corrupted or outdated.
 
 ## Steps
 

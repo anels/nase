@@ -16,8 +16,10 @@ Read this file on demand when you need details about workspace layout, skills, K
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
                        backup target in-place (OneDrive-compatible), warns if notes missing
-    track-skill.sh   ← runs at PostToolUse (Skill): records /nase:* invocations to
-                       work/stats/skill-usage.jsonl for /nase:stats reporting
+    track-skill.sh   ← runs at PreToolUse + PostToolUse (Skill): records /nase:* invocations to
+                       work/stats/skill-usage.jsonl for /nase:stats reporting; dual-hook for
+                       better coverage (PostToolUse alone misses some invocations); same-second
+                       dedup in script prevents double-counting
     worktree-log.sh  ← runs at WorktreeCreate/WorktreeRemove: appends timestamped
                        entry to today's daily log
   settings.json      ← hook registrations (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
@@ -113,6 +115,7 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 | `/nase:extract-skills` | Analyze current session → extract reusable patterns as personal skills → `work/skills/` |
 | `/nase:wrap-up` | End of day — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry → `work/journals/YYYY-MM-DD.md` |
 | **Reporting** | |
+| `/nase:recap [week\|last week\|month\|last month\|YYYY-MM-DD to YYYY-MM-DD]` | Structured recap: journals + logs + tasks + lessons + KB updates → auto-saves to `work/recaps/` |
 | `/nase:estimate-eta <task>` | Effort and ETA estimate for a task |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with heatmap |
 | **Git Workflow** | |

@@ -3,8 +3,6 @@ name: nase:doctor
 description: Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint.
 ---
 
-Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use whenever something feels off — hooks not firing, backup warnings, or after a machine migration. Run proactively before starting a new sprint or after updating skills.
-
 ## Checks
 
 <workflow>
@@ -83,13 +81,10 @@ command -v git
 
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->
 ### 8. Command files
-- List all `.md` files in `.claude/commands/nase/`
-- Report count
-- Flag any of the expected core commands that are missing:
-  `doctor`, `help`, `init`, `onboard`, `kb-update`, `tech-digest`, `restore`,
-  `learn`, `reflect`, `extract-skills`, `estimate-eta`, `improve-commit-message`,
-  `update-changelog`, `today`, `wrap-up`, `stats`, `fsd`, `request-review`,
-  `address-comments`, `prep-merge`
+- Scan `.claude/commands/nase/` for all `.md` files (including `work/` subdirectory)
+- Report total count
+- Build the expected list dynamically by reading file names from the directory — do NOT hardcode a list. This way new skills are automatically included in future checks.
+- Cross-reference against the skill names registered in `.claude/settings.json` (under `permissions.allow` or hook configs) — flag any registered skill whose `.md` file is missing
 
 </parallel>
 
@@ -103,13 +98,13 @@ command -v git
 | # | Check | Status | Notes |
 |---|-------|--------|-------|
 | 1 | Git repo | OK / FAIL | {workspace root path} |
-| 2 | Hook scripts | OK / FAIL | {details or "both OK"} |
+| 2 | Hook scripts | OK / FAIL | {details or "all 5 OK"} |
 | 3 | settings.json | OK / FAIL | {details} |
 | 4 | Backup config | OK / WARN / FAIL | {target path or issue} |
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
 | 6 | work/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
 | 7 | Tools | OK / FAIL | {git status} |
-| 8 | Commands | {N}/20 found | {missing names if any} |
+| 8 | Commands | {N} found | {missing from settings.json if any} |
 
 **Result: {X}/8 checks passed**
 

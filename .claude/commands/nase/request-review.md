@@ -76,34 +76,37 @@ Unrelated PRs → **separate DMs** per PR per person.
 
 ## Step 7 — Draft messages
 
+Write like a colleague asking a quick favour — casual opener, one line on what the change does, then the link. No bullet points, no markdown, no formal sign-off.
+
+The TLDR should complete one of these naturally (pick whichever fits):
+- "this mainly fixes …"
+- "this addresses …"
+- "this implements …"
+- "this adds …"
+
+Derive it from the PR title and body; don't invent details.
+
 **Single PR (approval):**
 ```
-Hi — could you please approve this PR?
-
-[PR title] — [url]
-[1-sentence TLDR from PR title/body, e.g. "Updates CODEOWNERS for insights directory ownership."]
+Hey [first name], could you help approve this? [url]
+[TLDR — e.g. "This mainly fixes the null guard in the embed controller."]
 ```
 
 **Single PR (review):**
 ```
-Hi — could you please review this PR?
-
-[PR title] — [url]
-[1-sentence TLDR]
+Hey [first name], could you help review this? [url]
+[TLDR — e.g. "This implements cross-origin support for the Maestro MFE embedding."]
 ```
 
 **Cherry-pick group:**
 ```
-Hi — could you please approve these cherry-pick PRs?
-
-[PR title]
-- [url 1] (→ release/vX)
-- [url 2] (→ release/vY)
-
-[1-sentence TLDR]
+Hey [first name], could you help approve these cherry-picks?
+[url 1] (→ release/vX)
+[url 2] (→ release/vY)
+[TLDR]
 ```
 
-Keep messages short and human — no markdown formatting in the actual DM.
+Keep it short — people will read the PR description for details. No markdown in the actual DM.
 
 ## Step 8 — Confirm recipient list and send
 

@@ -96,7 +96,42 @@ PYEOF
   fi
 fi
 
-# Item 6 — suggest /nase:reflect when today has commits
+# Item 6 — sync work/skills/ → .claude/commands/nase/work/
+SKILLS_DIR="$WORKSPACE/work/skills"
+CMDS_DIR="$WORKSPACE/.claude/commands/nase/work"
+if [ -d "$SKILLS_DIR" ]; then
+  mkdir -p "$CMDS_DIR"
+  synced=0
+  for skill_file in "$SKILLS_DIR"/*.md; do
+    [ -f "$skill_file" ] || continue
+    name=$(basename "$skill_file" .md)
+    cmd_file="$CMDS_DIR/$name.md"
+    # Extract first non-empty line as description (skip YAML frontmatter if present)
+    desc=$(awk '
+      /^---$/ { if (NR==1) { in_front=1; next } }
+      in_front && /^---$/ { in_front=0; next }
+      in_front { next }
+      NF { print; exit }
+    ' "$skill_file")
+    # Regenerate if missing or skill file is newer
+    if [ ! -f "$cmd_file" ] || [ "$skill_file" -nt "$cmd_file" ]; then
+      cat > "$cmd_file" << EOF
+---
+name: nase:work:$name
+description: $desc
+---
+
+Read \`work/skills/$name.md\` and follow every step exactly as written.
+
+\$ARGUMENTS
+EOF
+      synced=$((synced + 1))
+    fi
+  done
+  [ "$synced" -gt 0 ] && echo "[session-start] synced $synced skill(s) from work/skills/ → /nase:work:*"
+fi
+
+# Item 8 — suggest /nase:reflect when today has commits
 if [ -f "$WORKSPACE/work/context.md" ]; then
   REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$WORKSPACE/work/context.md" 2>/dev/null | tr -d '`' || true)
   HAS_COMMITS=0

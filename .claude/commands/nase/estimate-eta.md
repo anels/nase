@@ -3,8 +3,6 @@ name: nase:estimate-eta
 description: Estimate the effort and ETA for a given task or feature request. Use whenever someone asks "how long will this take?", "when can we ship X?", "estimate this", or before committing to a timeline.
 ---
 
-Estimate the effort and ETA for a given task or feature request. Use whenever someone asks "how long will this take?", "when can we ship X?", or before committing to a timeline. Explores the codebase and compares against past similar tasks for grounded estimates.
-
 **Task to estimate:** $ARGUMENTS
 
 ## Input Guard
@@ -31,6 +29,12 @@ If $ARGUMENTS is empty or blank:
 4. Read `work/tasks/todo.md` to understand current workload and what's in flight
 5. Break the task into concrete subtasks with individual estimates
 6. Factor in: complexity, unknowns, testing, review, and integration work
+
+7. Persist the estimate — append to `work/logs/{YYYY-MM-DD}.md`:
+   ```
+   - ETA estimate: {task name} — {realistic estimate} ({scope})
+   ```
+   This ensures future sessions can reference historical estimates for calibration.
 
 ## Output Format
 
@@ -63,14 +67,5 @@ If $ARGUMENTS is empty or blank:
 ---
 
 Be honest about uncertainty. Use ranges, not false precision. If the task is too vague to estimate, ask for clarification before guessing.
-
-### 7. Persist the estimate
-
-Append to `work/logs/{YYYY-MM-DD}.md`:
-```
-- ETA estimate: {task name} — {realistic estimate} ({scope})
-```
-
-This ensures future sessions can reference historical estimates for calibration.
 
 </workflow>
