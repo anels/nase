@@ -83,12 +83,21 @@ Do not post anything to GitHub. The user pastes these manually.
 
 When the user asks to post, approve, or submit:
 
+- **All text in English** — GitHub reviews are always in English
 - **Approve body**: "LGTM with nits" or "Approved with nits" — never repeat the fix mechanism or summarize the PR
-- **Inline comments**: keep minimal — same 1–2 sentence rule as drafts
+- **Inline comments**: keep minimal — same 1–2 sentence rule as drafts, concise
 - Create pending review → add inline comments → submit with APPROVE/COMMENT/REQUEST_CHANGES as appropriate
+
+## Error Handling
+
+- **Auth failure** (`gh` not authenticated or 403): report the error and stop — do not retry or guess credentials.
+- **Oversized diff** (>5000 lines): skip full-diff analysis. Instead, review the `--stat` summary and read only the most changed files individually. Note in the output which files were skipped.
+- **Private repo / 404**: verify the repo exists and the user has access. Suggest `gh auth status` if unclear.
+- **Rate limit (HTTP 429)**: wait and retry once. If still limited, report and stop.
 
 ## Notes
 
 - Always confirm feature flag scope issues against product docs (Confluence) before flagging — what looks like a missing path may be intentionally out of scope
 - Git history agent is often the most valuable — prior PR comments on the same files frequently repeat
 - If the PR has existing review comments (from Claude or others), read them first to avoid duplicates
+- To address findings, suggest `/nase:address-comments <PR-URL>`.

@@ -21,6 +21,7 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
 - **ALWAYS ASK WHEN UNSURE** — if a requirement is ambiguous, a scope is unclear, or there are multiple valid approaches: stop and ask before acting.
 - **Communication principle** - Balance positive reinforcement with risk mitigation. Provide practical guidance and error warnings.
 - **Language**: ALWAYS respond in 简体中文. NEVER use Korean (한국어) under any circumstances. Code, commits, and technical identifiers remain in English.
+- **External platforms language**: Everything posted to GitHub (PR comments, review bodies, commit messages), Jira, Confluence, and Slack MUST be in English and concise.
 - **Write to `work/` by default**: all generated content must go inside `work/`. Only write outside `work/` when the user explicitly asks. Review for sensitive info before writing outside `work/` — this repo is public.
 - **First time setup**: run `/nase:init`
 - **At first session each day**: run `/nase:tech-digest` if today has no entry yet

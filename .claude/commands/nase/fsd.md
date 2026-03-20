@@ -125,7 +125,7 @@ If still failing after 5 iterations: stop, print the last build/test output in f
 
 ## Phase 6: Simplify
 
-Run `/simplify` on the changed files. Apply any improvements it suggests — this catches code quality issues, unnecessary complexity, and missed reuse opportunities before the commit is permanent.
+Run `/simplify` on the changed files. If the skill is not available (not all Claude Code installations include it), skip this step and proceed to Phase 7. If available, apply any improvements it suggests — this catches code quality issues, unnecessary complexity, and missed reuse opportunities before the commit is permanent.
 
 ---
 

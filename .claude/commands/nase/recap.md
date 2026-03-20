@@ -1,6 +1,6 @@
 ---
 name: nase:recap
-description: Generate a structured recap of completed work plus actionable improvement suggestions. Use when asked to "recap", "review", "summarize", "what did I do", or "show my progress" for a week or month. Prompts for period if not specified. Always ends with concrete next-period suggestions.
+description: Generate a structured recap of completed work plus actionable improvement suggestions. Use when asked to "recap", "review my work", "review progress", "summarize", "what did I do", or "show my progress" for a week or month. Prompts for period if not specified. Always ends with concrete next-period suggestions.
 ---
 
 **Input:** $ARGUMENTS

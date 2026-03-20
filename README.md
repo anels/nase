@@ -56,7 +56,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 **Skills that write skills** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as pattern files under `work/skills/`. These are user-specific and gitignored — the workspace literally programs itself.
 
-**Auto-backup with hooks** — A `Stop` hook runs at every session end, syncing `work/` to your configured backup path (OneDrive, local drive, etc.). An atomic in-place copy strategy ensures the backup is never left in a broken state — even on cloud-synced drives.
+**Auto-backup with hooks** — A `Stop` hook runs at every session end, creating a timestamped zip archive of `work/` at your configured backup path (OneDrive, local drive, etc.). Configurable retention policy (keep last N backups or last N days) automatically cleans up old archives. Requires `7z` (`scoop install 7zip`).
 
 ---
 
@@ -117,7 +117,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:restore` | Restore `work/` from backup |
+| `/nase:restore` | Restore `work/` from a zip backup (lists available backups, lets you pick one) |
 
 ---
 
@@ -202,7 +202,7 @@ flowchart TD
 | Hook | When | What it does |
 |------|------|--------------|
 | `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today |
-| `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; syncs `work/` → backup target (in-place, OneDrive-compatible); writes status to `work/logs/.backup-status` |
+| `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `work/` → backup target; applies retention cleanup; writes status to `work/logs/.backup-status` |
 | `PreToolUse` + `PostToolUse` | Before/after every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; dual-hook improves coverage (PostToolUse alone misses some invocations); same-second dedup prevents double-counting; used by `/nase:stats` |
 | `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
 
@@ -256,7 +256,7 @@ nase/
 
 ```
 work/
-  config.md               ← AI engineer name + workspace name (managed by /nase:init)
+  config.md               ← AI engineer name + workspace name + backup retention (managed by /nase:init)
   context.md              ← repo list + domain patterns
   tech-digest-config.md   ← personal sources + filter topics for /nase:tech-digest
   kb/
@@ -314,6 +314,7 @@ git push
 - **Change tech news sources**: edit `work/tech-digest-config.md`
 - **Change AI identity**: run `/nase:init` or edit `work/config.md`
 - **Change backup location**: edit `.backup-target` at the workspace root (one line, bash-format path)
+- **Change backup retention**: edit `backup_retention:` in `work/config.md` (e.g. `count:100` or `days:7`)
 
 > **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `work/context.md` — no cloning or network access required.
 
@@ -323,6 +324,7 @@ git push
 
 - **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — required
 - **Git** — required for hooks and report commands
+- **7z** — required for zip backups (`scoop install 7zip` on Windows)
 
 ### MCP servers (optional but recommended)
 

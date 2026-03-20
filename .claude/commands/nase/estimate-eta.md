@@ -68,4 +68,6 @@ If $ARGUMENTS is empty or blank:
 
 Be honest about uncertainty. Use ranges, not false precision. If the task is too vague to estimate, ask for clarification before guessing.
 
+Ready to implement? Consider `/nase:fsd` for autonomous execution.
+
 </workflow>

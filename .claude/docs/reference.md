@@ -14,8 +14,8 @@ Read this file on demand when you need details about workspace layout, skills, K
     session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
                        surfaces backup warnings, suggests /nase:reflect when commits exist
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
-    stop-backup.sh   ← runs at Stop: appends commit summary to daily log, syncs work/ →
-                       backup target in-place (OneDrive-compatible), warns if notes missing
+    stop-backup.sh   ← runs at Stop: appends commit summary to daily log, creates timestamped
+                       zip backup of work/ (via 7z), applies retention cleanup, warns if notes missing
     track-skill.sh   ← runs at PreToolUse + PostToolUse (Skill): records /nase:* invocations to
                        work/stats/skill-usage.jsonl for /nase:stats reporting; dual-hook for
                        better coverage (PostToolUse alone misses some invocations); same-second
@@ -26,7 +26,7 @@ Read this file on demand when you need details about workspace layout, skills, K
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
                        lives at workspace root (NOT inside work/); managed by /nase:init
 work/               ← entirely git-ignored; never committed
-  config.md          ← format: AI engineer: <name> / workspace: <folder-name>  (managed by /nase:init)
+  config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy>  (managed by /nase:init)
   journals/          ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   scripts/           ← utility scripts (e.g. deploy-uptime-kuma.ps1, stats-collect.sh)
 ```
@@ -144,6 +144,9 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 
 ### 2026-03-06 — Fix backup mv failure on OneDrive
 `stop-backup.sh` previously used `rm -rf $TARGET && mv $STAGING $TARGET`. OneDrive holds a handle on the directory entry even after `rm -rf`, causing `mv` to fail with "Permission denied". Fixed: keep `$TARGET` dir alive, clear its contents with `find -mindepth 1 -maxdepth 1 ! -name '.backup-lock' -exec rm -rf {} \;`, then `cp -rp $STAGING/. $TARGET/` in-place.
+
+### 2026-03-19 — Zip-based backup with retention
+`stop-backup.sh` now creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) instead of flat-copy sync. Uses `7z a -tzip` (available via `scoop install 7zip`). Retention policy (`count:N` or `days:N`) is read from `backup_retention:` in `work/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`.
 
 ### 2026-03-02 — Remove rsync dependency
 Backup sync (`stop-backup.sh`) and restore (`restore.md`) now use `rm -rf` + `cp -rp` instead of rsync.

@@ -45,10 +45,24 @@ options:
   - label: "Other"                           , description: "Type a custom path"
 ```
 
-**Apply changes after both answers:**
+**Question 3 — Backup retention policy:**
+
+```
+question: "How many backups should be kept? (current: {value or 'count:100 (default)'})"
+header: "Backup Retention"
+options:
+  - label: "count:100"  , description: "Keep the last 100 backups (default)"
+  - label: "count:50"   , description: "Keep the last 50 backups"
+  - label: "days:30"    , description: "Keep backups from the last 30 days"
+  - label: "days:7"     , description: "Keep backups from the last 7 days"
+  - label: "Other"      , description: "Type a custom policy (format: count:N or days:N)"
+```
+
+**Apply changes after all answers:**
 - **Workspace name**: always write/update `workspace: {folder-name}` in `work/config.md` (auto-derived, no user input)
 - **AI name**: if changed, write/update `AI engineer:` line in `work/config.md`; update `currently **{old}**` in MEMORY.md
 - **Backup**: if changed, convert Windows path to bash format (`C:\foo\bar` → `/c/foo/bar`); write to `.backup-target`; verify reachable with `mkdir -p {target} && ls {target}`
+- **Retention**: write/update `backup_retention: {value}` line in `work/config.md` (e.g. `backup_retention: count:100` or `backup_retention: days:7`)
 - If the answer matches current value, skip writing
 
 ### 2. Offer restore if backup has content

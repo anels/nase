@@ -253,7 +253,7 @@ current_branch=$(git branch --show-current)
 remote_exists=$(git ls-remote --heads origin "$current_branch" 2>/dev/null | wc -l)
 ```
 
-**Direct commit mode** — when current branch is NOT `develop`/`main`/`master` AND does not exist on remote yet (e.g., invoked by `/cut-release` on a fresh local branch):
+**Direct commit mode** — when current branch is NOT `develop`/`main`/`master` AND does not exist on remote yet:
 ```
 git add CHANGELOG.md
 git commit -m "docs: update changelog for <version>"

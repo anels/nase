@@ -26,29 +26,7 @@ If `state` is not `OPEN`: report "PR is already {state}" and stop.
 
 ## Phase 2: Verify All Comments Resolved
 
-Use GraphQL to check for unresolved review threads:
-
-```bash
-gh api graphql -f query='
-query {
-  repository(owner: "{owner}", name: "{repo}") {
-    pullRequest(number: {pr_number}) {
-      reviewThreads(first: 100) {
-        nodes {
-          isResolved
-          comments(first: 1) {
-            nodes {
-              body
-              path
-              author { login }
-            }
-          }
-        }
-      }
-    }
-  }
-}'
-```
+Use the **minimal variant** GraphQL query from `.claude/docs/github-queries.md` (Unresolved Review Threads section) to check for unresolved review threads.
 
 Filter threads where `isResolved == false`.
 
@@ -84,16 +62,11 @@ git -C {repo_path} rev-parse origin/{pr_branch}
 
 ## Phase 5: Create Worktree
 
-Create worktree on the PR branch for the squash operation:
+Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `prep-merge`. Ref: `origin/{pr_branch}`. After creation, checkout the PR branch:
 
 ```bash
-git -C {repo_path} worktree add {worktree_path} origin/{pr_branch}
 git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 ```
-
-Worktree path: `{repo_parent}/{repo_name}-prep-merge` (append `-1`, `-2` etc. if exists).
-
-All subsequent operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` — it creates its own worktree and won't adopt this one.
 
 ## Phase 6: Squash Commits
 
