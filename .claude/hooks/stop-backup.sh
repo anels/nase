@@ -69,12 +69,12 @@ case "$WORKSPACE/" in "$REAL_TARGET/"*) log_status "ERROR" "target is ancestor o
 SRC="$WORKSPACE/work"
 
 # ---------------------------------------------------------------------------
-# Empty-source guard (P1-BAK-01): refuse --delete if source appears empty.
+# Empty-source guard (P1-BAK-01): refuse if source appears empty.
 # Require at least one of: work/context.md  OR  work/kb/
 # This prevents a missing/empty work/ from wiping a good backup.
 # ---------------------------------------------------------------------------
 if [ ! -d "$SRC" ] || ( [ ! -f "$SRC/context.md" ] && [ ! -d "$SRC/kb" ] ); then
-  log_status "ERROR" "source work/ is missing or empty (no context.md and no kb/) — aborting to protect backup from --delete"
+  log_status "ERROR" "source work/ is missing or empty (no context.md and no kb/) — aborting to protect backup"
   exit 1
 fi
 
@@ -143,25 +143,85 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Sync work/ → backup target (stage to sibling dir, then copy in-place — OneDrive-compatible)
+# Require 7z for zip backup
 # ---------------------------------------------------------------------------
-STAGING="${TARGET}.staging.$$"
-rm -rf "$STAGING"
-cp -rp "$SRC/." "$STAGING/"
+if ! command -v 7z &>/dev/null; then
+  log_status "ERROR" "7z not found — install with 'scoop install 7zip' for zip backups"
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# One-time migration: clean up old flat-copy backup files (pre-zip era)
+# Detects the old format by checking for context.md or kb/ directly in target
+# ---------------------------------------------------------------------------
+if [ -f "$TARGET/context.md" ] && [ -d "$TARGET/kb" ]; then
+  log_status "OK" "migrating: removing old flat-copy backup (replaced by zip archives)"
+  find "$TARGET" -mindepth 1 -maxdepth 1 ! -name '.backup-lock' ! -name 'nase-backup-*.zip' -exec rm -rf {} \; 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
+# Create timestamped zip backup
+# ---------------------------------------------------------------------------
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+ZIP_NAME="nase-backup-${TIMESTAMP}.zip"
+ZIP_PATH="$TARGET/$ZIP_NAME"
+
+(cd "$SRC" && 7z a -tzip -mx=1 -bso0 -bsp0 "$ZIP_PATH" .)
 rc=$?
 if [ "$rc" -ne 0 ]; then
-  rm -rf "$STAGING"
-  log_status "ERROR" "cp to staging failed (exit $rc) — existing backup preserved"
+  rm -f "$ZIP_PATH"
+  log_status "ERROR" "7z failed (exit $rc) — backup not created"
   exit 1
 fi
-# Staging copy succeeded — replace backup contents in-place.
-# We keep $TARGET dir itself alive (OneDrive/Windows holds a handle on the dir
-# entry even after rm -rf, causing mv to fail with "Permission denied").
-find "${TARGET:?}" -mindepth 1 -maxdepth 1 ! -name '.backup-lock' -exec rm -rf {} \; 2>/dev/null || \
-  log_status "WARNING" "some old backup entries could not be removed — backup may contain stale files"
-if ! cp -rp "$STAGING/." "$TARGET/"; then
-  log_status "ERROR" "cp to target failed — backup may be incomplete; staging preserved at: $STAGING"
-  exit 1
+
+ZIP_SIZE=$(du -sh "$ZIP_PATH" | cut -f1)
+log_status "OK" "created $ZIP_NAME ($ZIP_SIZE)"
+
+# ---------------------------------------------------------------------------
+# Retention cleanup — read policy from work/config.md
+# Format: backup_retention: count:100  or  backup_retention: days:7
+# Default: count:100
+# ---------------------------------------------------------------------------
+RETENTION="count:100"
+if [ -f "$WORKSPACE/work/config.md" ]; then
+  CFG_LINE=$(sed -n 's/^backup_retention:[[:space:]]*//p' "$WORKSPACE/work/config.md" 2>/dev/null | tr -d ' ' || true)
+  if [ -n "$CFG_LINE" ]; then
+    RETENTION="$CFG_LINE"
+  fi
 fi
-rm -rf "$STAGING"
-log_status "OK" "synced work/ -> $TARGET (in-place, OneDrive-compatible)"
+RETENTION_TYPE="${RETENTION%%:*}"
+RETENTION_VALUE="${RETENTION##*:}"
+
+# Validate retention value is numeric
+if ! [[ "$RETENTION_VALUE" =~ ^[0-9]+$ ]]; then
+  log_status "WARNING" "invalid retention value '$RETENTION_VALUE' — using default count:100"
+  RETENTION_TYPE="count"
+  RETENTION_VALUE="100"
+fi
+
+# Collect backup zips sorted ascending by name (= chronological order)
+mapfile -t BACKUPS < <(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort)
+DELETED=0
+
+if [ "$RETENTION_TYPE" = "count" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_VALUE" ]; then
+  TO_DELETE=$(( ${#BACKUPS[@]} - RETENTION_VALUE ))
+  for ((i=0; i<TO_DELETE; i++)); do
+    rm -f "${BACKUPS[$i]}"
+    ((DELETED++))
+  done
+elif [ "$RETENTION_TYPE" = "days" ]; then
+  CUTOFF=$(date -d "-${RETENTION_VALUE} days" +%Y%m%d 2>/dev/null || true)
+  if [ -n "$CUTOFF" ]; then
+    for backup in "${BACKUPS[@]}"; do
+      BDATE=$(basename "$backup" | sed -n 's/nase-backup-\([0-9]\{8\}\)-.*/\1/p')
+      if [ -n "$BDATE" ] && [ "$BDATE" -lt "$CUTOFF" ]; then
+        rm -f "$backup"
+        ((DELETED++))
+      fi
+    done
+  fi
+fi
+
+if [ "$DELETED" -gt 0 ]; then
+  log_status "OK" "retention cleanup: removed $DELETED old backup(s) (policy: $RETENTION)"
+fi

@@ -53,6 +53,7 @@ Yesterday: [one-line summary]
 </workflow>
 
 ## Notes
+- If today's tech digest hasn't been run yet, suggest `/nase:tech-digest` first
 - Emphasis on **what to do today** — yesterday is context only, keep it brief
 - Focus list should be actionable and realistic for one day
 - Skip completed items

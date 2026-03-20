@@ -167,3 +167,5 @@ Report content:
 - Generation metadata: `Generated: {GEN_TS}`, `Range: {START_DATE} ~ {END_DATE}`, `Period: {N} days`
 
 The EXIT trap set in step 2 cleans up `$TMPDIR_STATS` automatically.
+
+For a narrative summary instead of metrics, suggest `/nase:recap`.

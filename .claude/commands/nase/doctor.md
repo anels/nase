@@ -71,12 +71,14 @@ Check for presence of key paths:
 - Partial: some missing (list which)
 - Not initialized: work/ does not exist
 
-<!-- Why: git is the only hard external dependency — everything else is built-in -->
+<!-- Why: git and 7z are hard external dependencies — git for hooks/workflow, 7z for zip backups -->
 ### 7. Required tools
 ```bash
 command -v git
+command -v 7z
 ```
-- Pass: git found
+- Pass: both git and 7z found
+- Warn: 7z missing — zip backups will fail (install with `scoop install 7zip`)
 - Fail: git missing
 
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->
@@ -103,7 +105,7 @@ command -v git
 | 4 | Backup config | OK / WARN / FAIL | {target path or issue} |
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
 | 6 | work/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
-| 7 | Tools | OK / FAIL | {git status} |
+| 7 | Tools | OK / WARN / FAIL | {git + 7z status} |
 | 8 | Commands | {N} found | {missing from settings.json if any} |
 
 **Result: {X}/8 checks passed**
@@ -113,3 +115,5 @@ command -v git
 ---
 
 If everything passes, suggest: "Workspace is healthy. Run `/help` for a command overview or `/onboard <repo-path>` to add a repo."
+
+For structural issues (missing config, first-time setup), suggest `/nase:init`.

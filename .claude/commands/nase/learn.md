@@ -72,25 +72,14 @@ Ensure `work/tasks/lessons.md` exists (create with `# Lessons Learned\n` header 
 
 If the input was a URL, always write learnings to the KB. Skip only for plain-text tips.
 
-1. **Identify the matching KB file** — read `work/kb/.domain-map.md` and match the domain. If no match, infer the best category, create the file with a minimal header, and add to `.domain-map.md`. Do NOT ask the user. (Same lookup logic as `/nase:kb-update` Step 1.)
-
-2. Append using this KB entry format:
-   ```
-   ### YYYY-MM-DD — {topic}
-   **What:** {one-line summary}
-   **Why it matters:** {context and impact}
-   **Details:** {specifics, examples}
-   **Links:** {source URL}
-   ```
-
-3. If learnings span multiple domains, update all relevant files.
+Delegate to `/nase:kb-update` with the extracted content rather than writing directly. For each learning that belongs in the KB, invoke kb-update with the topic, summary, and source URL. If learnings span multiple domains, invoke kb-update once per domain.
 
 ### 6. Flag reusable rules
 
 If any learning is an important reusable rule or principle:
-- If `<remember>` tags are available (OMC environment), use one to persist it as a behavioral directive. Otherwise, save it to auto-memory (`~/.claude/projects/.../memory/`) as a feedback-type memory file.
+- Save to auto-memory (`~/.claude/projects/.../memory/`) as a feedback-type memory file.
 - Suggest updating `.claude/docs/reference.md` under "Key Decisions & Architecture Notes" if warranted
 
 ### 7. Confirm
 
-Report exactly what was saved and where (lessons.md entries, KB files updated, any `<remember>` tags used).
+Report exactly what was saved and where (lessons.md entries, KB files updated, memory files created).

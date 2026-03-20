@@ -86,24 +86,23 @@ The TLDR should complete one of these naturally (pick whichever fits):
 
 Derive it from the PR title and body; don't invent details.
 
+**Important: Slack mrkdwn auto-links URLs with `<>` — if a newline follows a URL, the next word gets swallowed into the link tag. Always put the URL and TLDR on the same line, joined by ` — `.**
+
 **Single PR (approval):**
 ```
-Hey [first name], could you help approve this? [url]
-[TLDR — e.g. "This mainly fixes the null guard in the embed controller."]
+Hey [first name], could you help approve this? [url] — [TLDR]
 ```
 
 **Single PR (review):**
 ```
-Hey [first name], could you help review this? [url]
-[TLDR — e.g. "This implements cross-origin support for the Maestro MFE embedding."]
+Hey [first name], could you help review this? [url] — [TLDR]
 ```
 
 **Cherry-pick group:**
 ```
-Hey [first name], could you help approve these cherry-picks?
+Hey [first name], could you help approve these cherry-picks? [TLDR]
 [url 1] (→ release/vX)
 [url 2] (→ release/vY)
-[TLDR]
 ```
 
 Keep it short — people will read the PR description for details. No markdown in the actual DM.

@@ -32,40 +32,7 @@ First, pull the latest from remote so local file contents match the PR head when
 git -C {repo_path} fetch origin
 ```
 
-Then use GraphQL to get all unresolved review threads in one call:
-
-```bash
-gh api graphql -f query='
-query {
-  repository(owner: "{owner}", name: "{repo}") {
-    pullRequest(number: {pr_number}) {
-      headRefName
-      reviewThreads(first: 100) {
-        nodes {
-          id
-          isResolved
-          path
-          line
-          comments(first: 20) {
-            nodes {
-              id
-              databaseId
-              body
-              author { login }
-              createdAt
-            }
-          }
-          diffSide
-          startLine
-          originalLine
-          originalStartLine
-          subjectType
-        }
-      }
-    }
-  }
-}'
-```
+Then use the **full variant** GraphQL query from `.claude/docs/github-queries.md` (Unresolved Review Threads section) to get all unresolved review threads in one call.
 
 Filter to only threads where `isResolved == false`. Also capture `headRefName` (the PR branch).
 
@@ -137,17 +104,9 @@ options:
 
 Determine the PR branch name from `headRefName` (captured in Phase 2). Remote was already fetched in Phase 2.
 
-```bash
-# Create worktree on the PR branch
-git -C {repo_path} worktree add {worktree_path} origin/{pr_branch}
-```
-
-Worktree path: `{repo_parent}/{repo_name}-address-comments` (append `-1`, `-2` etc. if exists).
-
-All subsequent operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` — it creates its own worktree and won't adopt this one.
+Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `address-comments`. Ref: `origin/{pr_branch}`. After creation, checkout the PR branch:
 
 ```bash
-# Make sure we're on the PR branch (not detached HEAD)
 git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 ```
 
