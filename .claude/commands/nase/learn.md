@@ -5,6 +5,8 @@ description: Capture a tip, mistake pattern, article URL, or GitHub repo as stru
 
 For durable codebase-specific architecture decisions or constraints, use `/kb-update` instead.
 
+If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and use best judgment for decisions. This flag is used by automated callers like `/nase:wrap-up`.
+
 **Input:** $ARGUMENTS — one of:
 - A raw tip or insight: `"always check X before doing Y"`
 - A mistake pattern: `"I did X wrong, should have done Y"`
@@ -77,9 +79,13 @@ Delegate to `/nase:kb-update` with the extracted content rather than writing dir
 ### 6. Flag reusable rules
 
 If any learning is an important reusable rule or principle:
-- Save to auto-memory (`~/.claude/projects/.../memory/`) as a feedback-type memory file.
+- Save to auto-memory (the project auto-memory directory (see MEMORY.md in your conversation context)) as a feedback-type memory file.
 - Suggest updating `.claude/docs/reference.md` under "Key Decisions & Architecture Notes" if warranted
 
 ### 7. Confirm
 
 Report exactly what was saved and where (lessons.md entries, KB files updated, memory files created).
+
+## Error Handling
+
+If KB files referenced in domain-map are missing, note the gap and continue with available sources. Do not fail the entire skill.

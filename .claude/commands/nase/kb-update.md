@@ -43,3 +43,7 @@ Include links because future sessions can't search conversation history — the 
 5. If the learning is cross-cutting (affects multiple kb files), update all relevant files.
 
 6. Confirm what was added and where.
+
+## Error Handling
+
+If the target KB file doesn't exist, create it with a basic header and the new content. If `.domain-map.md` has no matching domain, ask the user which KB file to use.

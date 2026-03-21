@@ -43,6 +43,7 @@ This script outputs all metrics to `$TMPDIR_STATS` (a temp directory that auto-c
 
 Save `$TMPDIR_STATS` path for use in steps 3–5.
 
+<!-- Consider extracting to work/scripts/stats-collect.sh if this grows -->
 **If the script does NOT exist**, collect data inline:
 1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)`
 2. For each date in range, count sessions from `work/logs/{date}.md` (count `## Session` headers), commits across all repos in `work/context.md` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).

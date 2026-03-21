@@ -5,6 +5,8 @@ description: Run a structured post-task reflection to extract learnings and impr
 
 Fresh reflections capture more than end-of-day summaries. Also invoked by `/wrap-up`.
 
+If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (including CLAUDE.md update proposals) and auto-apply changes. Used by `/nase:wrap-up`.
+
 **Context:** $ARGUMENTS (optional — name of the task or feature just completed)
 
 ## Steps
@@ -28,10 +30,10 @@ Fresh reflections capture more than end-of-day summaries. Also invoked by `/wrap
    Scores are a calibration tool, not a grade. They help detect patterns over time — if efficiency is consistently low, it signals a workflow issue worth addressing.
 
 4. Save key learnings to `work/tasks/lessons.md` using the format defined in `/nase:learn` (ensure file exists, create with header if missing).
-   - If the extracted pattern is a reusable rule: save to auto-memory (`~/.claude/projects/.../memory/`) as a feedback-type memory file.
+   - If the extracted pattern is a reusable rule: save to auto-memory (the project auto-memory directory (see MEMORY.md in your conversation context)) as a feedback-type memory file.
    - Verify the append: read back the last entry to confirm it was written correctly.
 
-5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes).
+5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes). If `--auto-accept` is active, skip CLAUDE.md update proposals (wrap-up handles these separately).
 
 6. Output a brief reflection summary to the conversation. To capture reusable patterns from this reflection, suggest `/nase:extract-skills`.
 

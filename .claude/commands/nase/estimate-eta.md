@@ -26,6 +26,7 @@ If $ARGUMENTS is empty or blank:
    - Current complexity and test coverage
    - Any dependencies or integrations involved
 3. Read `work/tasks/lessons.md` if it exists — look for similar past tasks and how long they took
+   - Also check the relevant project KB (`work/kb/projects/`) for historical velocity data and known complexity patterns
 4. Read `work/tasks/todo.md` to understand current workload and what's in flight
 5. Break the task into concrete subtasks with individual estimates
 6. Factor in: complexity, unknowns, testing, review, and integration work

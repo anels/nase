@@ -115,7 +115,7 @@ Also verify settings.json references all five scripts (grep for `session-start.s
 ### 4. Initialize work/ skeleton
 Create the following structure if it does not already exist. Preserve existing files — only create missing ones.
 ```bash
-mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals work/skills work/stats
+mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals work/skills work/stats work/recaps
 ```
 
 Create stub files only if missing (do not overwrite existing content):
@@ -133,6 +133,16 @@ Create stub files only if missing (do not overwrite existing content):
 - `work/kb/general/debugging.md` — header: `# Debugging Techniques`
 - `work/tasks/lessons.md` — header: `# Lessons Learned`
 - `work/tasks/todo.md` — header: `# Tasks`
+- `work/kb/ops/customer-support.md` — header and content:
+  ```
+  # Customer Support — Common Questions
+  > Add common customer Q&A patterns here.
+  ```
+- `work/kb/ops/customer-issues.md` — header and content:
+  ```
+  # Customer Issues — Investigation Patterns
+  > Add common investigation patterns and customer misunderstandings here.
+  ```
 - `work/tech-digest-config.md` — personal config for `/nase:tech-digest` (sources, filter topics, output sections); create with a minimal header and prompt the user to edit it before running `/nase:tech-digest`
 
 Report: "work/ structure: {N} directories and files created / already existed"
@@ -140,31 +150,7 @@ Report: "work/ structure: {N} directories and files created / already existed"
 ### 5. Run doctor
 Invoke `/nase:doctor` to verify the complete workspace state.
 
-### 6. Star on GitHub (optional)
-
-This workspace lives at `https://github.com/anels/nase` — the known repo for nase.
-
-Detect the remote URL and parse the owner/repo:
-```bash
-git remote get-url origin 2>/dev/null
-```
-- HTTPS: `https://github.com/owner/repo.git` → `owner/repo`
-- SSH: `git@github.com:owner/repo.git` → `owner/repo`
-- If no remote is configured, fall back to `anels/nase`
-
-Ask the user:
-> "Star `{owner}/{repo}` on GitHub? (yes/no)"
-
-If **yes**:
-```bash
-# MSYS_NO_PATHCONV=1 prevents Git Bash from rewriting the leading slash as a filesystem path
-MSYS_NO_PATHCONV=1 gh api --method PUT /user/starred/{owner}/{repo}
-```
-- Success (HTTP 204): report "⭐ Starred {owner}/{repo}."
-- HTTP 404: report "Repo not found — it may be private or not yet created on GitHub."
-- If `gh` is not installed or not authenticated: report "GitHub CLI not available — skipping star. Run `gh auth login` to enable this."
-
-If **no**: skip silently.
+### 6. Optionally mention: "If this workspace is useful, consider starring the repo on GitHub."
 
 ### 7. Confirm and suggest next steps
 Report a summary:

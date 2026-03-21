@@ -32,7 +32,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 **Condition:** today's log file has substantive `## Sessions` entries (beyond the auto-created header).
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:** invoke `/nase:reflect` with today's work as context. Capture its output for the journal. Set `reflect=done`.
+**If condition met:** invoke `/nase:reflect --auto-accept` with today's work as context. Capture its output for the journal. Set `reflect=done`.
 
 **If condition NOT met:** print "No significant work detected today — skipping reflect." Set `reflect=skipped-no-activity`.
 
@@ -41,20 +41,20 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 **Condition:** reflect=done OR the user encountered mistakes/discoveries in today's log.
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:** invoke `/nase:learn` (empty args — auto-reflect mode). Treat all extracted insights as plain text tips; do not trigger URL-fetch or confirmation gates. Set `learn=done`.
+**If condition met:** invoke `/nase:learn --auto-accept` (empty args — auto-reflect mode). Set `learn=done`.
 
 **If condition NOT met:** skip silently. Set `learn=skipped`.
 
-### Step 2.5: Extract Reusable Skills (conditional)
+### Step 3: Extract Reusable Skills (conditional)
 
 **Condition:** reflect=done OR learn=done.
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:** invoke `/nase:extract-skills auto`. Report any skills created. Set `extract-skills=done`.
+**If condition met:** invoke `/nase:extract-skills --auto-accept auto`. Report any skills created. Set `extract-skills=done`.
 
 **If condition NOT met:** skip silently. Set `extract-skills=skipped`.
 
-### Step 3: KB Update (conditional)
+### Step 4: KB Update (conditional)
 
 **Condition:** today's session log has entries mentioning repo work.
 - If $ARGUMENTS contains "force", run regardless.
@@ -70,7 +70,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 - Print: "No repos touched today — skipping KB update."
 - Set `kb-update=skipped`.
 
-### Step 4: Journal Entry (always runs)
+### Step 5: Journal Entry (always runs)
 
 Generate today's journal entry from the data already gathered in Step 0:
 
@@ -80,7 +80,7 @@ Generate today's journal entry from the data already gathered in Step 0:
 4. If no `## Sessions` entries exist for today, note that no AI-assisted work was logged.
 5. Set `daily-report=done`.
 
-### Step 5: Write output file
+### Step 6: Write output file
 
 1. Display all generated content inline (reflection, lessons, KB updates, daily report) so the user can review
 

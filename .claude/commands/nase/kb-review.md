@@ -26,7 +26,7 @@ Parse $ARGUMENTS to decide what to review:
 
 ### Step 1: Scan and Index
 
-Read all files in scope. For each file, build a mental index of:
+Read all KB files in parallel for efficiency. For each file, build a mental index of:
 - **Topics covered** (1-line per major section or entry)
 - **Key entities** mentioned (repos, tickets, dates, tools, services)
 - **Last updated** (most recent date found in the content)
@@ -103,13 +103,13 @@ Present as a **Connection Map**:
 
 **Domain map gaps:** Files in `work/kb/` that exist but have no entry in `.domain-map.md`.
 
-**Lessons ready for promotion:** Entries in `work/tasks/lessons.md` that are mature enough to be distilled into a KB file:
-- Lessons tagged as `workflow` → candidates for `general/workflow.md`
-- Lessons tagged as `debugging` → candidates for `general/debugging.md`
-- Lessons tagged as `code` → candidates for `general/dotnet.md` or relevant project KB
-- Lessons tagged as `architecture` → candidates for `general/system-design.md` or relevant project KB
-- Lessons tagged as `ops` → candidates for `work/kb/ops/` files
-- Lessons about a specific project → candidates for that project's KB file
+**Lessons ready for promotion:** Entries in `work/tasks/lessons.md` that are mature enough to be distilled into a KB file. Lessons use `## {category} — {date}` headers (not tags); match by the category word in the header:
+- Lessons with `## workflow —` header → candidates for `general/workflow.md`
+- Lessons with `## debugging —` header → candidates for `general/debugging.md`
+- Lessons with `## code —` header → candidates for `general/dotnet.md` or relevant project KB
+- Lessons with `## architecture —` header → candidates for `general/system-design.md` or relevant project KB
+- Lessons with `## ops —` header → candidates for `work/kb/ops/` files
+- Lessons with `## project —` header or about a specific project → candidates for that project's KB file
 
 ```
 ## Stale & Orphaned

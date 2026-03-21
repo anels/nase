@@ -194,6 +194,7 @@ Then execute both API calls in sequence:
 
 ```bash
 # Step 1: Reply
+# Note: `in_reply_to` must be an integer comment ID for review comments. Verify the comment ID from the thread data before using it.
 gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
   -f body="{reply_body}" \
   -f in_reply_to={comment_id} \

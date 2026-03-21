@@ -33,15 +33,7 @@ If $ARGUMENTS starts with `https://github.com/` or `git@github.com:`:
 <workflow>
 
 ### 0. Configure backup target (first-time only)
-- Check if `.backup-target` exists at the workspace root (`$WORKSPACE/.backup-target`)
-- Also check legacy location `work/.backup-target` — if found there, note it should be migrated
-- If neither exists:
-  - Suggest a default path: `~/Documents/nase-backup`
-  - Ask the user: "Where should `work/` be backed up? [default: ~/Documents/nase-backup]"
-  - Convert the user-provided path to bash format (e.g. `C:\foo\bar` → `/c/foo/bar`)
-  - Write the bash-format path as a single line to `.backup-target` at the workspace root (not inside `work/`)
-  - Confirm: "Backup target set at `.backup-target`. The Stop hook will sync work/ here on each session end."
-- If it already exists at the workspace root, skip this step silently.
+- If `.backup-target` doesn't exist, run `/nase:init` first (it handles backup target setup).
 
 ### 0.5. Sync to Default Branch (local repos only)
 
@@ -193,7 +185,7 @@ Use this structure:
 ```
 (Never modify `.claude/commands/kb-update.md` directly — the domain map is now managed via this file.)
 
-**MEMORY.md** — add repo to Quick Reference section. Read `~/.claude/projects/.../memory/MEMORY.md`, then use the Edit tool to append a bullet under the `## Quick Reference` section:
+**MEMORY.md** — add repo to Quick Reference section. Read the project auto-memory directory (the MEMORY.md file visible in your conversation context), then use the Edit tool to append a bullet under the `## Quick Reference` section:
 ```
 - `{RepoName}` (`{path}`) — {one-line purpose}
 ```

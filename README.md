@@ -77,6 +77,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | `/nase:onboard <path-or-url>` | Onboard a new repo (local path or GitHub URL) |
 | `/nase:tech-digest` | Fetch latest tech news → `work/kb/general/tech-trends.md` |
 | `/nase:kb-update [domain]` | Update knowledge base with session learnings |
+| `/nase:kb-review [scope]` | Review, organize, and consolidate KB — deduplicate, cross-reference, surface stale content |
 
 ### Learning & reflection
 
@@ -103,7 +104,6 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | `/nase:discuss-pr <PR-URL>` | Deep review discussion in chat — no GitHub posting; produces inline comment drafts for manual posting |
 | `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
 | `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
-| `/nase:update-changelog [version] [from <ref>] [to <ref>]` | Generate or update `CHANGELOG.md` by analyzing code changes between two git refs |
 
 ### Reporting
 
@@ -234,7 +234,6 @@ nase/
       fsd.md
       estimate-eta.md
       improve-commit-message.md
-      update-changelog.md
       request-review.md
       discuss-pr.md
       address-comments.md

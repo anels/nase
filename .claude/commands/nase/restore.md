@@ -79,10 +79,14 @@ If `$snapshot_dir` does not exist or `$snapshot_count` is 0: abort with "ERROR: 
 On a new machine, also suggest `/nase:init` to verify hooks and config.
 
 ### 6. Restore
+Use the same archive tool that created the backup (check file extension: `.zip` → `unzip`, `.7z` → `7z x`):
 ```bash
 rm -rf "$WORKSPACE/work/"
 mkdir -p "$WORKSPACE/work"
+# For .zip backups:
 unzip -o "$ZIP_PATH" -d "$WORKSPACE/work/"
+# For .7z backups:
+# 7z x "$ZIP_PATH" -o"$WORKSPACE/work/"
 ```
 
 ### 7. Verify integrity

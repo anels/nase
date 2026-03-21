@@ -207,7 +207,7 @@ if [ "$RETENTION_TYPE" = "count" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_VALUE" 
   TO_DELETE=$(( ${#BACKUPS[@]} - RETENTION_VALUE ))
   for ((i=0; i<TO_DELETE; i++)); do
     rm -f "${BACKUPS[$i]}"
-    ((DELETED++))
+    ((++DELETED))
   done
 elif [ "$RETENTION_TYPE" = "days" ]; then
   CUTOFF=$(date -d "-${RETENTION_VALUE} days" +%Y%m%d 2>/dev/null || true)
@@ -216,7 +216,7 @@ elif [ "$RETENTION_TYPE" = "days" ]; then
       BDATE=$(basename "$backup" | sed -n 's/nase-backup-\([0-9]\{8\}\)-.*/\1/p')
       if [ -n "$BDATE" ] && [ "$BDATE" -lt "$CUTOFF" ]; then
         rm -f "$backup"
-        ((DELETED++))
+        ((++DELETED))
       fi
     done
   fi
