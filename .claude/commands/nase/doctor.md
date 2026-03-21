@@ -42,10 +42,9 @@ python -m json.tool .claude/settings.json > /dev/null
 - Pass: valid JSON + all scripts referenced
 - Fail: file missing / invalid JSON / scripts not wired up
 
-<!-- Why: without a backup target, the Stop hook has nowhere to sync work/ — data loss risk -->
+<!-- Why: without a backup target, the Stop hook has nowhere to sync workspace/ — data loss risk -->
 ### 4. Backup configuration
 - Check `.backup-target` exists at workspace root
-- If only found at legacy `work/.backup-target`: warn (should be migrated)
 - Read contents — verify path is non-empty and not `/`, `$HOME`, or `/c`
 - Check if the target directory exists and appears writable (`ls {target}`)
 - Pass: file exists, path looks safe, target accessible
@@ -54,22 +53,22 @@ python -m json.tool .claude/settings.json > /dev/null
 
 <!-- Why: confirms the last Stop hook run actually succeeded — catches silent failures -->
 ### 5. Last backup status
-- Read last line of `work/logs/.backup-status` (if exists)
+- Read last line of `workspace/logs/.backup-status` (if exists)
 - Pass: last entry contains `[OK]`
-- Warn: file does not exist (Stop hook has never run or work/logs/ missing)
+- Warn: file does not exist (Stop hook has never run or workspace/logs/ missing)
 - Fail: last entry contains `[ERROR]` or `[WARNING]`
 
-<!-- Why: work/ holds all session data, KB, and logs — missing directories cause silent failures in other commands -->
-### 6. work/ structure
+<!-- Why: workspace/ holds all session data, KB, and logs — missing directories cause silent failures in other commands -->
+### 6. workspace/ structure
 Check for presence of key paths:
-- `work/context.md`
-- `work/kb/general/`
-- `work/kb/projects/`
-- `work/tasks/lessons.md`
-- `work/logs/`
+- `workspace/context.md`
+- `workspace/kb/general/`
+- `workspace/kb/projects/`
+- `workspace/tasks/lessons.md`
+- `workspace/logs/`
 - Pass: all present
 - Partial: some missing (list which)
-- Not initialized: work/ does not exist
+- Not initialized: workspace/ does not exist
 
 <!-- Why: git and 7z are hard external dependencies — git for hooks/workflow, 7z for zip backups -->
 ### 7. Required tools
@@ -83,8 +82,8 @@ command -v 7z
 
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->
 ### 8. Command files
-- Scan `.claude/commands/nase/` for all `.md` files (including `work/` subdirectory)
-- Also check `work/skills/*.md` for work-specific skills (these are referenced by `.claude/settings.local.json` command entries)
+- Scan `.claude/commands/nase/` for all `.md` files (including `workspace/` subdirectory)
+- Also check `workspace/skills/*.md` for work-specific skills (these are referenced by `.claude/settings.local.json` command entries)
 - Report total count
 - Build the expected list dynamically by reading file names from the directory — do NOT hardcode a list. This way new skills are automatically included in future checks.
 - Cross-reference against the skill names registered in `.claude/settings.json` (under `permissions.allow` or hook configs) — flag any registered skill whose `.md` file is missing
@@ -105,7 +104,7 @@ command -v 7z
 | 3 | settings.json | OK / FAIL | {details} |
 | 4 | Backup config | OK / WARN / FAIL | {target path or issue} |
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
-| 6 | work/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
+| 6 | workspace/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
 | 7 | Tools | OK / WARN / FAIL | {git + 7z status} |
 | 8 | Commands | {N} found | {missing from settings.json if any} |
 
@@ -115,6 +114,6 @@ command -v 7z
 - {one actionable line per failed or warned check, in priority order}
 ---
 
-If everything passes, suggest: "Workspace is healthy. Run `/help` for a command overview or `/onboard <repo-path>` to add a repo."
+If everything passes, suggest: "Workspace is healthy. Run `/help` for a command overview, `/onboard` to refresh all repos, or `/onboard <repo-path>` to add a new repo."
 
 For structural issues (missing config, first-time setup), suggest `/nase:init`.

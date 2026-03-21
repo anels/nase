@@ -110,7 +110,7 @@ When the user asks to post, approve, or submit:
 
 ## Final — Daily Log
 
-Append a summary to `work/logs/YYYY-MM-DD.md`:
+Append a summary to `workspace/logs/YYYY-MM-DD.md`:
 ```
 ### PR Review: <repo>#<number>
 - Reviewed <N> files, found <N> issues across <categories>

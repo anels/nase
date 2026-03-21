@@ -13,19 +13,19 @@ Read this file on demand when you need details about workspace layout, skills, K
   hooks/
     session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
                        surfaces backup warnings, suggests /nase:reflect when commits exist
-    stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from work/tasks/todo.md
+    stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from workspace/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, creates timestamped
-                       zip backup of work/ (via 7z), applies retention cleanup, warns if notes missing
+                       zip backup of workspace/ (via 7z), applies retention cleanup, warns if notes missing
     track-skill.sh   ← runs at PreToolUse + PostToolUse (Skill): records /nase:* invocations to
-                       work/stats/skill-usage.jsonl for /nase:stats reporting; dual-hook for
+                       workspace/stats/skill-usage.jsonl for /nase:stats reporting; dual-hook for
                        better coverage (PostToolUse alone misses some invocations); same-second
                        dedup in script prevents double-counting
     worktree-log.sh  ← runs at WorktreeCreate/WorktreeRemove: appends timestamped
                        entry to today's daily log
   settings.json      ← hook registrations (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
-                       lives at workspace root (NOT inside work/); managed by /nase:init
-work/               ← entirely git-ignored; never committed
+                       lives at workspace root (NOT inside workspace/); managed by /nase:init
+workspace/               ← entirely git-ignored; never committed
   config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy>  (managed by /nase:init)
   journals/          ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   scripts/           ← utility scripts (e.g. deploy-uptime-kuma.ps1, stats-collect.sh)
@@ -36,7 +36,7 @@ work/               ← entirely git-ignored; never committed
 ## Knowledge Base Structure
 
 ```
-work/                   ← entirely git-ignored; never committed
+workspace/                   ← entirely git-ignored; never committed
   context.md              ← repo list + domain patterns
   tech-digest-config.md   ← personal sources + filter topics for /nase:tech-digest
   kb/
@@ -50,7 +50,7 @@ work/                   ← entirely git-ignored; never committed
       tech-trends.md           ← rolling 30-day tech digest (auto-managed by /nase:tech-digest)
       tech-trends-archive-YYYY.md ← entries older than 30 days (auto-archived)
     ops/
-      <deployment-type>.md     ← ops runbooks by deployment type (see work/kb/.domain-map.md for known types)
+      <deployment-type>.md     ← ops runbooks by deployment type (see workspace/kb/.domain-map.md for known types)
   skills/
     {name}.md             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
   tasks/
@@ -80,7 +80,7 @@ Proceed through git commands, file reads, and data gathering without asking perm
 Engineering commands fall into three categories:
 - **Data gathering** (doctor, stats): collect all data first, then present — execute deterministically.
 - **Interactive** (kb-update, onboard): gather context automatically, then pause at marked checkpoints for user input.
-- **Autonomous** (wrap-up): runs all steps without pausing — reflect → learn → extract-skills → kb-update → journal entry, writes output to `work/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
+- **Autonomous** (wrap-up): runs all steps without pausing — reflect → learn → extract-skills → kb-update → journal entry, writes output to `workspace/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
 In both cases, start executing immediately. Reserve deliberation for synthesis steps (writing summaries, identifying patterns).
 </execution_style>
 
@@ -105,7 +105,7 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
 
 ### 2026-03-12 — Skill usage tracking restored to PostToolUse (track-skill.sh)
-`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. The previous attempt to use `UserPromptSubmit` (`track-command.sh`) was reverted because it could not reliably detect the exact skill name invoked — regex parsing of user messages is fragile. PostToolUse provides the exact Skill tool call input, which is the authoritative source for `/nase:*` invocations. Stats are surfaced by `/nase:stats`.
+`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `workspace/stats/skill-usage.jsonl`. The previous attempt to use `UserPromptSubmit` (`track-command.sh`) was reverted because it could not reliably detect the exact skill name invoked — regex parsing of user messages is fragile. PostToolUse provides the exact Skill tool call input, which is the authoritative source for `/nase:*` invocations. Stats are surfaced by `/nase:stats`.
 
 ### 2026-03-19 — Zip-based backup with retention
-`stop-backup.sh` creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) via `7z a -tzip` (`scoop install 7zip`). Retention policy (`count:N` or `days:N`) from `backup_retention:` in `work/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`. Supersedes earlier flat-copy and rsync approaches.
+`stop-backup.sh` creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) via `7z a -tzip` (`scoop install 7zip`). Retention policy (`count:N` or `days:N`) from `backup_retention:` in `workspace/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`. Supersedes earlier flat-copy and rsync approaches.

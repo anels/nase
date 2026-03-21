@@ -1,6 +1,6 @@
 ---
 name: nase:init
-description: Initialize or reconfigure the nase workspace. Use for first-time setup, after cloning on a new machine, or when work/config.md is missing. Safe to re-run — idempotent.
+description: Initialize or reconfigure the nase workspace. Use for first-time setup, after cloning on a new machine, or when workspace/config.md is missing. Safe to re-run — idempotent.
 ---
 
 **Input:** $ARGUMENTS (optional: AI engineer name, e.g. `/init Alice`)
@@ -10,9 +10,9 @@ description: Initialize or reconfigure the nase workspace. Use for first-time se
 ### 0. Check current state
 Before doing anything, read the current state:
 - Derive workspace name: `basename $(git rev-parse --show-toplevel)`
-- Read `work/config.md` if it exists — note current `AI engineer:` and `workspace:` values
+- Read `workspace/config.md` if it exists — note current `AI engineer:` and `workspace:` values
 - Check if `.backup-target` exists at workspace root
-- Check if `work/context.md` exists (workspace already initialized indicator)
+- Check if `workspace/context.md` exists (workspace already initialized indicator)
 
 Report what was found:
 - "Workspace: {folder-name} ({initialized / not yet initialized})"
@@ -37,7 +37,7 @@ options:
 Only include "Keep current" as an option if `.backup-target` already exists and has a non-empty path. If no backup is configured yet, omit it — "Keep current: not configured" is a nonsensical choice.
 
 ```
-question: "Where should work/ be backed up? (current: {path or 'not configured'})"
+question: "Where should workspace/ be backed up? (current: {path or 'not configured'})"
 header: "Backup"
 options:
   - label: "Keep current"                    , description: "{current path}"  ← omit if not configured
@@ -59,15 +59,15 @@ options:
 ```
 
 **Apply changes after all answers:**
-- **Workspace name**: always write/update `workspace: {folder-name}` in `work/config.md` (auto-derived, no user input)
-- **AI name**: if changed, write/update `AI engineer:` line in `work/config.md`; update `currently **{old}**` in MEMORY.md
+- **Workspace name**: always write/update `workspace: {folder-name}` in `workspace/config.md` (auto-derived, no user input)
+- **AI name**: if changed, write/update `AI engineer:` line in `workspace/config.md`; update `currently **{old}**` in MEMORY.md
 - **Backup**: if changed, convert Windows path to bash format (`C:\foo\bar` → `/c/foo/bar`); write to `.backup-target`; verify reachable with `mkdir -p {target} && ls {target}`
-- **Retention**: write/update `backup_retention: {value}` line in `work/config.md` (e.g. `backup_retention: count:100` or `backup_retention: days:7`)
+- **Retention**: write/update `backup_retention: {value}` line in `workspace/config.md` (e.g. `backup_retention: count:100` or `backup_retention: days:7`)
 - If the answer matches current value, skip writing
 
 ### 2. Offer restore if backup has content
 
-This step only applies on a **fresh init** — skip it entirely if `work/context.md` already exists locally (the workspace is already populated and a restore would be destructive, not helpful).
+This step only applies on a **fresh init** — skip it entirely if `workspace/context.md` already exists locally (the workspace is already populated and a restore would be destructive, not helpful).
 
 After the backup target is confirmed (new or unchanged), check whether it already contains data:
 
@@ -76,7 +76,7 @@ After the backup target is confirmed (new or unchanged), check whether it alread
 ls "{backup-target}/context.md" 2>/dev/null
 ```
 
-If `work/context.md` does NOT exist locally AND the sentinel exists in the backup:
+If `workspace/context.md` does NOT exist locally AND the sentinel exists in the backup:
 - Count the files: `find "{backup-target}" -type f | wc -l`
 - Find the most recently modified file: `find "{backup-target}" -type f -printf '%T@ %p\n' | sort -n | tail -1`
 - Show the user:
@@ -84,10 +84,10 @@ If `work/context.md` does NOT exist locally AND the sentinel exists in the backu
 
 Then ask:
 ```
-question: "A backup exists at {backup-target}. Restore work/ from it now?"
+question: "A backup exists at {backup-target}. Restore workspace/ from it now?"
 header: "Restore from backup"
 options:
-  - label: "Yes — restore now"  , description: "Overwrites current work/ with the backup"
+  - label: "Yes — restore now"  , description: "Overwrites current workspace/ with the backup"
   - label: "No — skip"          , description: "Continue init without restoring"
 ```
 
@@ -112,14 +112,14 @@ Also verify settings.json references all five scripts (grep for `session-start.s
 - If all pass: "Hooks: OK"
 - If any fail: list what's wrong with fix instructions (e.g., "Re-run from a clean clone" or "Run /doctor for details")
 
-### 4. Initialize work/ skeleton
+### 4. Initialize workspace/ skeleton
 Create the following structure if it does not already exist. Preserve existing files — only create missing ones.
 ```bash
-mkdir -p work/kb/projects work/kb/general work/logs work/tasks work/journals work/skills work/stats work/recaps
+mkdir -p workspace/kb/projects workspace/kb/general workspace/logs workspace/tasks workspace/journals workspace/skills workspace/stats workspace/recaps
 ```
 
 Create stub files only if missing (do not overwrite existing content):
-- `work/context.md`:
+- `workspace/context.md`:
   ```markdown
   # Workspace Context
 
@@ -129,23 +129,23 @@ Create stub files only if missing (do not overwrite existing content):
   ## Domain Patterns
   <!-- Updated by /kb-update -->
   ```
-- `work/kb/general/workflow.md` — header: `# Workflow & Protocols`
-- `work/kb/general/debugging.md` — header: `# Debugging Techniques`
-- `work/tasks/lessons.md` — header: `# Lessons Learned`
-- `work/tasks/todo.md` — header: `# Tasks`
-- `work/kb/ops/customer-support.md` — header and content:
+- `workspace/kb/general/workflow.md` — header: `# Workflow & Protocols`
+- `workspace/kb/general/debugging.md` — header: `# Debugging Techniques`
+- `workspace/tasks/lessons.md` — header: `# Lessons Learned`
+- `workspace/tasks/todo.md` — header: `# Tasks`
+- `workspace/kb/ops/customer-support.md` — header and content:
   ```
   # Customer Support — Common Questions
   > Add common customer Q&A patterns here.
   ```
-- `work/kb/ops/customer-issues.md` — header and content:
+- `workspace/kb/ops/customer-issues.md` — header and content:
   ```
   # Customer Issues — Investigation Patterns
   > Add common investigation patterns and customer misunderstandings here.
   ```
-- `work/tech-digest-config.md` — personal config for `/nase:tech-digest` (sources, filter topics, output sections); create with a minimal header and prompt the user to edit it before running `/nase:tech-digest`
+- `workspace/tech-digest-config.md` — personal config for `/nase:tech-digest` (sources, filter topics, output sections); create with a minimal header and prompt the user to edit it before running `/nase:tech-digest`
 
-Report: "work/ structure: {N} directories and files created / already existed"
+Report: "workspace/ structure: {N} directories and files created / already existed"
 
 ### 5. Run doctor
 Invoke `/nase:doctor` to verify the complete workspace state.
@@ -157,14 +157,13 @@ Report a summary:
 - AI name: {name}
 - Backup target: {path}
 - Hooks: {OK / issues found}
-- work/: {ready / partially ready}
+- workspace/: {ready / partially ready}
 
 Suggest next steps based on what's missing:
-- If no repos onboarded: "Run `/onboard <repo-path>` to add your first repository"
+- If no repos onboarded: "Run `/onboard <repo-path>` to add your first repository, or `/onboard` to refresh all repos from `workspace/context.md`"
 - If tech-trends.md is missing: "Run `/tech-digest` to bootstrap the tech news feed"
 - If doctor found issues: "Address the items listed by /doctor above"
 
 ## Notes
 - This command is idempotent — safe to re-run after a machine migration or template update
 - After re-running, the Stop hook will continue writing to the same `.backup-target`
-- If migrating from an old workspace with `work/.backup-target`, move it to the workspace root and delete the old file

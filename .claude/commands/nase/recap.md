@@ -36,10 +36,10 @@ Use **weekly format** for ranges ≤ 14 days; **monthly format** for ranges > 14
 
 Read in parallel:
 
-1. `work/context.md` — repo list and domain patterns
-2. `work/tasks/todo.md` — current task states
-3. `work/tasks/lessons.md` — full lessons list (extract entries dated within range)
-4. `work/kb/.domain-map.md` — domain → KB file index
+1. `workspace/context.md` — repo list and domain patterns
+2. `workspace/tasks/todo.md` — current task states
+3. `workspace/tasks/lessons.md` — full lessons list (extract entries dated within range)
+4. `workspace/kb/.domain-map.md` — domain → KB file index
 
 Do NOT load KB domain files upfront — only read a specific one if needed to clarify something mentioned in journals.
 
@@ -47,8 +47,8 @@ Do NOT load KB domain files upfront — only read a specific one if needed to cl
 
 For each calendar day in the range:
 
-1. Try `work/journals/YYYY-MM-DD.md` first (synthesized daily summary — preferred).
-2. If journal missing, fall back to `work/logs/YYYY-MM-DD.md` (raw session notes).
+1. Try `workspace/journals/YYYY-MM-DD.md` first (synthesized daily summary — preferred).
+2. If journal missing, fall back to `workspace/logs/YYYY-MM-DD.md` (raw session notes).
 3. If both missing, mark day as no-activity.
 
 ## Step 4 — Extract structured data
@@ -144,7 +144,7 @@ Draw from:
 - **KB gaps**: areas looked up repeatedly but not documented
 - **Velocity imbalance**: if the period was dominated by reactive work (oncall, reviews), flag what got crowded out
 - **Pain points from journals**: scan reflection sections ("What was harder than expected", "What I'd do differently") — these are direct signals of friction; suggest tooling, process, or habit fixes
-- **Tech trends** (optional): if `work/kb/general/tech-trends.md` exists, skim it for anything directly relevant to problems encountered this period — a new tool or pattern that could reduce recurrence of a pain point. Only surface this if there's a concrete connection, not as a general "go read the digest" suggestion
+- **Tech trends** (optional): if `workspace/kb/general/tech-trends.md` exists, skim it for anything directly relevant to problems encountered this period — a new tool or pattern that could reduce recurrence of a pain point. Only surface this if there's a concrete connection, not as a general "go read the digest" suggestion
 
 ```markdown
 ## Suggestions for Next Period
@@ -159,4 +159,4 @@ Draw from:
 - **Preserve all links** — PR URLs, Jira tickets, Confluence pages must appear verbatim.
 - **Degrade gracefully** — use logs as fallback when journals are missing; skip days where both are absent.
 - **No KB full-load** — only read specific KB files when needed to clarify journal content.
-- **Output**: always display in chat AND write to `work/recaps/{period}.md` (e.g. `work/recaps/2026-W11.md` for weekly, `work/recaps/2026-03.md` for monthly). Create `work/recaps/` if it doesn't exist. After writing, print: `Recap saved → work/recaps/{period}.md`
+- **Output**: always display in chat AND write to `workspace/recaps/{period}.md` (e.g. `workspace/recaps/2026-W11.md` for weekly, `workspace/recaps/2026-03.md` for monthly). Create `workspace/recaps/` if it doesn't exist. After writing, print: `Recap saved → workspace/recaps/{period}.md`

@@ -1,5 +1,5 @@
 {
-  "autoMemoryDirectory": "work/memory",
+  "autoMemoryDirectory": "workspace/memory",
   "hooks": {
     "SessionStart": [
       {

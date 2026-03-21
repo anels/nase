@@ -4,8 +4,8 @@ set -euo pipefail
 # PostToolUse hook — track /nase:* skill invocations to JSONL
 # Input: JSON on stdin with tool_input.skill
 
-WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-STATS_DIR="$WORKSPACE/work/stats"
+NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+STATS_DIR="$NASE_ROOT/workspace/stats"
 JSONL="$STATS_DIR/skill-usage.jsonl"
 
 INPUT=$(cat)

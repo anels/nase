@@ -9,30 +9,26 @@ log_status() {
   local entry
   entry="$(date +%Y-%m-%dT%H:%M:%S) [$level] $msg"
   echo "[stop-backup] $entry"
-  if [ -n "${WORKSPACE:-}" ]; then
-    mkdir -p "$WORKSPACE/work/logs"
-    echo "$entry" >> "$WORKSPACE/work/logs/.backup-status"
+  if [ -n "${NASE_ROOT:-}" ]; then
+    mkdir -p "$NASE_ROOT/workspace/logs"
+    echo "$entry" >> "$NASE_ROOT/workspace/logs/.backup-status"
   fi
 }
 
 # ---------------------------------------------------------------------------
 # Resolve workspace — no hardcoded fallback path (P1-ARCH-02)
 # ---------------------------------------------------------------------------
-WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) || true
-if [ -z "$WORKSPACE" ]; then
+NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+if [ -z "$NASE_ROOT" ]; then
   echo "[stop-backup] ERROR: not in a git repo — cannot determine workspace" >&2
   exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# Locate .backup-target: workspace root first, then work/ (P1-BAK-04)
-# Keeping work/ fallback for backward compatibility with existing installs.
+# Locate .backup-target at workspace root
 # ---------------------------------------------------------------------------
-if [ -f "$WORKSPACE/.backup-target" ]; then
-  CONFIG="$WORKSPACE/.backup-target"
-elif [ -f "$WORKSPACE/work/.backup-target" ]; then
-  CONFIG="$WORKSPACE/work/.backup-target"
-  log_status "WARNING" ".backup-target found in work/ (legacy location) — move to workspace root to avoid bootstrap paradox"
+if [ -f "$NASE_ROOT/.backup-target" ]; then
+  CONFIG="$NASE_ROOT/.backup-target"
 else
   # No config — nothing to do; exit silently
   exit 0
@@ -62,19 +58,19 @@ if [ "$DEPTH" -lt 3 ]; then
   log_status "ERROR" "target path too shallow (depth $DEPTH) — refusing: $REAL_TARGET"
   exit 1
 fi
-# Ancestor guard: target must not be an ancestor of HOME or WORKSPACE
+# Ancestor guard: target must not be an ancestor of HOME or NASE_ROOT
 case "$HOME/" in "$REAL_TARGET/"*) log_status "ERROR" "target is ancestor of HOME: $REAL_TARGET"; exit 1 ;; esac
-case "$WORKSPACE/" in "$REAL_TARGET/"*) log_status "ERROR" "target is ancestor of WORKSPACE: $REAL_TARGET"; exit 1 ;; esac
+case "$NASE_ROOT/" in "$REAL_TARGET/"*) log_status "ERROR" "target is ancestor of NASE_ROOT: $REAL_TARGET"; exit 1 ;; esac
 
-SRC="$WORKSPACE/work"
+SRC="$NASE_ROOT/workspace"
 
 # ---------------------------------------------------------------------------
 # Empty-source guard (P1-BAK-01): refuse if source appears empty.
-# Require at least one of: work/context.md  OR  work/kb/
-# This prevents a missing/empty work/ from wiping a good backup.
+# Require at least one of: workspace/context.md  OR  workspace/kb/
+# This prevents a missing/empty workspace/ from wiping a good backup.
 # ---------------------------------------------------------------------------
 if [ ! -d "$SRC" ] || ( [ ! -f "$SRC/context.md" ] && [ ! -d "$SRC/kb" ] ); then
-  log_status "ERROR" "source work/ is missing or empty (no context.md and no kb/) — aborting to protect backup"
+  log_status "ERROR" "source workspace/ is missing or empty (no context.md and no kb/) — aborting to protect backup"
   exit 1
 fi
 
@@ -98,9 +94,9 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
 # Auto commit summary — append to today's daily log
 # ---------------------------------------------------------------------------
 COMMIT_DATE=$(date +%Y-%m-%d)
-COMMIT_LOG="$WORKSPACE/work/logs/$COMMIT_DATE.md"
-if [ -f "$WORKSPACE/work/context.md" ]; then
-  REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$WORKSPACE/work/context.md" 2>/dev/null | tr -d '`' || true)
+COMMIT_LOG="$NASE_ROOT/workspace/logs/$COMMIT_DATE.md"
+if [ -f "$NASE_ROOT/workspace/context.md" ]; then
+  REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$NASE_ROOT/workspace/context.md" 2>/dev/null | tr -d '`' || true)
   COMMITS=""
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue
@@ -115,7 +111,7 @@ if [ -f "$WORKSPACE/work/context.md" ]; then
   if [ -n "$COMMITS" ]; then
     # Dedup: compute fingerprint from sorted commit SHAs; skip if unchanged
     FINGERPRINT=$(echo "$COMMITS" | grep -oE '^[a-f0-9]+' | sort | tr '\n' ',')
-    FP_FILE="$WORKSPACE/work/logs/.last-commit-fingerprint"
+    FP_FILE="$NASE_ROOT/workspace/logs/.last-commit-fingerprint"
     LAST_FP=""
     if [ -f "$FP_FILE" ]; then
       LAST_FP=$(cat "$FP_FILE")
@@ -136,7 +132,7 @@ fi
 if [ -f "$COMMIT_LOG" ]; then
   SESSION_CONTENT=$(awk '/^## Sessions/{found=1; next} /^## /{found=0} found && /[^[:space:]]/{print; exit}' "$COMMIT_LOG")
   if [ -z "$SESSION_CONTENT" ]; then
-    echo "[stop-backup] WARNING: no session notes in today's log — update work/logs/$COMMIT_DATE.md before closing"
+    echo "[stop-backup] WARNING: no session notes in today's log — update workspace/logs/$COMMIT_DATE.md before closing"
   fi
 else
   echo "[stop-backup] WARNING: no daily log for today — consider running /nase:wrap-up"
@@ -178,13 +174,13 @@ ZIP_SIZE=$(du -sh "$ZIP_PATH" | cut -f1)
 log_status "OK" "created $ZIP_NAME ($ZIP_SIZE)"
 
 # ---------------------------------------------------------------------------
-# Retention cleanup — read policy from work/config.md
+# Retention cleanup — read policy from workspace/config.md
 # Format: backup_retention: count:100  or  backup_retention: days:7
 # Default: count:100
 # ---------------------------------------------------------------------------
 RETENTION="count:100"
-if [ -f "$WORKSPACE/work/config.md" ]; then
-  CFG_LINE=$(sed -n 's/^backup_retention:[[:space:]]*//p' "$WORKSPACE/work/config.md" 2>/dev/null | tr -d ' ' || true)
+if [ -f "$NASE_ROOT/workspace/config.md" ]; then
+  CFG_LINE=$(sed -n 's/^backup_retention:[[:space:]]*//p' "$NASE_ROOT/workspace/config.md" 2>/dev/null | tr -d ' ' || true)
   if [ -n "$CFG_LINE" ]; then
     RETENTION="$CFG_LINE"
   fi

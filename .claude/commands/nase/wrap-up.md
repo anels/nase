@@ -18,10 +18,10 @@ Verify file existence before reading — degrade gracefully if files are missing
 
 ### Step 0: Gather today's activity
 
-1. Read `work/logs/{YYYY-MM-DD}.md` (today's date).
+1. Read `workspace/logs/{YYYY-MM-DD}.md` (today's date).
    - The `## Sessions` section is the **source of truth** for AI-assisted work done today.
    - If the file is missing or has no `## Sessions` entries, treat today as low-activity.
-2. Read `work/tasks/todo.md` for current task status.
+2. Read `workspace/tasks/todo.md` for current task status.
 3. Store a summary of today's AI-assisted activity (from session entries) for use in subsequent steps.
    Do NOT scan git repos for commits — those include unrelated changes not done via AI.
 
@@ -61,7 +61,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 
 **If condition met:**
 1. Identify which repos were mentioned in today's session entries (from Step 0).
-2. Read `work/kb/.domain-map.md` to map repos to their KB files.
+2. Read `workspace/kb/.domain-map.md` to map repos to their KB files.
 3. For each touched repo/domain, review today's session entries and determine if any new knowledge was gained:
    - New patterns, architectural decisions, constraints clarified, gotchas found.
 4. If meaningful updates exist, append them to the relevant KB files using the format from `/nase:kb-update`. Set `kb-update=done`.
@@ -74,9 +74,9 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `
 
 Generate today's journal entry from the data already gathered in Step 0:
 
-1. From today's session log (`work/logs/{YYYY-MM-DD}.md`), summarize each `## Sessions` entry — one bullet per major task/topic: what was done and the outcome/decision. **Preserve all original links** (PR URLs, Jira tickets, Confluence pages, pipeline links) exactly as they appear.
-2. From `work/tasks/todo.md` (if it exists): list items marked complete today under **Tasks Completed**, and any still in-progress under **In Progress**.
-3. From `work/tasks/lessons.md` (if it exists): note any lessons added today under **Blockers / Notes**.
+1. From today's session log (`workspace/logs/{YYYY-MM-DD}.md`), summarize each `## Sessions` entry — one bullet per major task/topic: what was done and the outcome/decision. **Preserve all original links** (PR URLs, Jira tickets, Confluence pages, pipeline links) exactly as they appear.
+2. From `workspace/tasks/todo.md` (if it exists): list items marked complete today under **Tasks Completed**, and any still in-progress under **In Progress**.
+3. From `workspace/tasks/lessons.md` (if it exists): note any lessons added today under **Blockers / Notes**.
 4. If no `## Sessions` entries exist for today, note that no AI-assisted work was logged.
 5. Set `daily-report=done`.
 
@@ -84,7 +84,7 @@ Generate today's journal entry from the data already gathered in Step 0:
 
 1. Display all generated content inline (reflection, lessons, KB updates, daily report) so the user can review
 
-2. Write to `work/journals/{YYYY-MM-DD}.md`. If the file already exists, overwrite it with the latest content (re-running wrap-up produces a fresh result, not a duplicate append).
+2. Write to `workspace/journals/{YYYY-MM-DD}.md`. If the file already exists, overwrite it with the latest content (re-running wrap-up produces a fresh result, not a duplicate append).
 
 ```markdown
 # Wrap-up — {YYYY-MM-DD}
@@ -115,7 +115,7 @@ Use ~~strikethrough~~ for skipped steps. Example:
 
 After writing the file, print only:
 ```
-Wrap-up written → work/journals/{YYYY-MM-DD}.md
+Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 {status line}
 ```
 
@@ -125,7 +125,7 @@ Wrap-up written → work/journals/{YYYY-MM-DD}.md
 
 <error_handling>
 
-- **Fully autonomous** — execute all steps without pausing. All output is written to `work/journals/{YYYY-MM-DD}.md`; if the file exists it is overwritten. Edit the file afterward as needed.
+- **Fully autonomous** — execute all steps without pausing. All output is written to `workspace/journals/{YYYY-MM-DD}.md`; if the file exists it is overwritten. Edit the file afterward as needed.
 - **"force" argument** — `$ARGUMENTS` containing "force" bypasses all skip conditions and runs every step.
 - **Late sessions** — if no commits since midnight but commits exist in the last 12 hours, include those (handles cross-midnight work).
 - **Idempotent** — running wrap-up twice in one day is safe; reflect/learn will see previous entries and can skip or augment.

@@ -19,8 +19,9 @@ claude                        # open Claude Code in this directory
 Then inside Claude Code:
 
 ```
-/nase:init                    # set AI name, configure backup, create work/
-/nase:onboard /path/to/repo   # onboard your first repo (local path or GitHub URL)
+/nase:init                    # set AI name, configure backup, create workspace/
+/nase:onboard /path/to/repo   # onboard a repo (local path or GitHub URL)
+/nase:onboard                 # refresh ALL already-onboarded repos from workspace/context.md
 /nase:today                   # morning kickoff — what to focus on today
 ```
 
@@ -46,17 +47,17 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 ## Features
 
-**Persistent knowledge base** — Each repo gets its own `work/kb/projects/<repo>.md`. Stack-level patterns go in `work/kb/general/`. Knowledge is loaded surgically — only the relevant domain file is read, keeping context lean.
+**Persistent knowledge base** — Each repo gets its own `workspace/kb/projects/<repo>.md`. Stack-level patterns go in `workspace/kb/general/`. Knowledge is loaded surgically — only the relevant domain file is read, keeping context lean.
 
-**Daily workflow out of the box** — Morning: `/nase:today`. Work: `/nase:onboard <repo>` before touching any repo; `/nase:learn <url>` to ingest an article mid-session. Evening: `/nase:wrap-up` — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry, written to `work/journals/`.
+**Daily workflow out of the box** — Morning: `/nase:today`. Work: `/nase:onboard <repo>` before touching any repo; `/nase:learn <url>` to ingest an article mid-session. Evening: `/nase:wrap-up` — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry, written to `workspace/journals/`.
 
 **Learn from anything** — `/nase:learn` accepts plain text, a GitHub repo URL, or an article URL. For URLs, it fetches the content, filters for relevance to your stack, extracts concrete learnings, shows them to you for review, then writes to both `lessons.md` and the appropriate KB domain file.
 
 **Tech digest on autopilot** — `/nase:tech-digest` fetches your configured sources (blogs, changelogs, HN), filters for your stack, and prepends a dated digest to `tech-trends.md`. Entries older than 30 days are archived automatically.
 
-**Skills that write skills** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as pattern files under `work/skills/`. These are user-specific and gitignored — the workspace literally programs itself.
+**Skills that write skills** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as pattern files under `workspace/skills/`. These are user-specific and gitignored — the workspace literally programs itself.
 
-**Auto-backup with hooks** — A `Stop` hook runs at every session end, creating a timestamped zip archive of `work/` at your configured backup path (OneDrive, local drive, etc.). Configurable retention policy (keep last N backups or last N days) automatically cleans up old archives. Requires `7z` (`scoop install 7zip`).
+**Auto-backup with hooks** — A `Stop` hook runs at every session end, creating a timestamped zip archive of `workspace/` at your configured backup path (OneDrive, local drive, etc.). Configurable retention policy (keep last N backups or last N days) automatically cleans up old archives. Requires `7z` (`scoop install 7zip`).
 
 ---
 
@@ -66,16 +67,17 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:init [name]` | First-time setup: set AI name, configure backup, initialize `work/`; offers to restore from backup on fresh init |
-| `/nase:doctor` | Self-diagnostic: verify hooks, backup config, work/ structure, tools |
+| `/nase:init [name]` | First-time setup: set AI name, configure backup, initialize `workspace/`; offers to restore from backup on fresh init |
+| `/nase:doctor` | Self-diagnostic: verify hooks, backup config, workspace/ structure, tools |
 | `/nase:help` | Show usage guide and command overview |
 
 ### Knowledge base
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:onboard <path-or-url>` | Onboard a new repo (local path or GitHub URL) |
-| `/nase:tech-digest` | Fetch latest tech news → `work/kb/general/tech-trends.md` |
+| `/nase:onboard` | Refresh ALL already-onboarded repos from `workspace/context.md` (run at session start) |
+| `/nase:onboard <path-or-url>` | Onboard or refresh a single repo (local path or GitHub URL) |
+| `/nase:tech-digest` | Fetch latest tech news → `workspace/kb/general/tech-trends.md` |
 | `/nase:kb-update [domain]` | Update knowledge base with session learnings |
 | `/nase:kb-review [scope]` | Review, organize, and consolidate KB — deduplicate, cross-reference, surface stale content |
 
@@ -84,10 +86,10 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | Command | Purpose |
 |---------|---------|
 | `/nase:today` | Morning kickoff: today's focus + priorities + blockers |
-| `/nase:learn [tip\|url]` | Capture a tip, or feed a URL (article/repo) → auto-extract learnings → `work/tasks/lessons.md` + relevant KB file |
+| `/nase:learn [tip\|url]` | Capture a tip, or feed a URL (article/repo) → auto-extract learnings → `workspace/tasks/lessons.md` + relevant KB file |
 | `/nase:reflect [task]` | Post-task reflection |
-| `/nase:extract-skills` | Analyze current session → extract reusable patterns as files under `work/skills/` |
-| `/nase:wrap-up [force]` | End-of-day routine: reflect → learn → extract-skills → kb-update → journal entry → `work/journals/YYYY-MM-DD.md` |
+| `/nase:extract-skills` | Analyze current session → extract reusable patterns as files under `workspace/skills/` |
+| `/nase:wrap-up [force]` | End-of-day routine: reflect → learn → extract-skills → kb-update → journal entry → `workspace/journals/YYYY-MM-DD.md` |
 
 ### Autonomous execution
 
@@ -109,15 +111,15 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:recap [week\|last week\|month\|last month\|YYYY-MM-DD to YYYY-MM-DD]` | Structured recap of work over a period (weekly Mon–Sun, monthly 1st–last day) → chat + auto-saves to `work/recaps/` |
+| `/nase:recap [week\|last week\|month\|last month\|YYYY-MM-DD to YYYY-MM-DD]` | Structured recap of work over a period (weekly Mon–Sun, monthly 1st–last day) → chat + auto-saves to `workspace/recaps/` |
 | `/nase:estimate-eta <task>` | Effort estimate |
-| `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `work/stats/report-YYYY-MM-DD.md` |
+| `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `workspace/stats/report-YYYY-MM-DD.md` |
 
 ### Backup & restore
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:restore` | Restore `work/` from a zip backup (lists available backups, lets you pick one) |
+| `/nase:restore` | Restore `workspace/` from a zip backup (lists available backups, lets you pick one) |
 
 ---
 
@@ -201,9 +203,9 @@ flowchart TD
 
 | Hook | When | What it does |
 |------|------|--------------|
-| `SessionStart` | Every new Claude Code session | Creates `work/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today |
-| `Stop` | Every session end | Surfaces pending todos from `work/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `work/` → backup target; applies retention cleanup; writes status to `work/logs/.backup-status` |
-| `PreToolUse` + `PostToolUse` | Before/after every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `work/stats/skill-usage.jsonl`; dual-hook improves coverage (PostToolUse alone misses some invocations); same-second dedup prevents double-counting; used by `/nase:stats` |
+| `SessionStart` | Every new Claude Code session | Creates `workspace/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today |
+| `Stop` | Every session end | Surfaces pending todos from `workspace/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `workspace/` → backup target; applies retention cleanup; writes status to `workspace/logs/.backup-status` |
+| `PreToolUse` + `PostToolUse` | Before/after every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `workspace/stats/skill-usage.jsonl`; dual-hook improves coverage (PostToolUse alone misses some invocations); same-second dedup prevents double-counting; used by `/nase:stats` |
 | `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
 
 The `Stop` hook reads `.backup-target` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
@@ -251,10 +253,10 @@ nase/
   README.md             ← this file
 ```
 
-### `work/` directory (git-ignored, created by `/nase:init`)
+### `workspace/` directory (git-ignored, created by `/nase:init`)
 
 ```
-work/
+workspace/
   config.md               ← AI engineer name + workspace name + backup retention (managed by /nase:init)
   context.md              ← repo list + domain patterns
   tech-digest-config.md   ← personal sources + filter topics for /nase:tech-digest
@@ -267,7 +269,7 @@ work/
       <your-stack>.md ← patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
       tech-trends.md  ← monthly rolling tech digest (auto-appended by /nase:tech-digest)
       tech-trends-archive-YYYY.md  ← entries older than 30 days (auto-archived)
-    ops/              ← deployment/ops knowledge by deployment type (see work/kb/.domain-map.md for known types)
+    ops/              ← deployment/ops knowledge by deployment type (see workspace/kb/.domain-map.md for known types)
   stats/
     skill-usage.jsonl ← append-only log of /nase:* invocations (auto-written by PostToolUse hook)
     report-YYYY-MM-DD.md ← detailed stats report (written by /nase:stats)
@@ -279,7 +281,7 @@ work/
     todo.md           ← current task tracking
 ```
 
-`.backup-target` is at the **workspace root** (not inside `work/`) so it survives a `work/` deletion or restore scenario.
+`.backup-target` is at the **workspace root** (not inside `workspace/`) so it survives a `workspace/` deletion or restore scenario.
 
 | Path | In git? | Reason |
 |------|---------|--------|
@@ -287,13 +289,13 @@ work/
 | `CLAUDE.md` | Yes | Identity + operating rules |
 | `README.md` | Yes | Usage guide |
 | `.backup-target` | No | Personal backup path |
-| `work/` | No | Project-specific content |
+| `workspace/` | No | Project-specific content |
 
 ---
 
 ## Keeping the template updated
 
-The template layer (`.claude/`, `CLAUDE.md`, `README.md`) is tracked by git. Your work content (`work/`) is git-ignored and stays local.
+The template layer (`.claude/`, `CLAUDE.md`, `README.md`) is tracked by git. Your work content (`workspace/`) is git-ignored and stays local.
 
 **Improve the template as you work** — When you refine a skill or discover a better workflow:
 ```bash
@@ -308,14 +310,14 @@ git push
 
 ## Customizing for your stack
 
-- **Add KB domains**: create `work/kb/general/<domain>.md` and edit `work/kb/.domain-map.md`
-- **Add a repo**: `/nase:onboard <path-or-url>` — creates the KB entry and updates `work/context.md`
-- **Change tech news sources**: edit `work/tech-digest-config.md`
-- **Change AI identity**: run `/nase:init` or edit `work/config.md`
+- **Add KB domains**: create `workspace/kb/general/<domain>.md` and edit `workspace/kb/.domain-map.md`
+- **Add a repo**: `/nase:onboard <path-or-url>` — creates the KB entry and updates `workspace/context.md`; run `/nase:onboard` (no args) to refresh all repos at once
+- **Change tech news sources**: edit `workspace/tech-digest-config.md`
+- **Change AI identity**: run `/nase:init` or edit `workspace/config.md`
 - **Change backup location**: edit `.backup-target` at the workspace root (one line, bash-format path)
-- **Change backup retention**: edit `backup_retention:` in `work/config.md` (e.g. `count:100` or `days:7`)
+- **Change backup retention**: edit `backup_retention:` in `workspace/config.md` (e.g. `count:100` or `days:7`)
 
-> **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `work/context.md` — no cloning or network access required.
+> **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `workspace/context.md` — no cloning or network access required.
 
 ---
 
