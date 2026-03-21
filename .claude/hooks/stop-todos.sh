@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) || true
-if [ -z "$WORKSPACE" ]; then
+NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+if [ -z "$NASE_ROOT" ]; then
   exit 0
 fi
 
 # Pending todos — remind user before session ends
-TODO_FILE="$WORKSPACE/work/tasks/todo.md"
+TODO_FILE="$NASE_ROOT/workspace/tasks/todo.md"
 if [ -f "$TODO_FILE" ]; then
   PENDING=$(grep '^\s*- \[ \]' "$TODO_FILE" | sed 's/.*- \[ \] //' | head -10)
   TODO_COUNT=$(grep -c '^\s*- \[ \]' "$TODO_FILE" 2>/dev/null || true)

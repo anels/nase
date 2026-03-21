@@ -30,7 +30,7 @@ Parse $ARGUMENTS:
 - Article / blog post URL → fetch full content. Focus on: key insights, concrete techniques, tradeoffs discussed.
 - Extract the context hint from $ARGUMENTS if provided (text after the URL and a comma/dash).
 
-**2b. Filter for relevance** — keep only content related to the workspace's tech stack and interests. Read `work/tech-digest-config.md` for the user's configured filter topics. If unavailable, infer from `work/context.md` and existing KB files.
+**2b. Filter for relevance** — keep only content related to the workspace's tech stack and interests. Read `workspace/tech-digest-config.md` for the user's configured filter topics. If unavailable, infer from `workspace/context.md` and existing KB files.
 
 Discard marketing content, unrelated domains, and obvious filler.
 
@@ -62,7 +62,7 @@ options:
 
 ### 4. Write to lessons.md
 
-Ensure `work/tasks/lessons.md` exists (create with `# Lessons Learned\n` header if missing). Append one entry per learning:
+Ensure `workspace/tasks/lessons.md` exists (create with `# Lessons Learned\n` header if missing). Append one entry per learning:
 ```
 ## {category} — {YYYY-MM-DD}
 **Tip:** {one-line summary}

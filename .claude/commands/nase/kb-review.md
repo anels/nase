@@ -1,6 +1,6 @@
 ---
 name: nase:kb-review
-description: Review, organize, and consolidate knowledge base files — find duplicates, build cross-references, surface stale content, and promote lessons into KB. Use when asked "review KB", "organize notes", "clean up knowledge base", "what's in my KB", "整理笔记", "复习", or periodically (weekly/monthly) as knowledge hygiene. Also use when the KB feels messy, when you notice overlapping notes across files, or after a burst of /nase:learn entries that might belong in structured KB files.
+description: Review, organize, and consolidate knowledge base files — find duplicates, build cross-references, surface stale content, promote lessons into KB, and clean up temporary/outdated files. Use when asked "review KB", "organize notes", "clean up knowledge base", "clean up workspace", "what's in my KB", "整理笔记", "复习", or periodically (weekly/monthly) as knowledge hygiene. Also use when the KB feels messy, when you notice overlapping notes across files, or after a burst of /nase:learn entries that might belong in structured KB files.
 ---
 
 Review and organize the knowledge base — deduplicate, cross-reference, consolidate, and surface stale content.
@@ -17,11 +17,11 @@ Knowledge bases grow organically — notes get added in the moment without check
 ### Step 0: Determine Scope
 
 Parse $ARGUMENTS to decide what to review:
-- `all` or empty → scan everything: `work/kb/general/`, `work/kb/projects/`, `work/kb/ops/`, `work/tasks/lessons.md`, `work/kb/.domain-map.md`
-- `general` → only `work/kb/general/*.md`
-- `projects` → only `work/kb/projects/*.md`
-- `ops` → only `work/kb/ops/*.md`
-- `lessons` → only `work/tasks/lessons.md` (review for promotion to KB)
+- `all` or empty → scan everything: `workspace/kb/general/`, `workspace/kb/projects/`, `workspace/kb/ops/`, `workspace/tasks/lessons.md`, `workspace/kb/.domain-map.md`
+- `general` → only `workspace/kb/general/*.md`
+- `projects` → only `workspace/kb/projects/*.md`
+- `ops` → only `workspace/kb/ops/*.md`
+- `lessons` → only `workspace/tasks/lessons.md` (review for promotion to KB)
 - A specific filename → review that single file in depth
 
 ### Step 1: Scan and Index
@@ -77,7 +77,7 @@ Identify related items across files that should link to each other but don't:
 
 - A **project KB** mentions a general pattern but doesn't link to the general KB file
 - A **lesson** in `lessons.md` is about a topic that has a dedicated KB file but isn't referenced there
-- A **project KB** mentions ops procedures also documented in `work/kb/ops/`
+- A **project KB** mentions ops procedures also documented in `workspace/kb/ops/`
 - An **ops runbook** references a project but doesn't link to that project's KB file
 - The **domain map** is missing entries for existing KB files
 
@@ -101,14 +101,14 @@ Present as a **Connection Map**:
 
 **Empty or near-empty files:** Files with only headers and no substantive content.
 
-**Domain map gaps:** Files in `work/kb/` that exist but have no entry in `.domain-map.md`.
+**Domain map gaps:** Files in `workspace/kb/` that exist but have no entry in `.domain-map.md`.
 
-**Lessons ready for promotion:** Entries in `work/tasks/lessons.md` that are mature enough to be distilled into a KB file. Lessons use `## {category} — {date}` headers (not tags); match by the category word in the header:
+**Lessons ready for promotion:** Entries in `workspace/tasks/lessons.md` that are mature enough to be distilled into a KB file. Lessons use `## {category} — {date}` headers (not tags); match by the category word in the header:
 - Lessons with `## workflow —` header → candidates for `general/workflow.md`
 - Lessons with `## debugging —` header → candidates for `general/debugging.md`
 - Lessons with `## code —` header → candidates for `general/dotnet.md` or relevant project KB
 - Lessons with `## architecture —` header → candidates for `general/system-design.md` or relevant project KB
-- Lessons with `## ops —` header → candidates for `work/kb/ops/` files
+- Lessons with `## ops —` header → candidates for `workspace/kb/ops/` files
 - Lessons with `## project —` header or about a specific project → candidates for that project's KB file
 
 ```
@@ -127,7 +127,32 @@ Present as a **Connection Map**:
 - lessons.md "{tip}" → promote to `{target-kb-file}`
 ```
 
-### Step 5: Suggest Reorganization
+### Step 4b: Scan for Temporary and Outdated Files
+
+Scan `workspace/` for files that are not part of the KB structure but accumulated during daily work. These waste space, clutter search results, and can confuse future context loading.
+
+**Temporary artifacts** — match by extension or naming pattern:
+- Extensions: `.diff`, `.patch`, `.tmp`, `.bak`, `.orig`, `.log` (exclude `workspace/logs/` — those are intentional)
+- Patterns: `*-pre-restore-*`, `*-snapshot-*`, `*.backup`
+
+**Outdated one-off files** — files in `workspace/` root (not in standard subdirectories like `kb/`, `logs/`, `tasks/`, `journals/`, `stats/`, `recaps/`, `skills/`, `scripts/`) that haven't been modified in >14 days. These are often ad-hoc files created for a specific task and forgotten.
+
+**Old reports** — files in `workspace/stats/report-*.md` older than 30 days (the latest report supersedes older ones).
+
+```
+## Temporary & Outdated Files
+
+### 🗑️ Temp artifacts (safe to delete)
+- `{file}` ({size}, {age} days old) — {reason: e.g., "PR diff from review session"}
+
+### 📦 Stale one-off files (review before deleting)
+- `{file}` ({size}, last modified {date}) — not in any standard directory
+
+### 📊 Old reports (superseded)
+- `{file}` — superseded by `{newer-file}`
+```
+
+If no temp/outdated files found, skip this section.
 
 Based on Steps 2-4, propose concrete actions grouped by effort:
 
@@ -148,6 +173,9 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 ### Cleanup (low priority)
 - [ ] Archive or populate empty file: {file}
 - [ ] Update stale entry in {file} — verify if still accurate
+- [ ] Delete temp artifacts: {list of files from Step 4b}
+- [ ] Review/delete stale one-off files: {list from Step 4b}
+- [ ] Delete superseded reports: {list from Step 4b}
 ```
 
 ### Step 6: Execute (with approval)
@@ -155,7 +183,7 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 Use `AskUserQuestion` to present the action plan:
 - **Option 1: "Apply quick fixes"** — execute only the Quick Fixes (cross-refs, dedup, contradiction fixes, domain map updates)
 - **Option 2: "Apply all"** — execute everything including consolidation and cleanup
-- **Option 3: "Just the report"** — save the report to `work/logs/{YYYY-MM-DD}.md` and stop
+- **Option 3: "Just the report"** — save the report to `workspace/logs/{YYYY-MM-DD}.md` and stop
 
 For each change applied:
 - Read the target file first
@@ -177,7 +205,7 @@ Display what was done:
 Next review suggested: {date + 7 days}
 ```
 
-Append a one-line entry to `work/logs/{YYYY-MM-DD}.md`:
+Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
 ```
 - KB review ({scope}) — {N} files scanned, {N} issues found, {N} fixes applied
 ```

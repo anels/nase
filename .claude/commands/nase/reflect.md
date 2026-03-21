@@ -29,7 +29,7 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
 
    Scores are a calibration tool, not a grade. They help detect patterns over time — if efficiency is consistently low, it signals a workflow issue worth addressing.
 
-4. Save key learnings to `work/tasks/lessons.md` using the format defined in `/nase:learn` (ensure file exists, create with header if missing).
+4. Save key learnings to `workspace/tasks/lessons.md` using the format defined in `/nase:learn` (ensure file exists, create with header if missing).
    - If the extracted pattern is a reusable rule: save to auto-memory (the project auto-memory directory (see MEMORY.md in your conversation context)) as a feedback-type memory file.
    - Verify the append: read back the last entry to confirm it was written correctly.
 

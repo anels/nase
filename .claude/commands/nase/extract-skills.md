@@ -35,7 +35,7 @@ For each candidate, it must pass all three:
   - ✅ Pass: "How to resolve a diverged git worktree before onboarding" — could happen in any repo
   - ❌ Fail: "How to fix the ADF pipeline for the Mercy tenant" — specific to one customer/env
 
-- **Non-obvious** — is this already covered by a `/nase:*` command, a CLAUDE.md rule, or an existing `work/skills/` file? If so, consider updating the existing one instead.
+- **Non-obvious** — is this already covered by a `/nase:*` command, a CLAUDE.md rule, or an existing `workspace/skills/` file? If so, consider updating the existing one instead.
   - ✅ Pass: A multi-step sequence for safely testing hook changes without triggering the Stop backup — not in any existing skill
   - ❌ Fail: "Run `/nase:doctor` when something feels broken" — already in CLAUDE.md
 
@@ -48,7 +48,7 @@ If zero candidates pass: report "No extractable skills found in this session." a
 ### 3. Check for duplicates
 
 For each remaining candidate:
-- Scan `.claude/commands/nase/` and `work/skills/` file names for similar skills
+- Scan `.claude/commands/nase/` and `workspace/skills/` file names for similar skills
 - If a near-duplicate exists: propose updating that file instead of creating a new one
 
 ### 4. Propose to the user
@@ -56,7 +56,7 @@ For each remaining candidate:
 For each skill to create or update, show:
 ```
 Pattern: {proposed-name}
-File: work/skills/{proposed-name}.md
+File: workspace/skills/{proposed-name}.md
 Summary: {one-line description}
 Steps: {brief outline of the workflow}
 ```
@@ -68,7 +68,7 @@ Otherwise confirm using AskUserQuestion:
 question: "Create these skills?"
 header: "Confirm Skills"
 options:
-  - label: "Yes — create all"  , description: "Write skill files to work/skills/"
+  - label: "Yes — create all"  , description: "Write skill files to workspace/skills/"
   - label: "Edit"               , description: "Adjust before creating"
   - label: "No — skip"          , description: "Nothing is written"
 ```
@@ -78,7 +78,7 @@ options:
 
 ### 5. Write the skill file(s)
 
-Create `work/skills/{name}.md` for each approved skill:
+Create `workspace/skills/{name}.md` for each approved skill:
 
 ```markdown
 {One-sentence description — what this skill does and when to reach for it.}
@@ -107,7 +107,7 @@ Writing guidelines:
 
 ### 6. Cross-reference lessons
 
-If the extracted skill captures a hard-won lesson (not just a procedural template), append a brief entry to `work/tasks/lessons.md` noting the pattern and why it matters.
+If the extracted skill captures a hard-won lesson (not just a procedural template), append a brief entry to `workspace/tasks/lessons.md` noting the pattern and why it matters.
 
 ### 7. Report
 

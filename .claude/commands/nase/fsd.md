@@ -17,12 +17,9 @@ If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and
 
 Research first — minimize questions to the user.
 
-<parallel>
-- Read `work/context.md` — list of repos and their purposes
-- Read `work/kb/.domain-map.md` — repo → KB file mapping
-</parallel>
+Read `workspace/context.md` — list of repos and their purposes.
 
-From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Read the candidate KB file (`work/kb/projects/{domain}.md`) — focus on: **Build & Run Commands**, **Architecture**, **Critical Constraints**.
+From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Then follow `.claude/docs/repo-resolution.md` Part 2 (KB File Loading) to load the candidate KB file — focus on: **Build & Run Commands**, **Architecture**, **Critical Constraints**.
 
 Then check the repo's git state:
 ```bash
@@ -104,18 +101,9 @@ Implement the task. Follow the repo's coding standards. Keep changes minimal and
 
 ## Phase 5: Build & Test Loop (max 5 iterations)
 
-Get build and test commands from the KB file's **Build & Run Commands** section. If missing there, check: repo's `CLAUDE.md`, `package.json` scripts, `Makefile`, `*.sln` / `dotnet` conventions, or `.github/workflows/`. If no commands are found after checking all sources, stop and ask:
-```
-question: "What commands should I use to build and test this repo?"
-header: "Build & Test Commands"
-```
-
-**For each iteration:**
-1. Run the build command. If it fails: read the error, identify root cause, fix it. Do not retry the same fix twice — try a different approach.
-2. Run the test command. If it fails: read the failure output, identify whether it's a test expectation issue or a logic bug. Fix production code — never modify tests to make them pass.
-3. If both pass: proceed to Phase 6.
-
-If still failing after 5 iterations: stop, print the last build/test output in full, and ask the user for guidance. Do not commit broken code.
+Get build and test commands from the KB file or repo's `CLAUDE.md`.
+Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations).
+On success: proceed to Phase 6.
 
 ---
 
@@ -127,21 +115,8 @@ Run `/simplify` on the changed files. If the skill is not available (not all Cla
 
 ## Phase 7: Commit & Push
 
-Stage files explicitly (never `git add -A` — avoid accidentally staging secrets or unrelated files):
-```bash
-git -C {worktree_or_repo} add {each changed file by name}
-```
-
-Verify staged diff looks correct with `git -C {worktree_or_repo} diff --cached --stat`.
-
-Quick secrets scan: glance at changed files for hardcoded tokens, passwords, or personal info. If anything looks suspicious, stop and ask before committing.
-
-Create an initial commit with a reasonable message, then run `/nase:improve-commit-message --auto-accept` to refine it without pausing for confirmation.
-
-Push:
-```bash
-git -C {worktree_or_repo} push -u origin {branch_name}
-```
+Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
+Deviation: use `push -u origin {branch_name}` on first push (sets upstream tracking).
 
 ---
 
@@ -198,7 +173,7 @@ FSD complete ✓
 Next: open the draft PR, review the diff, then promote to "ready for review".
 ```
 
-Append to `work/logs/{YYYY-MM-DD}.md`:
+Append to `workspace/logs/{YYYY-MM-DD}.md`:
 ```
 - FSD: {one-line task summary} → `{branch_name}` [{PR URL or "no PR"}]
 ```
@@ -215,6 +190,5 @@ Append to `work/logs/{YYYY-MM-DD}.md`:
 - **Secrets** — if unsure about a file during the staging scan, stop and ask rather than committing and reverting later.
 - **Test loop bound** — 5 iterations is a hard cap. Reporting an honest failure is better than an infinite loop.
 - **PR is always draft** — FSD never opens a ready-for-review PR. Promotion is a human decision.
-- **No AI attribution** — no "Co-Authored-By: Claude" lines in commits. No "Generated with Claude Code" in PR descriptions.
 
 </error_handling>

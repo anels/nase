@@ -45,7 +45,7 @@ Resolve these first (or use /nase:address-comments {pr_url}).
 
 ## Phase 3: Locate Repo
 
-Read `work/context.md` to find the local path for this repo. If not found, ask the user.
+Follow `.claude/docs/repo-resolution.md` Part 1 (Repo Resolution) to resolve the local path from the PR's `owner/repo`. If not found, ask the user.
 
 ## Phase 4: Fetch & Verify Branch State
 
@@ -179,13 +179,8 @@ Create the squash commit (if not already done in Phase 6 for single-commit PRs):
 git -C {worktree_path} commit -m "{squash_commit_message}"
 ```
 
-Force push with lease — this is safer than `--force` because it fails if someone else pushed to the branch between our fetch and now:
-
-```bash
-git -C {worktree_path} push --force-with-lease origin {pr_branch}
-```
-
-If force-with-lease fails: report the error and stop. Someone pushed new commits — the user needs to reconcile.
+Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
+Deviation: use `--force-with-lease` instead of normal push. If force-push fails, report the error and stop — someone pushed new commits and the user needs to reconcile.
 
 ## Phase 9: Update PR on GitHub
 
@@ -227,7 +222,7 @@ options:
   - label: "No — I'll handle it"
 ```
 
-Append to `work/logs/{YYYY-MM-DD}.md`:
+Append to `workspace/logs/{YYYY-MM-DD}.md`:
 ```
 - Prep merge: {repo_name}#{pr_number} — squashed {N} commits, updated title/description
 ```
@@ -242,6 +237,5 @@ Append to `work/logs/{YYYY-MM-DD}.md`:
 - **Always use `--force-with-lease`** — never bare `--force`. This protects against overwriting someone else's push. If it fails, stop and tell the user rather than retrying with `--force`.
 - **Unresolved comments block everything** — the whole point of this skill is to prepare a *clean* merge. If comments are unresolved, the PR isn't ready. Point the user to `/nase:address-comments`.
 - **Single-commit PRs** — skip the squash, still update title/description if needed.
-- **No AI attribution** — no "Co-Authored-By: Claude" in the commit or "Generated with Claude Code" in the PR description.
 - **Confirm before destructive action** — squash + force-push rewrites history. Always show the user what will happen and get explicit confirmation.
 - **Preserve co-authors** — when squashing, if the original commits have multiple authors, add `Co-Authored-By` trailers for the non-primary authors so their contribution is preserved in git history (but not for Claude/AI).

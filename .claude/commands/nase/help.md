@@ -17,11 +17,11 @@ Pulls from README.md dynamically so the help output always matches the actual av
 ---
 **KB layout**
 ```
-work/kb/
+workspace/kb/
   projects/   ← per-repo knowledge (architecture, constraints, patterns)
   general/    ← cross-project (stack patterns, workflow, debugging, tech-trends)
-work/tasks/   ← lessons.md, todo.md
-work/logs/    ← daily logs + .backup-status
+workspace/tasks/   ← lessons.md, todo.md
+workspace/logs/    ← daily logs + .backup-status
 ```
 **Backup config**: `.backup-target` at workspace root. Set during `/nase:init`.
 

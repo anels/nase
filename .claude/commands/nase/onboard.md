@@ -1,6 +1,6 @@
 ---
 name: nase:onboard
-description: Onboard or refresh a project repo in the workspace knowledge base. Run before EVERY work session on a repo. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "add repo", or "update knowledge base" for a project.
+description: Onboard or refresh project repos in the workspace knowledge base. Without arguments, refreshes ALL already-onboarded repos from workspace/context.md. With a repo path or GitHub URL, onboards or refreshes that single repo. Run before EVERY work session. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "refresh all repos", "add repo", or "update knowledge base".
 ---
 
 Run before EVERY work session on a repo — not just the first time. Projects evolve; keeping the KB current prevents working from stale assumptions. Enriches existing entries rather than overwriting.
@@ -10,23 +10,55 @@ Read workspace state (context.md, team profiles, recent logs) before generating 
 Verify file existence before reading — degrade gracefully if files are missing.
 </investigate_before_acting>
 
-**Input:** $ARGUMENTS — local repo path **or** GitHub URL
+**Input:** $ARGUMENTS — optional. Local repo path, GitHub URL, or empty for batch refresh.
+- **No arguments**: refresh ALL repos already listed in `workspace/context.md`
 - Local path (Windows): `C:\source\repos\MyRepo`
 - Local path (Bash/WSL): `/c/source/repos/MyRepo` or `~/source/repos/MyRepo`
 - GitHub HTTPS URL: `https://github.com/OrgName/RepoName`
 - GitHub SSH URL: `git@github.com:OrgName/RepoName.git`
 
-## Input Guard (run before all steps)
-- If $ARGUMENTS is empty or blank:
-  - Output: `Usage: /onboard <repo-path-or-github-url>  (e.g. /onboard ~/source/repos/MyRepo  or  /onboard https://github.com/Org/Repo)`
-  - Stop immediately — do not proceed.
+## Mode Detection (run before all steps)
+- If $ARGUMENTS is empty or blank → **Batch Refresh Mode** (see below)
+- If $ARGUMENTS is a path or URL → **Single Repo Mode** (skip to URL Resolution / Steps)
+
+## Batch Refresh Mode (no arguments)
+
+When $ARGUMENTS is empty, refresh all repos already tracked in `workspace/context.md`:
+
+1. Read `workspace/context.md` — extract every repo path from lines matching `` - `{path}` — `` pattern. Also derive each repo's KB file path from `workspace/kb/.domain-map.md`.
+2. If no repos found: output "No repos in `workspace/context.md`. Use `/onboard <path>` to add one." — stop.
+3. For each repo, read its KB file and extract the `<!-- Last updated: YYYY-MM-DD -->` date. If the KB file doesn't exist or has no date, show "never".
+4. Show the list with last-refreshed dates and confirm:
+   ```
+   Found {N} repos to refresh:
+     1. {RepoName} (last: {date}) — {path}
+     2. {RepoName} (last: {date}) — {path}
+     3. {RepoName} (last: never)  — {path}
+     ...
+   ```
+   Repos are sorted by last-refreshed date (oldest/never first) so stale repos stand out.
+5. For each repo, run the **Single Repo Mode** workflow below (Steps 0 through 7) with that repo's path as input.
+   - Use parallel subagents (one per repo) when possible — each agent runs the full onboard workflow independently.
+   - If a repo fails (e.g. can't fast-forward, path doesn't exist), log the error and continue with the remaining repos — don't stop the batch.
+6. After all repos complete, print a summary:
+   ```
+   Batch refresh complete:
+     ✓ {RepoName} — refreshed
+     ✓ {RepoName} — refreshed
+     ✗ {RepoName} — failed: {reason}
+   ```
+7. Update daily log with: `- Batch onboard refresh: {N} repos refreshed ({M} failed)`
+8. Stop — do not continue to Single Repo Mode.
+
+---
+
+## Single Repo Mode (with arguments)
 
 ## URL Resolution (run if input looks like a URL)
-If $ARGUMENTS starts with `https://github.com/` or `git@github.com:`:
-1. Extract the repo name: last path segment, strip `.git` suffix (e.g. `https://github.com/Org/MyRepo` → `MyRepo`)
-2. Read `work/context.md` and search for a repo path whose last path component matches the extracted name (case-insensitive, match both `/` and `\` separators)
-3. If a match is found: use that local path as the resolved input for all subsequent steps. Note: "Resolved GitHub URL `{url}` → local path `{path}`"
-4. If no match found in context.md: output "GitHub URL provided but no local path found for `{name}` in `work/context.md`. Please provide the local path directly, or add it to context.md first." — stop.
+
+Follow the repo resolution algorithm in `.claude/docs/repo-resolution.md` (Part 1). Use the resolved local path as input for all subsequent steps.
+
+Note: onboard's batch mode (no arguments) reads `workspace/context.md` directly to enumerate all repo paths — it does not go through URL resolution.
 
 ## Steps
 
@@ -64,10 +96,10 @@ Skip this step entirely if $ARGUMENTS resolved to a GitHub URL with no local pat
 - Derive repo name (last path component, lowercased for kb filename)
 - Derive kb domain key (short lowercase, e.g. `my-repo`)
 - Read workspace `nase/CLAUDE.md` — note repos already onboarded
-- Check if `work/kb/projects/{domain}.md` already exists:
+- Check if `workspace/kb/projects/{domain}.md` already exists:
   - If yes: this is a **refresh** — focus on what has changed since the last entry's `<!-- Last updated -->` date
   - If no: this is first-time onboarding — create from scratch
-- Check if `work/context.md` already contains this repo — if so, update rather than append in Step 5
+- Check if `workspace/context.md` already contains this repo — if so, update rather than append in Step 5
 
 ### 3. Self-Study the Repo (explore before asking)
 <parallel>
@@ -89,7 +121,7 @@ Build mental model of:
 
 ### 3b. Ownership Analysis
 
-Read `work/context.md` to get the team roster and GitHub handles.
+Read `workspace/context.md` to get the team roster and GitHub handles.
 
 For each top-level directory (or logical module if monorepo-style), run:
 ```bash
@@ -111,12 +143,12 @@ Synthesize ownership signals:
 - **Dormant areas**: directories with no commits in 6 months — flag for coverage gap
 - **New hire ramp**: if a team member has < 10 commits total, note them as onboarding rather than an owner
 
-Cross-reference with the team member `Focus Area` in `work/context.md` — if git data conflicts with the declared focus, note the discrepancy.
+Cross-reference with the team member `Focus Area` in `workspace/context.md` — if git data conflicts with the declared focus, note the discrepancy.
 
 If refreshing, re-run this analysis and note any ownership shifts since the last update.
 
 ### 4. Create or Update Knowledge Base Entry
-- If **first-time**: write `work/kb/projects/{domain}.md` fresh.
+- If **first-time**: write `workspace/kb/projects/{domain}.md` fresh.
 - If **refreshing**: update the existing file — enrich architecture notes, update constraints, add new decisions. Do not wipe content that is still valid. Update the `<!-- Last updated -->` date.
 
 Use this structure:
@@ -174,14 +206,14 @@ Use this structure:
 ### 5. Update Workspace Files
 <parallel>
 
-**`work/context.md`** — add repo to the Repos section (idempotency: check if the repo path already appears before appending — skip if already present):
+**`workspace/context.md`** — add repo to the Repos section (idempotency: check if the repo path already appears before appending — skip if already present):
 ```
-- `{repo path}` — {purpose} (see `work/kb/projects/{domain}.md`)
+- `{repo path}` — {purpose} (see `workspace/kb/projects/{domain}.md`)
 ```
 
-**`work/kb/.domain-map.md`** — append domain mapping (create file if absent):
+**`workspace/kb/.domain-map.md`** — append domain mapping (create file if absent):
 ```
-- {domain} → work/kb/projects/{domain}.md
+- {domain} → workspace/kb/projects/{domain}.md
 ```
 (Never modify `.claude/commands/kb-update.md` directly — the domain map is now managed via this file.)
 
@@ -194,9 +226,9 @@ If the repo is already listed, skip this update.
 </parallel>
 
 ### 6. Update Daily Log
-Append to `work/logs/YYYY-MM-DD.md`:
+Append to `workspace/logs/YYYY-MM-DD.md`:
 ```
-- Onboarded/refreshed `{RepoName}` → updated `work/kb/projects/{domain}.md`
+- Onboarded/refreshed `{RepoName}` → updated `workspace/kb/projects/{domain}.md`
 ```
 
 ### 7. Confirm

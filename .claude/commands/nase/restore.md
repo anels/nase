@@ -1,6 +1,6 @@
 ---
 name: nase:restore
-description: Restore work/ from a zip backup. Use after a machine migration, accidental deletion, when work/ is out of sync with the backup, or when asked to "sync work/", "recover workspace", "restore from backup", or "pull backup".
+description: Restore workspace/ from a zip backup. Use after a machine migration, accidental deletion, when workspace/ is out of sync with the backup, or when asked to "sync workspace/", "recover workspace", "restore from backup", or "pull backup".
 ---
 
 Restores from timestamped zip backups. Creates a pre-restore snapshot before overwriting, so you can always roll back.
@@ -8,10 +8,8 @@ Restores from timestamped zip backups. Creates a pre-restore snapshot before ove
 ## Steps
 
 ### 1. Read backup config
-- Look for the backup target in this order:
-  1. `$WORKSPACE/.backup-target` (workspace root — preferred location)
-  2. `work/.backup-target` (legacy location — backward compatible)
-- If neither file exists, tell the user: no backup target configured — run `/nase:init` first
+- Read `$NASE_ROOT/.backup-target` (workspace root)
+- If the file does not exist, tell the user: no backup target configured — run `/nase:init` first
 
 ### 2. List available backups
 List all zip backups in the target directory:
@@ -42,12 +40,12 @@ options:
 ```
 
 ### 4. Confirm with user
-Before asking for confirmation, show files that exist in `work/` but NOT in the selected backup:
+Before asking for confirmation, show files that exist in `workspace/` but NOT in the selected backup:
 ```bash
 # List files in the zip
 7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sort > /tmp/backup-files.txt
-# List files in current work/
-(cd "$WORKSPACE/work" && find . -type f | sort) > /tmp/local-files.txt
+# List files in current workspace/
+(cd "$NASE_ROOT/workspace" && find . -type f | sort) > /tmp/local-files.txt
 # Files that will be deleted
 comm -23 /tmp/local-files.txt /tmp/backup-files.txt
 ```
@@ -55,23 +53,23 @@ If any such files exist, warn: "The following files exist locally but not in the
 
 Then confirm:
 ```
-question: "Restore will overwrite work/ with {ZIP_NAME}. Files to be deleted (not in backup): {N or 'none'}."
+question: "Restore will overwrite workspace/ with {ZIP_NAME}. Files to be deleted (not in backup): {N or 'none'}."
 header: "Confirm Restore"
 options:
-  - label: "Yes — restore now"  , description: "Overwrites work/ with backup; snapshot created first"
+  - label: "Yes — restore now"  , description: "Overwrites workspace/ with backup; snapshot created first"
   - label: "No — abort"          , description: "No changes made"
 ```
 
 ### 5. Create pre-restore snapshot
 Before any changes, create a local snapshot for rollback:
 ```bash
-cp -rp "$WORKSPACE/work" "$WORKSPACE/work-pre-restore-$(date +%Y%m%dT%H%M%S)/"
+cp -rp "$NASE_ROOT/workspace" "$NASE_ROOT/workspace-pre-restore-$(date +%Y%m%dT%H%M%S)/"
 ```
-Tell the user: "Snapshot created at `work-pre-restore-{timestamp}/`. Delete it once you've verified the restore."
+Tell the user: "Snapshot created at `workspace-pre-restore-{timestamp}/`. Delete it once you've verified the restore."
 
 Before proceeding, verify the snapshot was created successfully:
 ```bash
-snapshot_dir=$(ls -d "$WORKSPACE"/work-pre-restore-* 2>/dev/null | tail -1)
+snapshot_dir=$(ls -d "$NASE_ROOT"/workspace-pre-restore-* 2>/dev/null | tail -1)
 snapshot_count=$(find "$snapshot_dir" -type f 2>/dev/null | wc -l)
 ```
 If `$snapshot_dir` does not exist or `$snapshot_count` is 0: abort with "ERROR: Pre-restore snapshot is empty or missing — aborting to prevent data loss. Check disk space and permissions, then retry." Do NOT proceed with deletion.
@@ -81,18 +79,18 @@ On a new machine, also suggest `/nase:init` to verify hooks and config.
 ### 6. Restore
 Use the same archive tool that created the backup (check file extension: `.zip` → `unzip`, `.7z` → `7z x`):
 ```bash
-rm -rf "$WORKSPACE/work/"
-mkdir -p "$WORKSPACE/work"
+rm -rf "$NASE_ROOT/workspace/"
+mkdir -p "$NASE_ROOT/workspace"
 # For .zip backups:
-unzip -o "$ZIP_PATH" -d "$WORKSPACE/work/"
+unzip -o "$ZIP_PATH" -d "$NASE_ROOT/workspace/"
 # For .7z backups:
-# 7z x "$ZIP_PATH" -o"$WORKSPACE/work/"
+# 7z x "$ZIP_PATH" -o"$NASE_ROOT/workspace/"
 ```
 
 ### 7. Verify integrity
-- Check that `work/context.md` exists (sentinel file)
-- Count restored files: `find "$WORKSPACE/work" -type f | wc -l`
-- If sentinel missing, warn: "context.md not found — backup may be incomplete. Rollback snapshot at work-pre-restore-{timestamp}/"
+- Check that `workspace/context.md` exists (sentinel file)
+- Count restored files: `find "$NASE_ROOT/workspace" -type f | wc -l`
+- If sentinel missing, warn: "context.md not found — backup may be incomplete. Rollback snapshot at workspace-pre-restore-{timestamp}/"
 
 ### 8. Report
 - Which backup was restored and from where

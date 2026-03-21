@@ -15,14 +15,9 @@ Extract `owner`, `repo`, and `pr_number` from the URL.
 
 ## Phase 1: Locate Repo & Fetch Context
 
-<parallel>
-- Read `work/context.md` — find the local path for this repo
-- Read `work/kb/.domain-map.md` — find the KB file for this repo
-</parallel>
-
-If the repo is not in `work/context.md`, ask the user for the local path.
-
-Read the KB file — focus on **Build & Run Commands** and **Architecture** sections.
+Follow `.claude/docs/repo-resolution.md`:
+- **Part 1** (Repo Resolution): resolve the repo from the PR URL's `owner/repo` — extract the repo name and look it up in `workspace/context.md`. If not found, ask the user for the local path.
+- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it — focusing on **Build & Run Commands** and **Architecture** sections.
 
 ## Phase 2: Fetch Latest & Unresolved Review Threads
 
@@ -131,37 +126,13 @@ Hold all replies until Phase 9 (post-push) so the reviewer sees both the code fi
 ## Phase 7: Build & Test (max 5 iterations)
 
 Get build and test commands from the KB file or repo's `CLAUDE.md`.
-
-For each iteration:
-1. Run the build command. On failure: read error, fix, retry.
-2. Run the test command. On failure: fix production code (never modify tests to pass).
-3. Both pass → proceed.
-
-After 5 failures: stop, show the error, ask the user for guidance.
+Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations).
+On success: proceed to Phase 8.
 
 ## Phase 8: Commit & Push
 
-Stage only the changed files explicitly (never `git add -A`):
-
-```bash
-git -C {worktree_path} add {each_changed_file}
-```
-
-Quick secrets scan on staged files. If suspicious, stop and ask.
-
-Create commit with a message like:
-```
-fix: address PR review comments
-
-- {summary of change 1}
-- {summary of change 2}
-```
-
-Then run `/nase:improve-commit-message --auto-accept`.
-
-**If execution mode = "Confirm before push":**
-
-Show the user the staged diff (`git diff --cached --stat` + key hunks) and the commit message. Ask:
+Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
+Deviation: in "Confirm before push" mode, show the staged diff (`git diff --cached --stat` + key hunks) and the commit message before pushing, then ask:
 
 ```
 question: "Ready to push these changes?"
@@ -174,12 +145,6 @@ options:
 ```
 
 If aborted: print the worktree path so the user can continue manually, and stop.
-
-**Push:**
-
-```bash
-git -C {worktree_path} push origin {pr_branch}
-```
 
 ## Phase 9: Reply & Resolve Comments
 
@@ -233,7 +198,7 @@ PR comments addressed ✓
   Commit: {short_sha} — {commit_subject}
 ```
 
-Append to `work/logs/{YYYY-MM-DD}.md`:
+Append to `workspace/logs/{YYYY-MM-DD}.md`:
 ```
 - Address comments: {repo_name}#{pr_number} — {N} resolved ({M} accepted, {K} declined, {J} replies)
 ```
@@ -246,5 +211,4 @@ Append to `work/logs/{YYYY-MM-DD}.md`:
 - **Never modify tests** to make them pass — fix the production code.
 - **Reply before resolve** — always post the reply so the reviewer sees the response, then resolve the thread.
 - **Partial failure** — if some threads fail to resolve via API, report which ones failed and their thread IDs so the user can resolve manually.
-- **No AI attribution** — no "Co-Authored-By: Claude" or "Generated with Claude Code" in commits or replies.
 - **Respect reviewer intent** — when in doubt about what a reviewer means, ask the user rather than guessing. A wrong "fix" is worse than asking a question.

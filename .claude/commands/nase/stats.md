@@ -26,14 +26,14 @@ options:
 
 Calculate `START_DATE` and `END_DATE` based on selection. `END_DATE` is always today.
 
-For `all`, find the earliest log file: `ls work/logs/????-??-??.md | sort | head -1 | xargs basename .md | sed 's/.md//'`
+For `all`, find the earliest log file: `ls workspace/logs/????-??-??.md | sort | head -1 | xargs basename .md | sed 's/.md//'`
 
 ### 2. Scan data sources
 
-Check if `work/scripts/stats-collect.sh` exists. If it does, run it:
+Check if `workspace/scripts/stats-collect.sh` exists. If it does, run it:
 
 ```bash
-bash work/scripts/stats-collect.sh "<start>" "<end>"
+bash workspace/scripts/stats-collect.sh "<start>" "<end>"
 ```
 
 This script outputs all metrics to `$TMPDIR_STATS` (a temp directory that auto-cleans on exit). It collects:
@@ -43,14 +43,14 @@ This script outputs all metrics to `$TMPDIR_STATS` (a temp directory that auto-c
 
 Save `$TMPDIR_STATS` path for use in steps 3–5.
 
-<!-- Consider extracting to work/scripts/stats-collect.sh if this grows -->
+<!-- Consider extracting to workspace/scripts/stats-collect.sh if this grows -->
 **If the script does NOT exist**, collect data inline:
 1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)`
-2. For each date in range, count sessions from `work/logs/{date}.md` (count `## Session` headers), commits across all repos in `work/context.md` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).
+2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `workspace/context.md` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
-4. Read `work/stats/skill-usage.jsonl` for skill rankings (if exists).
-5. Count knowledge entries from `work/tasks/lessons.md` matching the date range.
-6. Count KB files modified: `find work/kb -name "*.md" -newer` (approximate).
+4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
+5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
+6. Count KB files modified: `find workspace/kb -name "*.md" -newer` (approximate).
 
 ### 3. Build heatmap
 
@@ -99,7 +99,7 @@ To generate in bash, iterate dates with `date -d "$START_DATE + N days" +%Y-%m-%
 
 ### 4. Output chat summary
 
-Read AI name from `work/config.md` (`AI engineer:` line).
+Read AI name from `workspace/config.md` (`AI engineer:` line).
 
 Display in chat (≤25 lines):
 
@@ -129,7 +129,7 @@ If all metrics are 0, display with zeros — do not error.
 
 ### 5. Write detailed report
 
-Write to `work/stats/report-YYYY-MM-DD.md` (today's date; overwrite if exists).
+Write to `workspace/stats/report-YYYY-MM-DD.md` (today's date; overwrite if exists).
 
 Generate the daily breakdown table **dynamically** from `$TMPDIR_STATS/daily.csv`:
 
@@ -137,7 +137,7 @@ Generate the daily breakdown table **dynamically** from `$TMPDIR_STATS/daily.csv
 source "$TMPDIR_STATS/env.sh"
 GEN_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 REPORT_DATE=$(date +%Y-%m-%d)
-report_file="work/stats/report-$REPORT_DATE.md"
+report_file="workspace/stats/report-$REPORT_DATE.md"
 
 # Build daily breakdown table by iterating the date range
 # Read CSV into awk lookup, then iterate dates
@@ -158,7 +158,7 @@ daily_table=$(
 )
 ```
 
-Knowledge entries: list each entry title + category from `work/tasks/lessons.md` matching the date range (same awk filter as step 2c, but also capture the `**Tip:**` line for the title).
+Knowledge entries: list each entry title + category from `workspace/tasks/lessons.md` matching the date range (same awk filter as step 2c, but also capture the `**Tip:**` line for the title).
 
 Report content:
 - Summary table (same metrics as chat summary)

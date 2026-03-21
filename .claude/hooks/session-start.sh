@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) || true
-if [ -z "$WORKSPACE" ]; then
+NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+if [ -z "$NASE_ROOT" ]; then
   echo "[session-start] ERROR: not in a git repo — cannot determine workspace" >&2
   exit 1
 fi
 
 DATE=$(date +%Y-%m-%d)
-LOG="$WORKSPACE/work/logs/$DATE.md"
-mkdir -p "$WORKSPACE/work/logs"
+LOG="$NASE_ROOT/workspace/logs/$DATE.md"
+mkdir -p "$NASE_ROOT/workspace/logs"
 if [ ! -f "$LOG" ]; then
   printf "# Work Log — %s\n\n## Sessions\n\n" "$DATE" > "$LOG"
 fi
@@ -19,7 +19,7 @@ echo "[session-start] log ready: $LOG"
 PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || command -v py 2>/dev/null || true)
 
 # Check last backup status: surface errors from previous session
-STATUS_FILE="$WORKSPACE/work/logs/.backup-status"
+STATUS_FILE="$NASE_ROOT/workspace/logs/.backup-status"
 if [ -f "$STATUS_FILE" ]; then
   LAST=$(tail -n1 "$STATUS_FILE")
   if echo "$LAST" | grep -qE "ERROR|WARNING"; then
@@ -28,11 +28,8 @@ if [ -f "$STATUS_FILE" ]; then
   fi
 fi
 
-# Item 4 — backup target reachability check (check both locations for legacy compat)
-TARGET_FILE="$WORKSPACE/.backup-target"
-if [ ! -f "$TARGET_FILE" ] && [ -f "$WORKSPACE/work/.backup-target" ]; then
-  TARGET_FILE="$WORKSPACE/work/.backup-target"
-fi
+# Item 4 — backup target reachability check
+TARGET_FILE="$NASE_ROOT/.backup-target"
 if [ -f "$TARGET_FILE" ]; then
   TARGET=$(tr -d '\r\n' < "$TARGET_FILE")
   if [ -n "$TARGET" ] && ! ls "$TARGET" >/dev/null 2>&1; then
@@ -42,12 +39,12 @@ if [ -f "$TARGET_FILE" ]; then
 fi
 
 # Item 5 — auto-archive tech digest entries older than 30 days
-TRENDS="$WORKSPACE/work/kb/general/tech-trends.md"
+TRENDS="$NASE_ROOT/workspace/kb/general/tech-trends.md"
 if [ -f "$TRENDS" ]; then
   if [ -z "$PYTHON" ]; then
     echo "[session-start] WARNING: python3/python not found — tech digest archival skipped (tech-trends.md may grow unbounded)"
   else
-  "$PYTHON" - "$TRENDS" "$WORKSPACE/work/kb/general" << 'PYEOF' || true
+  "$PYTHON" - "$TRENDS" "$NASE_ROOT/workspace/kb/general" << 'PYEOF' || true
 import sys, re, os
 from datetime import datetime, timedelta
 
@@ -96,9 +93,9 @@ PYEOF
   fi
 fi
 
-# Item 6 — sync work/skills/ → .claude/commands/nase/work/
-SKILLS_DIR="$WORKSPACE/work/skills"
-CMDS_DIR="$WORKSPACE/.claude/commands/nase/work"
+# Item 6 — sync workspace/skills/ → .claude/commands/nase/workspace/
+SKILLS_DIR="$NASE_ROOT/workspace/skills"
+CMDS_DIR="$NASE_ROOT/.claude/commands/nase/workspace"
 if [ -d "$SKILLS_DIR" ]; then
   mkdir -p "$CMDS_DIR"
   synced=0
@@ -117,23 +114,23 @@ if [ -d "$SKILLS_DIR" ]; then
     if [ ! -f "$cmd_file" ] || [ "$skill_file" -nt "$cmd_file" ]; then
       cat > "$cmd_file" << EOF
 ---
-name: nase:work:$name
+name: nase:workspace:$name
 description: $desc
 ---
 
-Read \`work/skills/$name.md\` and follow every step exactly as written.
+Read \`workspace/skills/$name.md\` and follow every step exactly as written.
 
 \$ARGUMENTS
 EOF
       synced=$((synced + 1))
     fi
   done
-  [ "$synced" -gt 0 ] && echo "[session-start] synced $synced skill(s) from work/skills/ → /nase:work:*"
+  [ "$synced" -gt 0 ] && echo "[session-start] synced $synced skill(s) from workspace/skills/ → /nase:workspace:*"
 fi
 
 # Item 8 — suggest /nase:reflect when today has commits
-if [ -f "$WORKSPACE/work/context.md" ]; then
-  REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$WORKSPACE/work/context.md" 2>/dev/null | tr -d '`' || true)
+if [ -f "$NASE_ROOT/workspace/context.md" ]; then
+  REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$NASE_ROOT/workspace/context.md" 2>/dev/null | tr -d '`' || true)
   HAS_COMMITS=0
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue

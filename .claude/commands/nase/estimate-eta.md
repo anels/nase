@@ -13,7 +13,7 @@ If $ARGUMENTS is empty or blank:
 ## Estimation Principles
 - Estimates improve with familiarity — explore the codebase before committing to numbers
 - Unknowns dominate: one unclear dependency can triple the timeline
-- Compare against similar past tasks in `work/tasks/lessons.md` — pattern-matching beats guessing
+- Compare against similar past tasks in `workspace/tasks/lessons.md` — pattern-matching beats guessing
 - The pessimistic estimate is usually the realistic one
 
 ## Steps
@@ -25,13 +25,13 @@ If $ARGUMENTS is empty or blank:
    - Relevant existing files and components that would be touched
    - Current complexity and test coverage
    - Any dependencies or integrations involved
-3. Read `work/tasks/lessons.md` if it exists — look for similar past tasks and how long they took
-   - Also check the relevant project KB (`work/kb/projects/`) for historical velocity data and known complexity patterns
-4. Read `work/tasks/todo.md` to understand current workload and what's in flight
+3. Read `workspace/tasks/lessons.md` if it exists — look for similar past tasks and how long they took
+   - Also check the relevant project KB (`workspace/kb/projects/`) for historical velocity data and known complexity patterns
+4. Read `workspace/tasks/todo.md` to understand current workload and what's in flight
 5. Break the task into concrete subtasks with individual estimates
 6. Factor in: complexity, unknowns, testing, review, and integration work
 
-7. Persist the estimate — append to `work/logs/{YYYY-MM-DD}.md`:
+7. Persist the estimate — append to `workspace/logs/{YYYY-MM-DD}.md`:
    ```
    - ETA estimate: {task name} — {realistic estimate} ({scope})
    ```

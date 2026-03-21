@@ -12,13 +12,12 @@ The KB is the workspace's long-term memory — it outlives individual sessions. 
 
 1. Identify the domain from $ARGUMENTS or recent context:
 
-   Read `work/kb/.domain-map.md` — all known domains (general and project) are listed there.
-   Each line has format: `- {domain} → {path}`. Match the domain key against entries in that file.
+   Follow `.claude/docs/repo-resolution.md` Part 2 (KB File Loading): derive the domain key, read `workspace/kb/.domain-map.md`, and locate the target KB file.
 
    **Fallback:** If no match, infer the best category:
-   - Deployment/ops runbooks → `work/kb/ops/{deployment-type}.md`
-   - General stack patterns → `work/kb/general/{domain}.md`
-   - Project-specific → `work/kb/projects/{repo}.md`
+   - Deployment/ops runbooks → `workspace/kb/ops/{deployment-type}.md`
+   - General stack patterns → `workspace/kb/general/{domain}.md`
+   - Project-specific → `workspace/kb/projects/{repo}.md`
    Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
 2. Read the target kb file to understand current state.

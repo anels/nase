@@ -26,7 +26,7 @@ Use this priority order — stop as soon as you have confident owners. Always re
 
 **3a. Read project KB**
 
-Read `work/kb/projects/<repo-name>.md` once. Extract ownership signals in a single pass:
+Read `workspace/kb/projects/<repo-name>.md` once. Extract ownership signals in a single pass:
 1. Look for the `## Ownership Map` table — match each changed file path to a row (directory prefix or module name); collect Primary Owner and Secondary Owner GitHub handles.
 2. Also scan for ownership notes, team sections, or "who to ping for X" annotations anywhere else in the file.
 
@@ -36,7 +36,7 @@ If the KB yields confident owners for all changed areas → proceed to 3c (skip 
 
 **3b. Read CODEOWNERS (fallback)**
 
-Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `work/context.md` for the local path). If yes, read directly. Otherwise fetch via:
+Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `workspace/context.md` for the local path). If yes, read directly. Otherwise fetch via:
 ```bash
 gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 -d
 ```

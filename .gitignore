@@ -1,5 +1,5 @@
 .omc
-work/
+workspace/
 .backup-target
 .full-review/
 
@@ -11,6 +11,6 @@ Thumbs.db
 .vscode/
 *.swp
 .claude/settings.local.json
-.claude/commands/nase/work/
+.claude/commands/nase/workspace/
 .serena/
 .claude/scheduled_tasks.lock

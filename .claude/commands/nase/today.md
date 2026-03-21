@@ -11,12 +11,12 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 <workflow>
 
 ### 1. Context
-- Read `work/tasks/todo.md` — identify In Progress + top Pending items
+- Read `workspace/tasks/todo.md` — identify In Progress + top Pending items
 - Rank by impact × urgency. In-progress items take priority over new ones — context-switching is expensive.
-- Read `work/logs/{yesterday}.md` (last working day — compute yesterday as the most recent `work/logs/YYYY-MM-DD.md` file before today; may skip weekends) — one-line summary of what was done
+- Read `workspace/logs/{yesterday}.md` (last working day — compute yesterday as the most recent `workspace/logs/YYYY-MM-DD.md` file before today; may skip weekends) — one-line summary of what was done
 
 ### 2. Stale KB Check
-- Read `work/kb/.domain-map.md` — collect all `## Projects` entries
+- Read `workspace/kb/.domain-map.md` — collect all `## Projects` entries
 - For each project KB file, extract the `<!-- Last updated: YYYY-MM-DD -->` date
   - If the date is **older than 7 days**: add to stale list
   - If the date is missing: also add to stale list (note: "no update date found")
@@ -24,7 +24,7 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 
 ### 3. Today's commits so far (if any)
 <parallel>
-- For each repo in `work/context.md`: `git -C {repo} log --since="midnight" --oneline --branches 2>/dev/null`
+- For each repo in `workspace/context.md`: `git -C {repo} log --since="midnight" --oneline --branches 2>/dev/null`
 </parallel>
 
 ### 4. Output
