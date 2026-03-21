@@ -19,7 +19,7 @@ claude                        # open Claude Code in this directory
 Then inside Claude Code:
 
 ```
-/nase:init                    # set AI name, configure backup, create workspace/
+/nase:init                    # set AI name, configure backup & language, create workspace/
 /nase:onboard /path/to/repo   # onboard a repo (local path or GitHub URL)
 /nase:onboard                 # refresh ALL already-onboarded repos from workspace/context.md
 /nase:today                   # morning kickoff — what to focus on today
@@ -67,7 +67,7 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:init [name]` | First-time setup: set AI name, configure backup, initialize `workspace/`; offers to restore from backup on fresh init |
+| `/nase:init [name]` | First-time setup: set AI name, configure backup & language, initialize `workspace/`; offers to restore from backup on fresh init |
 | `/nase:doctor` | Self-diagnostic: verify hooks, backup config, workspace/ structure, tools |
 | `/nase:help` | Show usage guide and command overview |
 
@@ -257,7 +257,7 @@ nase/
 
 ```
 workspace/
-  config.md               ← AI engineer name + workspace name + backup retention (managed by /nase:init)
+  config.md               ← AI engineer name + workspace name + backup retention + language config (managed by /nase:init)
   context.md              ← repo list + domain patterns
   tech-digest-config.md   ← personal sources + filter topics for /nase:tech-digest
   kb/
