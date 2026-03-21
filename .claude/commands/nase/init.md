@@ -10,7 +10,7 @@ description: Initialize or reconfigure the nase workspace. Use for first-time se
 ### 0. Check current state
 Before doing anything, read the current state:
 - Derive workspace name: `basename $(git rev-parse --show-toplevel)`
-- Read `workspace/config.md` if it exists — note current `AI engineer:` and `workspace:` values
+- Read `workspace/config.md` if it exists — note current `AI engineer:`, `workspace:`, and `## Language` section (`conversation:` and `output:` values)
 - Check if `.backup-target` exists at workspace root
 - Check if `workspace/context.md` exists (workspace already initialized indicator)
 
@@ -18,6 +18,7 @@ Report what was found:
 - "Workspace: {folder-name} ({initialized / not yet initialized})"
 - "AI name: {current name or 'not set'}"
 - "Backup: {configured to {path} / not configured}"
+- "Language: conversation={value or 'not set'}, output={value or 'not set'}"
 
 ### 1. Collect all inputs (AskUserQuestion)
 
@@ -58,11 +59,34 @@ options:
   - label: "Other"      , description: "Type a custom policy (format: count:N or days:N)"
 ```
 
+**Question 4 — Conversation language** (the language used when responding to the user):
+```
+question: "What language should I use in conversation? (current: {conversation value or '简体中文 (default)'})"
+header: "Conversation Language"
+options:
+  - label: "简体中文"    , description: "Simplified Chinese"
+  - label: "English"     , description: "English"
+  - label: "日本語"      , description: "Japanese"
+  - label: "Other"       , description: "Type a language name"
+```
+
+**Question 5 — Output language** (the language for external platforms: GitHub, Jira, Confluence, Slack, commits):
+```
+question: "What language should I use for external output (GitHub, Jira, Slack, etc.)? (current: {output value or 'English (default)'})"
+header: "Output Language"
+options:
+  - label: "English"     , description: "English (recommended for international teams)"
+  - label: "简体中文"    , description: "Simplified Chinese"
+  - label: "Same as conversation" , description: "Use the conversation language for output too"
+  - label: "Other"       , description: "Type a language name"
+```
+
 **Apply changes after all answers:**
 - **Workspace name**: always write/update `workspace: {folder-name}` in `workspace/config.md` (auto-derived, no user input)
 - **AI name**: if changed, write/update `AI engineer:` line in `workspace/config.md`; update `currently **{old}**` in MEMORY.md
 - **Backup**: if changed, convert Windows path to bash format (`C:\foo\bar` → `/c/foo/bar`); write to `.backup-target`; verify reachable with `mkdir -p {target} && ls {target}`
 - **Retention**: write/update `backup_retention: {value}` line in `workspace/config.md` (e.g. `backup_retention: count:100` or `backup_retention: days:7`)
+- **Language**: write/update the `## Language` section in `workspace/config.md` with `conversation: {value}` and `output: {value}`. If "Same as conversation" was chosen for output, write the actual conversation language value. If the section doesn't exist, append it after the last line.
 - If the answer matches current value, skip writing
 
 ### 2. Offer restore if backup has content
@@ -156,6 +180,7 @@ Invoke `/nase:doctor` to verify the complete workspace state.
 Report a summary:
 - AI name: {name}
 - Backup target: {path}
+- Language: conversation={conversation}, output={output}
 - Hooks: {OK / issues found}
 - workspace/: {ready / partially ready}
 

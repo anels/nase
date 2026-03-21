@@ -26,7 +26,7 @@ Read this file on demand when you need details about workspace layout, skills, K
 .backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
                        lives at workspace root (NOT inside workspace/); managed by /nase:init
 workspace/               ← entirely git-ignored; never committed
-  config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy>  (managed by /nase:init)
+  config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy> / ## Language (conversation + output)  (managed by /nase:init)
   journals/          ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   scripts/           ← utility scripts (e.g. deploy-uptime-kuma.ps1, stats-collect.sh)
 ```
