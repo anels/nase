@@ -34,7 +34,7 @@ AI engineer: *(see `work/config.md` — format: `AI engineer: <name>`)*
   - Default branch + clean → create worktree directly (`git worktree add`); use absolute paths to the worktree for all subsequent operations
   - Non-default branch or uncommitted changes → ask user first
   - Always base worktrees on `origin/{default-branch}`
-- **Commit sequence**: `/simplify` → `/nase:improve-commit-message` → `git push`
+- **Commit sequence**: `/simplify` (requires claude-plugins-official plugin; skip if not installed) → `/nase:improve-commit-message` → `git push`
 - **Daily log**: after significant tasks, append to `work/logs/YYYY-MM-DD.md`
 - **Workspace health**: run `/nase:doctor` when something feels off
 - **Slack messages**: NEVER use `slack_send_message` to post directly — ALWAYS use `slack_send_message_draft` so the user can review and send manually. No exceptions.
@@ -75,7 +75,7 @@ Default: `sonnet`. Never spawn `opus` for something haiku can answer.
 ### CI Pipeline
 - **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
 - Checks: `bash -n` + `shellcheck` on hooks (`session-start`, `stop-todos`, `stop-backup`, `track-skill`), JSON validation, hook wiring, command inventory, bash syntax in skills
-- Note: `worktree-log.sh` (WorktreeCreate/WorktreeRemove → daily log) is wired in `settings.json` but not yet covered by CI checks — update `validate.yml` if you modify it
+- All hooks including `worktree-log.sh` are covered by CI (`bash -n` + `shellcheck`)
 - **Run locally before pushing**: `bash -n .claude/hooks/*.sh && shellcheck -S warning .claude/hooks/*.sh`
 
 ### Runtime Dependencies

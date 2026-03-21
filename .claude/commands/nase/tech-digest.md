@@ -19,7 +19,7 @@ Auto-skips if today's digest already exists (deduplication enforced in Step 0). 
    - Extract: **Sources** list, **Filter Topics**, and **Output Sections**.
    - Use these for all subsequent steps — do not use any hardcoded sources or topics.
 
-2. Fetch all sources (from config) in parallel using WebFetch/WebSearch.
+2. Fetch all sources (from config) in parallel using WebFetch/WebSearch. If a source is unreachable, note the failure and continue with available sources. Do not fail the entire digest.
 
 3. Filter for content published in the last 7 days; discard anything unrelated to the filter topics (from config).
 

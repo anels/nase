@@ -84,6 +84,7 @@ command -v 7z
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->
 ### 8. Command files
 - Scan `.claude/commands/nase/` for all `.md` files (including `work/` subdirectory)
+- Also check `work/skills/*.md` for work-specific skills (these are referenced by `.claude/settings.local.json` command entries)
 - Report total count
 - Build the expected list dynamically by reading file names from the directory — do NOT hardcode a list. This way new skills are automatically included in future checks.
 - Cross-reference against the skill names registered in `.claude/settings.json` (under `permissions.allow` or hook configs) — flag any registered skill whose `.md` file is missing

@@ -13,3 +13,4 @@ Thumbs.db
 .claude/settings.local.json
 .claude/commands/nase/work/
 .serena/
+.claude/scheduled_tasks.lock

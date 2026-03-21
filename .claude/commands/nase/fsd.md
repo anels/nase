@@ -81,12 +81,8 @@ Print: `FSD engaged — driving autonomously from here. 🚗`
 
 **If worktree = Yes:**
 1. Generate a branch name from the task: lowercase kebab-case, prefix `feat/` or `fix/` based on task type (default to `feat/` if ambiguous). Max 50 chars total. Strip articles and filler words. Examples: "add user avatar upload" → `feat/user-avatar-upload`, "fix null pointer in auth flow" → `fix/null-ptr-auth-flow`. If the branch already exists locally or on the remote (`git show-ref refs/heads/{branch_name} refs/remotes/origin/{branch_name}`), append `-v2`, `-v3`, etc.
-2. Determine worktree path: sibling directory to repo, e.g. `{repo_parent}/{repo_name}-fsd` (if that path already exists, append `-1`, `-2`, etc. until available).
-3. Create the worktree:
-   ```bash
-   git -C {repo} worktree add {worktree_path} -b {branch_name} origin/{default_branch}
-   ```
-4. All subsequent git and file operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` — it creates its own worktree and won't adopt this one.
+2. Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `fsd`. Ref: `origin/{default_branch}`. Use the branch name generated in step 1.
+3. All subsequent git and file operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` — it creates its own worktree and won't adopt this one.
 
 **If worktree = No:**
 - Confirm repo is on the default branch with a clean working tree. If not: stop and tell the user to clean up first (do not force-checkout or stash without asking).
@@ -172,6 +168,10 @@ EOF
 Report the PR URL.
 
 ---
+
+## Phase 8b: KB Update Reminder
+
+If implementation revealed new patterns or architectural insights, note them for the daily log. The end-of-day `/nase:wrap-up` will handle KB updates.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 

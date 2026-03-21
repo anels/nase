@@ -96,42 +96,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 
 ## Skills — Full Reference
 
-See the [Available commands table in README.md](README.md#available-commands) for the full list.
-
-| Command | When to use |
-|---------|------------|
-| **Setup & Health** | |
-| `/nase:init [name]` | First-time setup or reconfiguration |
-| `/nase:doctor` | Something feels broken — check workspace health |
-| `/nase:help` | Forgot a command name or want an overview |
-| **Knowledge Base** | |
-| `/nase:onboard <path-or-url>` | Adding a new repo to the KB (local path or GitHub URL) |
-| `/nase:kb-update [domain]` | After learning something worth keeping |
-| `/nase:tech-digest` | First session of the day (auto-prompted by rule above) |
-| `/nase:learn [tip\|url]` | Capture a tip, web article, GitHub repo, or Confluence page → auto-extract learnings → `lessons.md` + KB |
-| **Learning & Reflection** | |
-| `/nase:today` | Morning kickoff — today's focus, priorities, blockers |
-| `/nase:reflect [task]` | Post-task reflection — capture lessons from what just happened |
-| `/nase:extract-skills` | Analyze current session → extract reusable patterns as personal skills → `work/skills/` |
-| `/nase:wrap-up` | End of day — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry → `work/journals/YYYY-MM-DD.md` |
-| **Reporting** | |
-| `/nase:recap [week\|last week\|month\|last month\|YYYY-MM-DD to YYYY-MM-DD]` | Structured recap: journals + logs + tasks + lessons + KB updates → auto-saves to `work/recaps/` |
-| `/nase:estimate-eta <task>` | Effort and ETA estimate for a task |
-| `/nase:stats [7\|30\|all]` | Workspace usage statistics with heatmap |
-| **Git Workflow** | |
-| `/nase:fsd <task>` | Full Self-Drive — autonomous implement → build → test → commit → push → draft PR |
-| `/nase:improve-commit-message` | Rewrite last commit to conventional commits format (used in commit sequence) |
-| `/nase:request-review <PR-URL(s)>` | Find code owners, resolve Slack users, DM them to review/approve |
-| `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
-| `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
-| `/nase:update-changelog [ver]` | Generate/update CHANGELOG.md from code diff between two refs |
-| **Backup & Restore** | |
-| `/nase:restore` | Restore `work/` from the configured backup location |
-| **Context & Debugging** | |
-| `/context` | Show token usage, loaded tools/skills/MCP servers |
-| `/context-heavy` | Identify which tools are consuming the most context |
-| `/summarize-from-here` | Partially summarize the conversation from the current point |
-| `/debug` | Toggle verbose debug logging mid-session |
+See the [Available commands table in README.md](README.md#available-commands) for the full list of `/nase:*` commands with descriptions.
 
 ---
 
@@ -142,13 +107,5 @@ See the [Available commands table in README.md](README.md#available-commands) fo
 ### 2026-03-12 — Skill usage tracking restored to PostToolUse (track-skill.sh)
 `track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `work/stats/skill-usage.jsonl`. The previous attempt to use `UserPromptSubmit` (`track-command.sh`) was reverted because it could not reliably detect the exact skill name invoked — regex parsing of user messages is fragile. PostToolUse provides the exact Skill tool call input, which is the authoritative source for `/nase:*` invocations. Stats are surfaced by `/nase:stats`.
 
-### 2026-03-06 — Fix backup mv failure on OneDrive
-`stop-backup.sh` previously used `rm -rf $TARGET && mv $STAGING $TARGET`. OneDrive holds a handle on the directory entry even after `rm -rf`, causing `mv` to fail with "Permission denied". Fixed: keep `$TARGET` dir alive, clear its contents with `find -mindepth 1 -maxdepth 1 ! -name '.backup-lock' -exec rm -rf {} \;`, then `cp -rp $STAGING/. $TARGET/` in-place.
-
 ### 2026-03-19 — Zip-based backup with retention
-`stop-backup.sh` now creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) instead of flat-copy sync. Uses `7z a -tzip` (available via `scoop install 7zip`). Retention policy (`count:N` or `days:N`) is read from `backup_retention:` in `work/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`.
-
-### 2026-03-02 — Remove rsync dependency
-Backup sync (`stop-backup.sh`) and restore (`restore.md`) now use `rm -rf` + `cp -rp` instead of rsync.
-rsync is unavailable on Windows without extra tooling; the new approach cleans the target first then copies,
-achieving the same `--delete` semantics with standard Unix tools available in Git Bash.
+`stop-backup.sh` creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) via `7z a -tzip` (`scoop install 7zip`). Retention policy (`count:N` or `days:N`) from `backup_retention:` in `work/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`. Supersedes earlier flat-copy and rsync approaches.

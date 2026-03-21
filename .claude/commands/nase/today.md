@@ -13,7 +13,7 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 ### 1. Context
 - Read `work/tasks/todo.md` — identify In Progress + top Pending items
 - Rank by impact × urgency. In-progress items take priority over new ones — context-switching is expensive.
-- Read `work/logs/{yesterday}.md` (last working day) — one-line summary of what was done
+- Read `work/logs/{yesterday}.md` (last working day — compute yesterday as the most recent `work/logs/YYYY-MM-DD.md` file before today; may skip weekends) — one-line summary of what was done
 
 ### 2. Stale KB Check
 - Read `work/kb/.domain-map.md` — collect all `## Projects` entries
