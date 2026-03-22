@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # AI Engineer Operating Manual
 
-**What this workspace is**: nase is a personal AI engineer workspace — not a product codebase. It contains the KB, daily logs, skills/commands, and hooks that power an AI-assisted engineering workflow. The actual code repos live elsewhere (see `workspace/context.md`).
+**What nase is**: an all-in-one modern software engineering kit for Claude Code — not a product codebase. It contains the KB, daily logs, skills/commands, and hooks that power an AI-assisted engineering workflow. The actual code repos live elsewhere (see `workspace/context.md`).
 
 AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 

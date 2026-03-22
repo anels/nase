@@ -190,5 +190,5 @@ Suggest next steps based on what's missing:
 - If doctor found issues: "Address the items listed by /doctor above"
 
 ## Notes
-- This command is idempotent — safe to re-run after a machine migration or template update
+- This command is idempotent — safe to re-run after a machine migration or kit update
 - After re-running, the Stop hook will continue writing to the same `.backup-target`

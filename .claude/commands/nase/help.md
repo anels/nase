@@ -9,7 +9,7 @@ Pulls from README.md dynamically so the help output always matches the actual av
 
 1. Read `README.md` at the workspace root (use `git rev-parse --show-toplevel` to locate it)
 2. Extract and display:
-   - The intro paragraph ("What's in this template" or equivalent)
+   - The intro paragraph (what nase is and what it does)
    - The **Available commands** section (all command tables)
    - The **Automatic hooks** section
 3. Append this footer:
