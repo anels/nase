@@ -1,8 +1,11 @@
-# nase — Not A(i) Software Engineer
+# nase — An all-in-one modern software engineering kit for Claude Code
 
-A [Claude Code](https://claude.ai/code) workspace template for an AI engineer working across multiple repositories. Gives you slash commands for onboarding repos, tracking knowledge, generating reports, and auto-backing up your work — all inside Claude Code.
 
-> **Name origin**: "nase" sounds like 那谁 (*nà shuí*) in Chinese — the casual "hey, whatsyourname" you say when summoning someone whose name you can't be bothered to remember: *"oi, whatsyourname, come take care of this."* A fitting name for an AI you summon to handle engineering tasks.
+A [Claude Code](https://claude.ai/code) kit for AI-assisted software engineering across multiple repositories. Gives you slash commands for onboarding repos, tracking knowledge, generating reports, and auto-backing up your work — all inside Claude Code.
+
+> **Name origin**:
+> - **nase** stands for ***N***ot ***A*** ***S***oftware ***E***ngineer or ***N***ot ***A***I ***S***oftware ***E***ngineer
+> - **nase** sounds like 那谁 (*nà shuí*) in Chinese — the casual "hey, whatsyourname" you say when summoning someone whose name you can't be bothered to remember: *"oi, whatsyourname, come take care of this."* A fitting name for an AI you summon to handle engineering tasks.
 
 ---
 
@@ -25,37 +28,62 @@ Then inside Claude Code:
 
 That's it. The workspace is ready. Run `/nase:help` anytime for a full command overview.
 
+Optionally, add to your PowerShell profile (`$PROFILE`) to launch nase from anywhere:
+
+```powershell
+# Claude Code — nase workspace
+function Invoke-NaseClaude { Set-Location "$HOME\playground\aiteam\nase-01"; claude --dangerously-skip-permissions @args }
+Set-Alias -Name nase -Value Invoke-NaseClaude
+```
+
+Then just run `nase` in any terminal to jump into the workspace and open Claude Code.
+
+### Prerequisites
+
+- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — required
+- **Git** — required for hooks and report commands
+- **7z** — required for zip backups (`scoop install 7zip` on Windows)
+
+#### MCP servers (optional but recommended)
+
+| MCP | Used for | Setup |
+|-----|----------|-------|
+| **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian MCP](https://github.com/atlassian/mcp-atlassian) |
+| **GitHub** | PR links in reports; code review commands | [GitHub MCP](https://github.com/github/github-mcp-server) |
+| **Slack** | `/nase:request-review` — resolves GitHub handles to Slack users and sends DMs | [Slack MCP](https://github.com/modelcontextprotocol/servers/tree/main/src/slack) |
+
+Configure in your Claude Code `settings.json` (or `settings.local.json`) under `mcpServers`.
+
 ---
 
 ## Why nase?
 
-Most Claude Code setups are a collection of prompts. nase is a **persistent AI engineer** — it has an identity, remembers what it learned yesterday, knows your repos, and improves its own skills over time.
+Most Claude Code setups are a collection of prompts. nase is a **persistent AI engineer workspace** — it has an identity, remembers what it learned yesterday, knows your repos, and improves its own skills over time. Here's why that matters:
 
-Every session, nase reads your knowledge base, stays up to date with tech news in your stack, and logs what it did. Every time you solve a hard problem, you can capture it — as a lesson, as a KB entry, or as a new slash command for future use. The workspace gets smarter the longer you use it.
+- **You stay in the driver's seat** — nase doesn't try to replace you. Every design decision, every PR, every Slack message goes through you first. It handles the grunt work; you keep the judgment calls. Discuss, decide, then delegate execution.
 
-| Other setups | nase |
-|---|---|
-| Stateless — Claude forgets everything between sessions | Persistent KB survives session resets; loaded on demand |
-| Generic prompts for any task | Opinionated workflow shaped to your stack — customize KB domains to match |
-| Manual context management | Auto-onboards repos, auto-backs up work, auto-digests tech news |
-| You write the commands | Commands write new commands (`/nase:extract-skills`) |
-| One assistant, one task | Named AI identity with daily lifecycle: morning → work → wrap-up → backup |
+- **Both you and the AI get smarter** — every session feeds lessons, patterns, and KB entries back into the workspace. The AI gains richer context over time, and you build a personal knowledge base of techniques, root causes, and architectural decisions that compounds across projects.
+
+- **One workspace, all your repos** — no switching between directories, no re-explaining context. Onboard any repo once, and its architecture, constraints, and conventions are available in every future session. Work across multiple codebases without losing your place.
+
+- **Daily lifecycle with built-in reflection** — morning kickoff → focused work → end-of-day wrap-up. Daily logs, task tracking, and structured reflections help you understand your own work patterns, spot recurring blockers, and measure where time actually goes.
+
+- **Deep integration with your toolchain** — Jira, Confluence, Slack, and GitHub are first-class citizens, not afterthoughts. Look up tickets, cross-reference docs, ping reviewers, and address PR comments — all without leaving the chat. This collapses the context-switching tax that eats most of a developer's day.
+
+- **Skills that write skills** — solve a hard problem once, then `/extract-skills` turns it into a reusable slash command. The workspace literally programs itself — your past work becomes tomorrow's automation.
+
+- **Persistent and portable** — the knowledge base, logs, and skills survive session resets. Auto-backup to OneDrive (or any path) means a machine swap doesn't erase months of accumulated context.
 
 ---
 
 ## Features
 
-**Persistent knowledge base** — Each repo gets its own `workspace/kb/projects/<repo>.md`. Stack-level patterns go in `workspace/kb/general/`. Knowledge is loaded surgically — only the relevant domain file is read, keeping context lean.
-
-**Daily workflow out of the box** — Morning: `/nase:today`. Work: `/nase:onboard <repo>` before touching any repo; `/nase:learn <url>` to ingest an article mid-session. Evening: `/nase:wrap-up` — fully autonomous: reflect → learn → extract-skills → kb-update → journal entry, written to `workspace/journals/`.
-
-**Learn from anything** — `/nase:learn` accepts plain text, a GitHub repo URL, or an article URL. For URLs, it fetches the content, filters for relevance to your stack, extracts concrete learnings, shows them to you for review, then writes to both `lessons.md` and the appropriate KB domain file.
-
-**Tech digest on autopilot** — `/nase:tech-digest` fetches your configured sources (blogs, changelogs, HN), filters for your stack, and prepends a dated digest to `tech-trends.md`. Entries older than 30 days are archived automatically.
-
-**Skills that write skills** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as slash commands under `workspace/skills/`. User-specific and gitignored. See [Grow the knowledge base into new skills](#grow-the-knowledge-base-into-new-skills) for how this fits into the workflow.
-
-**Auto-backup with hooks** — A `Stop` hook runs at every session end, creating a timestamped zip archive of `workspace/` at your configured backup path (OneDrive, local drive, etc.). Configurable retention policy (keep last N backups or last N days) automatically cleans up old archives. Requires `7z` (`scoop install 7zip`).
+- **Persistent knowledge base** — each repo gets its own `workspace/kb/projects/<repo>.md`; stack-level patterns go in `workspace/kb/general/`. Only the relevant domain file is loaded per task, keeping context lean.
+- **Daily workflow out of the box** — morning: `/nase:today` → work: `/nase:onboard <repo>` + `/nase:learn <url>` → evening: `/nase:wrap-up` (autonomous: reflect → learn → extract-skills → kb-update → journal).
+- **Learn from anything** — `/nase:learn` accepts plain text, GitHub repo URLs, or article URLs. Fetches content, filters for your stack, extracts learnings, and writes to `lessons.md` + the appropriate KB domain file.
+- **Tech digest on autopilot** — `/nase:tech-digest` fetches configured sources (blogs, changelogs, HN), filters for your stack, and prepends a dated digest to `tech-trends.md`. Entries older than 30 days are archived automatically.
+- **Self-programming** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as slash commands under `workspace/skills/`. See [Grow the knowledge base into new skills](#grow-the-knowledge-base-into-new-skills).
+- **Auto-backup** — a `Stop` hook runs at every session end, creating a timestamped zip of `workspace/` at your configured backup path. Configurable retention policy (keep last N backups or last N days) cleans up old archives automatically.
 
 ---
 
@@ -304,7 +332,7 @@ The `Stop` hook reads `.backup-target` at the workspace root (set by `/nase:init
 
 ## Workspace structure
 
-### Template (tracked in git)
+### Kit (tracked in git)
 
 ```
 nase/
@@ -363,6 +391,7 @@ workspace/
     report-YYYY-MM-DD.md ← detailed stats report (written by /nase:stats)
   logs/               ← daily work logs + .backup-status (auto-managed by hooks)
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
+  recaps/             ← weekly/monthly recap reports (written by /nase:recap)
   skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
   tasks/
     lessons.md        ← accumulated lessons from /nase:learn and /nase:reflect
@@ -381,22 +410,11 @@ workspace/
 
 ---
 
-## Keeping the template updated
+## Configuration
 
-The template layer (`.claude/`, `CLAUDE.md`, `README.md`) is tracked by git. Your work content (`workspace/`) is git-ignored and stays local.
+The kit (`.claude/`, `CLAUDE.md`, `README.md`) is tracked by git. Your work content (`workspace/`) is git-ignored and stays local. `git pull` updates only kit files, never your content.
 
-**Improve the template as you work** — When you refine a skill or discover a better workflow:
-```bash
-git add .claude/commands/nase/kb-update.md
-git commit -m "feat(kb-update): add spark-streaming domain mapping"
-git push
-```
-
-**Pull template updates** — `git pull` only updates template files, never your content.
-
----
-
-## Customizing for your stack
+**Customizing for your stack:**
 
 - **Add KB domains**: create `workspace/kb/general/<domain>.md` and edit `workspace/kb/.domain-map.md`
 - **Add a repo**: `/nase:onboard <path-or-url>` — creates the KB entry and updates `workspace/context.md`; run `/nase:onboard` (no args) to refresh all repos at once
@@ -407,20 +425,6 @@ git push
 
 > **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `workspace/context.md` — no cloning or network access required.
 
----
+**Contributing:**
 
-## Prerequisites
-
-- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — required
-- **Git** — required for hooks and report commands
-- **7z** — required for zip backups (`scoop install 7zip` on Windows)
-
-### MCP servers (optional but recommended)
-
-| MCP | Used for | Setup |
-|-----|----------|-------|
-| **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian MCP](https://github.com/atlassian/mcp-atlassian) |
-| **GitHub** | PR links in reports; code review commands | [GitHub MCP](https://github.com/github/github-mcp-server) |
-| **Slack** | `/nase:request-review` — resolves GitHub handles to Slack users and sends DMs | [Slack MCP](https://github.com/modelcontextprotocol/servers/tree/main/src/slack) |
-
-Configure in your Claude Code `settings.json` (or `settings.local.json`) under `mcpServers`.
+Found a bug or have a suggestion? [Open an issue](https://github.com/anels/nase/issues).
