@@ -4,8 +4,6 @@ A [Claude Code](https://claude.ai/code) workspace template for an AI engineer wo
 
 > **Name origin**: "nase" sounds like 那谁 (*nà shuí*) in Chinese — the casual "hey, whatsyourname" you say when summoning someone whose name you can't be bothered to remember: *"oi, whatsyourname, come take care of this."* A fitting name for an AI you summon to handle engineering tasks.
 
-> **Requires:** Claude Code CLI. All `/nase:*` commands are Claude Code slash commands — they won't work in other tools.
-
 ---
 
 ## Quick start
@@ -55,9 +53,99 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 
 **Tech digest on autopilot** — `/nase:tech-digest` fetches your configured sources (blogs, changelogs, HN), filters for your stack, and prepends a dated digest to `tech-trends.md`. Entries older than 30 days are archived automatically.
 
-**Skills that write skills** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as pattern files under `workspace/skills/`. These are user-specific and gitignored — the workspace literally programs itself.
+**Skills that write skills** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as slash commands under `workspace/skills/`. User-specific and gitignored. See [Grow the knowledge base into new skills](#grow-the-knowledge-base-into-new-skills) for how this fits into the workflow.
 
 **Auto-backup with hooks** — A `Stop` hook runs at every session end, creating a timestamped zip archive of `workspace/` at your configured backup path (OneDrive, local drive, etc.). Configurable retention policy (keep last N backups or last N days) automatically cleans up old archives. Requires `7z` (`scoop install 7zip`).
+
+---
+
+## Use cases
+
+### Implement a fix or new feature
+
+- **Idea to merged PR without leaving the chat** — onboard repo context, brainstorm the approach, then let `/fsd` drive the full cycle autonomously: code → test → fix loop → commit → push → draft PR
+- **Smart reviewer discovery** — finds the right people by mining KB for domain experts, then git history for recent contributors, then CODEOWNERS as fallback
+- **Interactive feedback loop** — walks through review comments with you: auto-fixes the obvious ones, discusses ambiguous ones 1-by-1
+- **You decide, nase executes** — you stay in the driver's seat on design decisions; nase handles the grunt work end-to-end
+
+```mermaid
+flowchart LR
+    A["/onboard"] --> B["brainstorm / plan"] --> C["/fsd"] --> D["/request-review"]
+    D --> E["/address-comments"] --> F["/prep-merge"] --> G(["merge ✓"])
+    style A fill:#0f3460,stroke:#0f3460,color:#fff
+    style G fill:#e94560,stroke:#e94560,color:#fff
+```
+
+```
+/nase:onboard <repo>          # load repo context into KB
+  brainstorm / plan            # clarify requirements, design approach
+/nase:fsd <task>               # autonomous: implement → test → commit → push → draft PR
+                               #   (fsd will ask if you want to request review at the end)
+/nase:request-review <PR-URL>  # find right reviewers and ping them on Slack
+  ⏳ wait for feedback
+/nase:address-comments <PR-URL># discuss or auto-fix each comment → push
+  ⏳ wait for approval
+/nase:prep-merge <PR-URL>      # squash, clean up, finalize
+  merge ✓
+```
+
+### Review someone else's PR
+
+- **A review partner, not an auto-approver** — nase loads the repo's KB, cross-references Confluence docs and git history, then *discusses* the PR with you
+- **Deepens your understanding** — asks questions, challenges assumptions, surfaces architectural risks and subtle bugs that a context-free linter would miss; you learn the codebase faster and catch things you'd otherwise skim past
+- **Knowledge compounds** — insights from the discussion feed back into the KB, so every review makes future reviews sharper
+- **You stay in control** — nase drafts inline comments; you review, edit, and post manually
+
+```mermaid
+flowchart LR
+    A["/onboard"] --> B["/discuss-pr"] --> C(["post comments"])
+    style A fill:#0f3460,stroke:#0f3460,color:#fff
+    style C fill:#533483,stroke:#533483,color:#fff
+```
+
+```
+/nase:onboard <repo>           # ensure KB is fresh for this repo
+/nase:discuss-pr <PR-URL>      # deep analysis — architecture, bugs, security, patterns
+                               #   produces inline comment drafts in chat
+  review drafts, edit, post manually on GitHub
+```
+
+### Grow the knowledge base into new skills
+
+- **Knowledge that persists** — most AI setups forget everything between sessions; nase captures lessons, articles, and patterns into a structured KB that survives session resets
+- **The workspace programs itself** — `extract-skills` turns recurring patterns into reusable slash commands; you solve a problem once, then never again
+- **KB stays lean** — periodic `kb-review` deduplicates, cross-references, and prunes stale entries instead of letting it become a junk drawer
+- **Example — cross-repo automation**: you update a GitHub Actions workflow in one repo and realize every onboarded repo needs the same change. Because nase already knows each repo's structure, CI config, and branch conventions from the KB, you can extract a skill that iterates over all onboarded repos, creates a worktree, applies the change, and opens a draft PR in each — hours of manual context-switching become a single slash command
+
+```mermaid
+flowchart LR
+    A["/learn"] --> B["/kb-update"] --> C["/extract-skills"] --> D["/kb-review"]
+    style A fill:#0f3460,stroke:#0f3460,color:#fff
+    style D fill:#e94560,stroke:#e94560,color:#fff
+```
+
+```
+/nase:learn <url-or-tip>       # capture an article, technique, or lesson
+/nase:kb-update                # persist session learnings into KB
+/nase:extract-skills           # analyze session → extract reusable patterns as workspace skills
+/nase:kb-review                # periodically: deduplicate, cross-reference, clean up stale entries
+```
+
+### Track progress and report
+
+- **Structured recaps on demand** — `/recap` generates a weekly or monthly summary from daily logs, commits, and task completions — no manual note-taking required
+- **Effort estimation** — `/estimate-eta` breaks down a task and gives a calibrated estimate based on KB context and historical patterns
+- **Usage analytics** — `/stats` shows a GitHub-style heatmap of your skill usage and workspace activity
+
+```mermaid
+flowchart LR
+    A["/recap"] --> B(["weekly / monthly summary"])
+    C["/estimate-eta"] --> D(["effort estimate"])
+    E["/stats"] --> F(["activity heatmap"])
+    style B fill:#0f3460,stroke:#0f3460,color:#fff
+    style D fill:#0f3460,stroke:#0f3460,color:#fff
+    style F fill:#0f3460,stroke:#0f3460,color:#fff
+```
 
 ---
 
@@ -102,10 +190,10 @@ Every session, nase reads your knowledge base, stays up to date with tech news i
 | Command | Purpose |
 |---------|---------|
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
-| `/nase:request-review <PR-URL(s)>` | Find code owners for a PR and send Slack DMs asking them to review or approve |
-| `/nase:discuss-pr <PR-URL>` | Deep review discussion in chat — no GitHub posting; produces inline comment drafts for manual posting |
-| `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
-| `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
+| `/nase:request-review <PR-URL(s)>` | Find reviewers (KB → git history → CODEOWNERS) and send Slack DMs |
+| `/nase:discuss-pr <PR-URL>` | KB-driven PR review discussion in chat; drafts inline comments for manual posting |
+| `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push and resolve |
+| `/nase:prep-merge <PR-URL>` | Squash commits, verify comments resolved, update PR title/description |
 
 ### Reporting
 
