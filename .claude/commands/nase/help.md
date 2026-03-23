@@ -23,7 +23,7 @@ workspace/kb/
 workspace/tasks/   ← lessons.md, todo.md
 workspace/logs/    ← daily logs + .backup-status
 ```
-**Backup config**: `.backup-target` at workspace root. Set during `/nase:init`.
+**Local paths**: `.local-paths` at workspace root (backup target + repo paths). Set during `/nase:init`.
 
 ---
 

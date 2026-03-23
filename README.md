@@ -221,7 +221,7 @@ flowchart LR
 | `/nase:request-review <PR-URL(s)>` | Find reviewers (KB → git history → CODEOWNERS) and send Slack DMs |
 | `/nase:discuss-pr <PR-URL>` | KB-driven PR review discussion in chat; drafts inline comments for manual posting |
 | `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push and resolve |
-| `/nase:prep-merge <PR-URL>` | Squash commits, verify comments resolved, update PR title/description |
+| `/nase:prep-merge <PR-URL>` | After multiple review iterations, commit history gets messy and PR title/description drift from the final state — squash commits, verify comments resolved, rewrite PR title/description to match what was actually delivered |
 
 ### Reporting
 
@@ -324,9 +324,9 @@ flowchart TD
 | `PreToolUse` + `PostToolUse` | Before/after every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `workspace/stats/skill-usage.jsonl`; dual-hook improves coverage (PostToolUse alone misses some invocations); same-second dedup prevents double-counting; used by `/nase:stats` |
 | `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
 
-The `Stop` hook reads `.backup-target` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
+The `Stop` hook reads `backup-target` from `.local-paths` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
 
-> **Initialization order**: Run `/nase:init` before the first `Stop` hook fires — it creates `.backup-target`. The `SessionStart` hook creates the daily log immediately and works without any setup.
+> **Initialization order**: Run `/nase:init` before the first `Stop` hook fires — it creates `.local-paths`. The `SessionStart` hook creates the daily log immediately and works without any setup.
 
 ---
 
@@ -398,14 +398,14 @@ workspace/
     todo.md           ← current task tracking
 ```
 
-`.backup-target` is at the **workspace root** (not inside `workspace/`) so it survives a `workspace/` deletion or restore scenario.
+`.local-paths` is at the **workspace root** (not inside `workspace/`) so it survives a `workspace/` deletion or restore scenario.
 
 | Path | In git? | Reason |
 |------|---------|--------|
 | `.claude/` | Yes | Shared workflow improvements |
 | `CLAUDE.md` | Yes | Identity + operating rules |
 | `README.md` | Yes | Usage guide |
-| `.backup-target` | No | Personal backup path |
+| `.local-paths` | No | Machine-specific paths (backup + repo paths) |
 | `workspace/` | No | Project-specific content |
 
 ---
@@ -420,10 +420,10 @@ The kit (`.claude/`, `CLAUDE.md`, `README.md`) is tracked by git. Your work cont
 - **Add a repo**: `/nase:onboard <path-or-url>` — creates the KB entry and updates `workspace/context.md`; run `/nase:onboard` (no args) to refresh all repos at once
 - **Change tech news sources**: edit `workspace/tech-digest-config.md`
 - **Change AI identity**: run `/nase:init` or edit `workspace/config.md`
-- **Change backup location**: edit `.backup-target` at the workspace root (one line, bash-format path)
+- **Change backup location**: edit the `backup-target=` line in `.local-paths` at the workspace root
 - **Change backup retention**: edit `backup_retention:` in `workspace/config.md` (e.g. `count:100` or `days:7`)
 
-> **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `workspace/context.md` — no cloning or network access required.
+> **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `.local-paths` — no cloning or network access required.
 
 **Contributing:**
 

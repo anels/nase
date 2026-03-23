@@ -24,7 +24,7 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 
 ### 3. Today's commits so far (if any)
 <parallel>
-- For each repo in `workspace/context.md`: `git -C {repo} log --since="midnight" --oneline --branches 2>/dev/null`
+- Read repo local paths from `.local-paths` (skip comment/blank lines, format: `RepoName=/path`). For each path: `git -C {path} log --since="midnight" --oneline --branches 2>/dev/null`
 </parallel>
 
 ### 4. Output
@@ -57,3 +57,4 @@ Yesterday: [one-line summary]
 - Emphasis on **what to do today** — yesterday is context only, keep it brief
 - Focus list should be actionable and realistic for one day
 - Skip completed items
+- Bookend: end the day with `/nase:wrap-up` to capture reflections, lessons, and a journal entry

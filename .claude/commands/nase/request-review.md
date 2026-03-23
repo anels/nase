@@ -36,7 +36,7 @@ If the KB yields confident owners for all changed areas → proceed to 3c (skip 
 
 **3b. Read CODEOWNERS (fallback)**
 
-Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `workspace/context.md` for the local path). If yes, read directly. Otherwise fetch via:
+Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read directly. Otherwise fetch via:
 ```bash
 gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 -d
 ```

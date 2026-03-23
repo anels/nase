@@ -23,7 +23,7 @@ Read this file on demand when you need details about workspace layout, skills, K
     worktree-log.sh  ← runs at WorktreeCreate/WorktreeRemove: appends timestamped
                        entry to today's daily log
   settings.json      ← hook registrations (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
-.backup-target       ← single line, bash-format path (e.g. /c/Users/me/OneDrive/backup/nase-backup)
+.local-paths         ← machine-specific paths: backup-target + repo local paths (key=/path format)
                        lives at workspace root (NOT inside workspace/); managed by /nase:init
 workspace/               ← entirely git-ignored; never committed
   config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy> / ## Language (conversation + output)  (managed by /nase:init)

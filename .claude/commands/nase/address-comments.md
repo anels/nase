@@ -16,7 +16,7 @@ Extract `owner`, `repo`, and `pr_number` from the URL.
 ## Phase 1: Locate Repo & Fetch Context
 
 Follow `.claude/docs/repo-resolution.md`:
-- **Part 1** (Repo Resolution): resolve the repo from the PR URL's `owner/repo` — extract the repo name and look it up in `workspace/context.md`. If not found, ask the user for the local path.
+- **Part 1** (Repo Resolution): resolve the repo from the PR URL's `owner/repo` — extract the repo name and look it up in `.local-paths`. If not found, ask the user for the local path and append it to `.local-paths`.
 - **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it — focusing on **Build & Run Commands** and **Architecture** sections.
 
 ## Phase 2: Fetch Latest & Unresolved Review Threads

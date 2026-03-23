@@ -44,10 +44,10 @@ python -m json.tool .claude/settings.json > /dev/null
 
 <!-- Why: without a backup target, the Stop hook has nowhere to sync workspace/ — data loss risk -->
 ### 4. Backup configuration
-- Check `.backup-target` exists at workspace root
-- Read contents — verify path is non-empty and not `/`, `$HOME`, or `/c`
+- Check `.local-paths` exists at workspace root and has a `backup-target=` entry
+- Read the `backup-target=` value — verify path is non-empty and not `/`, `$HOME`, or `/c`
 - Check if the target directory exists and appears writable (`ls {target}`)
-- Pass: file exists, path looks safe, target accessible
+- Pass: file exists, `backup-target=` entry present, path looks safe, target accessible
 - Warn: target directory does not exist yet (will be created on first Stop hook)
 - Fail: not configured, empty path, or dangerous path
 

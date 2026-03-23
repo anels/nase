@@ -8,8 +8,8 @@ Restores from timestamped zip backups. Creates a pre-restore snapshot before ove
 ## Steps
 
 ### 1. Read backup config
-- Read `$NASE_ROOT/.backup-target` (workspace root)
-- If the file does not exist, tell the user: no backup target configured — run `/nase:init` first
+- Read `backup-target` from `$NASE_ROOT/.local-paths` (workspace root)
+- If `.local-paths` does not exist or has no `backup-target=` entry, tell the user: no backup target configured — run `/nase:init` first
 
 ### 2. List available backups
 List all zip backups in the target directory:

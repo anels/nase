@@ -36,7 +36,7 @@ Check if `workspace/scripts/stats-collect.sh` exists. If it does, run it:
 bash workspace/scripts/stats-collect.sh "<start>" "<end>"
 ```
 
-This script outputs all metrics to `$TMPDIR_STATS` (a temp directory that auto-cleans on exit). It collects:
+This script outputs all metrics to `$TMPDIR_STATS` (a temp directory — caller must clean up after use). It collects:
 - Per-day stats (sessions, commits, PRs) → `$TMPDIR_STATS/daily.csv`
 - Aggregate metrics → `$TMPDIR_STATS/env.sh`
 - Skill usage rankings
@@ -46,7 +46,7 @@ Save `$TMPDIR_STATS` path for use in steps 3–5.
 <!-- Consider extracting to workspace/scripts/stats-collect.sh if this grows -->
 **If the script does NOT exist**, collect data inline:
 1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)`
-2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `workspace/context.md` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).
+2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
@@ -167,6 +167,6 @@ Report content:
 - Skill usage full ranking (all skills from JSONL, not just top 3)
 - Generation metadata: `Generated: {GEN_TS}`, `Range: {START_DATE} ~ {END_DATE}`, `Period: {N} days`
 
-The EXIT trap set in step 2 cleans up `$TMPDIR_STATS` automatically.
+Clean up the temp directory after writing the report: `rm -rf "$TMPDIR_STATS"`.
 
 For a narrative summary instead of metrics, suggest `/nase:recap`.

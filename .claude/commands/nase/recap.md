@@ -32,36 +32,9 @@ The period for "last week" and "last month" is always a **completed** interval. 
 
 Use **weekly format** for ranges ≤ 14 days; **monthly format** for ranges > 14 days.
 
-## Step 2 — Load workspace context (parallel)
+## Steps 2–4 — Gather workspace data
 
-Read in parallel:
-
-1. `workspace/context.md` — repo list and domain patterns
-2. `workspace/tasks/todo.md` — current task states
-3. `workspace/tasks/lessons.md` — full lessons list (extract entries dated within range)
-4. `workspace/kb/.domain-map.md` — domain → KB file index
-
-Do NOT load KB domain files upfront — only read a specific one if needed to clarify something mentioned in journals.
-
-## Step 3 — Load journals and logs for each day in range (parallel)
-
-For each calendar day in the range:
-
-1. Try `workspace/journals/YYYY-MM-DD.md` first (synthesized daily summary — preferred).
-2. If journal missing, fall back to `workspace/logs/YYYY-MM-DD.md` (raw session notes).
-3. If both missing, mark day as no-activity.
-
-## Step 4 — Extract structured data
-
-**Activity per day:** repos / projects worked on, tasks attempted / completed / blocked, decisions made, PR/ticket/Confluence links (preserve verbatim).
-
-**Task status (from todo.md):** completed during range; in-progress or blocked at range end.
-
-**Lessons added during range (from lessons.md):** scan for section headers in the format `## {category} — {YYYY-MM-DD}` where the date falls within the range. Group by category (workflow / code / debugging / ops / infra).
-
-**KB updates:** look for `## KB Updates` sections in journals, or any mention of KB files being updated. Note which files changed and what was added.
-
-**Key Decisions:** scan journals for architectural, workflow, or process decisions — often found in reflection sections ("What I'd do differently", "Key Activities", or explicit decision notes).
+Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="range"` and the date range resolved in Step 1. This loads workspace state, journals/logs, and extracts structured data (activity, tasks, lessons, KB updates, key decisions).
 
 ## Step 5 — Generate the recap
 

@@ -6,7 +6,7 @@ Canonical algorithms used across nase skills. Skills with skill-specific deviati
 
 ## Part 1: Repo Resolution
 
-Resolve a GitHub URL or repo name to a local filesystem path via `workspace/context.md`.
+Resolve a GitHub URL or repo name to a local filesystem path via `.local-paths`.
 
 ### Algorithm
 
@@ -14,9 +14,9 @@ Resolve a GitHub URL or repo name to a local filesystem path via `workspace/cont
    - Extract repo name: take the last path segment, strip `.git` suffix.
      - Example: `https://github.com/Org/MyRepo` → `MyRepo`
      - Example: `git@github.com:Org/MyRepo.git` → `MyRepo`
-   - Read `workspace/context.md`. Search for a repo path whose last path component matches the extracted name (case-insensitive; treat both `/` and `\` as separators).
+   - Read `.local-paths` at the workspace root. Search for a line matching `{RepoName}={path}` (case-insensitive key match).
    - If found: use that local path for all subsequent steps. Print: `Resolved {url} → {path}`
-   - If not found: output "GitHub URL provided but no local path found for `{name}` in `workspace/context.md`. Please provide the local path directly, or add it to context.md first." — stop.
+   - If not found: use AskUserQuestion to ask the user for the local path. Once provided, append `{RepoName}={path}` to `.local-paths`. Then use that path for all subsequent steps.
 
 2. **If input is a local path**: use it directly.
 
