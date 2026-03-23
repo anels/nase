@@ -24,17 +24,17 @@ if [ -f "$STATUS_FILE" ]; then
   LAST=$(tail -n1 "$STATUS_FILE")
   if echo "$LAST" | grep -qE "ERROR|WARNING"; then
     echo "[session-start] WARNING: last backup had an issue — $LAST"
-    echo "[session-start] Check .backup-target config or run /restore to verify data"
+    echo "[session-start] Check .local-paths config or run /restore to verify data"
   fi
 fi
 
 # Item 4 — backup target reachability check
-TARGET_FILE="$NASE_ROOT/.backup-target"
-if [ -f "$TARGET_FILE" ]; then
-  TARGET=$(tr -d '\r\n' < "$TARGET_FILE")
+LOCAL_PATHS="$NASE_ROOT/.local-paths"
+if [ -f "$LOCAL_PATHS" ]; then
+  TARGET=$(grep -E '^backup-target=' "$LOCAL_PATHS" 2>/dev/null | head -1 | cut -d= -f2-)
   if [ -n "$TARGET" ] && ! ls "$TARGET" >/dev/null 2>&1; then
     echo "[session-start] WARNING: backup target not reachable: $TARGET"
-    echo "[session-start] Check that drive/network share is mounted, or update .backup-target"
+    echo "[session-start] Check that drive/network share is mounted, or update .local-paths"
   fi
 fi
 
@@ -129,12 +129,11 @@ EOF
 fi
 
 # Item 8 — suggest /nase:reflect when today has commits
-if [ -f "$NASE_ROOT/workspace/context.md" ]; then
-  REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$NASE_ROOT/workspace/context.md" 2>/dev/null | tr -d '`' || true)
+if [ -f "$LOCAL_PATHS" ]; then
+  REPOS=$(grep -v '^\s*#' "$LOCAL_PATHS" | grep -v '^\s*$' | grep -v '^backup-target=' | cut -d= -f2-)
   HAS_COMMITS=0
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue
-    case "$repo" in //*|http*|ftp*) continue ;; esac  # skip UNC/remote paths
     [ -d "$repo" ] || continue                         # skip non-existent paths
     REPO_LOG=$(git -C "$repo" log --since="midnight" --oneline --branches 2>/dev/null || true)
     if [ -n "$REPO_LOG" ]; then

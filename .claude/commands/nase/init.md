@@ -11,7 +11,7 @@ description: Initialize or reconfigure the nase workspace. Use for first-time se
 Before doing anything, read the current state:
 - Derive workspace name: `basename $(git rev-parse --show-toplevel)`
 - Read `workspace/config.md` if it exists — note current `AI engineer:`, `workspace:`, and `## Language` section (`conversation:` and `output:` values)
-- Check if `.backup-target` exists at workspace root
+- Check if `.local-paths` exists at workspace root and has a `backup-target=` entry
 - Check if `workspace/context.md` exists (workspace already initialized indicator)
 
 Report what was found:
@@ -35,7 +35,7 @@ options:
 
 **Question 2 — Backup location:**
 
-Only include "Keep current" as an option if `.backup-target` already exists and has a non-empty path. If no backup is configured yet, omit it — "Keep current: not configured" is a nonsensical choice.
+Only include "Keep current" as an option if `.local-paths` already exists and has a non-empty `backup-target=` entry. If no backup is configured yet, omit it — "Keep current: not configured" is a nonsensical choice.
 
 ```
 question: "Where should workspace/ be backed up? (current: {path or 'not configured'})"
@@ -84,7 +84,7 @@ options:
 **Apply changes after all answers:**
 - **Workspace name**: always write/update `workspace: {folder-name}` in `workspace/config.md` (auto-derived, no user input)
 - **AI name**: if changed, write/update `AI engineer:` line in `workspace/config.md`; update `currently **{old}**` in MEMORY.md
-- **Backup**: if changed, convert Windows path to bash format (`C:\foo\bar` → `/c/foo/bar`); write to `.backup-target`; verify reachable with `mkdir -p {target} && ls {target}`
+- **Backup**: if changed, convert Windows path to bash format (`C:\foo\bar` → `/c/foo/bar`); write/update the `backup-target=` line in `.local-paths`; verify reachable with `mkdir -p {target} && ls {target}`
 - **Retention**: write/update `backup_retention: {value}` line in `workspace/config.md` (e.g. `backup_retention: count:100` or `backup_retention: days:7`)
 - **Language**: write/update the `## Language` section in `workspace/config.md` with `conversation: {value}` and `output: {value}`. If "Same as conversation" was chosen for output, write the actual conversation language value. If the section doesn't exist, append it after the last line.
 - If the answer matches current value, skip writing
@@ -169,12 +169,28 @@ Create stub files only if missing (do not overwrite existing content):
   ```
 - `workspace/tech-digest-config.md` — personal config for `/nase:tech-digest` (sources, filter topics, output sections); create with a minimal header and prompt the user to edit it before running `/nase:tech-digest`
 
+Create `.local-paths` stub if missing (at workspace root, not inside `workspace/`):
+```
+# Machine-specific paths — managed by /nase:init and /nase:onboard
+# Re-run /nase:init on each new machine to populate
+# Format: key=/absolute/path
+```
+
 Report: "workspace/ structure: {N} directories and files created / already existed"
 
 ### 5. Run doctor
 Invoke `/nase:doctor` to verify the complete workspace state.
 
-### 6. Optionally mention: "If this workspace is useful, consider starring the repo on GitHub."
+### 6. Offer to star the repo
+Ask the user:
+```
+question: "Enjoying nase? Want to star the repo on GitHub?"
+header: "Star"
+options:
+  - label: "Yes — star it"  , description: "Star anels/nase on GitHub"
+  - label: "No — skip"      , description: "Continue without starring"
+```
+If the user chooses Yes, star the repo via Bash: `gh api -X PUT /user/starred/anels/nase`. Report success or failure briefly.
 
 ### 7. Confirm and suggest next steps
 Report a summary:
@@ -191,4 +207,4 @@ Suggest next steps based on what's missing:
 
 ## Notes
 - This command is idempotent — safe to re-run after a machine migration or kit update
-- After re-running, the Stop hook will continue writing to the same `.backup-target`
+- After re-running, the Stop hook reads `backup-target` from `.local-paths`

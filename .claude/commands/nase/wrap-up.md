@@ -18,12 +18,12 @@ Verify file existence before reading — degrade gracefully if files are missing
 
 ### Step 0: Gather today's activity
 
-1. Read `workspace/logs/{YYYY-MM-DD}.md` (today's date).
-   - The `## Sessions` section is the **source of truth** for AI-assisted work done today.
-   - If the file is missing or has no `## Sessions` entries, treat today as low-activity.
-2. Read `workspace/tasks/todo.md` for current task status.
-3. Store a summary of today's AI-assisted activity (from session entries) for use in subsequent steps.
-   Do NOT scan git repos for commits — those include unrelated changes not done via AI.
+Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="day"` (today only). This loads today's log/journal, tasks, lessons, and extracts structured data.
+
+Key points from the shared algorithm:
+- The `## Sessions` section in `workspace/logs/{YYYY-MM-DD}.md` is the **source of truth** for AI-assisted work.
+- If the file is missing or has no `## Sessions` entries, treat today as low-activity.
+- Do NOT scan git repos for commits — those include unrelated changes not done via AI.
 
 Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `daily-report=pending`.
 
@@ -130,5 +130,6 @@ Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 - **Late sessions** — if no commits since midnight but commits exist in the last 12 hours, include those (handles cross-midnight work).
 - **Idempotent** — running wrap-up twice in one day is safe; reflect/learn will see previous entries and can skip or augment.
 - **Order matters** — Execute steps in sequence: reflect → learn → kb-update → daily-report (each feeds the next).
+- **Bookend** — This skill closes the day. Start the next day with `/nase:today` for a focused kickoff.
 
 </error_handling>

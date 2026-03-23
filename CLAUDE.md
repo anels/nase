@@ -51,7 +51,7 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 | `/nase:wrap-up` | End of day — autonomous reflect + journal entry |
 | `/nase:improve-commit-message` | Part of commit sequence |
 | `/nase:request-review <PR-URL(s)>` | Find code owners and DM them on Slack to review/approve |
-| `/nase:discuss-pr <PR-URL>` | Principal-engineer-level PR review in chat — no GitHub posting; ask questions, research Confluence/GitHub, draft inline comments |
+| `/nase:discuss-pr <PR-URL>` | Chat-first PR review — posts to GitHub only on explicit request; ask questions, research Confluence/GitHub, draft inline comments |
 | `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
 | `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
 | `/nase:doctor` | Workspace health check |
@@ -83,10 +83,16 @@ Default: `sonnet`. Never spawn `opus` for something haiku can answer.
 ### Runtime Dependencies
 - **`jq`** — required by `track-skill.sh`; skill usage tracking silently fails without it
 - **`python3`** — optional; used by `session-start.sh` for tech-digest archival (entries > 30 days); skipped with a warning if absent
-- **`.backup-target`** — plain-text file at workspace root (not inside `workspace/`), one line: the backup destination path in bash format (e.g. `/c/Users/me/OneDrive/backup/nase-backup`); managed by `/nase:init`
+- **`.local-paths`** — machine-specific paths at workspace root (not inside `workspace/`); format: `key=/absolute/path` (one per line); contains `backup-target=` and `RepoName=` entries; managed by `/nase:init` and `/nase:onboard`; NOT backed up
 
 ### CLAUDE.md Content Rules
 - **No runtime values** — no dates, timestamps, session state. Use `workspace/logs/`, `workspace/tasks/`, or KB for runtime data.
+
+### Shared Docs (`.claude/docs/`)
+- `reference.md` — full workspace layout, KB structure, execution style, architecture notes (read on demand, not every session)
+- `repo-resolution.md` — canonical algorithm for resolving GitHub URLs / repo names to local paths via `.local-paths`, and loading the correct KB file
+- `workspace-data-gathering.md` — shared algorithm for loading journals/logs/tasks within a date range (used by `/nase:recap` and `/nase:wrap-up`)
+- Skills reference these docs instead of duplicating logic — if you change an algorithm, update the shared doc
 
 ### Hooks / Commands / Skills Scope
 - All hooks, commands, and skills must be created under this workspace: `.claude/`

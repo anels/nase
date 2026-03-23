@@ -25,7 +25,7 @@ Verify file existence before reading — degrade gracefully if files are missing
 
 When $ARGUMENTS is empty, refresh all repos already tracked in `workspace/context.md`:
 
-1. Read `workspace/context.md` — extract every repo path from lines matching `` - `{path}` — `` pattern. Also derive each repo's KB file path from `workspace/kb/.domain-map.md`.
+1. Read repo names from `workspace/context.md`, then resolve each repo's local path from `.local-paths` (format: `RepoName=/path`). Also derive each repo's KB file path from `workspace/kb/.domain-map.md`. If a repo has no entry in `.local-paths`, warn and skip it.
 2. If no repos found: output "No repos in `workspace/context.md`. Use `/onboard <path>` to add one." — stop.
 3. For each repo, read its KB file and extract the `<!-- Last updated: YYYY-MM-DD -->` date. If the KB file doesn't exist or has no date, show "never".
 4. Show the list with last-refreshed dates and confirm:
@@ -58,14 +58,14 @@ When $ARGUMENTS is empty, refresh all repos already tracked in `workspace/contex
 
 Follow the repo resolution algorithm in `.claude/docs/repo-resolution.md` (Part 1). Use the resolved local path as input for all subsequent steps.
 
-Note: onboard's batch mode (no arguments) reads `workspace/context.md` directly to enumerate all repo paths — it does not go through URL resolution.
+Note: onboard's batch mode (no arguments) reads repo names from `workspace/context.md` and resolves local paths from `.local-paths` — it does not go through URL resolution.
 
 ## Steps
 
 <workflow>
 
 ### 0. Configure backup target (first-time only)
-- If `.backup-target` doesn't exist, run `/nase:init` first (it handles backup target setup).
+- If `.local-paths` doesn't exist or has no `backup-target=` entry, run `/nase:init` first (it handles backup target setup).
 
 ### 0.5. Sync to Default Branch (local repos only)
 
@@ -206,9 +206,14 @@ Use this structure:
 ### 5. Update Workspace Files
 <parallel>
 
-**`workspace/context.md`** — add repo to the Repos section (idempotency: check if the repo path already appears before appending — skip if already present):
+**`workspace/context.md`** — add repo to the Repos section (idempotency: check if the repo name already appears before appending — skip if already present):
 ```
-- `{repo path}` — {purpose} (see `workspace/kb/projects/{domain}.md`)
+- `{RepoName}` ({owner}/{repo}) — {purpose} (see `workspace/kb/projects/{domain}.md`)
+```
+
+**`.local-paths`** — append repo path (if not already present):
+```
+{RepoName}={repo_path}
 ```
 
 **`workspace/kb/.domain-map.md`** — append domain mapping (create file if absent):

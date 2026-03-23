@@ -19,7 +19,7 @@ Research first — minimize questions to the user.
 
 Read `workspace/context.md` — list of repos and their purposes.
 
-From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Then follow `.claude/docs/repo-resolution.md` Part 2 (KB File Loading) to load the candidate KB file — focus on: **Build & Run Commands**, **Architecture**, **Critical Constraints**.
+From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Resolve the selected repo's local path via `.local-paths` (see `.claude/docs/repo-resolution.md`). If not found in `.local-paths`, use AskUserQuestion to ask the user for the local path, then append it to `.local-paths`. Then follow `.claude/docs/repo-resolution.md` Part 2 (KB File Loading) to load the candidate KB file — focus on: **Build & Run Commands**, **Architecture**, **Critical Constraints**.
 
 Then check the repo's git state:
 ```bash

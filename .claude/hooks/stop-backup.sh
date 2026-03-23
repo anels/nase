@@ -25,22 +25,21 @@ if [ -z "$NASE_ROOT" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Locate .backup-target at workspace root
+# Read backup target from .local-paths
 # ---------------------------------------------------------------------------
-if [ -f "$NASE_ROOT/.backup-target" ]; then
-  CONFIG="$NASE_ROOT/.backup-target"
+LOCAL_PATHS="$NASE_ROOT/.local-paths"
+if [ -f "$LOCAL_PATHS" ]; then
+  TARGET=$(grep -E '^backup-target=' "$LOCAL_PATHS" 2>/dev/null | head -1 | cut -d= -f2-)
 else
   # No config — nothing to do; exit silently
   exit 0
 fi
 
-TARGET=$(tr -d '\r\n' < "$CONFIG")
-
 # ---------------------------------------------------------------------------
 # Validate target path (P1-BAK-01 — realpath-based, not length heuristic)
 # ---------------------------------------------------------------------------
 if [ -z "$TARGET" ]; then
-  log_status "ERROR" "backup target path is empty in $CONFIG"
+  log_status "ERROR" "backup target path is empty in $LOCAL_PATHS"
   exit 1
 fi
 
@@ -95,12 +94,11 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
 # ---------------------------------------------------------------------------
 COMMIT_DATE=$(date +%Y-%m-%d)
 COMMIT_LOG="$NASE_ROOT/workspace/logs/$COMMIT_DATE.md"
-if [ -f "$NASE_ROOT/workspace/context.md" ]; then
-  REPOS=$(grep -oiE '`[A-Za-z]:[^`]+`|`/[^`]+`' "$NASE_ROOT/workspace/context.md" 2>/dev/null | tr -d '`' || true)
-  COMMITS=""
+REPOS=$(grep -v '^\s*#' "$LOCAL_PATHS" | grep -v '^\s*$' | grep -v '^backup-target=' | cut -d= -f2-)
+COMMITS=""
+if [ -n "$REPOS" ]; then
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue
-    case "$repo" in //*|http*|ftp*) continue ;; esac  # skip UNC/remote paths
     [ -d "$repo" ] || continue                         # skip non-existent paths
     REPO_COMMITS=$(git -C "$repo" log --since="midnight" --oneline --branches 2>/dev/null || true)
     if [ -n "$REPO_COMMITS" ]; then
@@ -117,11 +115,19 @@ if [ -f "$NASE_ROOT/workspace/context.md" ]; then
       LAST_FP=$(cat "$FP_FILE")
     fi
     if [ "$COMMIT_DATE:$FINGERPRINT" = "$LAST_FP" ]; then
-      echo "[stop-backup] commit summary unchanged — skipping duplicate append"
+      echo "[stop-backup] commit summary unchanged — skipping"
     else
-      printf "\n\n## Commits\n%s\n" "$COMMITS" >> "$COMMIT_LOG"
+      # Replace: strip all existing ## Commits blocks, then append fresh one
+      if [ -f "$COMMIT_LOG" ]; then
+        awk '
+          /^## Commits$/ { skip=1; next }
+          skip && /^## /  { skip=0 }
+          !skip
+        ' "$COMMIT_LOG" > "${COMMIT_LOG}.tmp" && mv "${COMMIT_LOG}.tmp" "$COMMIT_LOG"
+      fi
+      printf "\n## Commits\n%s\n" "$COMMITS" >> "$COMMIT_LOG"
       echo "$COMMIT_DATE:$FINGERPRINT" > "$FP_FILE"
-      echo "[stop-backup] appended commit summary to $COMMIT_LOG"
+      echo "[stop-backup] updated commit summary in $COMMIT_LOG"
     fi
   fi
 fi

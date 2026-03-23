@@ -1,6 +1,6 @@
 .omc
 workspace/
-.backup-target
+.local-paths
 .full-review/
 
 # OS / IDE temporary files
