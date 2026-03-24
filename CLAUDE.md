@@ -47,11 +47,11 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 | `/nase:onboard` | Refresh ALL already-onboarded repos from `workspace/context.md` (run at session start) |
 | `/nase:onboard <path-or-url>` | Onboard or refresh a single repo by path or GitHub URL |
 | `/nase:kb-update [domain]` | After learning something worth keeping |
-| `/nase:fsd <task>` | Full self-drive: implement → build → test → commit → push → draft PR, autonomous |
+| `/nase:fsd <task>` | Full Self-Develop: implement → build → test → commit → push → draft PR, autonomous |
 | `/nase:wrap-up` | End of day — autonomous reflect + journal entry |
 | `/nase:improve-commit-message` | Part of commit sequence |
 | `/nase:request-review <PR-URL(s)>` | Find code owners and DM them on Slack to review/approve |
-| `/nase:discuss-pr <PR-URL>` | Chat-first PR review — posts to GitHub only on explicit request; ask questions, research Confluence/GitHub, draft inline comments |
+| `/nase:discuss-pr <PR-URL>` | Chat-first PR review — posts to GitHub only on explicit request; reads & engages existing review comments (+1/reply/discuss), runs parallel specialist agents, researches Confluence/GitHub, drafts inline comments; triggers KB update on confirmed findings |
 | `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
 | `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
 | `/nase:doctor` | Workspace health check |
