@@ -211,7 +211,7 @@ flowchart LR
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:fsd <task>` | Full Self-Drive — ask options upfront, then implement → build → test (fix loop) → simplify → commit → push → draft PR → cleanup, fully autonomous |
+| `/nase:fsd <task>` | Full Self-Develop — ask options upfront, then implement → build → test (fix loop) → simplify → commit → push → draft PR → cleanup, fully autonomous |
 
 ### Git workflow
 
@@ -219,7 +219,7 @@ flowchart LR
 |---------|---------|
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
 | `/nase:request-review <PR-URL(s)>` | Find reviewers (KB → git history → CODEOWNERS) and send Slack DMs |
-| `/nase:discuss-pr <PR-URL>` | KB-driven PR review discussion in chat; drafts inline comments for manual posting |
+| `/nase:discuss-pr <PR-URL>` | KB-driven PR review discussion in chat; reads & engages existing review comments (+1/reply/discuss), drafts inline comments for manual posting, triggers KB update on confirmed findings |
 | `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push and resolve |
 | `/nase:prep-merge <PR-URL>` | After multiple review iterations, commit history gets messy and PR title/description drift from the final state — squash commits, verify comments resolved, rewrite PR title/description to match what was actually delivered |
 

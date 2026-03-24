@@ -13,19 +13,39 @@ Extract repo and PR number from the URL. Note any focus areas the user specifies
 
 Default focus if none specified: architecture, bugs, security, testability, DRY/KISS.
 
-## Step 2 — Fetch PR metadata
+## Step 2 — Fetch PR metadata and existing comments
+
+Run in parallel:
 
 ```
 gh pr view <PR> --repo <owner/repo> \
   --json number,title,body,state,isDraft,headRefOid,files,additions,deletions
 gh pr diff <PR> --repo <owner/repo>
+gh api repos/<owner/repo>/pulls/<PR>/comments
+gh api repos/<owner/repo>/pulls/<PR>/reviews
 ```
 
-Save: title, body, head SHA, changed file list, full diff.
+Save: title, body, head SHA, changed file list, full diff, existing inline comments (with `id`, `path`, `line`, `body`, `user.login`, `in_reply_to_id`), existing reviews (with `id`, `state`, `body`, `user.login`).
 
-## Step 3 — Run parallel specialist agents
+Group comments into threads: top-level comment + all replies sharing the same `in_reply_to_id`.
 
-Launch all six in one turn. Each agent reads the diff and returns a list of issues with file/line references.
+## Step 2.5 — Engage existing comments + launch specialist agents
+
+If the PR has no existing comments, skip the comment engagement and go straight to the agent results.
+
+**Do both in parallel:**
+
+**A) Present existing comments** — for each unresolved thread, show:
+- File + line, author, comment body
+- Whether it's a standalone comment or a thread with replies
+
+Then ask the user which comments they agree with, want to discuss, or skip.
+
+When the user wants to discuss a comment, engage directly — research the code, check Confluence or git history for context, and give your own take.
+
+Collect agree/discuss/skip decisions but **do not post reactions or replies yet** — those are batched into Step 8 alongside inline comments, posted only on explicit request.
+
+**B) Launch specialist agents** (do not wait for user comment triage — agents only read the diff):
 
 <!-- Model routing is configured in CLAUDE.md — defer to workspace-level settings. -->
 
@@ -92,7 +112,19 @@ When the user asks to post, approve, or submit:
 - **All text in English** — GitHub reviews are always in English
 - **Approve body**: "LGTM with nits" or "Approved with nits" — never repeat the fix mechanism or summarize the PR
 - **Inline comments**: keep minimal — same 1–2 sentence rule as drafts, concise
+- **Reactions/replies from Step 2.5**: post any agreed +1 reactions or "Agreed." replies now
 - Create pending review → add inline comments → submit with APPROVE/COMMENT/REQUEST_CHANGES as appropriate
+
+For reactions and replies:
+```
+# Thumbs-up reaction
+gh api repos/<owner/repo>/pulls/comments/<comment_id>/reactions \
+  --method POST --raw-field content="+1"
+
+# Short reply
+gh api repos/<owner/repo>/pulls/<PR>/comments/<comment_id>/replies \
+  --method POST --raw-field body="Agreed."
+```
 
 ## Error Handling
 
@@ -101,11 +133,22 @@ When the user asks to post, approve, or submit:
 - **Private repo / 404**: verify the repo exists and the user has access. Suggest `gh auth status` if unclear.
 - **Rate limit (HTTP 429)**: wait and retry once. If still limited, report and stop.
 
+## Ongoing — KB update (on confirmed findings)
+
+During any discussion — whether from your own analysis or from engaging with existing comments — watch for moments where something is **confirmed and non-obvious**:
+- Author clarifies an intentional design decision that isn't obvious from the code
+- A pattern is confirmed as the team's convention (e.g. "we always separate these types for call-site safety")
+- A bug is confirmed to exist or not to exist with a concrete reason
+
+When this happens, immediately offer: _"This seems worth capturing in the KB — want me to run `/nase:kb-update`?"_
+
+If the user agrees (or proactively says "add this to KB"), run `/nase:kb-update [domain]` with a concise summary of what was learned. Don't wait until the end of the session.
+
 ## Notes
 
 - Always confirm feature flag scope issues against product docs (Confluence) before flagging — what looks like a missing path may be intentionally out of scope
 - Git history agent is often the most valuable — prior PR comments on the same files frequently repeat
-- If the PR has existing review comments (from Claude or others), read them first to avoid duplicates
+- Skip your own findings for anything already raised in existing comments
 - To address findings, suggest `/nase:address-comments <PR-URL>`.
 
 ## Final — Daily Log
