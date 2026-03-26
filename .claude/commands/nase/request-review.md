@@ -13,10 +13,7 @@ Extract `owner/repo` and PR number from each URL. Group PRs by repo.
 
 ## Step 2 — Fetch PR metadata (parallel per PR)
 
-```bash
-gh pr view <PR> --repo <owner/repo> \
-  --json number,title,url,additions,deletions,changedFiles,files,baseRefName,body
-```
+Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.md` (PR Metadata section).
 
 Save: title, url, base branch, changed file paths, additions/deletions count, body.
 

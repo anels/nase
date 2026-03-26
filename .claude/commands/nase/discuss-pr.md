@@ -5,21 +5,19 @@ description: Chat-first deep PR review — posts to GitHub only on explicit requ
 
 ## Phase 0 — Input Guard
 
-If `$ARGUMENTS` is empty, ask the user for the PR URL. Do not proceed without a valid PR URL.
+Follow the PR input guard in `.claude/docs/pr-input-guard.md`. If `$ARGUMENTS` is empty, ask the user for the PR URL instead of printing usage.
 
 ## Step 1 — Parse inputs
 
-Extract repo and PR number from the URL. Note any focus areas the user specifies (e.g. "architecture", "security", "skip nitpicks").
+Note any focus areas the user specifies (e.g. "architecture", "security", "skip nitpicks").
 
 Default focus if none specified: architecture, bugs, security, testability, DRY/KISS.
 
 ## Step 2 — Fetch PR metadata and existing comments
 
-Run in parallel:
+Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.md` (PR Metadata section). Also run in parallel:
 
 ```
-gh pr view <PR> --repo <owner/repo> \
-  --json number,title,body,state,isDraft,headRefOid,files,additions,deletions
 gh pr diff <PR> --repo <owner/repo>
 gh api repos/<owner/repo>/pulls/<PR>/comments
 gh api repos/<owner/repo>/pulls/<PR>/reviews
@@ -29,7 +27,7 @@ Save: title, body, head SHA, changed file list, full diff, existing inline comme
 
 Group comments into threads: top-level comment + all replies sharing the same `in_reply_to_id`.
 
-## Step 2.5 — Engage existing comments + launch specialist agents
+## Step 3 — Engage existing comments + launch specialist agents
 
 If the PR has no existing comments, skip the comment engagement and go straight to the agent results.
 
@@ -43,7 +41,7 @@ Then ask the user which comments they agree with, want to discuss, or skip.
 
 When the user wants to discuss a comment, engage directly — research the code, check Confluence or git history for context, and give your own take.
 
-Collect agree/discuss/skip decisions but **do not post reactions or replies yet** — those are batched into Step 8 alongside inline comments, posted only on explicit request.
+Collect agree/discuss/skip decisions but **do not post reactions or replies yet** — those are batched into Step 9 alongside inline comments, posted only on explicit request.
 
 **B) Launch specialist agents** (do not wait for user comment triage — agents only read the diff):
 
@@ -58,7 +56,7 @@ Collect agree/discuss/skip decisions but **do not post reactions or replies yet*
 | **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
 | **Code comments** | Violations of guidance in inline comments, stale or contradicted comments |
 
-## Step 4 — Score and filter
+## Step 4 — Score and filter (after agents complete)
 
 For each issue, assign a confidence score 0–100:
 - **< 50**: pre-existing, false positive, or nitpick — drop

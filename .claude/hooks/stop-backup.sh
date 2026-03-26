@@ -99,7 +99,7 @@ COMMITS=""
 if [ -n "$REPOS" ]; then
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue
-    [ -d "$repo" ] || continue                         # skip non-existent paths
+    [ -d "$repo/.git" ] || continue                     # skip non-repo entries
     REPO_COMMITS=$(git -C "$repo" log --since="midnight" --oneline --branches 2>/dev/null || true)
     if [ -n "$REPO_COMMITS" ]; then
       REPO_NAME=$(basename "$repo")
@@ -145,34 +145,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Require 7z for zip backup
-# ---------------------------------------------------------------------------
-if ! command -v 7z &>/dev/null; then
-  log_status "ERROR" "7z not found — install with 'scoop install 7zip' for zip backups"
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# One-time migration: clean up old flat-copy backup files (pre-zip era)
-# Detects the old format by checking for context.md or kb/ directly in target
-# ---------------------------------------------------------------------------
-if [ -f "$TARGET/context.md" ] && [ -d "$TARGET/kb" ]; then
-  log_status "OK" "migrating: removing old flat-copy backup (replaced by zip archives)"
-  find "$TARGET" -mindepth 1 -maxdepth 1 ! -name '.backup-lock' ! -name 'nase-backup-*.zip' -exec rm -rf {} \; 2>/dev/null || true
-fi
-
-# ---------------------------------------------------------------------------
-# Create timestamped zip backup
+# Create timestamped zip backup (prefer 7z, fallback to zip on macOS/Linux)
 # ---------------------------------------------------------------------------
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 ZIP_NAME="nase-backup-${TIMESTAMP}.zip"
 ZIP_PATH="$TARGET/$ZIP_NAME"
 
-(cd "$SRC" && 7z a -tzip -mx=1 -bso0 -bsp0 "$ZIP_PATH" .)
+if command -v 7z &>/dev/null; then
+  (cd "$SRC" && 7z a -tzip -mx=1 -bso0 -bsp0 "$ZIP_PATH" .)
+elif command -v zip &>/dev/null; then
+  (cd "$SRC" && zip -rq "$ZIP_PATH" .)
+else
+  log_status "ERROR" "neither 7z nor zip found — install one for backups"
+  exit 1
+fi
 rc=$?
 if [ "$rc" -ne 0 ]; then
   rm -f "$ZIP_PATH"
-  log_status "ERROR" "7z failed (exit $rc) — backup not created"
+  log_status "ERROR" "archive tool failed (exit $rc) — backup not created"
   exit 1
 fi
 
@@ -202,7 +192,8 @@ if ! [[ "$RETENTION_VALUE" =~ ^[0-9]+$ ]]; then
 fi
 
 # Collect backup zips sorted ascending by name (= chronological order)
-mapfile -t BACKUPS < <(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort)
+BACKUPS=()
+while IFS= read -r line; do BACKUPS+=("$line"); done < <(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort)
 DELETED=0
 
 if [ "$RETENTION_TYPE" = "count" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_VALUE" ]; then
@@ -212,7 +203,9 @@ if [ "$RETENTION_TYPE" = "count" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_VALUE" 
     ((++DELETED))
   done
 elif [ "$RETENTION_TYPE" = "days" ]; then
-  CUTOFF=$(date -d "-${RETENTION_VALUE} days" +%Y%m%d 2>/dev/null || true)
+  CUTOFF=$(date -d "-${RETENTION_VALUE} days" +%Y%m%d 2>/dev/null \
+    || date -v-"${RETENTION_VALUE}"d +%Y%m%d 2>/dev/null \
+    || true)
   if [ -n "$CUTOFF" ]; then
     for backup in "${BACKUPS[@]}"; do
       BDATE=$(basename "$backup" | sed -n 's/nase-backup-\([0-9]\{8\}\)-.*/\1/p')

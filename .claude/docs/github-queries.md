@@ -1,6 +1,30 @@
-# GitHub GraphQL Queries
+# GitHub Queries — Shared Reference
 
-Shared GraphQL query definitions referenced by nase skills.
+Shared query definitions referenced by nase skills.
+
+---
+
+## PR Metadata
+
+Standard field sets for `gh pr view`. Skills reference these instead of inlining their own field lists.
+
+### Full variant (fsd, prep-merge)
+
+Use when you need commit history, review state, and branch info — typically for skills that modify the PR or create new ones.
+
+```bash
+gh pr view {pr_number} --repo {owner}/{repo} \
+  --json number,title,url,body,headRefName,baseRefName,commits,additions,deletions,changedFiles,files,state,reviewDecision
+```
+
+### Light variant (discuss-pr, request-review)
+
+Use for read-only analysis — reviewing, ownership lookup, or discussion.
+
+```bash
+gh pr view {pr_number} --repo {owner}/{repo} \
+  --json number,title,url,body,state,isDraft,headRefOid,additions,deletions,changedFiles,files,baseRefName
+```
 
 ---
 

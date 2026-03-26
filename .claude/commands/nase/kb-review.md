@@ -154,6 +154,8 @@ Scan `workspace/` for files that are not part of the KB structure but accumulate
 
 If no temp/outdated files found, skip this section.
 
+### Step 5: Propose Actions
+
 Based on Steps 2-4, propose concrete actions grouped by effort:
 
 ```
