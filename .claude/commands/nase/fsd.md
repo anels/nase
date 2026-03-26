@@ -19,7 +19,9 @@ Research first — minimize questions to the user.
 
 Read `workspace/context.md` — list of repos and their purposes.
 
-From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Resolve the selected repo's local path via `.local-paths` (see `.claude/docs/repo-resolution.md`). If not found in `.local-paths`, use AskUserQuestion to ask the user for the local path, then append it to `.local-paths`. Then follow `.claude/docs/repo-resolution.md` Part 2 (KB File Loading) to load the candidate KB file — focus on: **Build & Run Commands**, **Architecture**, **Critical Constraints**.
+From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Follow `.claude/docs/repo-resolution.md`:
+- **Part 1** (Repo Resolution): resolve the local path from the inferred repo name. If not found in `.local-paths`, use AskUserQuestion to ask the user, then append to `.local-paths`.
+- **Part 2** (KB File Loading): load the KB file — focus on **Build & Run Commands**, **Architecture**, **Critical Constraints**.
 
 Then check the repo's git state:
 ```bash
@@ -122,15 +124,13 @@ Deviation: use `push -u origin {branch_name}` on first push (sets upstream track
 
 ## Phase 8: Pull Request (if PR = Yes)
 
-Check for `.github/pull_request_template.md` in the repo — if it exists, use it as the PR body structure.
-
-Write a concise PR description: what changed, why, and any testing notes. Do not include Claude/AI attribution anywhere in the PR.
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–5) to discover the PR template, draft the description, align the title with the commit subject, preserve co-authors (relevant in team mode), and exclude AI attribution.
 
 Open a draft PR:
 ```bash
 gh pr create \
   --draft \
-  --title "{conventional_commit_subject_from_phase_7}" \
+  --title "{commit_subject_line}" \
   --body "$(cat <<'EOF'
 {pr_body}
 EOF

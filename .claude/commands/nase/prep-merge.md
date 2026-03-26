@@ -9,16 +9,11 @@ description: Prepare a PR for merge — verify all comments resolved, squash com
 
 ## Phase 0: Input Guard
 
-If $ARGUMENTS is empty or does not contain a PR URL: output `Usage: /nase:prep-merge <PR-URL>` and stop.
-
-Extract `owner`, `repo`, and `pr_number` from the URL.
+Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
 
 ## Phase 1: Fetch PR Metadata
 
-```bash
-gh pr view {pr_number} --repo {owner}/{repo} \
-  --json number,title,url,body,headRefName,baseRefName,commits,additions,deletions,changedFiles,files,state,reviewDecision
-```
+Fetch PR metadata using the **full** variant from `.claude/docs/github-queries.md` (PR Metadata section).
 
 Capture: `headRefName` (PR branch), `baseRefName` (target branch), commit list, changed files, current title/body, state, review decision.
 
@@ -106,40 +101,9 @@ Write a single conventional commit message that captures the full intent of the 
 
 The PR title should match the commit subject line (the first line of the squash commit message). This keeps the merge commit clean when the PR is merged with "Squash and merge" or "Rebase and merge" on GitHub.
 
-### 7a: Look for a PR template
+### 7a–7b: PR Template & Description
 
-Check for a PR template in the repo (in order of precedence):
-
-```bash
-# Check common template locations
-ls {repo_path}/.github/pull_request_template.md 2>/dev/null
-ls {repo_path}/.github/PULL_REQUEST_TEMPLATE.md 2>/dev/null
-ls {repo_path}/docs/pull_request_template.md 2>/dev/null
-ls {repo_path}/.github/PULL_REQUEST_TEMPLATE/*.md 2>/dev/null | head -1
-```
-
-If a template is found, read it. Strip HTML comments (`<!-- ... -->`) — these are instructions to the author, not content to preserve.
-
-### 7b: Draft the PR description
-
-**If a template was found:** use it as the skeleton. For each section the template defines, fill it with content derived from:
-- The full diff and changed files
-- The original PR body (preserve any context the author already wrote)
-- The commit history
-
-Do not invent content for sections that cannot be determined from the code changes (e.g., leave Jira ticket placeholders as-is if no ticket is known, or ask the user). Preserve any checklist items from the template — do not pre-check boxes; leave those for the author to check.
-
-**If no template exists:** use this default structure:
-
-```
-## Summary
-{2-4 bullet points describing what changed and why}
-
-## Changes
-{brief list of key files/areas modified}
-```
-
-Do not include AI attribution.
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–5) to discover the PR template, draft the description, align the title with the commit subject, preserve co-authors, and exclude AI attribution.
 
 Present the new title and description to the user for confirmation:
 

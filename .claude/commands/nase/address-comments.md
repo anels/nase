@@ -9,9 +9,7 @@ description: Address unresolved PR review comments — fetch, analyze, fix code 
 
 ## Phase 0: Input Guard
 
-If $ARGUMENTS is empty or does not contain a PR URL: output `Usage: /nase:address-comments <PR-URL>` and stop.
-
-Extract `owner`, `repo`, and `pr_number` from the URL.
+Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
 
 ## Phase 1: Locate Repo & Fetch Context
 

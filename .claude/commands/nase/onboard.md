@@ -28,16 +28,23 @@ When $ARGUMENTS is empty, refresh all repos already tracked in `workspace/contex
 1. Read repo names from `workspace/context.md`, then resolve each repo's local path from `.local-paths` (format: `RepoName=/path`). Also derive each repo's KB file path from `workspace/kb/.domain-map.md`. If a repo has no entry in `.local-paths`, warn and skip it.
 2. If no repos found: output "No repos in `workspace/context.md`. Use `/onboard <path>` to add one." — stop.
 3. For each repo, read its KB file and extract the `<!-- Last updated: YYYY-MM-DD -->` date. If the KB file doesn't exist or has no date, show "never".
-4. Show the list with last-refreshed dates and confirm:
+4. Sort repos by last-refreshed date (oldest/never first). Then use `AskUserQuestion` to present the numbered list and ask which to refresh:
    ```
-   Found {N} repos to refresh:
-     1. {RepoName} (last: {date}) — {path}
+   Found {N} repos — which would you like to refresh? (sorted by staleness)
+
+     1. {RepoName} (last: never)  — {path}
      2. {RepoName} (last: {date}) — {path}
-     3. {RepoName} (last: never)  — {path}
+     3. {RepoName} (last: {date}) — {path}
      ...
+
+   Reply with: "all", a comma-separated list of numbers (e.g. "1,3"), or repo names.
    ```
-   Repos are sorted by last-refreshed date (oldest/never first) so stale repos stand out.
-5. For each repo, run the **Single Repo Mode** workflow below (Steps 0 through 7) with that repo's path as input.
+   Wait for the user's response before proceeding. Parse it:
+   - `"all"` → refresh every repo in the list
+   - Numbers (e.g. `"1,3,5"`) → refresh repos at those positions
+   - Names (e.g. `"Insights, SRE"`) → match against repo names (case-insensitive)
+   - Empty / cancel → stop without refreshing anything
+5. For each **selected** repo, run the **Single Repo Mode** workflow below (Steps 0 through 7) with that repo's path as input.
    - Use parallel subagents (one per repo) when possible — each agent runs the full onboard workflow independently.
    - If a repo fails (e.g. can't fast-forward, path doesn't exist), log the error and continue with the remaining repos — don't stop the batch.
 6. After all repos complete, print a summary:
