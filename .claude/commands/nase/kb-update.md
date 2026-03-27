@@ -3,7 +3,9 @@ name: nase:kb-update
 description: Persist durable knowledge about a repo's architecture, constraints, or established technical patterns to the KB. Use when the insight is about a specific codebase's design, a hard constraint, or a cross-project pattern — not a quick tip (use /learn for that). Also triggers on "update KB", "add to knowledge base", "document this pattern", "记录到KB".
 ---
 
-The KB is the workspace's long-term memory — it outlives individual sessions. For quick tips, articles, or mistake patterns, use `/learn` instead.
+The KB is the workspace's long-term memory — it outlives individual sessions.
+
+**Decision rule:** does this insight apply specifically to one repo's internals (API contract, migration constraint, naming convention, architectural decision)? → here. Could it apply across projects or repos? → use `/learn` instead.
 
 **Input:** $ARGUMENTS
 (If empty, reflect on recent work and identify what's worth capturing.)

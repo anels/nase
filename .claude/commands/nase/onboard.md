@@ -109,24 +109,94 @@ Skip this step entirely if $ARGUMENTS resolved to a GitHub URL with no local pat
 - Check if `workspace/context.md` already contains this repo — if so, update rather than append in Step 5
 
 ### 3. Self-Study the Repo (explore before asking)
+
+Run the following scan groups in parallel. Each group targets a specific dimension — gather raw facts first, synthesize in the mental-model step at the end.
+
 <parallel>
+
+**3a. Structure & Stack**
 - Top-level directory structure (`ls` / Glob `/**` depth 2)
-- Key config files: `*.sln`, `*.csproj`, `package.json`, `build.sbt`, `Dockerfile`, `docker-compose*`, `*.yaml` pipelines
-- README.md (if exists)
-- Entry points: `Program.cs`, `Main.scala`, `index.ts`, `app.py`, etc.
+- Key config files: `*.sln`, `*.csproj`, `package.json`, `go.mod`, `build.sbt`, `Cargo.toml`, `pyproject.toml`, `pom.xml`, `BUILD`, `WORKSPACE`
+- README.md, CONTRIBUTING.md, DESIGN.md, ARCHITECTURE.md (if they exist)
+- Entry points: `Program.cs`, `Main.scala`, `index.ts`, `app.py`, `main.go`, etc.
 - Test projects / test directories
 - Recent commits: `git -C {repo} log --oneline -20` — surface patterns and recent focus areas
+
+**3b. Architecture Deep-Scan**
+The goal is to understand how the codebase is organized internally — layers, modules, API boundaries, and data flow.
+
+- **Project/module graph**: for monorepos or multi-project solutions, read project references to map dependencies:
+  - .NET: grep `<ProjectReference>` across `*.csproj` files
+  - Go: read `go.mod` imports and scan for `internal/` vs `pkg/` boundaries
+  - JS/TS: read `package.json` workspaces or `tsconfig.references`
+  - Java/Kotlin: read `settings.gradle` or `pom.xml` module declarations
+  - Python: read `pyproject.toml` dependencies or monorepo tool config (`pants.toml`, `BUILD`)
+- **API surface**: scan for REST controllers, gRPC proto files, GraphQL schemas, message queue consumers/producers, event handlers — these define the external contract
+- **Data layer**: identify ORM/migration files (EF Core, Alembic, Flyway, Prisma, GORM), database config, storage abstractions
+- **Design patterns**: look for patterns like Factory, Strategy, Repository, MediatR/CQRS, DI registration files — note them if prominent
+- **Configuration schema**: find config models or schema files (appsettings.json, config structs, env templates)
+
+**3c. Deployment & Infrastructure**
+Understand how the project runs in production and locally.
+
+- **Container**: `Dockerfile`, `docker-compose*.yml`, `.dockerignore` — note base images, multi-stage builds, exposed ports
+- **Orchestration**: `helm/`, `charts/`, `k8s/`, `kustomize/`, `deploy/` directories; read `values.yaml` or main templates for service topology
+- **Cloud resources**: Terraform (`*.tf`), Pulumi, CloudFormation, Bicep, ARM templates — note provisioned services
+- **Serverless**: Azure Functions (`host.json`, `function.json`), AWS Lambda (`serverless.yml`, SAM templates), GCP Cloud Functions
+- **Local dev**: `Makefile`, `Taskfile.yml`, `justfile`, `scripts/`, `docker-compose.override.yml` — how developers run the project locally
+- **Environment config**: `.env.example`, `appsettings.Development.json`, environment variable documentation
+
+**3d. CI/CD Pipelines**
+Go beyond listing pipeline files — understand what they do.
+
+- **Pipeline files**: `.github/workflows/*.yml`, `.azure-pipelines/`, `.pipelines/`, `Jenkinsfile`, `.gitlab-ci.yml`, `.circleci/`, `cloudbuild.yaml`
+- For each pipeline, extract:
+  - **Trigger**: on push/PR/tag/schedule? Which branches?
+  - **Key stages**: build, test, lint, security scan, deploy, release
+  - **Deployment targets**: which environments (dev/staging/prod), which regions, rollout strategy (ring-based, blue-green, canary)
+  - **Required secrets/variables**: variable groups, secret names (don't capture values)
+  - **External template refs**: pinned template repos (e.g. `refs/tags/v2.3.1` from a shared CI template repo)
+- **Release process**: tags, changelog generation, version bumping strategy (semver, calver, etc.)
+
+**3e. Code Standards & Conventions**
+Capture how the team enforces code quality — this is critical context for writing conforming code.
+
+- **Linters & formatters** — scan for config files and extract key rules (not every rule, just non-default or opinionated ones):
+  - `.editorconfig` — indentation style, charset, line endings, trim trailing whitespace
+  - `.eslintrc*`, `eslint.config.*` — framework plugins, custom rules, extends
+  - `.prettierrc*`, `.prettier.config.*` — print width, trailing commas, quote style
+  - `stylecop.json`, `.globalconfig`, `Directory.Build.props` (for `<AnalysisLevel>`, `<TreatWarningsAsErrors>`, `<Nullable>`)
+  - `.golangci.yaml` / `.golangci.yml` — enabled linters, custom settings
+  - `rustfmt.toml`, `clippy.toml`
+  - `pyproject.toml` `[tool.ruff]` / `[tool.black]` / `[tool.isort]` sections, `.flake8`, `mypy.ini`
+  - `checkstyle.xml`, `spotless` config
+- **Code analysis**: `sonar-project.properties`, `.codeclimate.yml`, `codecov.yml`
+- **Git hooks**: `.husky/`, `.pre-commit-config.yaml`, `lefthook.yml` — what runs before commit/push
+- **Naming conventions**: infer from code patterns (PascalCase vs camelCase, file naming, test naming patterns like `Should_X_When_Y`)
+- **Dependency management**: lockfile strategy (`package-lock.json`, `yarn.lock`, `go.sum`, `Directory.Packages.props` for central management), renovate/dependabot config
+
+**3f. Cross-Project Relationships**
+Understand how this repo connects to the broader ecosystem.
+
+- **Outbound dependencies**: HTTP clients calling other services, SDK/client library imports, shared NuGet/npm/PyPI packages from the same org
+- **Inbound contracts**: published API specs (OpenAPI/Swagger), proto files, NuGet/npm packages this repo publishes
+- **Shared infrastructure**: common Helm charts, shared CI templates, shared base Docker images
+- **Event-driven links**: message queue topics/subscriptions this repo produces to or consumes from (Event Hub, Kafka, RabbitMQ, SQS)
+- **Cross-reference with existing KB**: check `workspace/kb/.domain-map.md` for repos already onboarded — if this repo imports or calls any of them, note the specific integration point (e.g. "calls Insights-monitoring Jobs API via InsightsClient.cs")
+
 </parallel>
 
-Build mental model of:
-- **Stack**: languages, frameworks, runtimes
-- **Architecture**: services, layers, data flow
-- **Deployment**: how it runs (Docker, Service Fabric, Azure Functions, K8s, etc.)
-- **CI/CD**: pipeline files, target branches
+**Synthesize mental model** from all scan groups:
+- **Stack**: languages, frameworks, runtimes, build tools
+- **Architecture**: modules/layers, dependency graph, API boundaries, data flow, prominent design patterns
+- **Deployment**: container strategy, orchestration, cloud resources, environments, local dev setup
+- **CI/CD**: pipeline stages, triggers, deployment strategy, release process
+- **Code standards**: enforced conventions, linter/formatter config, git hooks, naming patterns
+- **Cross-project links**: upstream/downstream services, shared infrastructure, event-driven connections
 - **Key constraints**: from CLAUDE.md (Step 1) or inferred from code patterns
 - **Recent changes**: what has shifted since the last onboard (if refreshing)
 
-### 3b. Ownership Analysis
+### 3g. Ownership Analysis
 
 Read `workspace/context.md` to get the team roster and GitHub handles.
 
@@ -166,11 +236,23 @@ Use this structure:
 ## Overview
 - Repo path: `{full path}`
 - Purpose: {one-line description}
-- Stack: {languages, frameworks, runtimes}
+- Stack: {languages, frameworks, runtimes, build tools}
 - Target branch: `{main branch}`
 
 ## Architecture
-{description of services, data flow, key components}
+{High-level description: modules/layers, dependency graph between them, API boundaries}
+
+### Module/Project Graph
+{How internal projects/packages reference each other — e.g. "API → Services → DataAccess → Storage"}
+
+### API Surface
+{REST endpoints, gRPC services, GraphQL schemas, message queue topics — the external contracts this repo exposes}
+
+### Data Layer
+{ORM, migrations, database type, storage abstractions, caching}
+
+### Design Patterns
+{Prominent patterns: Factory, Strategy, CQRS/MediatR, Repository, DI conventions — only if clearly used}
 
 ## Ownership Map
 <!-- Updated by /nase:onboard — based on git log analysis (last 6 months) -->
@@ -195,15 +277,57 @@ Use this structure:
 # {command}
 ```
 
+## Code Standards
+<!-- What the team enforces — critical context for writing conforming code -->
+
+### Linting & Formatting
+{List active linters/formatters with their config files and key non-default rules}
+{e.g. "golangci-lint (.golangci.yaml): govet, errcheck, staticcheck, gofumpt enforced"}
+{e.g. ".editorconfig: 4-space indent, UTF-8, trim trailing whitespace, LF line endings"}
+
+### Code Analysis & Quality Gates
+{SonarQube, CodeClimate, codecov thresholds, TreatWarningsAsErrors, Nullable enabled, etc.}
+
+### Git Hooks & Pre-commit
+{Husky, pre-commit-config, lefthook — what runs automatically before commit/push}
+
+### Naming Conventions
+{Inferred patterns: file naming, test naming (e.g. Should_X_When_Y), PascalCase vs camelCase}
+
+### Dependency Management
+{Central package management, lockfile strategy, renovate/dependabot config}
+
 ## Critical Constraints
 1. {constraint}
 2. ...
 
+## Deployment
+### Container & Orchestration
+{Dockerfile details (base images, multi-stage), Helm charts, K8s manifests, docker-compose}
+
+### Environments & Rollout
+{Dev/staging/prod, ring-based/blue-green/canary rollout, regions}
+
+### Cloud Resources
+{Terraform, ARM, Bicep — provisioned infra: databases, queues, storage, serverless}
+
+### Local Dev Setup
+{How developers run the project locally — Makefile targets, docker-compose, scripts}
+
 ## CI/CD Pipelines
-- {pipeline description}
+{For each pipeline:}
+- **{pipeline name}** (`{file path}`)
+  - Trigger: {push/PR/tag to which branches}
+  - Stages: {build → test → lint → deploy}
+  - Deploy targets: {environments, regions}
+  - Notable: {external template refs, required secrets/variable groups, release strategy}
 
 ## Related Repos
-- {related repo name} — {relationship}
+<!-- How this repo connects to the broader ecosystem -->
+- **{repo name}** — {relationship + specific integration point}
+  {e.g. "Calls Insights-monitoring Jobs API via InsightsClient.cs"}
+  {e.g. "Publishes events to EventHub topic X, consumed by repo Y"}
+  {e.g. "Shares CI templates from org/pipeline-templates (refs/tags/v2.3.1)"}
 
 ## Decisions & Notes
 <!-- Format: ### YYYY-MM-DD — {topic} -->

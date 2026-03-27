@@ -99,7 +99,7 @@ Generate today's journal entry from the data already gathered in Step 0:
 {list of KB files updated and what was added, or "skipped — no repo work today"}
 
 ## Daily Report
-{full daily report from Step 4}
+{full daily report from Step 5}
 
 ---
 {status line}

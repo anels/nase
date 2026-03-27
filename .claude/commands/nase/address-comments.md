@@ -33,27 +33,34 @@ If there are zero unresolved threads: report "No unresolved comments found" and 
 
 ## Phase 3: Critically Evaluate & Present Plan
 
-For each unresolved thread, read the full comment chain AND the surrounding code context (not just the referenced line — read enough to understand the design intent). Then evaluate whether the suggestion genuinely improves the code.
+**Step 3a — Load context before evaluating:**
 
-**Evaluation criteria — ask these questions for each suggestion:**
+For each unresolved thread, read the full comment chain AND the surrounding code (not just the referenced line — enough to understand the design intent). Cross-reference the KB (loaded in Phase 1) for architectural constraints that could invalidate a suggestion. If the KB references a Confluence doc or past decision relevant to the changed area, read it before classifying.
+
+**Step 3b — Resolve unclear threads first:**
+
+Before classifying all threads, identify any where intent is ambiguous or the right action requires design discussion. For each one, use AskUserQuestion to present the full comment chain and ask what to do. Collect all answers before proceeding — this way the final plan is complete in one pass.
+
+**Step 3c — Evaluate and classify remaining threads:**
+
+Ask these questions for each suggestion:
 
 1. **Correctness**: Does the reviewer's suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
 2. **Context**: Does the reviewer have full context? Sometimes a suggestion makes sense locally but conflicts with constraints elsewhere (e.g., API contracts, performance requirements, framework limitations).
 3. **Substance vs. style**: Is this a meaningful improvement to correctness, readability, or maintainability? Or is it a cosmetic/stylistic preference that doesn't materially improve the code?
 4. **Risk**: Could accepting this change introduce a regression, break an invariant, or conflict with the broader design?
 
-**Classify each thread based on the evaluation:**
+**Classify each thread:**
 
 | Category | When to use | Action |
 |----------|-------------|--------|
 | **accept** | Suggestion fixes a real issue, improves correctness, or meaningfully improves clarity/maintainability | Modify the code |
 | **decline** | Current code is correct and the suggestion is stylistic, based on incomplete context, or would introduce risk | Reply explaining why the current approach is intentional |
 | **reply-only** | Question, discussion point, or acknowledgment needed — no code involved | Write a reply |
-| **unclear** | Cannot determine intent or requires design discussion | Ask the user |
 
-The bar for `accept` is: "this change makes the code measurably better." If a suggestion is reasonable but the current code is equally valid, that's a `decline`.
+The bar for `accept` is: "this change makes the code measurably better." If a suggestion is reasonable but the current code is equally valid, that's a `decline`. When declining, reference the KB or a specific architectural constraint if one applies — it makes the reasoning concrete for the reviewer.
 
-**Present the plan to the user:**
+**Step 3d — Present the complete plan:**
 
 ```
 Found {N} unresolved review threads:
@@ -61,11 +68,8 @@ Found {N} unresolved review threads:
   1. ✅ [{path}:{line}] {first_comment_summary} → accept: {what_you_plan_to_do}
   2. ↩️ [{path}:{line}] {first_comment_summary} → decline: {why current code is correct/better}
   3. 💬 [{path}:{line}] {first_comment_summary} → reply-only: {draft_reply_summary}
-  4. ❓ [{path}:{line}] {first_comment_summary} → unclear: {why}
   ...
 ```
-
-For **unclear** threads, use AskUserQuestion to get guidance — present the full comment chain and ask what to do.
 
 ## Phase 4: User Override & Confirm Execution
 
@@ -108,6 +112,8 @@ git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 ### For accept threads:
 
 Read the file at the referenced path and line range. Apply the planned change — keep the diff minimal and focused on what the reviewer asked. Follow the repo's coding standards from KB / `CLAUDE.md`.
+
+If the accepted change alters a logic branch or adds a new code path, check whether an existing test covers it. If not, add or update a test — the reviewer's fix should be verified, not just applied.
 
 ### For decline threads:
 

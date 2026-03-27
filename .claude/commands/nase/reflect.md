@@ -29,8 +29,13 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
 
    Scores are a calibration tool, not a grade. They help detect patterns over time — if efficiency is consistently low, it signals a workflow issue worth addressing.
 
-4. Save key learnings to `workspace/tasks/lessons.md` using the format defined in `/nase:learn` (ensure file exists, create with header if missing).
-   - If the extracted pattern is a reusable rule: save to auto-memory (the project auto-memory directory (see MEMORY.md in your conversation context)) as a feedback-type memory file.
+4. Save key learnings to `workspace/tasks/lessons.md` (create with `# Lessons` header if missing). Use this format per entry:
+   ```
+   ### YYYY-MM-DD — {rule or pattern name}
+   **When:** {situation this applies to}
+   **Do:** {concrete action or rule}
+   ```
+   If the extracted pattern is a reusable rule: also save to the auto-memory directory as a feedback-type memory file.
    - Verify the append: read back the last entry to confirm it was written correctly.
 
 5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes). If `--auto-accept` is active, skip CLAUDE.md update proposals (wrap-up handles these separately).
