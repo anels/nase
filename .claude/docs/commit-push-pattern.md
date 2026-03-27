@@ -28,7 +28,9 @@ Glance at the staged files for hardcoded tokens, passwords, `.env` content, or p
 
 Create an initial commit with a conventional commit message.
 
-### 4. Improve
+### 4. Improve commit message
+
+Skip this step unless the skill's deviation row below explicitly includes it.
 
 ```
 /nase:improve-commit-message --auto-accept
@@ -52,8 +54,8 @@ git -C {repo_or_worktree} push origin {branch}
 
 ## Deviations by Skill
 
-| Skill | Deviation |
-|-------|-----------|
-| `fsd` | Uses `-u origin` on first push (`push -u origin {branch}`) |
-| `address-comments` | In "Confirm before push" mode: show staged diff and commit message, prompt user, stop if aborted |
-| `prep-merge` | Uses `--force-with-lease` instead of normal push; stop if force-push fails (someone else pushed) |
+| Skill | Step 4 (improve) | Push deviation |
+|-------|-----------------|----------------|
+| `fsd` | Skip | Uses `-u origin` on first push (`push -u origin {branch}`) |
+| `address-comments` | Skip | In "Confirm before push" mode: show staged diff and commit message, prompt user, stop if aborted |
+| `prep-merge` | Run | Uses `--force-with-lease`; stop if force-push fails (someone else pushed) |

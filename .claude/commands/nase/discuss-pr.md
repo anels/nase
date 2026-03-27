@@ -7,11 +7,15 @@ description: Chat-first deep PR review — posts to GitHub only on explicit requ
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`. If `$ARGUMENTS` is empty, ask the user for the PR URL instead of printing usage.
 
-## Step 1 — Parse inputs
+## Step 1 — Parse inputs and resolve repo
 
 Note any focus areas the user specifies (e.g. "architecture", "security", "skip nitpicks").
 
 Default focus if none specified: architecture, bugs, security, testability, DRY/KISS.
+
+Follow `.claude/docs/repo-resolution.md`:
+- **Part 1** (Repo Resolution): extract `owner/repo` from the PR URL, look up the repo name in `.local-paths`. If not found, ask the user for the local path and append it.
+- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it — focusing on **Architecture** and **Critical Constraints** sections.
 
 ## Step 2 — Fetch PR metadata and existing comments
 
@@ -27,23 +31,13 @@ Save: title, body, head SHA, changed file list, full diff, existing inline comme
 
 Group comments into threads: top-level comment + all replies sharing the same `in_reply_to_id`.
 
-## Step 3 — Engage existing comments + launch specialist agents
+## Step 2.5 — Collect context
 
-If the PR has no existing comments, skip the comment engagement and go straight to the agent results.
+For each file touched by the diff, read its key dependencies: interfaces it implements, base classes it extends, and primary callers — anything not in the diff itself that explains how the changed code fits into the larger design. Cross-reference the KB (loaded in Step 1) for architectural constraints relevant to the changed area. If the KB references a Confluence doc for this domain, read it. The goal is to have enough context that agent findings can be evaluated against actual design intent, not just the diff in isolation.
 
-**Do both in parallel:**
+## Step 3 — Launch specialist agents + engage existing comments
 
-**A) Present existing comments** — for each unresolved thread, show:
-- File + line, author, comment body
-- Whether it's a standalone comment or a thread with replies
-
-Then ask the user which comments they agree with, want to discuss, or skip.
-
-When the user wants to discuss a comment, engage directly — research the code, check Confluence or git history for context, and give your own take.
-
-Collect agree/discuss/skip decisions but **do not post reactions or replies yet** — those are batched into Step 9 alongside inline comments, posted only on explicit request.
-
-**B) Launch specialist agents** (do not wait for user comment triage — agents only read the diff):
+**Fire agents immediately** — they only need the diff and KB context from Steps 2–2.5. Do not wait for the comment triage below.
 
 <!-- Model routing is configured in CLAUDE.md — defer to workspace-level settings. -->
 
@@ -55,6 +49,12 @@ Collect agree/discuss/skip decisions but **do not post reactions or replies yet*
 | **Testability** | Missing coverage for new paths, tests that only chase signatures, untestable designs |
 | **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
 | **Code comments** | Violations of guidance in inline comments, stale or contradicted comments |
+
+**While agents run — engage existing comments** (if any):
+
+For each unresolved thread, show: file + line, author, comment body, and whether it has replies. Ask the user which they agree with, want to discuss, or skip. When the user wants to discuss one, research the code, check Confluence or git history, and give your own take.
+
+Collect agree/discuss/skip decisions but **do not post reactions or replies yet** — those are batched into Step 8, posted only on explicit request.
 
 ## Step 4 — Score and filter (after agents complete)
 
@@ -108,10 +108,11 @@ Do not post anything to GitHub. The user pastes these manually.
 When the user asks to post, approve, or submit:
 
 - **All text in English** — GitHub reviews are always in English
-- **Approve body**: "LGTM with nits" or "Approved with nits" — never repeat the fix mechanism or summarize the PR
+- **Review state**: `REQUEST_CHANGES` if any confirmed bug or security issue; `APPROVE` if no confirmed bugs or security issues and the PR is ready to merge; `COMMENT` otherwise (findings worth noting but not blocking)
+- **Approve body**: "LGTM" or "LGTM with nits" — never repeat the fix mechanism or summarize the PR
 - **Inline comments**: keep minimal — same 1–2 sentence rule as drafts, concise
-- **Reactions/replies from Step 2.5**: post any agreed +1 reactions or "Agreed." replies now
-- Create pending review → add inline comments → submit with APPROVE/COMMENT/REQUEST_CHANGES as appropriate
+- **Reactions/replies from Step 3**: post any agreed +1 reactions or "Agreed." replies now
+- Create pending review → add inline comments → submit with the review state determined above
 
 For reactions and replies:
 ```

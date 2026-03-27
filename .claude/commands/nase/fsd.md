@@ -76,7 +76,7 @@ After receiving answer, proceed to Phase 3 immediately — do not wait for furth
 
 ## Phase 3: Setup
 
-Print: `FSD engaged — driving autonomously from here. 🚗`
+Print: `FSD engaged — driving autonomously from here.`
 
 **If worktree = Yes:**
 1. Generate a branch name from the task: lowercase kebab-case, prefix `feat/` or `fix/` based on task type (default to `feat/` if ambiguous). Max 50 chars total. Strip articles and filler words. Examples: "add user avatar upload" → `feat/user-avatar-upload`, "fix null pointer in auth flow" → `fix/null-ptr-auth-flow`. If the branch already exists locally or on the remote (`git show-ref refs/heads/{branch_name} refs/remotes/origin/{branch_name}`), append `-v2`, `-v3`, etc.
@@ -89,15 +89,42 @@ Print: `FSD engaged — driving autonomously from here. 🚗`
 
 ---
 
-## Phase 4: Implement
+## Phase 4: Implement (TDD — Red → Green → Refactor)
 
 Read the repo's `CLAUDE.md` (if not already read) for coding standards and constraints. Read the relevant KB section on architecture so changes fit the existing design.
 
-**If execution mode = Team:**
-Invoke the `/team` skill with the task from $ARGUMENTS. Wait for all agents to complete before proceeding to Phase 5.
+**Step 0 — Classify task type and pick your lead principles:**
 
-**If execution mode = Direct:**
-Implement the task. Follow the repo's coding standards. Keep changes minimal and focused — do not refactor surrounding code unless directly required by the task. Aim for the smallest diff that correctly solves the problem.
+| Context | Examples | Lead with |
+|---------|----------|-----------|
+| Architecture / requirements analysis | system redesign, new service, cross-cutting concern | First Principles → SOLID |
+| New feature / incremental development | adding an endpoint, extending a handler, new config option | YAGNI → KISS |
+| Small function / utility | helper, formatter, parser, extension method | KISS → DRY |
+| Complex business component / OOP modelling | domain entity, stateful service, multi-class hierarchy | First Principles → SOLID → DRY |
+
+Use the lead principles as the primary design lens. The others (DRY, YAGNI, KISS, SOLID) still apply but yield to the lead when they conflict.
+
+**Step 1 — DRY scan (before writing any code):**
+Grep for existing utilities, helpers, or patterns that overlap with the task. Reuse before creating. If a partial abstraction already exists, extend it rather than duplicating.
+
+**If execution mode = Team:**
+Invoke the `/team` skill with the task from $ARGUMENTS, including the classified task type and its principle order. Wait for all agents to complete before proceeding to Phase 5.
+
+**If execution mode = Direct — follow Red → Green → Refactor:**
+
+1. **Red** — write tests first:
+   - Scan existing test files to understand conventions (location, naming, assertion style, mocking patterns).
+   - Write failing tests that describe the expected behavior. Keep tests minimal and specific — one concern per test.
+   - Run the tests. Confirm they fail *for the right reason* (not a compile error — the feature genuinely doesn't exist yet).
+
+2. **Green** — implement the minimum to pass:
+   - Apply the top-ranked principle from Step 0 as the primary design lens. Do not implement anything the tests don't require (YAGNI).
+   - Write the smallest implementation that makes the tests pass.
+   - Re-run the tests. All new tests must be green; no existing tests may regress.
+
+3. **Refactor** — apply the lead principles from Step 0:
+   - Walk the lead principles: does the code satisfy each? If not, refactor until it does before moving on.
+   - Re-run tests after each refactor pass to confirm nothing broke.
 
 ---
 

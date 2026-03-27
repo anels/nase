@@ -3,7 +3,9 @@ name: nase:learn
 description: Capture a tip, mistake pattern, article URL, or GitHub repo as structured knowledge. Use for quick learnings, articles worth distilling, or mistakes to avoid repeating. Also triggers on "remember this", "save this tip", "learn from this".
 ---
 
-For durable codebase-specific architecture decisions or constraints, use `/kb-update` instead.
+This skill extracts knowledge from any source (URL, tip, keyword, lesson, conversation), then goes deeper by researching related materials online — finding discussions, alternative approaches, and community insights — before persisting everything directly to the KB. The goal is real understanding, not just note-taking.
+
+**Decision rule:** is this a general tip, article, or pattern that could apply across projects? → here. Is it a hard constraint or architectural decision specific to one codebase? → use `/kb-update` instead.
 
 If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and use best judgment for decisions. This flag is used by automated callers like `/nase:wrap-up`.
 
@@ -12,6 +14,7 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and u
 - A mistake pattern: `"I did X wrong, should have done Y"`
 - A URL (article or GitHub repo): `https://...` — content is fetched and distilled automatically
 - A URL + context hint: `https://... , what's worth learning about X`
+- A keyword or topic: `"structured concurrency"` — triggers web research directly
 - Empty: auto-reflect on the most recent conversation
 
 ## Steps
@@ -19,11 +22,12 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and u
 ### 1. Detect input type
 
 Parse $ARGUMENTS:
-- **URL**: starts with `http://` or `https://` → go to Step 2 (fetch)
-- **Text tip**: plain text → skip to Step 3 (categorize)
-- **Empty**: auto-reflect on recent conversation → extract 1-3 learnings, then go to Step 3
+- **URL**: starts with `http://` or `https://` → go to Step 2 (fetch & extract)
+- **Keyword/topic**: short phrase without URL, looks like a concept rather than a tip (e.g. `"structured concurrency"`, `"CQRS patterns"`, `"eBPF observability"`) → go to Step 3 (research) directly, using the keyword as the research seed
+- **Text tip / lesson**: plain text describing a specific insight or mistake → go to Step 4 (synthesize), using it as a pre-extracted learning
+- **Empty**: auto-reflect on recent conversation → extract 1-3 learnings, then go to Step 4
 
-### 2. Fetch and distill (URL inputs only)
+### 2. Fetch and Extract (URL inputs)
 
 **2a. Determine source type:**
 - GitHub repo URL (e.g. `github.com/Org/Repo`) → fetch the README, and if present: CLAUDE.md, docs/index, key source files mentioned in README. Focus on: architecture, design patterns, novel techniques, tooling decisions.
@@ -34,58 +38,123 @@ Parse $ARGUMENTS:
 
 Discard marketing content, unrelated domains, and obvious filler.
 
-**2c. Extract 2-5 concrete learnings** — for each, answer:
+**2c. Extract key knowledge** — for each insight found, capture:
 - What is the technique/pattern/insight?
 - Why does it matter / what problem does it solve?
 - Is it directly applicable to our stack or workflow?
+- What are the tradeoffs or limitations?
 
-Show the extracted learnings to the user, then confirm using AskUserQuestion:
+Produce a list of 2-5 concrete knowledge items. These become the seed for Step 3.
+
+### 3. Deep Research (secondary learning)
+
+This is the step that turns a single source into real understanding. The goal: find how the community discusses, critiques, and applies this knowledge — not just parrot the original source.
+
+<parallel>
+
+**3a. Search for related discussions and materials:**
+Using WebSearch, find 3-5 high-quality related sources. Search for:
+- The core concepts/techniques extracted in Step 2 (or the keyword from Step 1)
+- Add qualifiers to find diverse perspectives: `"{topic} tradeoffs"`, `"{topic} vs alternatives"`, `"{topic} production experience"`, `"{topic} best practices {year}"`
+- Prefer: official docs, engineering blog posts, conference talks, GitHub discussions, Stack Overflow answers with high votes, HN/Reddit discussions with substance
+
+**3b. Cross-reference with existing KB:**
+Read `workspace/kb/.domain-map.md` and check if any existing KB files already cover related topics. If so, read the relevant sections — the new knowledge may extend, contradict, or refine what's already there.
+
+</parallel>
+
+**3c. Fetch and distill the best sources:**
+From the search results, pick the 2-3 most valuable sources (prioritize: practical experience > theory, recent > old, in-depth > surface-level). Use WebFetch to read them. Extract:
+- **Complementary insights**: things the original source didn't cover
+- **Counterpoints**: criticisms, failure cases, "it depends" nuances
+- **Practical examples**: real-world usage, production stories, gotchas
+- **Related tools/libraries**: alternatives or companions worth knowing about
+
+**3d. Build a sources list** for attribution:
 ```
-question: "Save these learnings?"
-header: "Confirm Learnings"
+- [{title}]({url}) — {one-line why it's relevant}
+```
+
+### 4. Synthesize and Confirm
+
+Combine the original extraction (Step 2) with the deep research (Step 3) into a unified knowledge summary. Structure it as:
+
+```
+## {Topic Title}
+
+### Core Insight
+{What this is and why it matters — 2-3 sentences}
+
+### Key Takeaways
+1. {takeaway with detail}
+2. {takeaway with detail}
+...
+
+### Tradeoffs & Limitations
+- {what to watch out for}
+
+### Practical Application
+{How this applies to our stack/workflow — be specific}
+
+### Sources
+- {attributed list from Step 3d}
+```
+
+Show the synthesis to the user, then confirm using AskUserQuestion:
+```
+question: "Save this to the knowledge base?"
+header: "Confirm Knowledge Entry"
 options:
-  - label: "Yes — save all"    , description: "Write to lessons.md and KB"
-  - label: "Edit"               , description: "Adjust before saving"
-  - label: "No — discard"       , description: "Nothing is written"
+  - label: "Yes — save"          , description: "Write to KB"
+  - label: "Edit"                 , description: "Adjust before saving"
+  - label: "No — discard"        , description: "Nothing is written"
 ```
-- **Yes**: proceed to Step 3
+- **Yes**: proceed to Step 5
 - **Edit**: ask what to change, then re-confirm
 - **No**: stop, nothing is written
 
-### 3. Categorize each learning
+### 5. Categorize and determine KB target
 
-- `workflow` — process, tools, habits, Claude Code patterns
-- `code` — patterns, gotchas, best practices
-- `debugging` — root causes, diagnostic techniques
-- `architecture` — design decisions, tradeoffs
-- `project` — project-specific context or conventions
+Map each knowledge item to a KB domain:
+- `workflow` — process, tools, habits, Claude Code patterns → `workspace/kb/general/workflow.md`
+- `code` / `dotnet` / `spark-scala` etc. — patterns, gotchas, best practices → match to existing domain in `.domain-map.md`
+- `debugging` — root causes, diagnostic techniques → `workspace/kb/general/debugging.md`
+- `architecture` / `system-design` — design decisions, tradeoffs → `workspace/kb/general/system-design.md`
+- `llm` / `claude-prompting` — LLM techniques, prompt engineering → match to existing domain
+- `tech-trends` — emerging tech, industry shifts → `workspace/kb/general/tech-trends.md`
+- **New domain**: if no existing domain fits, create a new KB file and register it in `.domain-map.md` under `## General`
 
-### 4. Write to lessons.md
+If the knowledge spans multiple domains, write to each relevant KB file (the overlapping parts, not duplicates — each file gets domain-specific framing).
 
-Ensure `workspace/tasks/lessons.md` exists (create with `# Lessons Learned\n` header if missing). Append one entry per learning:
-```
-## {category} — {YYYY-MM-DD}
-**Tip:** {one-line summary}
-**Detail:** {explanation, why it matters, example if relevant}
-**Source:** {URL or description of what triggered this}
-```
+### 6. Write to KB
 
-### 5. Write to KB (always runs for URL inputs)
+For each target KB file:
+- If the file exists: read it, find the right section, and **append or merge** the new knowledge. Don't duplicate content that's already there — enrich it instead. Add a date comment: `<!-- Added: YYYY-MM-DD -->`
+- If the file doesn't exist: create it with a header and the synthesized content, then register in `.domain-map.md`
 
-If the input was a URL, always write learnings to the KB. Skip only for plain-text tips.
+Use the synthesized format from Step 4, adapted to fit the existing file's structure.
 
-Delegate to `/nase:kb-update` with the extracted content rather than writing directly. For each learning that belongs in the KB, invoke kb-update with the topic, summary, and source URL. If learnings span multiple domains, invoke kb-update once per domain.
-
-### 6. Flag reusable rules
+### 7. Flag reusable rules
 
 If any learning is an important reusable rule or principle:
-- Save to auto-memory (the project auto-memory directory (see MEMORY.md in your conversation context)) as a feedback-type memory file.
+- Save to the auto-memory directory as a feedback-type memory file.
 - Suggest updating `.claude/docs/reference.md` under "Key Decisions & Architecture Notes" if warranted
 
-### 7. Confirm
+### 8. Update daily log and confirm
 
-Report exactly what was saved and where (lessons.md entries, KB files updated, memory files created).
+Append to `workspace/logs/YYYY-MM-DD.md`:
+```
+- Learned: {topic} — {one-line summary} (sources: {N} articles researched) → wrote to {kb-file(s)}
+```
+
+Report to user:
+- What knowledge was captured (topic + key takeaways)
+- Where it was written (KB file paths)
+- How many external sources were researched
+- Any new KB domains created
 
 ## Error Handling
 
-If KB files referenced in domain-map are missing, note the gap and continue with available sources. Do not fail the entire skill.
+- If WebSearch/WebFetch fails: proceed with whatever was extracted from the original source. Note in the output that deep research was skipped and suggest trying again later.
+- If KB files referenced in domain-map are missing: create them rather than failing.
+- If the original URL is inaccessible: fall back to treating the URL's topic as a keyword and go to Step 3 (research) directly.
