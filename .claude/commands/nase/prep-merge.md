@@ -141,7 +141,7 @@ options:
 
 ## Phase 8: Commit & Force Push
 
-Create the squash commit (if not already done in Phase 6 for single-commit PRs):
+Create the squash commit (skip this step for single-commit PRs — Phase 6 was skipped and the commit already exists):
 
 ```bash
 git -C {worktree_path} commit -m "{squash_commit_message}"

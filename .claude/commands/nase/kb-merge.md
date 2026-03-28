@@ -40,15 +40,25 @@ Verify the directory exists and contains a `.domain-map.md` (or at minimum a rec
 
 ### Step 2: Scan and Categorize
 
-Read the imported `.domain-map.md` (if present) and scan the directory structure. For each file found in the imported KB, check whether a corresponding file exists locally in `workspace/kb/`:
+Read the imported `.domain-map.md` (if present) and scan the directory structure. For each file found in the imported KB, check whether a corresponding file exists locally:
+
+**For KB files** (`general/`, `projects/`, `ops/`, and any non-`skills/` subdirectory):
+- Check `workspace/kb/{category}/{filename}`
+
+**For skill files** (`skills/` subdirectory):
+- Check BOTH `workspace/kb/skills/{filename}` AND `.claude/commands/nase/workspace/{stem}.md` (where `{stem}` is the filename without `.md`)
+- If either location has the file, it's a conflict — merge into the existing local location (prefer `.claude/commands/nase/workspace/` if that's where it lives)
 
 Build two lists:
 
-**New files** — exist in the import but not locally:
+**New files** — exist in the import but not found in any local location:
 - These can be added directly (no merge needed)
+- KB files go to `workspace/kb/{category}/`
+- Skill files go to `.claude/commands/nase/workspace/` (and also `workspace/kb/skills/` as a reference copy)
 
-**Conflicting files** — exist in both the import and locally:
+**Conflicting files** — found in the import AND locally:
 - These require AI-assisted merge
+- Note the local path where the file lives
 
 Present the categorization:
 
@@ -56,12 +66,13 @@ Present the categorization:
 ## Import Preview — {imported-dir}
 
 ### New files (will be added)
-- general/spark-scala.md
-- projects/some-project.md
+- general/spark-scala.md → workspace/kb/general/spark-scala.md
+- skills/new-tool.md → .claude/commands/nase/workspace/new-tool.md
 
 ### Conflicting files (will be merged)
-- general/dotnet.md  — both local and imported versions exist
-- ops/oncall.md      — both local and imported versions exist
+- general/dotnet.md  — local: workspace/kb/general/dotnet.md
+- ops/oncall.md      — local: workspace/kb/ops/oncall.md
+- skills/investigate-sre-jira.md — local: .claude/commands/nase/workspace/investigate-sre-jira.md
 
 ### Skipped (in import but empty or unrecognizable)
 - (none)
@@ -138,9 +149,13 @@ options:
 
 For each file approved in Step 4:
 
-**New files:** Write directly to `workspace/kb/{category}/{filename}`. Create the category directory if it doesn't exist.
+**New KB files** (`general/`, `projects/`, `ops/`, etc.): Write to `workspace/kb/{category}/{filename}`. Create the directory if it doesn't exist.
 
-**Merged files:** Write the AI-merged content (from Step 3) to `workspace/kb/{category}/{filename}`, overwriting the local version.
+**New skill files** (`skills/`): Write to `.claude/commands/nase/workspace/{stem}.md`. Also write a copy to `workspace/kb/skills/{filename}` as a reference. Create directories as needed.
+
+**Merged KB files**: Write the AI-merged content to the local path identified in Step 2 (e.g., `workspace/kb/{category}/{filename}`).
+
+**Merged skill files**: Write the AI-merged content to the local path identified in Step 2 (e.g., `.claude/commands/nase/workspace/{stem}.md`). Update the `workspace/kb/skills/` copy if one exists.
 
 ### Step 6: Update Domain Map
 
@@ -158,21 +173,30 @@ Write the updated `.domain-map.md`.
 
 ### Step 7: Summary
 
-Display what was done:
+Display a structured summary split by KB files and skills. For each file that was written, show concrete bullet points describing what changed — not just counts.
 
 ```
 ## KB Merge Complete — {YYYY-MM-DD}
 
 **Source:** {imported-dir}
 
-### Applied
-- Added: {N} new files
-- Merged: {N} conflicting files
-- Skipped: {N} files (user chose to keep local)
+### KB files — {N} added, {N} updated, {N} skipped
+- ops/oncall.md (updated)
+  + Added: "Delivery Function Disk Full" alert pattern
+  + Added: "publisher-inactive-tenant" runbook section
+  = Unchanged: everything else
+- projects/insights-monitoring.md (skipped — kept local)
+- general/spark-scala.md (added — new file)
+
+### Skills — {N} added, {N} updated, {N} skipped
+- investigate-sre-jira (.claude/commands/nase/workspace/) (updated)
+  + Added: Customer Issue Flow — Steps 2b–8b
+  ~ Merged: SRE Alert Flow — consolidated session tracker
+  = Unchanged: AppInsights query templates
+- new-tool (.claude/commands/nase/workspace/) (added — new skill)
 
 ### Flagged for manual review
-- general/dotnet.md: "Target framework" conflict (line 12) — verify net8 vs net9
-- (any MERGE CONFLICT comments inserted)
+- general/dotnet.md: "Target framework" — local says net8.0, imported says net9.0 (verify)
 
 ### Domain map
 - {N} new entries added
@@ -187,7 +211,7 @@ Run /nase:kb-review to find and resolve them.
 
 Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
 ```
-- KB merge from {source} — {N} added, {N} merged, {N} skipped
+- KB merge from {source} — KB: {N} added, {N} updated; Skills: {N} added, {N} updated; {N} skipped
 ```
 
 ## Notes

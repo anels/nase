@@ -1,9 +1,9 @@
 ---
 name: nase:kb-teamshare
-description: Export and share your knowledge base with teammates — sanitizes personal info, fixes internal links to be portable, and lets you pick exactly which KB files to include. Use when asked "share my KB", "export KB", "export knowledge base", "share knowledge", "给同事分享KB", "导出知识库", or when you want to package KB files for others to import with /nase:kb-merge.
+description: Export and share your knowledge base with teammates — sanitizes personal info, fixes internal links to be portable, and lets you pick exactly which KB files to include. Also supports sharing learned workspace skills. Use when asked "share my KB", "export KB", "export knowledge base", "share knowledge", "share skills", "给同事分享KB", "导出知识库", or when you want to package KB files or skills for others to import with /nase:kb-merge.
 ---
 
-Export selected KB files as a portable, sanitized directory ready to share with teammates.
+Export selected KB files and workspace skills as a portable, sanitized directory ready to share with teammates.
 
 **Input:** $ARGUMENTS
 (Optional: target directory path. If not provided, will ask interactively.)
@@ -16,7 +16,7 @@ Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred 
 
 Read `workspace/config.md` and extract:
 - `conversation:` → language for all AskUserQuestion prompts and responses to the user in this session
-- `output:` → language for any text written into the exported files themselves (e.g., `.domain-map.md` comments, redaction placeholders)
+- `output:` → language for any text written into the exported files themselves
 
 If `workspace/config.md` is missing or has no `## Language` section, default both to English.
 
@@ -51,8 +51,8 @@ If "Custom path" is chosen, invoke `AskUserQuestion` again to collect the actual
 **Invoke `AskUserQuestion`** (multiSelect):
 
 ```
-question: "Which KB categories do you want to include?"
-header: "KB scope"
+question: "Which content do you want to include?"
+header: "Export scope"
 multiSelect: true
 options:
   - label: "general/ — tech knowledge"
@@ -61,11 +61,15 @@ options:
     description: "Repo architecture, constraints, patterns. Contains more personal details — will be sanitized."
   - label: "ops/ — operations knowledge"
     description: "Oncall, customer support, runbooks. May contain internal company info — will be sanitized."
+  - label: "skills/ — workspace skills"
+    description: "Custom learned skills from workspace/skills/ (e.g. investigate-sre-jira.md). Shared as standalone skill files."
 ```
 
 ### Step 3: Select Specific Files
 
-Read `.domain-map.md` to get the list of files in each selected category. First **invoke `AskUserQuestion`**:
+Read `workspace/kb/.domain-map.md` to get the list of KB files in each selected KB category. For `skills/`, list all `.md` files found in `workspace/skills/`.
+
+First **invoke `AskUserQuestion`**:
 
 ```
 question: "Which files to include?"
@@ -87,9 +91,13 @@ If "Let me pick individually": **print the full file list in your response first
 2. workflow.md — dev workflow, PR rules
 ...
 
-**projects/** (13 files)
-8. insights-dashboarding.md — REST API + NuGet library
-9. llm-observability.md — LLM observability platform
+**ops/** (3 files)
+8. oncall.md — alert patterns and runbooks
+...
+
+**skills/** (3 files)
+11. investigate-sre-jira.md — end-to-end SRE ticket investigation
+12. handle-support-question.md — customer support workflow
 ...
 ```
 
@@ -100,18 +108,20 @@ question: "Type the numbers of the files to include (e.g. '1,3,8'). Use 'Other' 
 header: "Pick files"
 options:
   - label: "All from general/ only"
-    description: "Include all general/ files, skip projects/ and ops/"
-  - label: "All from projects/ only"
-    description: "Include all projects/ files, skip others"
-  - label: "All from ops/ only"
-    description: "Include all ops/ files, skip others"
+    description: "Include all general/ files, skip others"
+  - label: "All from skills/ only"
+    description: "Include all workspace skills, skip KB files"
+  - label: "All KB files (no skills)"
+    description: "general/, projects/, ops/ — exclude skills"
   - label: "Custom selection"
     description: "Use 'Other' to type the file numbers you want"
 ```
 
 Parse the user's answer (whether a preset option or custom "Other" text with numbers) into the final file list.
 
-Record the final list of files to export (absolute paths under `workspace/kb/`).
+Record the final list of files to export, separated by type:
+- KB files: absolute paths under `workspace/kb/`
+- Skill files: absolute paths under `workspace/skills/`
 
 ### Step 4: Process Each File
 
@@ -138,7 +148,11 @@ Internal KB cross-references use the form `workspace/kb/category/file.md`. These
   - `workspace/kb/projects/foo.md` → `projects/foo.md`
   - Markdown link format: `[text](workspace/kb/X/Y.md)` → `[text](X/Y.md)`
   - Plain text references: replace the path string directly
-- **If the linked file is NOT in the export set:** remove the link and replace with a plain text note in brackets: `[not included in this export]`
+- **If the linked file is NOT in the export set:** remove the entire line containing the link. A dangling reference with no destination is worse than nothing — it just confuses the reader.
+
+Similarly, for skill file references (e.g. `workspace/skills/investigate-sre-jira.md`):
+- If the referenced skill IS in the export set: rewrite to `skills/investigate-sre-jira.md`
+- If NOT in the export set: remove the entire line
 
 #### 4c — Privacy Classification
 
@@ -197,7 +211,7 @@ After privacy decisions are applied, check whether the file's content language m
 - Code blocks (shell commands, SQL, YAML, config snippets)
 - Technical identifiers (class names, field names, env var names)
 - Proper nouns that are product/service names (e.g. "Looker", "ArgoCD", "Snowflake")
-- Placeholders inserted by earlier steps (`<REPO_PATH:...>`, `[internal link removed]`, `[customer]`)
+- Placeholders inserted by earlier steps (`<REPO_PATH:...>`)
 
 **Why this matters**: the exported KB will be read by teammates whose working language may differ from yours. The `output:` language is the agreed team communication language — exporting content in a personal note-taking language makes it inaccessible.
 
@@ -205,7 +219,7 @@ Translate inline — produce the same file structure with translated prose, pres
 
 ### Step 5: Write Export Directory
 
-Create the export directory at the chosen path. Within it, mirror the KB structure:
+Create the export directory at the chosen path. Within it, mirror the source structure:
 
 ```
 {export-dir}/
@@ -216,15 +230,21 @@ Create the export directory at the chosen path. Within it, mirror the KB structu
 │   └── ...
 ├── ops/
 │   └── ...
+├── skills/
+│   ├── investigate-sre-jira.md
+│   └── ...
 └── .domain-map.md
 ```
 
-Write each processed file to its corresponding location. Then generate a `.domain-map.md` for the export:
+Write each processed file to its corresponding location.
+
+Then generate a `.domain-map.md` for the export:
 
 ```markdown
 # Domain Map (Exported KB)
 <!-- Exported by /nase:kb-teamshare on {YYYY-MM-DD} -->
-<!-- Import with /nase:kb-merge -->
+<!-- Import KB files with /nase:kb-merge -->
+<!-- Install skill files by copying skills/ contents to your workspace/skills/ -->
 
 ## General
 - dotnet → general/dotnet.md
@@ -237,9 +257,13 @@ Write each processed file to its corresponding location. Then generate a `.domai
 ## Ops
 - oncall → ops/oncall.md
 ...
+
+## Skills
+- investigate-sre-jira → skills/investigate-sre-jira.md
+...
 ```
 
-Paths in the exported `.domain-map.md` use relative paths (no `workspace/kb/` prefix).
+Paths in the exported `.domain-map.md` use relative paths (no `workspace/kb/` or `workspace/skills/` prefix).
 
 ### Step 6: Summary
 
@@ -249,22 +273,24 @@ Display a summary:
 ## KB Export Complete — {YYYY-MM-DD}
 
 **Exported to:** {export-dir}
-**Files:** {N} files across {categories}
+**KB files:** {N} files across {categories}
+**Skill files:** {N} skills
 
 ### Sanitization applied
 - Local paths replaced: {N} occurrences
 - Internal links rewritten: {N} (to relative paths)
-- Internal links removed: {N} (linked files not in export)
+- Internal links removed: {N} (referenced files not in export — lines deleted)
 - Content reviewed with user: {N} items
 
 ### How to share
 Zip the folder or share the directory directly.
-Your teammate can import it with: /nase:kb-merge {export-dir}
+Your teammate can import KB files with: /nase:kb-merge {export-dir}
+Skill files: copy the skills/ directory contents to their workspace/skills/
 ```
 
 Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
 ```
-- KB export ({N} files, categories: {list}) → {export-dir}
+- KB export ({N} KB files + {N} skills, categories: {list}) → {export-dir}
 ```
 
 ## Notes
@@ -273,3 +299,4 @@ Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
 - The goal is portability and privacy, not perfect formatting. If a transformation is ambiguous, ask the user — a prompt is cheaper than accidentally sharing sensitive data.
 - `workspace/tasks/lessons.md` and daily logs are intentionally excluded — they're personal records, not KB.
 - The exported directory is self-contained: no references to `workspace/` should remain after Step 4.
+- Skill files in `workspace/skills/` are treated as plain markdown — apply the same path-stripping, privacy review, and translation pipeline as KB files.

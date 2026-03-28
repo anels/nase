@@ -46,11 +46,11 @@ options:
 ### 4. Confirm with user
 Before asking for confirmation, show files that exist in `workspace/` but NOT in the selected backup:
 ```bash
-# List files in the zip
-7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sort > /tmp/backup-files.txt
-# List files in current workspace/
-(cd "$NASE_ROOT/workspace" && find . -type f | sort) > /tmp/local-files.txt
-# Files that will be deleted
+# List files in the zip — strip the leading workspace/ prefix so paths are comparable
+7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | grep '^workspace/' | sed 's|^workspace/||' | sort > /tmp/backup-files.txt
+# List files in current workspace/ — strip leading ./ so paths are comparable
+(cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > /tmp/local-files.txt
+# Files that exist locally but not in the backup (will be deleted by restore)
 comm -23 /tmp/local-files.txt /tmp/backup-files.txt
 ```
 If any such files exist, warn: "The following files exist locally but not in the backup and will be DELETED by the restore."

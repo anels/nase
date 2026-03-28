@@ -22,7 +22,7 @@ Run steps 1–4 in parallel, then combine into Step 5 output.
   - Older than 7 days or missing → add to stale list
 
 ### 3. Today's commits so far (if any)
-- Read repo local paths from `.local-paths` (skip comment/blank lines, format: `RepoName=/path`). For each path: `git -C {path} log --since="midnight" --oneline --branches 2>/dev/null`
+- Read repo local paths from `.local-paths` (skip comment/blank lines, format: `RepoName=/path`). For each path: `git -C {path} log --since="{TODAY}T00:00:00" --oneline --branches 2>/dev/null` (use today's date in YYYY-MM-DD format — avoids timezone ambiguity from `"midnight"`)
 
 ### 4. Jira + Slack pulse (run in parallel; degrade gracefully if MCP unavailable)
 

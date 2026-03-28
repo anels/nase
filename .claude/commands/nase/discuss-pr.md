@@ -23,8 +23,8 @@ Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.
 
 ```
 gh pr diff <PR> --repo <owner/repo>
-gh api repos/<owner/repo>/pulls/<PR>/comments
-gh api repos/<owner/repo>/pulls/<PR>/reviews
+gh api repos/<owner/repo>/pulls/<PR>/comments --paginate
+gh api repos/<owner/repo>/pulls/<PR>/reviews --paginate
 ```
 
 Save: title, body, head SHA, changed file list, full diff, existing inline comments (with `id`, `path`, `line`, `body`, `user.login`, `in_reply_to_id`), existing reviews (with `id`, `state`, `body`, `user.login`).

@@ -177,9 +177,9 @@ Report the PR URL.
 
 ---
 
-## Phase 8b: KB Update Reminder
+## Phase 8b: KB Update
 
-If implementation revealed new patterns or architectural insights, note them for the daily log. The end-of-day `/nase:wrap-up` will handle KB updates.
+If implementation revealed new patterns, architectural insights, or hard constraints, invoke `/nase:kb-update [domain]` now with a concise summary. Don't defer to wrap-up — autonomous work discoveries are most accurate immediately after the task while context is fresh.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 

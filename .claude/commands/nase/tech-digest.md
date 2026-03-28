@@ -41,6 +41,7 @@ Auto-skips if today's digest already exists (deduplication enforced in Step 0). 
 6. Lifecycle management — keep tech-trends.md focused (run after appending):
    - Count digest entries (headers matching `## Tech Digest — YYYY-MM-DD`) older than 30 days.
    - If any exist, move them to `{NASE_ROOT}/workspace/kb/general/tech-trends-archive-{YYYY}.md` (create with `# Tech Trends Archive — {YYYY}\n` header if missing).
+   - Use `python3` for date parsing here. If `python3` is unavailable, skip archival and note: "Archival skipped — python3 not available. Run manually when python3 is installed."
    - Report: "Archived N entries older than 30 days to tech-trends-archive-{YYYY}.md."
 
 7. If any item is directly actionable (e.g., new Claude Code feature we should adopt, .NET API change), flag it explicitly.

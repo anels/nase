@@ -70,8 +70,7 @@ Pick an optional **scope** from the primary module/component affected (e.g., `au
 Format: `type(scope): concise subject`
 
 Rules:
-- **Summary line MUST be under 80 characters.** GitHub PR titles, `git log --oneline`, and terminal UIs truncate beyond this. Overflow detail belongs in the commit body.
-- Commitlint `header-max-length` is the hard validation limit (default 72; projects may set higher). 80 is the display/readability target — never exceed it even if config allows more.
+- **Summary line target: `min(header-max-length, 80)` characters.** Apply both limits simultaneously: never exceed the project's configured `header-max-length` (default 72), and cap at 80 regardless of what the config allows (GitHub PR titles, `git log --oneline`, and terminal UIs truncate beyond 80). So if `header-max-length` is 72, use 72; if it's set to 100, still use 80. Overflow detail belongs in the commit body.
 - Imperative mood: "add" not "added"
 - No period at end (unless `subject-full-stop` allows it)
 - Respect project's `subject-case` rule
