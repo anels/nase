@@ -17,6 +17,10 @@ Verify file existence before reading — degrade gracefully if files are missing
 - GitHub HTTPS URL: `https://github.com/OrgName/RepoName`
 - GitHub SSH URL: `git@github.com:OrgName/RepoName.git`
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Batch Refresh Mode (Step 4) for repo selection. Fetch it once here so it's available when needed.
+
 ## Mode Detection (run before all steps)
 - If $ARGUMENTS is empty or blank → **Batch Refresh Mode** (see below)
 - If $ARGUMENTS is a path or URL → **Single Repo Mode** (skip to URL Resolution / Steps)

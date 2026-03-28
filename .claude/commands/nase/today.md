@@ -45,6 +45,10 @@ Yesterday: [one-line summary]
 **Blockers**
 - [any open questions or waiting-on, or "None"]
 
+**Today's Commits** (if any)
+- [{RepoName}: {short commit summaries from Step 3}]
+[omit this section entirely if no commits found today]
+
 **Stale KB** (not updated in 7+ days)
 - `{domain}` — last updated {date} → run `/nase:onboard {repo-path}`
 [omit this section entirely if all KB entries are fresh]

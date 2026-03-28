@@ -7,6 +7,10 @@ description: Address unresolved PR review comments — fetch, analyze, fix code 
 
 ---
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool needed in Phase 3 for ambiguous threads and Phase 4 for execution mode. Fetch it once here so it's available when needed.
+
 ## Phase 0: Input Guard
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`.

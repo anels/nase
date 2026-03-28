@@ -5,6 +5,10 @@ description: Restore workspace/ from a zip backup. Use after a machine migration
 
 Restores from timestamped zip backups. Creates a pre-restore snapshot before overwriting, so you can always roll back.
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Steps 3 and 4 for backup selection and restore confirmation. Fetch it once here so it's available when needed.
+
 ## Steps
 
 ### 1. Read backup config

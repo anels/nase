@@ -1,6 +1,6 @@
 ---
 name: nase:improve-commit-message
-description: Analyze the last commit and rewrite its message following conventional commits / commitlint rules. Always invoke before git push — part of the standard commit sequence. Use when asked to "improve commit", "fix commit message", "amend commit", or after committing code.
+description: Analyze the last commit and rewrite its message following conventional commits / commitlint rules. Always invoke before git push — part of the standard commit sequence. Use when asked to "improve commit", "fix commit message", "amend commit", "clean up commit", "before push", or after committing code. Also invoked automatically by /nase:fsd and /nase:prep-merge.
 ---
 
 Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why — without opening the diff.
@@ -10,6 +10,10 @@ Good commit messages are searchable documentation. When someone runs `git log --
 ## Flags
 
 - `--auto-accept` — skip the confirmation prompt and amend immediately with the proposed message. Use this when called from automated workflows (e.g., `/nase:fsd`) that should not pause for user input. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 6 for the amend confirmation prompt. Skip in `--auto-accept` mode.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.

@@ -5,6 +5,10 @@ description: Generate a structured recap of completed work plus actionable impro
 
 **Input:** $ARGUMENTS
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 1 if the recap period is not specified via $ARGUMENTS. Fetch it once here so it's available when needed.
+
 ## Step 1 — Resolve the date range
 
 If $ARGUMENTS is blank, use the `AskUserQuestion` tool (single-select) before proceeding:

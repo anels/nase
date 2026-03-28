@@ -8,6 +8,10 @@ Review and organize the knowledge base — deduplicate, cross-reference, consoli
 **Input:** $ARGUMENTS
 (Optional scope: `projects`, `general`, `ops`, `lessons`, or `all`. Default: `all`.)
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 6 for execution confirmation. Fetch it once here so it's available when needed.
+
 ## Why This Matters
 
 Knowledge bases grow organically — notes get added in the moment without checking what already exists. Over time, the same insight appears in multiple files, related items live in isolation, and old entries become misleading. This skill is the periodic cleanup that keeps the KB useful: it connects what's scattered, removes what's redundant, and surfaces what's forgotten.
@@ -182,10 +186,16 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 
 ### Step 6: Execute (with approval)
 
-Use `AskUserQuestion` to present the action plan:
-- **Option 1: "Apply quick fixes"** — execute only the Quick Fixes (cross-refs, dedup, contradiction fixes, domain map updates)
-- **Option 2: "Apply all"** — execute everything including consolidation and cleanup
-- **Option 3: "Just the report"** — save the report to `workspace/logs/{YYYY-MM-DD}.md` and stop
+**Invoke the `AskUserQuestion` tool** (do not present as plain text):
+
+```
+question: "Review complete. What should I apply?"
+header: "KB Review — Execute"
+options:
+  - label: "Apply quick fixes"  , description: "Cross-refs, dedup, contradiction fixes, domain map updates"
+  - label: "Apply all"           , description: "Everything including consolidation and cleanup"
+  - label: "Just the report"     , description: "Save report to workspace/logs/{YYYY-MM-DD}.md and stop"
+```
 
 For each change applied:
 - Read the target file first

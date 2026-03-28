@@ -9,6 +9,10 @@ Inspired by Tesla FSD: you describe the destination, buckle up, and it drives. C
 
 ---
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool needed for the three upfront configuration questions in Phase 2. Fetch it once here so it's available when needed.
+
 ## Phase 0: Input Guard
 
 If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and stop.
@@ -18,6 +22,8 @@ If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and
 Research first — minimize questions to the user.
 
 Read `workspace/context.md` — list of repos and their purposes.
+
+Read `workspace/config.md` and extract the `output:` language (for PR title, description, commit messages, and all GitHub-facing content). Default to English if the file is missing or has no `## Language` section.
 
 From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Follow `.claude/docs/repo-resolution.md`:
 - **Part 1** (Repo Resolution): resolve the local path from the inferred repo name. If not found in `.local-paths`, use AskUserQuestion to ask the user, then append to `.local-paths`.
