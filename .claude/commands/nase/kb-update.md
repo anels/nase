@@ -24,6 +24,13 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
 
 2. Read the target kb file to understand current state.
 
+2a. **Conflict check** — before writing, search for similar content:
+   - Extract 2–3 key terms from what you're about to add (domain names, function names, error messages, pattern keywords)
+   - Grep the entire `workspace/kb/` directory for those terms (case-insensitive)
+   - **Hits in other KB files:** show the matching snippets and ask — "Similar content exists in `{file}` — duplicate, update, or distinct pattern?"
+   - **Hits only in the target file:** consider updating the existing entry instead of appending a new one; surface the existing entry to the user before proceeding
+   - **No hits:** proceed silently
+
 3. Determine what to add:
    - New patterns or gotchas discovered
    - Architectural decisions made

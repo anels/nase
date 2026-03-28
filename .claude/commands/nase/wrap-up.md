@@ -50,7 +50,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 **Condition:** reflect=done OR learn=done.
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:** invoke `/nase:extract-skills --auto-accept auto`. Report any skills created. Set `extract-skills=done`.
+**If condition met:** invoke `/nase:extract-skills auto`. Report any skills created. Set `extract-skills=done`.
 
 **If condition NOT met:** skip silently. Set `extract-skills=skipped`.
 
@@ -69,6 +69,43 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 **If condition NOT met:**
 - Print: "No repos touched today — skipping KB update."
 - Set `kb-update=skipped`.
+
+### Step 4b: Estimate Calibration (conditional)
+
+**Condition:** today's log contains any `ETA estimate:` lines (written by `/nase:estimate-eta`).
+
+**If condition met:**
+1. Find all lines matching `ETA estimate: {task} — {estimate}` in today's log
+2. For each estimate, check today's session entries and completed tasks for evidence of actual completion time
+3. If the task was completed today, estimate actual elapsed time from session entry timestamps or narrative
+4. Compare realistic estimate vs actual:
+   - Divergence ≥ 30%: append a calibration note to `workspace/tasks/lessons.md`:
+     ```
+     ### {YYYY-MM-DD} — ETA calibration: {task name}
+     **Estimated:** {realistic estimate} | **Actual:** ~{actual} | **Drift:** {over/under} by ~{%}
+     **Pattern:** {one-line observation — e.g. "underestimated integration work", "unknown dependency added 2h"}
+     ```
+   - Divergence < 30%: no action needed — estimate was accurate
+5. Over multiple entries, these notes let `/nase:estimate-eta` pattern-match against historical accuracy for the same types of tasks
+
+**If condition NOT met:** skip silently.
+
+### Step 4c: Jira Status Sync (conditional)
+
+**Condition:** tasks marked complete today reference Jira ticket keys (pattern: `[A-Z]+-\d+`), AND `workspace/config.md` has a `## Jira > cloudId` entry.
+
+**If condition met:**
+1. Extract all ticket keys from `[x]` items in `workspace/tasks/todo.md` and from today's session log entries
+2. Read `cloudId` from `workspace/config.md`
+3. For each key, fetch current status via Atlassian MCP `getJiraIssue`
+4. Build a transition table — tickets still "In Progress" or "Open":
+
+   | Key | Summary | Current Status |
+   |-----|---------|----------------|
+   | SRE-XXXXX | ... | In Progress |
+
+5. Ask the user: "Transition these to Done? (all / pick numbers / skip)" — then call `transitionJiraIssue` for confirmed ones
+6. If Atlassian MCP unavailable or no matching tickets: skip silently
 
 ### Step 5: Journal Entry (always runs)
 

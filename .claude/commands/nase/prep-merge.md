@@ -99,7 +99,7 @@ Also read the changed files to understand the diff:
 git -C {worktree_path} diff --cached --stat
 ```
 
-Write a single conventional commit message that captures the full intent of the PR — not a list of the original commits, but a coherent summary. Then run `/nase:improve-commit-message --auto-accept` to polish it.
+Write a single conventional commit message that captures the full intent of the PR — not a list of the original commits, but a coherent summary.
 
 ## Phase 7: Update PR Title & Description
 
@@ -146,6 +146,8 @@ Create the squash commit (if not already done in Phase 6 for single-commit PRs):
 ```bash
 git -C {worktree_path} commit -m "{squash_commit_message}"
 ```
+
+Then run `/nase:improve-commit-message --auto-accept` to polish the commit message.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
 Deviation: use `--force-with-lease` instead of normal push. If force-push fails, report the error and stop — someone pushed new commits and the user needs to reconcile.

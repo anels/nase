@@ -50,11 +50,25 @@ For each file touched by the diff, read its key dependencies: interfaces it impl
 | **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
 | **Code comments** | Violations of guidance in inline comments, stale or contradicted comments |
 
-**While agents run — engage existing comments** (if any):
+**While agents run — triage existing comments** (if any):
 
-For each unresolved thread, show: file + line, author, comment body, and whether it has replies. Ask the user which they agree with, want to discuss, or skip. When the user wants to discuss one, research the code, check Confluence or git history, and give your own take.
+Auto-classify each unresolved thread into one of four buckets, then present a triage table for the user to confirm or override:
 
-Collect agree/discuss/skip decisions but **do not post reactions or replies yet** — those are batched into Step 8, posted only on explicit request.
+| # | File:Line | Author | Summary | Auto-classification |
+|---|-----------|--------|---------|-------------------|
+| 1 | `foo.ts:42` | @alice | "null check missing" | 🔧 needs-fix |
+| 2 | `bar.ts:10` | @bob | "why not use X?" | 💬 needs-reply |
+| 3 | `baz.ts:99` | @alice | "nit: rename" | ✅ can-resolve |
+
+Classification rules:
+- 🔧 **needs-fix** — reviewer identified a concrete defect or missing guard; code change required
+- 💬 **needs-reply** — a question or design discussion; reply needed, may or may not require code change
+- ✅ **can-resolve** — nit/style/already addressed; safe to resolve without action
+- 🔍 **needs-research** — unclear without more context; look into code or Confluence before deciding
+
+After presenting the table, ask: "Does this look right? Any to change?" Then for each 🔍 item — research the code, check Confluence or git history, and give your own take before finalizing classification.
+
+Collect the final classifications. **Do not post reactions or replies yet** — batched into Step 8, posted only on explicit request.
 
 ## Step 4 — Score and filter (after agents complete)
 

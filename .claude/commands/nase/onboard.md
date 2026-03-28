@@ -209,13 +209,13 @@ For each top-level directory (or logical module if monorepo-style), run:
 git -C {repo} log --no-merges --format="%ae" -- {dir}/ | sort | uniq -c | sort -rn | head -5
 ```
 
-Then, for each team member with a known GitHub handle:
+Then, for each team member: resolve their real name and/or email from `workspace/context.md` (the team roster may list both). Use the real name as the `--author` filter — git matches against "Name <email>" format, so a real name works reliably. If only a GitHub handle is available, try the handle as a fuzzy match (it may appear in the noreply email `{handle}@users.noreply.github.com`):
 ```bash
-git -C {repo} log --no-merges --author="{github_handle}" --format="%H" --since="6 months ago" -- . | wc -l
+git -C {repo} log --no-merges --author="{real_name_or_handle}" --format="%H" --since="6 months ago" -- . | wc -l
 ```
 and spot the top directories they touched:
 ```bash
-git -C {repo} log --no-merges --author="{github_handle}" --name-only --format="" --since="6 months ago" | grep '/' | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -10
+git -C {repo} log --no-merges --author="{real_name_or_handle}" --name-only --format="" --since="6 months ago" | grep '/' | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -10
 ```
 
 Synthesize ownership signals:

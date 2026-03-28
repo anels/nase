@@ -14,3 +14,4 @@ Thumbs.db
 .claude/commands/nase/workspace/
 .serena/
 .claude/scheduled_tasks.lock
+.claude/skills/
