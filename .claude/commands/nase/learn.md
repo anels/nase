@@ -17,6 +17,10 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and u
 - A keyword or topic: `"structured concurrency"` — triggers web research directly
 - Empty: auto-reflect on the most recent conversation
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 4 for confirming the knowledge entry. Skip if `--auto-accept` is in $ARGUMENTS.
+
 ## Steps
 
 ### 1. Detect input type
@@ -100,7 +104,8 @@ Combine the original extraction (Step 2) with the deep research (Step 3) into a 
 - {attributed list from Step 3d}
 ```
 
-Show the synthesis to the user, then confirm using AskUserQuestion:
+Show the synthesis to the user, then **immediately invoke the `AskUserQuestion` tool** (do not present the options as plain text):
+
 ```
 question: "Save this to the knowledge base?"
 header: "Confirm Knowledge Entry"

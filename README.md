@@ -196,6 +196,8 @@ flowchart LR
 | `/nase:tech-digest` | Fetch latest tech news → `workspace/kb/general/tech-trends.md` |
 | `/nase:kb-update [domain]` | Update knowledge base with session learnings |
 | `/nase:kb-review [scope]` | Review, organize, and consolidate KB — deduplicate, cross-reference, surface stale content |
+| `/nase:kb-teamshare [path]` | Export selected KB files as a portable, sanitized directory for teammates |
+| `/nase:kb-merge [path]` | Import and merge a teammate's shared KB into your local `workspace/kb/` |
 
 ### Learning & reflection
 

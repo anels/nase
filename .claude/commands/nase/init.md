@@ -5,6 +5,10 @@ description: Initialize or reconfigure the nase workspace. Use for first-time se
 
 **Input:** $ARGUMENTS (optional: AI engineer name, e.g. `/init Alice`)
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used extensively in Steps 1, 2, and 6 for all interactive configuration prompts. Fetch it once here so it's available when needed.
+
 ## Steps
 
 ### 0. Check current state
@@ -102,7 +106,7 @@ ls "{backup-target}/context.md" 2>/dev/null
 
 If `workspace/context.md` does NOT exist locally AND the sentinel exists in the backup:
 - Count the files: `find "{backup-target}" -type f | wc -l`
-- Find the most recently modified file: `find "{backup-target}" -type f -printf '%T@ %p\n' | sort -n | tail -1`
+- Find the most recently modified file (cross-platform): `python3 -c "import os, glob; files=[f for f in glob.glob('{backup-target}/**', recursive=True) if os.path.isfile(f)]; print(max(files, key=os.path.getmtime) if files else '(none)')"` — falls back to `find "{backup-target}" -type f -printf '%T@ %p\n' | sort -n | tail -1` on Linux if python3 is unavailable
 - Show the user:
   > "Backup found at `{backup-target}` ({N} files, last modified {timestamp})."
 

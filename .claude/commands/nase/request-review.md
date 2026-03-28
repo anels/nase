@@ -7,6 +7,10 @@ description: Find the right people to review a PR and send them Slack DMs. Use w
 
 Find the right reviewers for one or more PRs and DM them on Slack.
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 8 for recipient selection and message confirmation. Fetch it once here so it's available when needed.
+
 ## Step 1 — Parse inputs
 
 Extract `owner/repo` and PR number from each URL. Group PRs by repo.

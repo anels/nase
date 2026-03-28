@@ -25,7 +25,7 @@ Key points from the shared algorithm:
 - If the file is missing or has no `## Sessions` entries, treat today as low-activity.
 - Do NOT scan git repos for commits — those include unrelated changes not done via AI.
 
-Initialize a tracker: `reflect=skipped`, `learn=skipped`, `kb-update=skipped`, `daily-report=pending`.
+Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skipped`, `kb-update=skipped`, `daily-report=pending`.
 
 ### Step 1: Reflect (conditional)
 
@@ -129,7 +129,7 @@ Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 - **"force" argument** — `$ARGUMENTS` containing "force" bypasses all skip conditions and runs every step.
 - **Late sessions** — if no commits since midnight but commits exist in the last 12 hours, include those (handles cross-midnight work).
 - **Idempotent** — running wrap-up twice in one day is safe; reflect/learn will see previous entries and can skip or augment.
-- **Order matters** — Execute steps in sequence: reflect → learn → kb-update → daily-report (each feeds the next).
+- **Order matters** — Execute steps in sequence: reflect → learn → extract-skills → kb-update → daily-report (each feeds the next).
 - **Bookend** — This skill closes the day. Start the next day with `/nase:today` for a focused kickoff.
 
 </error_handling>

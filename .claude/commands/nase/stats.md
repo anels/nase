@@ -5,6 +5,10 @@ description: Display workspace usage statistics with a GitHub-style activity hea
 
 **Input:** $ARGUMENTS — optional: `7` (default), `30`, or `all`
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 1 if the time range is not specified via $ARGUMENTS. Fetch it once here so it's available when needed.
+
 ## Steps
 
 ### 1. Determine time range
@@ -26,7 +30,7 @@ options:
 
 Calculate `START_DATE` and `END_DATE` based on selection. `END_DATE` is always today.
 
-For `all`, find the earliest log file: `ls workspace/logs/????-??-??.md | sort | head -1 | xargs basename .md | sed 's/.md//'`
+For `all`, find the earliest log file: `ls workspace/logs/????-??-??.md 2>/dev/null | sort | head -1 | sed 's|.*/||; s|\.md$||'`
 
 ### 2. Scan data sources
 
@@ -95,7 +99,21 @@ Include legend: `░ = 0  ▒ = 1  ▓ = 2  █ = 3+`
 
 Days with no log file are treated as 0 sessions (░).
 
-To generate in bash, iterate dates with `date -d "$START_DATE + N days" +%Y-%m-%d` until END_DATE. Use `awk` to look up sessions per date in the CSV.
+To iterate dates cross-platform (macOS and Linux), use Python3 — already listed as a runtime dependency:
+
+```shell
+python3 -c "
+import datetime
+d = datetime.date.fromisoformat('$START_DATE')
+end = datetime.date.fromisoformat('$END_DATE')
+while d <= end:
+    print(d.isoformat())
+    d += datetime.timedelta(days=1)
+" | while read -r current_date; do
+    # look up sessions for current_date in daily.csv via awk
+    :
+done
+```
 
 ### 4. Output chat summary
 
@@ -143,8 +161,8 @@ report_file="workspace/stats/report-$REPORT_DATE.md"
 # Read CSV into awk lookup, then iterate dates
 daily_table=$(
   current="$START_DATE"
-  while [ "$current" \<= "$END_DATE" ]; do
-    day_name=$(date -d "$current" +%a)
+  while [[ ! "$current" > "$END_DATE" ]]; do
+    day_name=$(python3 -c "import datetime; print(datetime.date.fromisoformat('$current').strftime('%a'))")
     # Look up stats in CSV for this date
     row=$(grep "^$current," "$TMPDIR_STATS/daily.csv" 2>/dev/null)
     if [ -n "$row" ]; then
@@ -153,7 +171,7 @@ daily_table=$(
       s=0; c=0; p=0
     fi
     echo "| $current | $day_name | $s | $c | $p | — |"
-    current=$(date -d "$current + 1 day" +%Y-%m-%d)
+    current=$(python3 -c "import datetime; d=datetime.date.fromisoformat('$current'); print((d+datetime.timedelta(days=1)).isoformat())")
   done
 )
 ```

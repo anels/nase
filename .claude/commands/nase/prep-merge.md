@@ -7,6 +7,10 @@ description: Prepare a PR for merge — verify all comments resolved, squash com
 
 ---
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool needed in Phases 7 and 10. Fetch it once here so it's available when needed.
+
 ## Phase 0: Input Guard
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
@@ -118,7 +122,7 @@ Squash commit message:
   {commit_message}
 ```
 
-Ask:
+Use the `AskUserQuestion` tool:
 
 ```
 question: "Ready to squash, force-push, and update the PR?"
@@ -176,7 +180,7 @@ PR ready for merge ✓
   Force-pushed: ✓ (--force-with-lease)
 ```
 
-Then ask:
+Use the `AskUserQuestion` tool:
 
 ```
 question: "Request a review now?"
