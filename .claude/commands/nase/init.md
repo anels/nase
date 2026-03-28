@@ -93,6 +93,45 @@ options:
 - **Language**: write/update the `## Language` section in `workspace/config.md` with `conversation: {value}` and `output: {value}`. If "Same as conversation" was chosen for output, write the actual conversation language value. If the section doesn't exist, append it after the last line.
 - If the answer matches current value, skip writing
 
+### 1b. Configure integrations (Jira + Slack)
+
+Use `AskUserQuestion` to ask if user want to config slack and confluence/jira integration. If yes, then check if user configured Atlassian MCP and Slack MCP. If both yes, then do the following:
+
+Run these two sub-steps in parallel. Write results to the `## Jira` and `## Slack` sections of `workspace/config.md` (create sections if missing, update if already present).
+
+**Jira — auto-discover:**
+- Call Atlassian MCP `getAccessibleAtlassianResources` (no parameters needed)
+- On success: extract `id` (→ `cloudId`) and `url` (→ `baseUrl`) from the first resource
+- Write to `workspace/config.md`:
+  ```
+  ## Jira
+  cloudId: {id}
+  baseUrl: {url}
+  ```
+- Report: "Jira: configured (cloudId: {id})"
+- If MCP unavailable or returns empty: report "Jira: MCP not connected — skipped (re-run `/nase:init` after connecting Atlassian MCP)" and skip
+
+**Slack — ask for channels:**
+- Read current `## Slack > channels` list from `workspace/config.md` (may be empty on first run)
+- Suggest channel names derived from repo names in `.local-paths` (e.g. `Insights-monitoring` → `oncall-insights`, `dev-insights`) as starting point
+- Use `AskUserQuestion`:
+  ```
+  question: "Which Slack channels should I monitor for pulse? (current: {list or 'none'})"
+  header: "Slack Channels"
+  options:
+    - label: "Keep current"         , description: "{current list}"   ← omit if empty
+    - label: "Use suggested"        , description: "{suggested list from repos}"
+    - label: "Other"                , description: "Type comma-separated channel names"
+  ```
+- Write chosen channels to `workspace/config.md`:
+  ```
+  ## Slack
+  channels:
+    - {channel1}
+    - {channel2}
+  ```
+- If Slack MCP unavailable: still save the channel list — it's just names, not IDs
+
 ### 2. Offer restore if backup has content
 
 This step only applies on a **fresh init** — skip it entirely if `workspace/context.md` already exists locally (the workspace is already populated and a restore would be destructive, not helpful).
@@ -205,9 +244,9 @@ Report a summary:
 - workspace/: {ready / partially ready}
 
 Suggest next steps based on what's missing:
-- If no repos onboarded: "Run `/onboard <repo-path>` to add your first repository, or `/onboard` to refresh all repos from `workspace/context.md`"
-- If tech-trends.md is missing: "Run `/tech-digest` to bootstrap the tech news feed"
-- If doctor found issues: "Address the items listed by /doctor above"
+- If no repos onboarded: "Run `/nase:onboard <repo-path>` to add your first repository, or `/nase:onboard` to refresh all repos from `workspace/context.md`"
+- If tech-trends.md is missing: "Run `/nase:tech-digest` to bootstrap the tech news feed"
+- If doctor found issues: "Address the items listed by `/nase:doctor` above"
 
 ## Notes
 - This command is idempotent — safe to re-run after a machine migration or kit update

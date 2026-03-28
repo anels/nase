@@ -35,7 +35,9 @@ If $ARGUMENTS is empty or blank:
    ```
    - ETA estimate: {task name} — {realistic estimate} ({scope})
    ```
-   This ensures future sessions can reference historical estimates for calibration.
+   This line is the calibration anchor: `/nase:wrap-up` will later compare it against actual completion time and write a calibration note to `workspace/tasks/lessons.md` if the divergence is significant.
+
+</workflow>
 
 ## Output Format
 
@@ -70,5 +72,3 @@ If $ARGUMENTS is empty or blank:
 Be honest about uncertainty. Use ranges, not false precision. If the task is too vague to estimate, ask for clarification before guessing.
 
 Ready to implement? Consider `/nase:fsd` for autonomous execution.
-
-</workflow>
