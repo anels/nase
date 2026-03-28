@@ -357,7 +357,7 @@ Use this structure:
 ```
 (Never modify `.claude/commands/kb-update.md` directly — the domain map is now managed via this file.)
 
-**MEMORY.md** — add repo to Quick Reference section. Read the project auto-memory directory (the MEMORY.md file visible in your conversation context), then use the Edit tool to append a bullet under the `## Quick Reference` section:
+**MEMORY.md** — add repo to Quick Reference section. The MEMORY.md path is injected at session start (check the system-reminder at conversation start for the exact path — typically `~/.claude/projects/<hash>/memory/MEMORY.md`). Use the Edit tool to append a bullet under the `## Quick Reference` section. **In batch mode (subagent context), skip this step** — subagents don't receive the MEMORY.md path injection; the batch coordinator in the parent session should handle this update after all subagents complete.
 ```
 - `{RepoName}` (`{path}`) — {one-line purpose}
 ```

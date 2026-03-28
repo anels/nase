@@ -22,7 +22,7 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
    - Project-specific → `workspace/kb/projects/{repo}.md`
    Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
-2. Read the target kb file to understand current state.
+2. Read the target KB file to understand current state.
 
 2a. **Conflict check** — before writing, search for similar content:
    - Extract 2–3 key terms from what you're about to add (domain names, function names, error messages, pattern keywords)
@@ -48,9 +48,42 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
 Omit the `**Links:**` line if there are no relevant links.
 Include links because future sessions can't search conversation history — the KB entry is the only record.
 
-5. If the learning is cross-cutting (affects multiple kb files), update all relevant files.
+5. If the learning is cross-cutting (affects multiple KB files), update all relevant files.
 
-6. Confirm what was added and where.
+6. **Size check — split if needed:**
+
+   Count the lines in the target file after writing.
+
+   If the file exceeds **400 lines**, evaluate whether a split makes sense:
+   - Identify top-level `##` sections and their line counts
+   - A split is worthwhile when: there are 2+ sections each >150 lines AND they represent distinct sub-domains that would logically be consulted independently (e.g., "alert patterns" vs "runbook procedures" vs "escalation contacts")
+   - If no clean semantic boundary exists, skip splitting
+
+   **How to split:**
+   - Prefer a **subfolder** when the domain will likely grow (e.g., `ops/oncall/` containing `alerts.md`, `procedures.md`, `escalation.md`)
+   - Prefer a **flat sibling file** for a one-off split (e.g., `oncall.md` + `oncall-runbooks.md`)
+   - Name files after the content, not the structure: `alerts.md` not `part1.md`
+
+   **Split procedure:**
+   1. Create the new file(s) with a header referencing the parent domain
+   2. Move the relevant sections; keep a short index with `See also:` links in each file
+   3. If using a subfolder: rename the original to `{name}/index.md` or keep it as a routing stub
+   4. Update `workspace/kb/.domain-map.md` with the new file paths — add new domain keys under the same category section
+   5. Update any existing `See also:` references in other KB files that pointed to the original
+
+7. **Internal links — wire up cross-references:**
+
+   After writing (and after any split), check whether the new content references concepts covered in *other* KB files:
+   - Grep `workspace/kb/` for the key terms from the new entry
+   - If a hit exists in another file and the connection is genuinely useful (not incidental), add a `> See also: [{description}]({relative-path})` line near the relevant section — both in the file you just wrote *and* in the other file
+   - Only add links that would actually help a reader navigate — don't link everything to everything
+
+   Common link-worthy connections:
+   - An alert in `oncall.md` referencing a runbook procedure now in `oncall-runbooks.md`
+   - A project KB noting a Snowflake pattern that's detailed in `general/snowflake.md`
+   - A deployment note in one project KB referencing a shared ops pattern
+
+8. Confirm what was added, where, whether the file was split, and what links were added.
 
 ## Error Handling
 

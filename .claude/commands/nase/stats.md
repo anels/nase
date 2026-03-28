@@ -50,7 +50,7 @@ Save `$TMPDIR_STATS` path for use in steps 3–5.
 <!-- Consider extracting to workspace/scripts/stats-collect.sh if this grows -->
 **If the script does NOT exist**, collect data inline:
 1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)`
-2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (`git log --since="{date}T00:00" --until="{date}T23:59" --oneline | wc -l`), and PRs (grep for PR URLs in the log).
+2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (for each `{repo_path}` in `.local-paths`: `git -C {repo_path} log --since="{date}T00:00" --until="{date}T23:59" --oneline 2>/dev/null | wc -l` — sum across all repos), and PRs (grep for PR URLs in the log).
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
@@ -157,13 +157,19 @@ GEN_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 REPORT_DATE=$(date +%Y-%m-%d)
 report_file="workspace/stats/report-$REPORT_DATE.md"
 
-# Build daily breakdown table by iterating the date range
-# Read CSV into awk lookup, then iterate dates
+# Pre-compute all date→dayname pairs in a single python3 call (avoids N subprocess forks)
+python3 -c "
+import datetime
+d = datetime.date.fromisoformat('$START_DATE')
+end = datetime.date.fromisoformat('$END_DATE')
+while d <= end:
+    print(f'{d.isoformat()},{d.strftime(\"%a\")}')
+    d += datetime.timedelta(days=1)
+" > "$TMPDIR_STATS/date-daynames.txt"
+
+# Build daily breakdown table using the pre-computed lookup
 daily_table=$(
-  current="$START_DATE"
-  while [[ ! "$current" > "$END_DATE" ]]; do
-    day_name=$(python3 -c "import datetime; print(datetime.date.fromisoformat('$current').strftime('%a'))")
-    # Look up stats in CSV for this date
+  while IFS=',' read -r current day_name; do
     row=$(grep "^$current," "$TMPDIR_STATS/daily.csv" 2>/dev/null)
     if [ -n "$row" ]; then
       IFS=',' read -r _ s c p <<< "$row"
@@ -171,8 +177,7 @@ daily_table=$(
       s=0; c=0; p=0
     fi
     echo "| $current | $day_name | $s | $c | $p | — |"
-    current=$(python3 -c "import datetime; d=datetime.date.fromisoformat('$current'); print((d+datetime.timedelta(days=1)).isoformat())")
-  done
+  done < "$TMPDIR_STATS/date-daynames.txt"
 )
 ```
 

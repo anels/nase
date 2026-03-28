@@ -61,10 +61,9 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 
 **If condition met:**
 1. Identify which repos were mentioned in today's session entries (from Step 0).
-2. Read `workspace/kb/.domain-map.md` to map repos to their KB files.
-3. For each touched repo/domain, review today's session entries and determine if any new knowledge was gained:
+2. For each touched repo/domain, review today's session entries and determine if any new knowledge was gained:
    - New patterns, architectural decisions, constraints clarified, gotchas found.
-4. If meaningful updates exist, append them to the relevant KB files using the format from `/nase:kb-update`. Set `kb-update=done`.
+3. If meaningful updates exist, invoke `/nase:kb-update [domain]` for each domain with a concise summary of what was learned. This ensures conflict-checking, cross-reference wiring, and size-split logic all run consistently. Set `kb-update=done`.
 
 **If condition NOT met:**
 - Print: "No repos touched today — skipping KB update."
