@@ -20,7 +20,7 @@ If $ARGUMENTS is blank, use the `AskUserQuestion` tool (single-select) before pr
   - "Last month" — 1st–last day of last month
   - "Custom range" — I'll enter the dates manually
 
-If the user selects "Custom range", ask for the dates as a free-text follow-up: "Enter range as YYYY-MM-DD to YYYY-MM-DD". Accept that format and proceed.
+If the user selects "Custom range", ask for the dates as a free-text follow-up: "Enter range as YYYY-MM-DD to YYYY-MM-DD". Validate dates match YYYY-MM-DD format; if invalid, re-prompt with the expected format. Accept and proceed.
 
 If $ARGUMENTS is already provided, skip the prompt and resolve directly:
 
@@ -136,4 +136,4 @@ Draw from:
 - **Preserve all links** — PR URLs, Jira tickets, Confluence pages must appear verbatim.
 - **Degrade gracefully** — use logs as fallback when journals are missing; skip days where both are absent.
 - **No KB full-load** — only read specific KB files when needed to clarify journal content.
-- **Output**: always display in chat AND write to `workspace/recaps/{period}.md` (e.g. `workspace/recaps/2026-W11.md` for weekly, `workspace/recaps/2026-03.md` for monthly). Create `workspace/recaps/` if it doesn't exist. After writing, print: `Recap saved → workspace/recaps/{period}.md`
+- **Output**: always display in chat AND write to `workspace/recaps/{period}.md` (e.g. `workspace/recaps/2026-W11.md` for weekly, `workspace/recaps/2026-03.md` for monthly). Ensure `workspace/recaps/` exists (create if missing). After writing, print: `Recap saved → workspace/recaps/{period}.md`

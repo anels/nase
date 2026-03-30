@@ -10,16 +10,17 @@ Auto-skips if today's digest already exists (deduplication enforced in Step 0). 
 <workflow>
 
 0. **Deduplication check (run first — fast exit)**:
-   - Search `workspace/kb/general/tech-trends.md` for a header matching `## Tech Digest — {today's date}` (create the file if it doesn't exist). Prefer using the Read tool over raw grep — the file may have CRLF line endings on Windows, which cause `grep` to miss matches even when the header visually appears present.
+   - If `workspace/kb/general/tech-trends.md` does not exist, proceed to Step 1 (first-ever digest).
+   - If it exists, search for a header matching `## Tech Digest — {today's date}`. Prefer using the Read tool over raw grep — the file may have CRLF line endings on Windows, which cause `grep` to miss matches even when the header visually appears present.
    - If the header is found, stop immediately and report: "Today's digest already recorded. Skipping."
    - Only proceed to Step 1 if today's entry is absent.
 
 1. **Load personal config**:
-   - Read `{NASE_ROOT}/workspace/tech-digest-config.md`.
+   - Read `workspace/tech-digest-config.md`.
    - Extract: **Sources** list, **Filter Topics**, and **Output Sections**.
    - Use these for all subsequent steps — do not use any hardcoded sources or topics.
 
-2. Fetch all sources (from config) in parallel using WebFetch/WebSearch. If a source is unreachable, note the failure and continue with available sources. Do not fail the entire digest.
+2. Fetch all sources (from config) in parallel using WebFetch/WebSearch. If WebFetch/WebSearch tools are unavailable, report "Tech digest skipped — web tools not available" and stop. If a source is unreachable, note the failure and continue with available sources. Do not fail the entire digest.
 
 3. Filter for content published in the last 7 days; discard anything unrelated to the filter topics (from config).
 
@@ -36,11 +37,13 @@ Auto-skips if today's digest already exists (deduplication enforced in Step 0). 
 (one ### block per section defined in config)
 ```
 
-5. Ensure `{NASE_ROOT}/workspace/kb/general/tech-trends.md` exists (create with `# Tech Trends\n` header if missing; use an absolute path resolved from the workspace root, not a relative path). Then prepend the digest (newest-first ordering).
+If user specify conversation language in config.md, use the conversation to output summary.
+
+5. Ensure `workspace/kb/general/tech-trends.md` exists (create with `# Tech Trends\n` header if missing; use an absolute path resolved from the workspace root, not a relative path). Then prepend the digest (newest-first ordering).
 
 6. Lifecycle management — keep tech-trends.md focused (run after appending):
    - Count digest entries (headers matching `## Tech Digest — YYYY-MM-DD`) older than 30 days.
-   - If any exist, move them to `{NASE_ROOT}/workspace/kb/general/tech-trends-archive-{YYYY}.md` (create with `# Tech Trends Archive — {YYYY}\n` header if missing).
+   - If any exist, move them to `workspace/kb/general/tech-trends-archive-{YYYY}.md` (create with `# Tech Trends Archive — {YYYY}\n` header if missing).
    - Use `python3` for date parsing here. If `python3` is unavailable, skip archival and note: "Archival skipped — python3 not available. Run manually when python3 is installed."
    - Report: "Archived N entries older than 30 days to tech-trends-archive-{YYYY}.md."
 

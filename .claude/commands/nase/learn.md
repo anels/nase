@@ -68,6 +68,8 @@ Read `workspace/kb/.domain-map.md` and check if any existing KB files already co
 </parallel>
 
 **3c. Fetch and distill the best sources:**
+If no relevant sources were found in Step 3a, skip this step and proceed to Step 4 with only the original extraction. Note in the output that deep research found no additional materials.
+
 From the search results, pick the 2-3 most valuable sources (prioritize: practical experience > theory, recent > old, in-depth > surface-level). Use WebFetch to read them. Extract:
 - **Complementary insights**: things the original source didn't cover
 - **Counterpoints**: criticisms, failure cases, "it depends" nuances
@@ -120,12 +122,10 @@ options:
 
 ### 5. Categorize and determine KB target
 
-Map each knowledge item to a KB domain:
+Map each knowledge item to a KB domain. Read `workspace/kb/.domain-map.md` to get the current domain list first. Use the following as fallback categories only if no existing domain matches:
 - `workflow` — process, tools, habits, Claude Code patterns → `workspace/kb/general/workflow.md`
-- `code` / `dotnet` / `spark-scala` etc. — patterns, gotchas, best practices → match to existing domain in `.domain-map.md`
 - `debugging` — root causes, diagnostic techniques → `workspace/kb/general/debugging.md`
 - `architecture` / `system-design` — design decisions, tradeoffs → `workspace/kb/general/system-design.md`
-- `llm` / `claude-prompting` — LLM techniques, prompt engineering → match to existing domain
 - `tech-trends` — emerging tech, industry shifts → `workspace/kb/general/tech-trends.md`
 - **New domain**: if no existing domain fits, create a new KB file and register it in `.domain-map.md` under `## General`
 
@@ -157,6 +157,8 @@ Report to user:
 - Where it was written (KB file paths)
 - How many external sources were researched
 - Any new KB domains created
+
+If user specify conversation language in config.md, use the conversation to output summary.
 
 ## Error Handling
 

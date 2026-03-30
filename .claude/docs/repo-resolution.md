@@ -14,7 +14,7 @@ Resolve a GitHub URL or repo name to a local filesystem path via `.local-paths`.
    - Extract repo name: take the last path segment, strip `.git` suffix.
      - Example: `https://github.com/Org/MyRepo` → `MyRepo`
      - Example: `git@github.com:Org/MyRepo.git` → `MyRepo`
-   - Read `.local-paths` at the workspace root. Search for a line matching `{RepoName}={path}` (case-insensitive key match).
+   - Read `.local-paths` at the workspace root. Search for a line matching `{RepoName}={path}` (case-sensitive key match).
    - If found: use that local path for all subsequent steps. Print: `Resolved {url} → {path}`
    - If not found: use AskUserQuestion to ask the user for the local path. Once provided, append `{RepoName}={path}` to `.local-paths`. Then use that path for all subsequent steps.
 

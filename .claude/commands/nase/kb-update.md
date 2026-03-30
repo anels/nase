@@ -26,7 +26,7 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
 
 2a. **Conflict check** — before writing, search for similar content:
    - Extract 2–3 key terms from what you're about to add (domain names, function names, error messages, pattern keywords)
-   - Grep the entire `workspace/kb/` directory for those terms (case-insensitive)
+   - Grep the entire `workspace/kb/` directory for those terms (case-insensitive, excluding `.domain-map.md` to avoid false positives)
    - **Hits in other KB files:** show the matching snippets and ask — "Similar content exists in `{file}` — duplicate, update, or distinct pattern?"
    - **Hits only in the target file:** consider updating the existing entry instead of appending a new one; surface the existing entry to the user before proceeding
    - **No hits:** proceed silently
@@ -68,7 +68,7 @@ Include links because future sessions can't search conversation history — the 
    1. Create the new file(s) with a header referencing the parent domain
    2. Move the relevant sections; keep a short index with `See also:` links in each file
    3. If using a subfolder: rename the original to `{name}/index.md` or keep it as a routing stub
-   4. Update `workspace/kb/.domain-map.md` with the new file paths — add new domain keys under the same category section
+   4. Update `workspace/kb/.domain-map.md` with the new file paths — use the format `- {domain-key} -> {relative-path}` matching existing entries, under the same category section
    5. Update any existing `See also:` references in other KB files that pointed to the original
 
 7. **Internal links — wire up cross-references:**

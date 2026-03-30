@@ -139,7 +139,7 @@ Scan `workspace/` for files that are not part of the KB structure but accumulate
 - Extensions: `.diff`, `.patch`, `.tmp`, `.bak`, `.orig`, `.log` (exclude `workspace/logs/` — those are intentional)
 - Patterns: `*-pre-restore-*`, `*-snapshot-*`, `*.backup`
 
-**Outdated one-off files** — files in `workspace/` root (not in standard subdirectories like `kb/`, `logs/`, `tasks/`, `journals/`, `stats/`, `recaps/`, `skills/`, `scripts/`) that haven't been modified in >14 days. These are often ad-hoc files created for a specific task and forgotten.
+**Outdated one-off files** — files in `workspace/` root (not in standard subdirectories like `kb/`, `logs/`, `tasks/`, `journals/`, `stats/`, `recaps/`, `skills/`, `scripts/`, `tmp/`) that haven't been modified in >14 days. These are often ad-hoc files created for a specific task and forgotten.
 
 **Old reports** — files in `workspace/stats/report-*.md` older than 30 days (the latest report supersedes older ones).
 

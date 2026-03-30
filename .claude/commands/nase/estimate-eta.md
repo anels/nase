@@ -21,7 +21,7 @@ If $ARGUMENTS is empty or blank:
 <workflow>
 
 1. Parse the task description from $ARGUMENTS carefully
-2. Explore the codebase to understand:
+2. Read `workspace/context.md` and `workspace/kb/.domain-map.md` to identify the relevant repo(s). If the task could span multiple repos and the target is ambiguous, ask the user which repo to focus on. Then explore the codebase to understand:
    - Relevant existing files and components that would be touched
    - Current complexity and test coverage
    - Any dependencies or integrations involved

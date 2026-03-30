@@ -151,11 +151,19 @@ For each file approved in Step 4:
 
 **New KB files** (`general/`, `projects/`, `ops/`, etc.): Write to `workspace/kb/{category}/{filename}`. Create the directory if it doesn't exist.
 
-**New skill files** (`skills/`): Write to `.claude/commands/nase/workspace/{stem}.md`. Also write a copy to `workspace/kb/skills/{filename}` as a reference. Create directories as needed.
+**New skill files** (`skills/`): Write the raw content to `workspace/skills/{filename}` (the canonical location). Then generate a thin wrapper at `.claude/commands/nase/workspace/{stem}.md` with YAML frontmatter so the skill is immediately invocable:
+```
+---
+name: nase:workspace:{stem}
+description: "{first non-empty content line from the skill file}"
+---
+Read and follow `workspace/skills/{stem}.md`
+```
+This matches the template used by `session-start.sh`. Also write a copy to `workspace/kb/skills/{filename}` as a reference. Create directories as needed.
 
 **Merged KB files**: Write the AI-merged content to the local path identified in Step 2 (e.g., `workspace/kb/{category}/{filename}`).
 
-**Merged skill files**: Write the AI-merged content to the local path identified in Step 2 (e.g., `.claude/commands/nase/workspace/{stem}.md`). Update the `workspace/kb/skills/` copy if one exists.
+**Merged skill files**: Write the AI-merged content to `workspace/skills/{filename}` (canonical location). Then regenerate the thin wrapper at `.claude/commands/nase/workspace/{stem}.md` with updated YAML frontmatter (same template as above). Update the `workspace/kb/skills/` copy if one exists.
 
 ### Step 6: Update Domain Map
 

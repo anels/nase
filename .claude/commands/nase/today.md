@@ -14,7 +14,7 @@ Run steps 1–4 in parallel, then combine into Step 5 output.
 
 ### 1. Local context
 - Read `workspace/tasks/todo.md` — identify In Progress + top Pending items; rank by impact × urgency (in-progress first)
-- Read `workspace/logs/{yesterday}.md` (most recent `workspace/logs/YYYY-MM-DD.md` before today) — one-line summary of what was done
+- Read `workspace/logs/{yesterday}.md` (most recent `workspace/logs/YYYY-MM-DD.md` before today) — one-line summary of what was done. If no prior log files exist, display "No previous activity logged" for the Yesterday line
 
 ### 2. Stale KB Check
 - Read `workspace/kb/.domain-map.md` — collect all `## Projects` entries
@@ -22,7 +22,7 @@ Run steps 1–4 in parallel, then combine into Step 5 output.
   - Older than 7 days or missing → add to stale list
 
 ### 3. Today's commits so far (if any)
-- Read repo local paths from `.local-paths` (skip comment/blank lines, format: `RepoName=/path`). For each path: `git -C {path} log --since="{TODAY}T00:00:00" --oneline --branches 2>/dev/null` (use today's date in YYYY-MM-DD format — avoids timezone ambiguity from `"midnight"`)
+- Read repo local paths from `.local-paths` (only lines matching `RepoName=/path` pattern — skip `backup-target=`, comment lines starting with `#`, and blank lines). For each path: `git -C {path} log --since="{TODAY}T00:00:00" --oneline --branches 2>/dev/null` (use today's date in YYYY-MM-DD format — avoids timezone ambiguity from `"midnight"`)
 
 ### 4. Jira + Slack pulse (run in parallel; degrade gracefully if MCP unavailable)
 
@@ -84,3 +84,4 @@ Yesterday: [one-line summary from Step 1]
 - Focus list should be actionable and realistic for one day
 - Skip completed items
 - Bookend: end the day with `/nase:wrap-up` to capture reflections, lessons, and a journal entry
+- If user specify conversation language in config.md, use the conversation to output summary.

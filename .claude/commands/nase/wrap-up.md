@@ -50,7 +50,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 **Condition:** reflect=done OR learn=done.
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:** invoke `/nase:extract-skills auto`. Report any skills created. Set `extract-skills=done`.
+**If condition met:** invoke `/nase:extract-skills --auto-accept`. Report any skills created. Set `extract-skills=done`.
 
 **If condition NOT met:** skip silently. Set `extract-skills=skipped`.
 
@@ -80,7 +80,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 4. Compare realistic estimate vs actual:
    - Divergence ≥ 30%: append a calibration note to `workspace/tasks/lessons.md`:
      ```
-     ### {YYYY-MM-DD} — ETA calibration: {task name}
+     ## calibration -- {YYYY-MM-DD} -- ETA: {task name}
      **Estimated:** {realistic estimate} | **Actual:** ~{actual} | **Drift:** {over/under} by ~{%}
      **Pattern:** {one-line observation — e.g. "underestimated integration work", "unknown dependency added 2h"}
      ```
@@ -155,6 +155,8 @@ Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 {status line}
 ```
 
+If user specify conversation language in config.md, use the conversation to output summary.
+
 </workflow>
 
 ## Notes
@@ -163,7 +165,7 @@ Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 
 - **Fully autonomous** — execute all steps without pausing. All output is written to `workspace/journals/{YYYY-MM-DD}.md`; if the file exists it is overwritten. Edit the file afterward as needed.
 - **"force" argument** — `$ARGUMENTS` containing "force" bypasses all skip conditions and runs every step.
-- **Late sessions** — if no commits since midnight but commits exist in the last 12 hours, include those (handles cross-midnight work).
+- **Late sessions** — if no session log entries since midnight but entries exist in the last 12 hours, include those (handles cross-midnight work).
 - **Idempotent** — running wrap-up twice in one day is safe; reflect/learn will see previous entries and can skip or augment.
 - **Order matters** — Execute steps in sequence: reflect → learn → extract-skills → kb-update → daily-report (each feeds the next).
 - **Bookend** — This skill closes the day. Start the next day with `/nase:today` for a focused kickoff.

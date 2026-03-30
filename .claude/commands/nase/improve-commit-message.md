@@ -52,6 +52,8 @@ git log -1 --format="%P" | tr ' ' '\n' | wc -l  # parent count (merge check)
 
 ### 3. Analyze changes (diff-first strategy)
 
+If the commit has no parent (initial commit, i.e. parent count is 0), use `git show HEAD` or `git diff --cached` instead of the command below.
+
 ```
 git diff -U5 HEAD^ HEAD
 ```

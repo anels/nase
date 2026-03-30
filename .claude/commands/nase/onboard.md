@@ -89,7 +89,8 @@ Before reading any files, ensure the repo is up-to-date on its default branch:
 2. Run `git -C {repo} branch --show-current` to get the current branch.
 3. If the current branch is **not** the default branch:
    - Warn: "Repo is on branch `{current}`, not `{default}` — switching to `{default}` before onboarding."
-   - Run `git -C {repo} checkout {default}` — if this fails (e.g. uncommitted changes), stop and report the error to the user. Do NOT force-checkout.
+   - First check for uncommitted changes: `git -C {repo} status --porcelain`. If non-empty, stop and report: "Repo has uncommitted changes on `{current}`. Please commit or stash them before onboarding." Do NOT attempt the checkout.
+   - If clean, run `git -C {repo} checkout {default}` — if this fails for any other reason, stop and report the error to the user. Do NOT force-checkout.
 4. Run `git -C {repo} pull --ff-only origin {default}` to pull the latest commits.
    - If `--ff-only` fails (diverged history), **stop and report**: "Cannot fast-forward `{default}` — local and remote have diverged. Resolve the divergence manually before onboarding." Do NOT proceed with stale code; a KB entry built from an out-of-date repo is worse than no update.
 5. Confirm: "Repo synced to `{default}` (latest commit: `{short sha} {subject}`)."
@@ -198,7 +199,6 @@ Understand how this repo connects to the broader ecosystem.
 - **Code standards**: enforced conventions, linter/formatter config, git hooks, naming patterns
 - **Cross-project links**: upstream/downstream services, shared infrastructure, event-driven connections
 - **Key constraints**: from CLAUDE.md (Step 1) or inferred from code patterns
-- **Recent changes**: what has shifted since the last onboard (if refreshing)
 
 ### 3g. Ownership Analysis
 
@@ -238,6 +238,7 @@ Use this structure:
 # Knowledge Base — {RepoName} (Project-Specific)
 
 ## Overview
+<!-- Last updated: {YYYY-MM-DD} -->
 - Repo path: `{full path}`
 - Purpose: {one-line description}
 - Stack: {languages, frameworks, runtimes, build tools}
@@ -333,9 +334,6 @@ Use this structure:
   {e.g. "Publishes events to EventHub topic X, consumed by repo Y"}
   {e.g. "Shares CI templates from org/pipeline-templates (refs/tags/v2.3.1)"}
 
-## Decisions & Notes
-<!-- Format: ### YYYY-MM-DD — {topic} -->
-<!-- Last updated: {YYYY-MM-DD} -->
 ```
 
 ### 5. Update Workspace Files

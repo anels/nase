@@ -151,15 +151,15 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 ZIP_NAME="nase-backup-${TIMESTAMP}.zip"
 ZIP_PATH="$TARGET/$ZIP_NAME"
 
+rc=0
 if command -v 7z &>/dev/null; then
-  (cd "$SRC" && 7z a -tzip -mx=1 -bso0 -bsp0 "$ZIP_PATH" .)
+  (cd "$SRC" && 7z a -tzip -mx=1 -bso0 -bsp0 "$ZIP_PATH" .) || rc=$?
 elif command -v zip &>/dev/null; then
-  (cd "$SRC" && zip -rq "$ZIP_PATH" .)
+  (cd "$SRC" && zip -rq "$ZIP_PATH" .) || rc=$?
 else
   log_status "ERROR" "neither 7z nor zip found — install one for backups"
   exit 1
 fi
-rc=$?
 if [ "$rc" -ne 0 ]; then
   rm -f "$ZIP_PATH"
   log_status "ERROR" "archive tool failed (exit $rc) — backup not created"
