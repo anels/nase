@@ -13,13 +13,13 @@ Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred 
 
 ## Phase 0: Input Guard
 
-Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
+Follow the PR input guard in `.claude/docs/pr-input-guard.md` — except on empty input, ask the user for the PR URL using `AskUserQuestion` instead of printing usage.
 
 ## Phase 1: Locate Repo & Fetch Context
 
 Follow `.claude/docs/repo-resolution.md`:
 - **Part 1** (Repo Resolution): resolve the repo from the PR URL's `owner/repo` — extract the repo name and look it up in `.local-paths`. If not found, ask the user for the local path and append it to `.local-paths`.
-- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it — focusing on **Build & Run Commands** and **Architecture** sections.
+- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it.
 
 ## Phase 2: Fetch Latest & Unresolved Review Threads
 
@@ -105,7 +105,9 @@ options:
 
 Determine the PR branch name from `headRefName` (captured in Phase 2). Remote was already fetched in Phase 2.
 
-Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `address-comments`. Ref: `origin/{pr_branch}`. After creation, checkout the PR branch:
+Before creating a worktree, check if the current branch is already the PR branch with a clean working tree (`git -C {repo_path} status --porcelain` is empty and `git -C {repo_path} branch --show-current` matches `{pr_branch}`). If so, work in-place — set `{worktree_path}` to `{repo_path}` and skip worktree creation/cleanup.
+
+Otherwise, follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `address-comments`. Ref: `origin/{pr_branch}`. After creation, checkout the PR branch:
 
 ```bash
 git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
@@ -166,14 +168,11 @@ For each thread, compose the reply body based on its category:
 Then execute both API calls in sequence:
 
 ```bash
-# Step 1: Reply
-# Note: `in_reply_to` must be an integer comment ID for review comments. Verify the comment ID from the thread data before using it.
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
-  -f body="{reply_body}" \
-  -f in_reply_to={comment_id} \
-  --method POST
+# Step 1: Reply (use the integer comment ID from REST, i.e. `databaseId` if fetched via GraphQL)
+gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
+  --method POST -f body="{reply_body}"
 
-# Step 2: Resolve the thread
+# Step 2: Resolve the thread (use the GraphQL opaque string `id`, NOT the integer databaseId)
 gh api graphql -f query='
 mutation {
   resolveReviewThread(input: { threadId: "{thread_graphql_id}" }) {
@@ -184,7 +183,11 @@ mutation {
 
 Process all threads — accept, decline, and reply-only — using this same pattern.
 
-## Phase 10: Cleanup & Report
+## Phase 10: Learn from this session
+
+If a reviewer suggestion revealed a non-obvious architectural constraint, run `/nase:kb-update` with the finding. If it was a general coding lesson, append to `workspace/tasks/lessons.md` using format `## coding -- {YYYY-MM-DD} -- {lesson title}`.
+
+## Phase 11: Cleanup & Report
 
 Remove the worktree:
 ```bash

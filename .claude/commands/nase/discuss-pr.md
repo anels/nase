@@ -11,11 +11,11 @@ Follow the PR input guard in `.claude/docs/pr-input-guard.md`. If `$ARGUMENTS` i
 
 Note any focus areas the user specifies (e.g. "architecture", "security", "skip nitpicks").
 
-Default focus if none specified: architecture, bugs, security, testability, DRY/KISS.
+Default focus if none specified: architecture, bugs, security, testability, DRY/KISS, code comments.
 
 Follow `.claude/docs/repo-resolution.md`:
 - **Part 1** (Repo Resolution): extract `owner/repo` from the PR URL, look up the repo name in `.local-paths`. If not found, ask the user for the local path and append it.
-- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it — focusing on **Architecture** and **Critical Constraints** sections.
+- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it.
 
 ## Step 2 — Fetch PR metadata and existing comments
 
@@ -142,7 +142,7 @@ gh api repos/<owner/repo>/pulls/<PR>/comments/<comment_id>/replies \
 ## Error Handling
 
 - **Auth failure** (`gh` not authenticated or 403): report the error and stop — do not retry or guess credentials.
-- **Oversized diff** (>5000 lines): skip full-diff analysis. Instead, review the `--stat` summary and read only the most changed files individually. Note in the output which files were skipped.
+- **Oversized diff** (>5000 lines based on `additions + deletions` from PR metadata): skip `gh pr diff` and use `gh pr diff --stat` instead. Read only the top N most-changed files individually. Note in the output which files were skipped.
 - **Private repo / 404**: verify the repo exists and the user has access. Suggest `gh auth status` if unclear.
 - **Rate limit (HTTP 429)**: wait and retry once. If still limited, report and stop.
 

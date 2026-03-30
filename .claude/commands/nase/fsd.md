@@ -29,8 +29,9 @@ From the task in $ARGUMENTS, infer the most likely target repo by matching keywo
 - **Part 1** (Repo Resolution): resolve the local path from the inferred repo name. If not found in `.local-paths`, use AskUserQuestion to ask the user, then append to `.local-paths`.
 - **Part 2** (KB File Loading): load the KB file — focus on **Build & Run Commands**, **Architecture**, **Critical Constraints**.
 
-Then check the repo's git state:
+Then fetch latest and check the repo's git state:
 ```bash
+git -C {repo} fetch origin
 git -C {repo} symbolic-ref refs/remotes/origin/HEAD | sed 's|refs/remotes/origin/||'
 git -C {repo} status --short
 git -C {repo} branch --show-current
@@ -114,11 +115,11 @@ Use the lead principles as the primary design lens. The others (DRY, YAGNI, KISS
 Grep for existing utilities, helpers, or patterns that overlap with the task. Reuse before creating. If a partial abstraction already exists, extend it rather than duplicating.
 
 **If execution mode = Team:**
-Invoke the `/team` skill with the task from $ARGUMENTS, including the classified task type and its principle order. Wait for all agents to complete before proceeding to Phase 5.
+Invoke the `/team` skill with the task from $ARGUMENTS, including the classified task type and its principle order. **Each agent prompt MUST include the repo's build and test commands** (from KB or `CLAUDE.md`) and instruct the agent to verify its changes compile after editing. Wait for all agents to complete, then **immediately run a full build + test** before proceeding to Phase 5. If the build or tests fail, fix the issues (this counts as iteration 1 of Phase 5).
 
 **If execution mode = Direct — follow Red → Green → Refactor:**
 
-1. **Red** — write tests first:
+1. **Red** — write tests first (skip for non-testable tasks like configuration, documentation, or infrastructure files):
    - Scan existing test files to understand conventions (location, naming, assertion style, mocking patterns).
    - Write failing tests that describe the expected behavior. Keep tests minimal and specific — one concern per test.
    - Run the tests. Confirm they fail *for the right reason* (not a compile error — the feature genuinely doesn't exist yet).
@@ -144,7 +145,7 @@ On success: proceed to Phase 6.
 
 ## Phase 6: Simplify
 
-Run `/simplify` on the changed files. If the skill is not available (not all Claude Code installations include it), skip this step and proceed to Phase 7. If available, apply any improvements it suggests — this catches code quality issues, unnecessary complexity, and missed reuse opportunities before the commit is permanent.
+Run `/simplify` on the changed files. If the skill is not available (not all Claude Code installations include it), perform a self-review of the changed files instead: check for unused imports, overly complex functions, duplicated code, and obvious simplifications. Apply any improvements before proceeding. If `/simplify` is available, apply any improvements it suggests — this catches code quality issues, unnecessary complexity, and missed reuse opportunities before the commit is permanent.
 
 ---
 

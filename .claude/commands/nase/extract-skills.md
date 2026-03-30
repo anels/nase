@@ -113,6 +113,17 @@ Writing guidelines:
 
 If the extracted skill captures a hard-won lesson (not just a procedural template), append a brief entry to `workspace/tasks/lessons.md` noting the pattern and why it matters.
 
+### 6b. Generate thin wrapper for immediate invocation
+
+For each new skill created in `workspace/skills/{name}.md`, also generate the thin wrapper command file at `.claude/commands/nase/workspace/{name}.md` so the skill is immediately invocable without restarting the session:
+```
+---
+name: nase:workspace:{name}
+description: "{first non-empty content line from the skill file}"
+---
+Read and follow `workspace/skills/{name}.md`
+```
+
 ### 7. Report
 
 List skills created (with file paths), skills updated (with what changed), and skills skipped (with reason).

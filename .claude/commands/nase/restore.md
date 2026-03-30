@@ -12,7 +12,8 @@ Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred 
 ## Steps
 
 ### 1. Read backup config
-- Read `backup-target` from `$NASE_ROOT/.local-paths` (workspace root)
+- Resolve workspace root: `NASE_ROOT=$(git rev-parse --show-toplevel)`
+- Read `backup-target` from `$NASE_ROOT/.local-paths`
 - If `.local-paths` does not exist or has no `backup-target=` entry, tell the user: no backup target configured — run `/nase:init` first
 
 ### 2. List available backups
@@ -46,12 +47,14 @@ options:
 ### 4. Confirm with user
 Before asking for confirmation, show files that exist in `workspace/` but NOT in the selected backup:
 ```bash
-# List files in the zip — strip the leading workspace/ prefix so paths are comparable
-7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | grep '^workspace/' | sed 's|^workspace/||' | sort > /tmp/backup-files.txt
+# List files in the zip (paths are already relative — no workspace/ prefix since the zip was created from inside workspace/)
+7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sort > "/tmp/nase-backup-files-$$.txt"
 # List files in current workspace/ — strip leading ./ so paths are comparable
-(cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > /tmp/local-files.txt
+(cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > "/tmp/nase-local-files-$$.txt"
 # Files that exist locally but not in the backup (will be deleted by restore)
-comm -23 /tmp/local-files.txt /tmp/backup-files.txt
+comm -23 "/tmp/nase-local-files-$$.txt" "/tmp/nase-backup-files-$$.txt"
+# Cleanup temp files
+rm -f "/tmp/nase-backup-files-$$.txt" "/tmp/nase-local-files-$$.txt"
 ```
 If any such files exist, warn: "The following files exist locally but not in the backup and will be DELETED by the restore."
 

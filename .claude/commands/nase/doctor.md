@@ -31,7 +31,7 @@ git rev-parse --show-toplevel
 <!-- Why: settings.json wires hooks to lifecycle events — a missing reference means the hook never fires -->
 ### 3. Hook configuration (settings.json)
 ```bash
-python -m json.tool .claude/settings.json > /dev/null
+python3 -m json.tool .claude/settings.json > /dev/null 2>&1 || python -m json.tool .claude/settings.json > /dev/null 2>&1
 ```
 - Check `.claude/settings.json` exists and is valid JSON
 - Check SessionStart hook command contains `session-start.sh`
@@ -77,7 +77,7 @@ command -v git
 command -v 7z
 ```
 - Pass: both git and 7z found
-- Warn: 7z missing — zip backups will fail (install with `scoop install 7zip`)
+- Warn: 7z missing — zip backups will fail (install with `brew install p7zip` on macOS, `apt install p7zip-full` on Linux, or `scoop install 7zip` on Windows)
 - Fail: git missing
 
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->

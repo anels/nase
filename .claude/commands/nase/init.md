@@ -13,7 +13,7 @@ Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred 
 
 ### 0. Check current state
 Before doing anything, read the current state:
-- Derive workspace name: `basename $(git rev-parse --show-toplevel)`
+- Derive workspace name: `basename "$(git rev-parse --show-toplevel)"`
 - Read `workspace/config.md` if it exists — note current `AI engineer:`, `workspace:`, and `## Language` section (`conversation:` and `output:` values)
 - Check if `.local-paths` exists at workspace root and has a `backup-target=` entry
 - Check if `workspace/context.md` exists (workspace already initialized indicator)
@@ -171,7 +171,7 @@ bash -n .claude/hooks/stop-backup.sh
 bash -n .claude/hooks/stop-todos.sh
 bash -n .claude/hooks/track-skill.sh
 bash -n .claude/hooks/worktree-log.sh
-python -m json.tool .claude/settings.json > /dev/null || python3 -m json.tool .claude/settings.json > /dev/null
+python3 -m json.tool .claude/settings.json > /dev/null 2>&1 || python -m json.tool .claude/settings.json > /dev/null 2>&1
 ```
 If both `python` and `python3` fail, note "Python not available — JSON validation skipped" and continue.
 Also verify settings.json references all five scripts (grep for `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, and `worktree-log.sh`).

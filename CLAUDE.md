@@ -20,7 +20,7 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 - **Name correction**: if your configured name is not "nase" and the user addresses you as "nase", occasionally (1 in 3) grumble and correct them briefly.
 - **ALWAYS ASK WHEN UNSURE** — if a requirement is ambiguous, a scope is unclear, or there are multiple valid approaches: stop and ask before acting.
 - **Communication principle** - Balance positive reinforcement with risk mitigation. Provide practical guidance and error warnings.
-- **Language**: read `workspace/config.md` → `## Language` section. Use `conversation:` value for all responses to the user. Use `output:` value for everything posted to external platforms (GitHub PRs/comments/commits, Jira, Confluence, Slack). Code identifiers and technical terms always remain in English regardless of language settings.
+- **Language**: `workspace/config.md → ## Language` — `conversation:` for responses, `output:` for GitHub/Jira/Confluence/Slack. English for code identifiers. Defaults: see global CLAUDE.md.
 - **Write to `workspace/` by default**: all generated content must go inside `workspace/`. Only write outside `workspace/` when the user explicitly asks. Review for sensitive info before writing outside `workspace/` — this repo is public.
 - **Temporary files go in `workspace/tmp/`**: any one-off artifacts (PR diffs, debug dumps, scratch scripts, ad-hoc data files) must be created under `workspace/tmp/`. Create the directory if it doesn't exist. This keeps them separate from KB and logs, and makes cleanup easy.
 - **First time setup**: run `/nase:init`
@@ -42,18 +42,18 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 
 ### Core Skills
 
-| Command | When to use |
-|---------|------------|
-| `/nase:onboard` | Refresh ALL already-onboarded repos from `workspace/context.md` (run at session start) |
-| `/nase:onboard <path-or-url>` | Onboard or refresh a single repo by path or GitHub URL |
+| Command | Trigger |
+|---------|---------|
+| `/nase:onboard` | Refresh all repos at session start |
+| `/nase:onboard <path-or-url>` | Onboard or refresh a single repo |
 | `/nase:kb-update [domain]` | After learning something worth keeping |
-| `/nase:fsd <task>` | Full Self-Develop: implement → build → test → commit → push → draft PR, autonomous |
-| `/nase:wrap-up` | End of day — autonomous reflect + journal entry |
+| `/nase:fsd <task>` | Autonomous implement → commit → draft PR |
+| `/nase:wrap-up` | End of day reflect + journal |
 | `/nase:improve-commit-message` | Part of commit sequence |
-| `/nase:request-review <PR-URL(s)>` | Find code owners and DM them on Slack to review/approve |
-| `/nase:discuss-pr <PR-URL>` | Chat-first PR review — posts to GitHub only on explicit request; reads & engages existing review comments (+1/reply/discuss), runs parallel specialist agents, researches Confluence/GitHub, drafts inline comments; triggers KB update on confirmed findings |
-| `/nase:address-comments <PR-URL>` | Fetch unresolved review comments, fix code or reply, push and resolve |
-| `/nase:prep-merge <PR-URL>` | Verify comments resolved, squash commits, force-push, update PR title/description |
+| `/nase:request-review <PR-URL(s)>` | DM code owners to review on Slack |
+| `/nase:discuss-pr <PR-URL>` | Chat-first PR review; post to GitHub on request |
+| `/nase:address-comments <PR-URL>` | Fix or reply to unresolved PR comments |
+| `/nase:prep-merge <PR-URL>` | Rebase on base branch, squash, force-push, finalize PR for merge |
 | `/nase:doctor` | Workspace health check |
 
 For full skills table, workspace layout, KB structure, and architecture notes → read `.claude/docs/reference.md`
@@ -66,7 +66,7 @@ For full skills table, workspace layout, KB structure, and architecture notes �
 | Standard implementation, review | `sonnet` | Code changes, KB updates, debugging |
 | Architecture, deep analysis | `opus` | Unfamiliar codebase, security review, design |
 
-Default: `sonnet`. Never spawn `opus` for something haiku can answer.
+Default: `sonnet`. Never spawn `opus` for something haiku can answer. For haiku dispatches: include "This is a simple lookup — keep reasoning minimal" in the prompt to suppress unnecessary extended thinking.
 
 ### Bash / Path Rules
 - **Bash tool resets `cwd` between calls** — always use `git -C /absolute/path <cmd>`

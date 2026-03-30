@@ -13,7 +13,7 @@ mkdir -p "$NASE_ROOT/workspace/logs"
 if [ ! -f "$LOG" ]; then
   printf "# Work Log — %s\n\n## Sessions\n\n" "$DATE" > "$LOG"
 fi
-echo "[session-start] log ready: $LOG"
+# log path not surfaced — Claude reads it via workspace/logs/
 
 # Detect Python interpreter — used for archival and date fallback
 PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || command -v py 2>/dev/null || true)
@@ -115,7 +115,7 @@ if [ -d "$SKILLS_DIR" ]; then
       cat > "$cmd_file" << EOF
 ---
 name: nase:workspace:$name
-description: $desc
+description: "$desc"
 ---
 
 Read \`workspace/skills/$name.md\` and follow every step exactly as written.

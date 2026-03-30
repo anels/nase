@@ -9,6 +9,10 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
 
 **Context:** $ARGUMENTS (optional — name of the task or feature just completed)
 
+## Setup
+
+Use `ToolSearch` to fetch `AskUserQuestion` — needed for Step 5 CLAUDE.md update proposals. Skip if `--auto-accept` is in `$ARGUMENTS`.
+
 ## Steps
 
 1. Identify the task being reflected on (from $ARGUMENTS or recent context)
@@ -31,10 +35,11 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
 
 4. Save key learnings to `workspace/tasks/lessons.md` (create with `# Lessons` header if missing). Use this format per entry:
    ```
-   ### YYYY-MM-DD — {rule or pattern name}
+   ## {category} -- {YYYY-MM-DD} -- {rule or pattern name}
    **When:** {situation this applies to}
    **Do:** {concrete action or rule}
    ```
+   Categories: `workflow`, `code`, `debugging`, `ops`, `infra`, `calibration` (match what `workspace-data-gathering.md` and `kb-review.md` expect).
    If the extracted pattern is a reusable rule: also save to the auto-memory directory as a feedback-type memory file.
    - Verify the append: read back the last entry to confirm it was written correctly.
 

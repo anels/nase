@@ -14,9 +14,10 @@ Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred 
 ### 1. Determine time range
 
 Parse $ARGUMENTS:
-- `7` or `7d` or empty in non-interactive context → **last 7 days**
+- `7` or `7d` → **last 7 days**
 - `30` or `30d` → **last 30 days**
 - `all` → **from earliest log file date to today**
+- Contains `--from-skill` (called from another skill like wrap-up) → **last 7 days** (non-interactive default)
 - Anything else or empty → ask using AskUserQuestion:
 
 ```
@@ -28,7 +29,7 @@ options:
   - label: "All time"       , description: "Full history from first log"
 ```
 
-Calculate `START_DATE` and `END_DATE` based on selection. `END_DATE` is always today.
+Calculate `START_DATE` and `END_DATE` based on selection. `END_DATE` is always today. Validate that both match `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`. If either is empty or invalid, default to the last 7 days.
 
 For `all`, find the earliest log file: `ls workspace/logs/????-??-??.md 2>/dev/null | sort | head -1 | sed 's|.*/||; s|\.md$||'`
 
@@ -54,7 +55,7 @@ Save `$TMPDIR_STATS` path for use in steps 3–5.
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
-6. Count KB files modified: `find workspace/kb -name "*.md" -newer` (approximate).
+6. Count KB files modified: `find workspace/kb -name "*.md" -newermt "$START_DATE"` (approximate; uses `-newermt` which accepts a date string).
 
 ### 3. Build heatmap
 
@@ -189,6 +190,8 @@ Report content:
 - Knowledge entries list (title + category + date)
 - Skill usage full ranking (all skills from JSONL, not just top 3)
 - Generation metadata: `Generated: {GEN_TS}`, `Range: {START_DATE} ~ {END_DATE}`, `Period: {N} days`
+
+If user specify conversation language in config.md, use the conversation to output summary.
 
 Clean up the temp directory after writing the report: `rm -rf "$TMPDIR_STATS"`.
 

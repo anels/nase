@@ -52,12 +52,14 @@ Follow `.claude/docs/repo-resolution.md` Part 1 (Repo Resolution) to resolve the
 git -C {repo_path} fetch origin
 ```
 
-Check that the local tracking ref matches the remote — this guards against someone else having pushed to the branch after your last fetch:
+Check that the remote HEAD matches the PR metadata — this guards against someone else having pushed to the branch after the metadata was fetched:
 
 ```bash
 # Get remote HEAD for the PR branch
-git -C {repo_path} rev-parse origin/{pr_branch}
+REMOTE_SHA=$(git -C {repo_path} rev-parse origin/{pr_branch})
 ```
+
+Compare `REMOTE_SHA` against `headRefOid` from the PR metadata fetched in Phase 1. If they differ, warn: "Branch has new commits since PR metadata was fetched — re-fetch metadata before continuing." and stop.
 
 ## Phase 5: Create Worktree
 
@@ -66,6 +68,19 @@ Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `prep
 ```bash
 git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 ```
+
+## Phase 5.5: Fetch & Rebase
+
+Fetch all remotes and rebase the PR branch on top of the target branch before squashing. This ensures the branch is up-to-date and the squashed commit lands cleanly on the latest base:
+
+```bash
+git -C {worktree_path} fetch --all
+git -C {worktree_path} rebase origin/{base_branch}
+```
+
+If the rebase fails due to conflicts, stop immediately — do not proceed with squash or force-push. Report the conflicting files to the user and suggest resolving them locally before re-running prep-merge.
+
+After a successful rebase, check if any files were auto-merged: `git -C {worktree_path} diff origin/{pr_branch}..HEAD`. If non-empty (code changed during rebase), run the build & test loop (`.claude/docs/build-test-loop.md`) before proceeding to ensure the rebased code still works.
 
 ## Phase 6: Squash Commits
 
@@ -136,6 +151,7 @@ options:
     description: "Cancel — don't touch anything"
 ```
 
+**If "Go":** proceed immediately to Phase 8 — do not pause or emit any intermediate message.
 **If "Edit":** ask the user what to change, apply edits, then ask again.
 **If "Abort":** clean up worktree and stop.
 
@@ -147,9 +163,7 @@ Create the squash commit (skip this step for single-commit PRs — Phase 6 was s
 git -C {worktree_path} commit -m "{squash_commit_message}"
 ```
 
-Then run `/nase:improve-commit-message --auto-accept` to polish the commit message.
-
-Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
+Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md` (which handles `/nase:improve-commit-message` automatically).
 Deviation: use `--force-with-lease` instead of normal push. If force-push fails, report the error and stop — someone pushed new commits and the user needs to reconcile.
 
 ## Phase 9: Update PR on GitHub

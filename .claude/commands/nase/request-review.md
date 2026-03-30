@@ -37,10 +37,11 @@ If the KB yields confident owners for all changed areas → proceed to 3c (skip 
 
 **3b. Read CODEOWNERS (fallback)**
 
-Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read directly. Otherwise fetch via:
+Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read the file directly: `cat {repo_path}/CODEOWNERS 2>/dev/null || cat {repo_path}/.github/CODEOWNERS 2>/dev/null`. Otherwise fetch via:
 ```bash
-gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 -d
+gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 --decode
 ```
+(Use `--decode` long form — works on both macOS and Linux; `base64 -d` fails on macOS.)
 
 For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd).
 
@@ -70,6 +71,7 @@ When in doubt, lean towards "review."
 
 Cherry-picks share the same intent across different base branches. Group PRs as cherry-picks when:
 - Titles are identical or differ only by branch suffix/prefix (e.g. "fix X -> release/v1", "fix X -> release/v2")
+- Or commits share the same `Cherry-picked from commit {sha}` trailer in the commit body (more reliable than title matching)
 - Or the user explicitly called them cherry-picks
 
 Cherry-pick group → **one combined DM** per person listing all PR links.
