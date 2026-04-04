@@ -6,7 +6,7 @@ description: Run at end of day to capture everything in one autonomous pass — 
 End-of-day autonomous pass: reflection → lessons → skill extraction → KB updates → journal entry. Each step feeds the next; skipping early steps is fine — the conditional logic handles this automatically.
 
 <investigate_before_acting>
-Read workspace state (context.md, team profiles, recent logs) before generating output.
+Follow the shared data-gathering algorithm (`workspace-data-gathering.md`) — read today's log/journal, tasks, and lessons. Do NOT read context.md or team profiles; wrap-up does not use them.
 Verify file existence before reading — degrade gracefully if files are missing.
 </investigate_before_acting>
 
@@ -63,7 +63,12 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 1. Identify which repos were mentioned in today's session entries (from Step 0).
 2. For each touched repo/domain, review today's session entries and determine if any new knowledge was gained:
    - New patterns, architectural decisions, constraints clarified, gotchas found.
-3. If meaningful updates exist, invoke `/nase:kb-update [domain]` for each domain with a concise summary of what was learned. This ensures conflict-checking, cross-reference wiring, and size-split logic all run consistently. Set `kb-update=done`.
+3. If meaningful updates exist, write directly to the relevant KB file(s):
+   - Read the target KB file, locate the right section, append the new entry.
+   - Use the standard `### YYYY-MM-DD — {topic}` format (same as `/nase:kb-update`).
+   - Update the `<!-- Last updated: YYYY-MM-DD -->` timestamp.
+   - **Note:** This is a lightweight direct write — it skips the conflict-check and cross-reference wiring of the full `/nase:kb-update` skill. For complex multi-domain updates with potential conflicts, invoke `/nase:kb-update` directly instead.
+   - Set `kb-update=done`.
 
 **If condition NOT met:**
 - Print: "No repos touched today — skipping KB update."

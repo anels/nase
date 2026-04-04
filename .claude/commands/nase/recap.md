@@ -40,12 +40,69 @@ Use **weekly format** for ranges ≤ 14 days; **monthly format** for ranges > 14
 
 Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="range"` and the date range resolved in Step 1. This loads workspace state, journals/logs, and extracts structured data (activity, tasks, lessons, KB updates, key decisions).
 
+## Step 4.5 — Compute Stats from Logs
+
+Run these greps against the log files for the date range (i.e. `workspace/logs/YYYY-MM-DD.md` files whose date falls within the period). Run all in parallel.
+
+```bash
+# PRs opened via FSD (unique PR URLs)
+grep -hE "^- FSD:.*\[https" workspace/logs/{date-range}*.md | grep -oE "https://github[^ \)]+" | sort -u | wc -l
+
+# Address-comments sessions
+grep -hc "^- Address comments:" workspace/logs/{date-range}*.md | awk -F: '{s+=$NF} END{print s}'
+
+# Prep-merge sessions
+grep -hc "^- Prep merge:" workspace/logs/{date-range}*.md | awk -F: '{s+=$NF} END{print s}'
+
+# PRs deep-reviewed (PR Review: or Discuss PR: lines)
+grep -hE "^- (PR Review:|Discuss PR:)" workspace/logs/{date-range}*.md | grep -oE "[A-Za-z-]+#[0-9]+" | sort -u | wc -l
+
+# Unique SRE ticket IDs
+grep -hE "SRE-[0-9]+" workspace/logs/{date-range}*.md | grep -oE "SRE-[0-9]+" | sort -u | wc -l
+
+# SRE canceled vs resolved
+grep -hE "(Canceled|Resolved)" workspace/logs/{date-range}*.md | grep "SRE-" | grep -oE "(Canceled|Resolved)" | sort | uniq -c
+
+# Repos onboarded or refreshed
+grep -hE "Onboarded|Refreshed" workspace/logs/{date-range}*.md | grep -oE "\`[A-Za-z0-9_-]+\`" | sort -u | wc -l
+
+# /nase:learn KB infusion events
+grep -hc "^- Learned:" workspace/logs/{date-range}*.md | awk -F: '{s+=$NF} END{print s}'
+
+# Unique commit hashes (repo-wide, incl. teammates)
+cat workspace/logs/{date-range}*.md | grep -oE "^[0-9a-f]{7,10} " | sort -u | wc -l
+
+# Commit breakdown by type (from unique hashes)
+cat workspace/logs/{date-range}*.md | grep -oE "^[0-9a-f]{7,10} " | sort -u | ... # see note below
+```
+
+**Note on commit type breakdown**: extract unique hashes, then for each hash find one matching log line and extract its conventional-commit type prefix. Use: `cat workspace/logs/{range}*.md | grep -oE "^[0-9a-f]{7,10} (feat|fix|refactor|ci|docs|chore|test|perf|build)\(" | sort -u | grep -oE "(feat|fix|refactor|ci|docs|chore|test|perf|build)\(" | sort | uniq -c | sort -rn`
+
+Store the results as variables for use in the Stats section.
+
+For **weekly recaps** (≤ 14 days): stats are useful but lighter-weight — omit the commit type breakdown if commit counts are low (< 20 unique hashes). Include all other metrics.
+
 ## Step 5 — Generate the recap
 
 ### Weekly format (≤ 14 days)
 
 ```markdown
 # Recap — Week of {Mon YYYY-MM-DD}
+
+## Stats
+
+| Metric | Count |
+|--------|-------|
+| PRs opened (via /nase:fsd) | {N} |
+| PRs with comments addressed | {N} sessions |
+| PRs prep-merged | {N} sessions |
+| PRs deep-reviewed | {N} |
+| SRE tickets handled | {N} ({canceled} canceled, {resolved} resolved) |
+| Repos onboarded / refreshed | {N} |
+| /nase:learn KB infusions | {N} |
+| Unique commits in logs¹ | {N} |
+
+¹ Repo-wide (includes teammates' commits). {omit type breakdown if < 20 unique commits}
 
 ## Overview
 {2–3 sentences: main focus, major outcomes, notable blockers or surprises}
@@ -79,6 +136,22 @@ Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathe
 
 ```markdown
 # Recap — {Month YYYY}
+
+## Stats
+
+| Metric | Count |
+|--------|-------|
+| PRs opened (via /nase:fsd) | {N} unique across {R} repos |
+| PRs with comments addressed | {N} sessions · ~{U} unique PRs |
+| PRs prep-merged | {N} sessions · ~{U} unique PRs |
+| PRs deep-reviewed | {N} |
+| SRE tickets handled | {N} unique ({canceled} canceled, {resolved} resolved) |
+| Support questions handled | {N} |
+| Repos onboarded / refreshed | {N} |
+| /nase:learn KB infusions | {N} |
+| Unique commits in logs¹ | {N} |
+
+¹ Repo-wide (includes teammates' commits). Breakdown by type: `fix` N · `refactor` N · `ci` N · `chore` N · `docs` N · `test` N · `feat` N · `perf` N · `build` N.
 
 ## Overview
 {3–4 sentences: main themes across the month, major outcomes, recurring blockers}

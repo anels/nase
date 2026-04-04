@@ -52,6 +52,8 @@ Produce a list of 2-5 concrete knowledge items. These become the seed for Step 3
 
 ### 3. Deep Research (secondary learning)
 
+**Skip this entire step** if the input was **Empty** (auto-reflect mode) AND the learnings were derived from the current session rather than an external URL or keyword. Session-derived patterns already have full context — running WebSearch against them adds cost with minimal gain. Proceed directly to Step 4.
+
 This is the step that turns a single source into real understanding. The goal: find how the community discusses, critiques, and applies this knowledge — not just parrot the original source.
 
 <parallel>
