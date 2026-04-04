@@ -5,15 +5,11 @@ description: Analyze the current session and extract reusable problem-solving pa
 
 Captured patterns compound into lasting productivity gains — don't skip this after non-trivial sessions.
 
-**Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `auto` to skip the confirmation gate and auto-approve all candidates)
+**Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `--auto-accept` to skip the confirmation gate and auto-approve all candidates)
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 4 for skill creation confirmation. Skip if `auto` is in $ARGUMENTS.
-
-## Why this matters
-
-Every hard problem you solve is an investment. Without capture, that knowledge evaporates when the session ends. This skill is the "cognitive flywheel" — it turns one-off solutions into reusable patterns that compound over time. The bar is intentionally high: a few excellent skills are worth more than a pile of mediocre ones.
+Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 4 for skill creation confirmation. Skip if `--auto-accept` is in $ARGUMENTS.
 
 ## Steps
 
