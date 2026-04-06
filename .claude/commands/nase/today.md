@@ -84,4 +84,4 @@ Yesterday: [one-line summary from Step 1]
 - Focus list should be actionable and realistic for one day
 - Skip completed items
 - Bookend: end the day with `/nase:wrap-up` to capture reflections, lessons, and a journal entry
-- If user specify conversation language in config.md, use the conversation to output summary.
+- If the user specifies a conversation language in config.md, use it for the output summary.

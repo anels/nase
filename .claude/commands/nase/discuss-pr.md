@@ -70,12 +70,21 @@ After presenting the table, ask: "Does this look right? Any to change?" Then for
 
 Collect the final classifications. **Do not post reactions or replies yet** — batched into Step 8, posted only on explicit request.
 
-## Step 4 — Score and filter (after agents complete)
+## Step 4 — Score, tier, and filter (after agents complete)
 
 For each issue, assign a confidence score 0–100:
-- **< 50**: pre-existing, false positive, or nitpick — drop
+- **< 50**: pre-existing, false positive, or nitpick — drop silently
 - **50–79**: worth mentioning in discussion but skip inline comment draft
 - **≥ 80**: confirmed issue — include in final output and draft a comment
+
+**Confidence tiers** (used in Step 6 output):
+| Tier | Range | Label |
+|------|-------|-------|
+| Critical | 90–100 | `[CRIT]` |
+| High | 80–89 | `[HIGH]` |
+| Medium | 50–79 | `[MED]` |
+
+Track a drop count for items scoring < 50 — reported in the summary line.
 
 ## Step 5 — Research open questions
 
@@ -86,12 +95,30 @@ Before presenting findings, resolve any "needs context" issues:
 
 ## Step 6 — Present findings and open discussion
 
-Group by severity: **confirmed bugs** → **architecture concerns** → **security** → **testability** → **lower confidence / ask the author**.
+**Summary line first** — one line showing the count per tier and how many were dropped:
+```
+Found: {N} critical, {N} high, {N} medium ({N} dropped below threshold)
+```
+
+**Group by confidence tier**, not just severity category. Within each tier, order by category: bugs → security → architecture → testability → other.
+
+```
+### Critical (90-100)
+- [95] **Bug** · `path/to/file.ts:42` — description...
+- [92] **Security** · `path/to/api.ts:18` — description...
+
+### High (80-89)
+- [85] **Architecture** · `path/to/service.ts:100` — description...
+
+### Medium (50-79) — discussion only, no inline drafts
+- [62] **Testability** · `path/to/handler.ts:55` — description...
+```
 
 For each issue include:
-- One-sentence description
+- Confidence score in brackets: `[87]`
+- Category tag in bold: `**Bug**`, `**Security**`, `**Architecture**`, `**Testability**`
 - File and approximate line
-- Why it matters (consequence if unfixed)
+- One-sentence description with consequence if unfixed
 - Evidence source (e.g. "confirmed via Confluence AS tracker", "introduced in PR #2345")
 
 After presenting, explicitly invite the user into the discussion:

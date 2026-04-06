@@ -160,7 +160,7 @@ Report to user:
 - How many external sources were researched
 - Any new KB domains created
 
-If user specify conversation language in config.md, use the conversation to output summary.
+If the user specifies a conversation language in config.md, use it for the output summary.
 
 ## Error Handling
 

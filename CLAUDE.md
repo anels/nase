@@ -47,6 +47,7 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 | `/nase:onboard` | Refresh all repos at session start |
 | `/nase:onboard <path-or-url>` | Onboard or refresh a single repo |
 | `/nase:kb-update [domain]` | After learning something worth keeping |
+| `/nase:design <idea>` | KB-aware collaborative design → tracked effort doc |
 | `/nase:fsd <task>` | Autonomous implement → commit → draft PR |
 | `/nase:wrap-up` | End of day reflect + journal |
 | `/nase:improve-commit-message` | Part of commit sequence |
@@ -54,6 +55,7 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 | `/nase:discuss-pr <PR-URL>` | Chat-first PR review; post to GitHub on request |
 | `/nase:address-comments <PR-URL>` | Fix or reply to unresolved PR comments |
 | `/nase:prep-merge <PR-URL>` | Rebase on base branch, squash, force-push, finalize PR for merge |
+| `/nase:skill-audit [path]` | Scan skills for security risks (auto-runs in kb-merge) |
 | `/nase:doctor` | Workspace health check |
 
 For full skills table, workspace layout, KB structure, and architecture notes → read `.claude/docs/reference.md`

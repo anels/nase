@@ -96,10 +96,10 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 
 ### Step 4c: Jira Status Sync (conditional)
 
-**Condition:** tasks marked complete today reference Jira ticket keys (pattern: `[A-Z]+-\d+`), AND `workspace/config.md` has a `## Jira > cloudId` entry.
+**Condition:** tasks marked complete today or today's session log entries reference Jira ticket keys (pattern: `[A-Z]+-\d+`), AND `workspace/config.md` has a `## Jira > cloudId` entry.
 
 **If condition met:**
-1. Extract all ticket keys from `[x]` items in `workspace/tasks/todo.md` and from today's session log entries
+1. Extract all ticket keys from `[x]` items in `workspace/tasks/todo.md` (if any contain keys) AND from today's session log entries (`workspace/logs/{YYYY-MM-DD}.md` — these are the primary source since the todo format doesn't always embed Jira keys)
 2. Read `cloudId` from `workspace/config.md`
 3. For each key, fetch current status via Atlassian MCP `getJiraIssue`
 4. Build a transition table — tickets still "In Progress" or "Open":
@@ -160,7 +160,7 @@ Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 {status line}
 ```
 
-If user specify conversation language in config.md, use the conversation to output summary.
+If the user specifies a conversation language in config.md, use it for the output summary.
 
 </workflow>
 

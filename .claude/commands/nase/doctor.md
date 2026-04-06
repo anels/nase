@@ -75,9 +75,11 @@ Check for presence of key paths:
 ```bash
 command -v git
 command -v 7z
+command -v jq
 ```
-- Pass: both git and 7z found
+- Pass: git, 7z, and jq all found
 - Warn: 7z missing — zip backups will fail (install with `brew install p7zip` on macOS, `apt install p7zip-full` on Linux, or `scoop install 7zip` on Windows)
+- Warn: jq missing — skill usage tracking (`track-skill.sh`) will silently fail (install with `brew install jq` on macOS, `apt install jq` on Linux, or `scoop install jq` on Windows)
 - Fail: git missing
 
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->
@@ -87,6 +89,7 @@ command -v 7z
 - Report total count
 - Build the expected list dynamically by reading file names from the directory — do NOT hardcode a list. This way new skills are automatically included in future checks.
 - Cross-reference against the skill names registered in `.claude/settings.json` (under `permissions.allow` or hook configs) — flag any registered skill whose `.md` file is missing
+- **Stale thin wrappers**: for each `.claude/commands/nase/workspace/*.md` file, read it and check if the `workspace/skills/{name}.md` file it points to still exists. Flag any wrapper whose target skill file is missing — these are dead references left over after a skill was deleted.
 
 </parallel>
 

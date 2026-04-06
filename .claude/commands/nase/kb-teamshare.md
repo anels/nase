@@ -129,15 +129,17 @@ For each selected file, read the content and apply these transformations in orde
 
 #### 4a — Strip Local Absolute Paths
 
-Replace any absolute path patterns that are machine-specific:
+Replace any absolute path patterns that are machine-specific.
+
+**Note:** These are conceptual regex patterns applied by Claude during content processing — not raw sed/grep commands. Claude reads the file content, identifies matches using these patterns, and rewrites them. Do not pass these directly to `sed` or `grep` (BSD sed on macOS doesn't support `\s` or capture groups in the same way).
 
 | Pattern | Replacement |
 |---------|------------|
-| `/Users/[^/\s"'\)]+/repos/([^/\s"'\)]+)` | `<REPO_PATH:\1>` — e.g. `/Users/ruilin.liu/repos/Insights-Dashboarding` → `<REPO_PATH:Insights-Dashboarding>` |
-| `/Users/[^/\s"'\)]+/` | `<HOME>/` |
-| `/home/[^/\s"'\)]+/` | `<HOME>/` |
+| `/Users/{username}/repos/{RepoName}` | `<REPO_PATH:{RepoName}>` — e.g. `/Users/ruilin.liu/repos/Insights-Dashboarding` → `<REPO_PATH:Insights-Dashboarding>` |
+| `/Users/{username}/` | `<HOME>/` |
+| `/home/{username}/` | `<HOME>/` |
 
-Apply via regex substitution. If a path appears in a context that isn't a local machine path (e.g., a URL or a quoted string with a different meaning), use your judgment — when unsure, **invoke `AskUserQuestion`** to confirm with the user before removing it.
+Apply by scanning each line for these path prefixes and substituting. If a path appears in a context that isn't a local machine path (e.g., a URL or a quoted string with a different meaning), use your judgment — when unsure, **invoke `AskUserQuestion`** to confirm with the user before removing it.
 
 #### 4b — Fix Internal KB Links
 

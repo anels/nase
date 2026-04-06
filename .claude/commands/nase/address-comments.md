@@ -33,6 +33,8 @@ Then use the **full variant** GraphQL query from `.claude/docs/github-queries.md
 
 Filter to only threads where `isResolved == false`. Also capture `headRefName` (the PR branch).
 
+**Important:** For each thread, capture both the GraphQL opaque `id` (string, needed for `resolveReviewThread` mutation in Phase 9) AND the integer `databaseId` (needed for the REST reply API in Phase 9). These are two different identifiers — mixing them up will cause API errors.
+
 If there are zero unresolved threads: report "No unresolved comments found" and stop.
 
 ## Phase 3: Critically Evaluate & Present Plan

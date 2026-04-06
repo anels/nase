@@ -78,7 +78,7 @@ git -C {worktree_path} fetch --all
 git -C {worktree_path} rebase origin/{base_branch}
 ```
 
-If the rebase fails due to conflicts, stop immediately — do not proceed with squash or force-push. Report the conflicting files to the user and suggest resolving them locally before re-running prep-merge.
+If the rebase fails due to conflicts, stop immediately — do not proceed with squash or force-push. Run `git -C {worktree_path} rebase --abort` to restore the branch to its pre-rebase state, then report the conflicting files to the user and suggest resolving them locally before re-running prep-merge. Alternatively, the user can delete the worktree (`git -C {repo_path} worktree remove {worktree_path} --force`) and start fresh.
 
 After a successful rebase, check if any files were auto-merged: `git -C {worktree_path} diff origin/{pr_branch}..HEAD`. If non-empty (code changed during rebase), run the build & test loop (`.claude/docs/build-test-loop.md`) before proceeding to ensure the rebased code still works.
 

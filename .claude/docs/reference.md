@@ -22,6 +22,10 @@ Read this file on demand when you need details about workspace layout, skills, K
                        dedup in script prevents double-counting
     worktree-log.sh  ← runs at WorktreeCreate/WorktreeRemove: appends timestamped
                        entry to today's daily log
+    edit-typecheck.sh ← (opt-in) runs at PostToolUse:Edit for .cs/.ts/.tsx files:
+                       looks up repo in workspace/tmp/.typecheck-commands, runs quick
+                       type-check (e.g. dotnet build --no-restore). 30s timeout.
+                       Disabled by default — enable via /update-config.
   settings.json      ← hook registrations (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
 .local-paths         ← machine-specific paths: backup-target + repo local paths (key=/path format)
                        lives at workspace root (NOT inside workspace/); managed by /nase:init

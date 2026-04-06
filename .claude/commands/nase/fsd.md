@@ -96,6 +96,25 @@ Print: `FSD engaged — driving autonomously from here.`
 
 ---
 
+## Phase 3.5: Research Gate (unfamiliar APIs/libraries only)
+
+Before writing code, check if the task involves external APIs, libraries, or frameworks that are NOT already documented in the repo's KB file or `CLAUDE.md`.
+
+1. **Scan** the task description ($ARGUMENTS) for library names, API references, SDK mentions, or framework-specific terms
+2. **Cross-check** against the repo's KB file (loaded in Phase 1) and `CLAUDE.md` for existing coverage
+3. **Decision**:
+   - If all referenced APIs/libraries are already in KB or CLAUDE.md → **skip** (no overhead for familiar territory)
+   - If task is purely internal code changes with no external dependencies → **skip**
+   - If task references APIs/libraries NOT in KB → **research gate**:
+     - Run WebSearch for official documentation of each unfamiliar API/library
+     - WebFetch the most relevant doc page (API reference, getting started, or migration guide)
+     - Extract: method signatures, required parameters, return types, common pitfalls
+     - Hold this context for Phase 4 — do not write to KB yet (Phase 8b handles that)
+
+This gate prevents hallucinated API contracts. Cost: ~30s for unfamiliar APIs. Cost for familiar tasks: zero (skipped).
+
+---
+
 ## Phase 4: Implement (TDD — Red → Green → Refactor)
 
 Read the repo's `CLAUDE.md` (if not already read) for coding standards and constraints. Read the relevant KB section on architecture so changes fit the existing design.
