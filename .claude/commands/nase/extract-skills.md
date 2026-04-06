@@ -27,9 +27,39 @@ Review the conversation history (or focus on $ARGUMENTS if provided). The riches
 
 List 1-3 candidates with one-line descriptions.
 
-### 2. Apply the quality bar
+### 1.5. Scan for stale skills (confidence decay)
 
-For each candidate, it must pass all three:
+Run this scan **after** Step 2 filters candidates — skip entirely if no candidates pass the quality bar. This avoids reading all skill files in sessions that produce no new extractions.
+
+Check existing skills for staleness:
+
+1. Read all `workspace/skills/*.md` files
+2. For each file with `confidence:` and `extracted:` frontmatter:
+   - Calculate age in days since `extracted:` date
+   - Apply decay: `effective_confidence = confidence - (age_days / 5)` (loses ~6 points per month)
+   - If effective_confidence < 40: flag as **stale** — candidate for pruning
+   - If effective_confidence 40-59: flag as **aging** — candidate for re-validation
+3. If any stale/aging skills found, report them before proposing new extractions:
+   ```
+   ⚠ Stale skills (consider pruning):
+   - {name} — confidence {original} → {effective} (extracted {date}, {age}d ago)
+
+   ⏳ Aging skills (re-validate or boost):
+   - {name} — confidence {original} → {effective} (extracted {date}, {age}d ago)
+   ```
+4. If a new candidate overlaps with a stale skill, propose replacing it instead of creating a new one
+
+### 2. Apply the quality bar + confidence scoring
+
+For each candidate, assign a **confidence score (0–100)** based on:
+- **Frequency signal** (0–30): How often might this recur? Daily = 30, weekly = 20, monthly = 10, rare = 0
+- **Complexity saved** (0–30): How many steps/minutes does the pattern save? 5+ steps = 30, 3-4 = 20, 1-2 = 10
+- **Generality** (0–20): Applies across repos = 20, across domains = 15, single repo = 5
+- **Clarity** (0–20): Could a fresh Claude instance execute cold? Fully = 20, mostly = 10, needs context = 0
+
+**Minimum threshold: 60.** Candidates scoring < 60 are dropped with reason.
+
+Each candidate must also pass all three qualitative checks:
 
 - **Reusable** — will this come up again in future sessions, across different repos or tasks? A pattern that only applies to one specific codebase isn't worth extracting.
   - ✅ Pass: "How to resolve a diverged git worktree before onboarding" — could happen in any repo
@@ -43,7 +73,7 @@ For each candidate, it must pass all three:
   - ✅ Pass: Step-by-step bash script + expected output for each step
   - ❌ Fail: "Do what we did earlier with the JSON" — requires session context to understand
 
-If zero candidates pass: report "No extractable skills found in this session." and stop.
+If zero candidates pass both the score threshold and qualitative checks: report "No extractable skills found in this session." and stop.
 
 ### 3. Check for duplicates
 
@@ -61,7 +91,7 @@ Summary: {one-line description}
 Steps: {brief outline of the workflow}
 ```
 
-If $ARGUMENTS contains `auto`, skip this gate and proceed directly to Step 5.
+If $ARGUMENTS contains `--auto-accept`, skip this gate and proceed directly to Step 5.
 
 Otherwise confirm using AskUserQuestion:
 ```
@@ -81,6 +111,11 @@ options:
 Create `workspace/skills/{name}.md` for each approved skill:
 
 ```markdown
+---
+confidence: {score from Step 2, 0-100}
+extracted: {YYYY-MM-DD}
+---
+
 {One-sentence description — what this skill does and when to reach for it.}
 
 **Input:** $ARGUMENTS (describe expected input, or "no input required")
@@ -98,6 +133,8 @@ Create `workspace/skills/{name}.md` for each approved skill:
 ## Notes
 - {important constraints, gotchas, or things that look like they'd work but don't}
 ```
+
+The `confidence:` and `extracted:` frontmatter enables Step 1.5's decay mechanism in future runs.
 
 Writing guidelines:
 - First line: plain sentence, no heading — this is what future sessions scan to decide relevance

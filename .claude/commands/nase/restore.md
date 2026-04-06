@@ -47,8 +47,10 @@ options:
 ### 4. Confirm with user
 Before asking for confirmation, show files that exist in `workspace/` but NOT in the selected backup:
 ```bash
-# List files in the zip (paths are already relative — no workspace/ prefix since the zip was created from inside workspace/)
-7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sort > "/tmp/nase-backup-files-$$.txt"
+# List files in the zip — paths should be relative (no workspace/ prefix).
+# If the zip was created from inside workspace/, paths are already relative.
+# If paths have a leading workspace/ prefix, strip it: sed 's|^workspace/||'
+7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sed 's|^workspace/||' | sort > "/tmp/nase-backup-files-$$.txt"
 # List files in current workspace/ — strip leading ./ so paths are comparable
 (cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > "/tmp/nase-local-files-$$.txt"
 # Files that exist locally but not in the backup (will be deleted by restore)

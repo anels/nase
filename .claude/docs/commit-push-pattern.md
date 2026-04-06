@@ -56,6 +56,6 @@ git -C {repo_or_worktree} push origin {branch}
 
 | Skill | Step 4 (improve) | Push deviation |
 |-------|-----------------|----------------|
-| `fsd` | Skip | Uses `-u origin` on first push (`push -u origin {branch}`) |
+| `fsd` | Run | Uses `-u origin` on first push (`git -C {worktree} push -u origin {branch}`) |
 | `address-comments` | Skip | In "Confirm before push" mode: show staged diff and commit message, prompt user, stop if aborted |
 | `prep-merge` | Run | Uses `--force-with-lease`; stop if force-push fails (someone else pushed) |

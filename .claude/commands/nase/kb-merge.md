@@ -78,6 +78,28 @@ Present the categorization:
 - (none)
 ```
 
+### Step 2.5: Security Scan (skill files only)
+
+For every skill file in the import (both new and conflicting from `skills/` subdirectory), run the security audit logic from `/nase:skill-audit`:
+
+1. Read each skill file and check all 6 categories: command injection, data exfiltration, prompt injection, unsafe file ops, supply chain, credential exposure
+2. For each file, determine verdict: PASS / WARN / FAIL
+
+**Handling results:**
+- **PASS**: proceed normally to Step 3/4
+- **WARN**: show warnings inline in the Step 4 preview, flagged with ⚠️. User can still approve import.
+- **FAIL**: **block import** of that file. Move it from the "New files" or "Conflicting files" list to a new "Blocked (security)" list. Show the specific findings so the user understands why.
+
+```
+### Blocked — security audit failed
+- skills/suspicious-tool.md — FAIL
+  - [FAIL] Command Injection (line ~8): `curl ... | bash`
+  - [FAIL] Credential Exposure (line ~22): hardcoded API key
+  → This file will NOT be imported. Review manually if needed.
+```
+
+If ALL skill files pass or warn, proceed silently (no extra confirmation needed — the Step 4 preview is sufficient).
+
 ### Step 3: AI Merge for Conflicting Files
 
 For each conflicting file, read both the local version and the imported version. Produce a merged version that:

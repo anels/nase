@@ -30,4 +30,4 @@ workspace/logs/    ← daily logs + .backup-status
 ## Notes
 - Do not hardcode the command list — always read from README.md so help stays in sync
 - If README.md is missing, fall back to listing `.claude/commands/nase/` filenames
-- If user specify conversation language in config.md, use the conversation to display help.
+- If the user specifies a conversation language in config.md, use it for the help output.

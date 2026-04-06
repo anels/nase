@@ -55,7 +55,7 @@ Save `$TMPDIR_STATS` path for use in steps 3–5.
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
-6. Count KB files modified: `find workspace/kb -name "*.md" -newermt "$START_DATE"` (approximate; uses `-newermt` which accepts a date string).
+6. Count KB files modified (cross-platform): `python3 -c "import os,datetime; start=datetime.date.fromisoformat('$START_DATE'); print(sum(1 for f in __import__('glob').glob('workspace/kb/**/*.md',recursive=True) if datetime.date.fromtimestamp(os.path.getmtime(f))>=start))"` (avoids GNU-only `find -newermt` which fails on macOS).
 
 ### 3. Build heatmap
 
@@ -191,7 +191,7 @@ Report content:
 - Skill usage full ranking (all skills from JSONL, not just top 3)
 - Generation metadata: `Generated: {GEN_TS}`, `Range: {START_DATE} ~ {END_DATE}`, `Period: {N} days`
 
-If user specify conversation language in config.md, use the conversation to output summary.
+If the user specifies a conversation language in config.md, use it for the output summary.
 
 Clean up the temp directory after writing the report: `rm -rf "$TMPDIR_STATS"`.
 

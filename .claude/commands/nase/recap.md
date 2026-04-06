@@ -44,6 +44,8 @@ Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathe
 
 Run these greps against the log files for the date range (i.e. `workspace/logs/YYYY-MM-DD.md` files whose date falls within the period). Run all in parallel.
 
+**Note:** The `{date-range}` placeholder below is not valid bash glob expansion. Expand the date range into a space-separated list of actual filenames (e.g. `workspace/logs/2026-03-24.md workspace/logs/2026-03-25.md ...`) or use a loop/glob like `workspace/logs/2026-03-*.md` when the range falls within a single month. For cross-month ranges, generate the file list with python3 or a date loop.
+
 ```bash
 # PRs opened via FSD (unique PR URLs)
 grep -hE "^- FSD:.*\[https" workspace/logs/{date-range}*.md | grep -oE "https://github[^ \)]+" | sort -u | wc -l
