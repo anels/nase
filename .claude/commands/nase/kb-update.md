@@ -43,10 +43,25 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
 **What:** {one-line summary}
 **Why it matters:** {context and impact}
 **Details:** {specifics, examples, code snippets if relevant}
-**Links:** {preserve any original PR, Jira, Confluence, or pipeline URLs from the source material}
+**Links:** {PR, Jira, Confluence, pipeline, or official doc URLs}
+**Tags:** {comma-separated from: gotcha | architecture | api-contract | deployment | performance | security | workflow | debugging}
+**Applies-to:** {comma-separated repo names}
+**Confidence:** medium | low
 ```
-Omit the `**Links:**` line if there are no relevant links.
-Include links because future sessions can't search conversation history — the KB entry is the only record.
+
+**Field rules — omit fields that add no value:**
+- `**Links:**` — omit if no relevant URLs; include because future sessions can't search conversation history
+- `**Tags:**` — include when ≥1 tag applies; skip for entries with no filtering value. Tag vocabulary:
+  - `gotcha` — non-obvious pitfall or surprise
+  - `architecture` — structural decision or constraint
+  - `api-contract` — external API behavior, method signatures, parameters
+  - `deployment` — CI/CD, infra, release process
+  - `performance` — latency, throughput, resource usage patterns
+  - `security` — auth, secrets, vulnerability patterns
+  - `workflow` — dev process, tool usage, habits
+  - `debugging` — diagnostic technique, root-cause pattern
+- `**Applies-to:**` — only when the insight is narrower than the KB file's scope (e.g., a `general/` file entry that only applies to `insights` and `uipathctl`); omit if obvious from the file's context
+- `**Confidence:**` — `medium` for web-sourced or single-observation patterns; `low` for unverified hypotheses; omit entirely for well-tested, directly observed patterns (high confidence is the default)
 
 5. If the learning is cross-cutting (affects multiple KB files), update all relevant files.
 

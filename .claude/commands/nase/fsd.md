@@ -111,6 +111,13 @@ Before writing code, check if the task involves external APIs, libraries, or fra
      - Extract: method signatures, required parameters, return types, common pitfalls
      - Hold this context for Phase 4 — do not write to KB yet (Phase 8b handles that)
 
+**Track findings for KB:** After completing research, record a `research_gate_findings` summary. For direct mode, carry it in conversation context. For **team mode**, also write it to `workspace/tmp/fsd-research-{branch_name}.md` so Phase 8c can read it back after subagents complete (subagents don't inherit this session's context):
+```
+research_gate_findings:
+  - {LibraryName}: key method signatures, required params, return types, pitfalls, doc URL
+```
+Record even when findings seem obvious — the goal is to prevent re-researching the same API next session.
+
 This gate prevents hallucinated API contracts. Cost: ~30s for unfamiliar APIs. Cost for familiar tasks: zero (skipped).
 
 ---
@@ -197,9 +204,38 @@ Report the PR URL.
 
 ---
 
-## Phase 8b: KB Update
+## Phase 8b: Effort Doc Update
 
-If implementation revealed new patterns, architectural insights, or hard constraints, invoke `/nase:kb-update [domain]` now with a concise summary. Don't defer to wrap-up — autonomous work discoveries are most accurate immediately after the task while context is fresh.
+If $ARGUMENTS contains a slug that matches a file in `workspace/tasks/efforts/{slug}.md`, update its lifecycle:
+
+```bash
+# Check if effort doc exists
+ls workspace/tasks/efforts/ 2>/dev/null
+```
+
+If the effort doc exists, check off the relevant lifecycle items and update the status:
+- `- [ ] Implementation started` → `- [x] Implementation started — {YYYY-MM-DD}`
+- `- [ ] PR opened` → `- [x] PR opened — {PR URL or branch_name}` (only if PR was created)
+- Update frontmatter: `status: in-progress`
+
+If the slug cannot be inferred from $ARGUMENTS (e.g., fsd was given a raw task, not a slug), skip silently — not every fsd invocation comes from a design doc.
+
+## Phase 8c: KB Update
+
+Two categories of knowledge to persist — handle both before cleanup:
+
+**1. Research gate findings** (from Phase 3.5): if `research_gate_findings` is non-empty, write each library/API to the general KB:
+- Target: `workspace/kb/general/{technology}.md` (e.g. `azure-service-bus.md`, `signalr.md`) — create if it doesn't exist
+- Use standard `### YYYY-MM-DD — {topic}` entry format
+- Add `**Tags:** api-contract` and `**Confidence:** medium` (web-sourced, not yet battle-tested in this repo)
+- Include: key method signatures, required parameters, return types, common pitfalls; official doc URL in `**Links:**`
+- If the file is new, register it in `workspace/kb/.domain-map.md` under `## General`
+
+**2. Implementation discoveries**: if implementation revealed new patterns, architectural insights, or hard constraints specific to the target repo, invoke `/nase:kb-update [domain]` with a concise summary.
+
+For **team mode**: read `workspace/tmp/fsd-research-{branch_name}.md` if it exists to recover research gate findings, then delete it after processing.
+
+Don't defer either category to wrap-up — context is freshest immediately after the task.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 

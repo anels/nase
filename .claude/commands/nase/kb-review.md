@@ -115,6 +115,11 @@ Present as a **Connection Map**:
 - Lessons with `## ops —` header → candidates for `workspace/kb/ops/` files
 - Lessons with `## project —` header or about a specific project → candidates for that project's KB file
 
+**Maturity threshold** — a lesson is ready for promotion when ANY of:
+- Added >14 days ago (time validates the pattern)
+- Same pattern appears in 2+ separate lesson entries (frequency = importance)
+- Lesson explicitly notes "add to KB" or describes a recurring mistake
+
 ```
 ## Stale & Orphaned
 
@@ -202,6 +207,16 @@ For each change applied:
 - Make the edit (add cross-ref, remove duplicate, promote lesson)
 - Track what was changed
 
+**Lesson promotion procedure** (when promoting from `lessons.md`):
+1. Read the lesson entry from `lessons.md`
+2. Distill into KB entry format — do NOT copy-paste; rewrite as a clean `### YYYY-MM-DD — {topic}` entry using the standard `kb-update` format (What / Why it matters / Details / Links / Tags)
+3. Append to the target KB file in the appropriate section
+4. Mark the lesson as promoted by appending to its entry in `lessons.md`:
+   ```
+   > Promoted → [{KB file basename}](../kb/{relative-path}) on {YYYY-MM-DD}
+   ```
+5. Do NOT delete the lesson — it stays as the original record; the KB gets the clean, distilled version
+
 ### Step 7: Summary
 
 Display what was done:
@@ -226,5 +241,5 @@ Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
 
 - This skill is read-heavy by design — it needs to load many files to find cross-file patterns. For large KBs, scope to one directory at a time.
 - Historical entries (past decisions, old architecture notes) should NOT be flagged as "stale" — they are records. Only flag entries that describe ongoing/future work with old dates.
-- When promoting lessons to KB, distill the lesson into the KB file's format (not copy-paste). The lesson stays in lessons.md as the original record; the KB gets a cleaner, integrated version.
+- Lesson promotion follows the procedure in Step 6 — distill (not copy-paste), write to KB using standard entry format, mark as promoted in `lessons.md` with a `> Promoted →` line.
 - Cross-references use the format: `> See also: [{topic}]({relative-path})` at the end of the relevant section.

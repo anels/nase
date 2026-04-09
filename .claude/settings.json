@@ -58,6 +58,15 @@
             "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-skill.sh\"'"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\" 2>/dev/null); if [[ \"$f\" == *.sh ]] && command -v shellcheck >/dev/null 2>&1; then shellcheck -S warning \"$f\"; fi'"
+          }
+        ]
       }
     ]
   }

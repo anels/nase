@@ -3,6 +3,10 @@ name: nase:discuss-pr
 description: Chat-first deep PR review — posts to GitHub only on explicit request. Runs parallel specialist agents (architecture, bugs, security, testability, DRY/KISS, git history), synthesizes findings, researches open questions via GitHub and Confluence, and produces inline comment drafts ready for manual posting. Use when asked to review a PR without posting, do a self-review, or prepare review comments before publishing.
 ---
 
+## Language
+
+Read `/Users/ruilin.liu/playground/aiteam/nase-02/workspace/config.md` — use the `conversation:` value for all responses in this skill (comments and questions to the user). Use `output:` for anything posted to GitHub.
+
 ## Phase 0 — Input Guard
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`. If `$ARGUMENTS` is empty, ask the user for the PR URL instead of printing usage.
@@ -121,11 +125,17 @@ For each issue include:
 - One-sentence description with consequence if unfixed
 - Evidence source (e.g. "confirmed via Confluence AS tracker", "introduced in PR #2345")
 
-After presenting, explicitly invite the user into the discussion:
-- List any "ask the author" items and say you can look further if the user can provide context or loop in the author
-- Offer to dig into any finding the user wants to explore further
-- If the user has domain context (e.g. "that endpoint isn't used in AS yet"), update the confidence and revise the findings accordingly
-- Keep the conversation going — the user may know things that flip a suspected bug into intentional design, or vice versa
+After presenting, use `AskUserQuestion` to open discussion. Bundle any "ask the author" items together with the next-step prompt into a single question — one bullet per open question, followed by the options. Example shape:
+
+```
+A few open questions:
+• [83] Is X intentional, or should it come from Y?
+• [70] Does A deploy atomically with B? (A backward compat fallback would protect the rollout window if not.)
+
+Want me to draft inline comments for posting, or dig into any of these further?
+```
+
+If the user provides domain context that changes a finding (e.g. "that endpoint isn't used in AS yet"), update the confidence score and revise accordingly before continuing.
 
 ## Step 7 — Draft inline comments (on request)
 

@@ -64,10 +64,11 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 2. For each touched repo/domain, review today's session entries and determine if any new knowledge was gained:
    - New patterns, architectural decisions, constraints clarified, gotchas found.
 3. If meaningful updates exist, write directly to the relevant KB file(s):
+   - **Conflict check (lightweight):** Before writing, extract 1–2 key terms from the planned entry and Grep the *target KB file only* (not the full KB directory). If a matching entry is found, compare: if it's a true duplicate, skip the write; if it's genuinely new or complementary information, proceed.
    - Read the target KB file, locate the right section, append the new entry.
    - Use the standard `### YYYY-MM-DD — {topic}` format (same as `/nase:kb-update`).
    - Update the `<!-- Last updated: YYYY-MM-DD -->` timestamp.
-   - **Note:** This is a lightweight direct write — it skips the conflict-check and cross-reference wiring of the full `/nase:kb-update` skill. For complex multi-domain updates with potential conflicts, invoke `/nase:kb-update` directly instead.
+   - **Note:** This is a lightweight direct write — it skips full cross-reference wiring. For complex multi-domain updates with potential conflicts, invoke `/nase:kb-update` directly instead.
    - Set `kb-update=done`.
 
 **If condition NOT met:**

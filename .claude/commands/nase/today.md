@@ -20,6 +20,9 @@ Run steps 1–4 in parallel, then combine into Step 5 output.
 - Read `workspace/kb/.domain-map.md` — collect all `## Projects` entries
 - For each project KB file, extract the `<!-- Last updated: YYYY-MM-DD -->` date
   - Older than 7 days or missing → add to stale list
+- Sort the stale list by last-updated date ascending (oldest first)
+- For each stale project that has a local repo path in `.local-paths`, run: `gh api repos/{owner}/{repo}/commits?sha={default-branch}&since={last-updated-date}T00:00:00Z --paginate -q 'length'` to count new commits merged to the default branch since the last KB update. Sum the paginated counts. If `gh` fails or repo has no GitHub remote, skip the count silently.
+  - Show the count in the output as `({N} new commits)`
 
 ### 3. Today's commits so far (if any)
 - Read repo local paths from `.local-paths` (only lines matching `RepoName=/path` pattern — skip `backup-target=`, comment lines starting with `#`, and blank lines). For each path: `git -C {path} log --since="{TODAY}T00:00:00" --oneline --branches 2>/dev/null` (use today's date in YYYY-MM-DD format — avoids timezone ambiguity from `"midnight"`)
@@ -71,9 +74,9 @@ Yesterday: [one-line summary from Step 1]
 - [{RepoName}: {short commit summaries from Step 3}]
 [omit this section entirely if no commits found today]
 
-**Stale KB** (not updated in 7+ days)
-- `{domain}` — last updated {date} → run `/nase:onboard {repo-path}`
-[omit this section entirely if all KB entries are fresh]
+**Stale KB** (not updated in 7+ days, oldest first)
+- `{domain}` — last updated {date} ({N} new commits) → run `/nase:onboard {repo-path}`
+[omit this section entirely if all KB entries are fresh; omit commit count if unavailable]
 ```
 
 </workflow>

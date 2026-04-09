@@ -139,7 +139,11 @@ For each target KB file:
 - If the file exists: read it, find the right section, and **append or merge** the new knowledge. Don't duplicate content that's already there — enrich it instead. Add a date comment: `<!-- Added: YYYY-MM-DD -->`
 - If the file doesn't exist: create it with a header and the synthesized content, then register in `.domain-map.md`
 
-Use the synthesized format from Step 4, adapted to fit the existing file's structure.
+Use the synthesized format from Step 4, adapted to fit the existing file's structure. Condense into a dated `### YYYY-MM-DD — {topic}` entry and attach metadata:
+- `**Tags:**` — classify using the standard vocabulary: `gotcha`, `architecture`, `api-contract`, `deployment`, `performance`, `security`, `workflow`, `debugging`
+- `**Confidence:** medium` — always include for web-sourced knowledge (not yet validated in production)
+- `**Links:**` — include all source URLs from Step 3d
+- Omit `**Applies-to:**` for general KB files (implicit from the file's scope)
 
 ### 7. Flag reusable rules
 
