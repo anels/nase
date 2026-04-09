@@ -102,6 +102,20 @@ Default: `sonnet`. Never spawn `opus` for something haiku can answer. For haiku 
 
 ---
 
+## Communication
+
+- **Slack messages**: keep concise and conversational — avoid verbose or overly formal drafts
+- **Jira links**: always include full Jira links (e.g. `https://uipath.atlassian.net/browse/PROJ-123`), never bare ticket numbers
+- **Review requests**: one short paragraph max; mention reviewer by name, link the PR
+
+## Code Review
+
+- **Don't over-escalate severity**: only mark something `critical` when there is clear, concrete evidence it is broken or exploitable
+- **Prefer measured assessments**: use `suggestion` or `nit` for style/minor issues; reserve `blocking` for real correctness bugs
+- **Verify environment impact before stating it**: never claim a change affects (or doesn't affect) a specific deployment environment without tracing the code path first
+
+---
+
 ## Code Quality Standards
 
 - **Minimal changes**: write the minimum code needed — do not add unrequested features or refactor surrounding code

@@ -3,9 +3,30 @@ name: nase:design
 description: "KB-aware collaborative design skill — turn vague ideas into concrete, tracked design docs through structured interview. Reads domain KB before asking questions, explores 2-3 approaches with tradeoffs, and writes a tracked effort doc with lifecycle checklist. Use when starting any non-trivial feature or project. Triggers on: 'design', 'brainstorm', 'plan a feature', 'kickoff', 'start project', 'I want to build...', 'let's design...', or any request that needs collaborative thinking before implementation."
 ---
 
-Turn ideas into concrete, tracked design plan through KB-aware collaborative thinking. 
+Turn ideas into concrete, tracked design plan through KB-aware collaborative thinking.
 
 Enter plan mode at the start of Phase 4 (Design Presentation).
+
+## Design Principles Framework
+
+Apply these five principles to every design. The **order matters** — it changes which tradeoffs you prioritize first:
+
+| Principle | What it means in practice |
+|-----------|--------------------------|
+| **First Principles** | Strip back to core requirements. What is the actual problem? What assumptions can be challenged? |
+| **YAGNI** | Only design for what is needed now. No speculative extensibility. |
+| **KISS** | Prefer the simpler design. Complexity is a liability — justify it. |
+| **SOLID** | When modeling components/modules: single responsibility, open/closed, dependency inversion. |
+| **DRY** | Identify reusable patterns; don't reinvent what the KB or codebase already has. |
+
+**Dynamic ordering by context** — lead with the principle that matters most for the current design:
+
+- **Architecture / Project Kickoff**: First Principles → YAGNI → KISS → SOLID → DRY
+- **New Feature / Incremental**: YAGNI → KISS → SOLID → DRY → First Principles
+- **Small Function / Utility**: KISS → DRY → YAGNI → SOLID → First Principles
+- **Complex Component / OO Modeling**: First Principles → SOLID → YAGNI → KISS → DRY
+
+Before presenting options in Phase 3, explicitly state which ordering you're applying and why. Use the principles as a lens to evaluate each option — not just pros/cons, but *which principle each option honors or violates*.
 
 ## Review Mode
 
@@ -106,7 +127,11 @@ Surface any conflicts: "The KB says X, but you're describing Y — should we upd
 
 ## Phase 3: Approach Exploration
 
-Present approaches **one at a time** to avoid decision fatigue. For each approach:
+Always present **2-3 options** — even for seemingly obvious problems. A second option sharpens the reasoning for the first.
+
+**Step 1 — Declare your principle lens.** Before presenting options, state which ordering you're applying from the Design Principles Framework and why (1 sentence).
+
+**Step 2 — Present options one at a time** to avoid decision fatigue. For each option use this format:
 
 ```markdown
 ### Option {N}: {Name}
@@ -114,15 +139,31 @@ Present approaches **one at a time** to avoid decision fatigue. For each approac
 **Pros:** {concrete advantages}
 **Cons:** {concrete risks or costs}
 **Fits KB patterns?** {yes/no + why}
-
-What's your reaction to this approach?
+**Principle alignment:** {which principles this honors; which it trades off}
 ```
 
-Flow:
-1. Present **Option A** with tradeoffs → wait for user reaction
-2. Present **Option B** with tradeoffs → wait for user reaction
-3. After presenting all options (2-3), share your **recommendation** with reasoning
-4. Ask for final choice:
+After each option, ask: "What's your reaction to this?" — wait for the user before presenting the next.
+
+**Step 3 — Comparative summary.** After all options are presented, show a concise comparison table:
+
+```markdown
+| | Option A | Option B | Option C |
+|---|---|---|---|
+| Complexity | Low | Medium | High |
+| KB alignment | ✓ | ~ | ✗ |
+| YAGNI | ✓ | ~ | ✗ |
+| Risk | Low | Medium | High |
+```
+
+Columns: Complexity, KB alignment, key principle scores, Risk. Adapt columns to what actually differs.
+
+**Step 4 — Recommend + Challenge.** Share your recommendation with clear reasoning. Then explicitly challenge it:
+
+> "That said — is there a more elegant path? Could Option {X} be simplified to capture the core of Option {Y} without the overhead? What if we {specific suggestion}?"
+
+Push yourself to find at least one concrete way to improve the leading option before asking the user to choose.
+
+**Step 5 — Ask for final choice:**
 
 ```
 question: "Which approach should we go with?"
@@ -133,7 +174,7 @@ options:
   - label: "Combine elements"   , description: "Mix and match — tell me what you want from each"
 ```
 
-For **quick fixes**: skip this phase — there's usually only one obvious approach.
+For **quick fixes**: still present 2 options, but keep them brief (one line each) — skip the comparative table.
 
 ## Phase 4: Design Presentation
 
@@ -209,21 +250,26 @@ options:
 ```
 If yes: use the project key from the repo's KB file (or ask the user). Issue type: Task or Story. Set summary to the effort title, description to the design summary, and add a note linking back to the effort doc path.
 
-**5d. Report and suggest next steps:**
-```
-Design saved to `workspace/tasks/efforts/{slug}.md`
+**5d. Exit plan mode and offer meaningful next steps:**
 
-Next steps:
-- `/nase:fsd {slug}` — autonomous implementation
-- Manual implementation — update the effort doc as you go
-- Park it — it'll show up in `/nase:today` when you're ready
+Exit plan mode, then ask via `AskUserQuestion`:
+
 ```
+question: "Design is saved. What would you like to do next?"
+header: "Next Step"
+options:
+  - label: "Critic review"      , description: "I'll spawn oh-my-claudecode:critic with the full effort doc to challenge the design before you commit to implementation"
+  - label: "Start implementation" , description: "Engage /nase:fsd for autonomous implementation right away"
+  - label: "Park it"            , description: "Come back to it later — it'll surface in /nase:today"
+```
+
+Do NOT ask "should I proceed?" or "ready to execute?" — those are non-choices. Always offer the critic option so the user can get a second-opinion pass before building.
 
 ## Lifecycle Updates (by other skills)
 
 The effort doc is updated by other skills as the effort progresses — no orchestrator needed:
 - `/nase:fsd` → checks off "Implementation started" + "PR opened", updates `status: in-progress`
-- `/nase:prep-merge` → checks off "Review passed" + "Merged", updates `status: done`
+- `/nase:prep-merge` → checks off "Review passed", updates `status: merge-ready` (not "Merged" — actual merge is a human action on GitHub)
 - `/nase:wrap-up` → can reference active efforts in the daily journal
 - User can manually update any lifecycle item at any time
 

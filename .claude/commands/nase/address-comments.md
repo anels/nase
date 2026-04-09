@@ -191,8 +191,9 @@ If a reviewer suggestion revealed a non-obvious architectural constraint, run `/
 
 ## Phase 11: Cleanup & Report
 
-Remove the worktree:
+Remove the worktree (only if one was created — skip if Phase 5 detected in-place path):
 ```bash
+# Only run if worktree_path != repo_path
 git -C {repo_path} worktree remove {worktree_path} --force
 ```
 

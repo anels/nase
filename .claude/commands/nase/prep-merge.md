@@ -107,6 +107,7 @@ Now craft the squash commit message. Read all the original commit messages to un
 ```bash
 git -C {worktree_path} log --format="%s%n%b" $MERGE_BASE..origin/{pr_branch}
 ```
+*(Note: `origin/{pr_branch}` still points to the pre-rebase remote commits here — intentional. You want to summarize the original commit intent, not the rebase mechanics. The rebase result is already staged; Phase 8 commits it.)*
 
 Also read the changed files to understand the diff:
 
@@ -202,8 +203,10 @@ Use the `AskUserQuestion` tool:
 question: "Request a review now?"
 header: "Request Review"
 options:
-  - label: "Yes — ping reviewers"
+  - label: "Yes — mark ready + ping reviewers"
+    description: "Un-draft the PR, then DM code owners via /nase:request-review"
   - label: "No — I'll handle it"
+    description: "Leave as draft; you decide when to promote"
 ```
 
 Append to `workspace/logs/{YYYY-MM-DD}.md`:
@@ -211,8 +214,11 @@ Append to `workspace/logs/{YYYY-MM-DD}.md`:
 - Prep merge: {repo_name}#{pr_number} — squashed {N} commits, updated title/description
 ```
 
-**If "Yes":** run `/nase:request-review {pr_url}` immediately.
-**If "No":** print `PR is ready — merge once approved.` and stop.
+**If "Yes":** first un-draft the PR, then run `/nase:request-review {pr_url}`:
+```bash
+gh pr ready {pr_number} --repo {owner}/{repo}
+```
+**If "No":** print `PR is ready — un-draft and request review when you're ready.` and stop.
 
 ---
 
