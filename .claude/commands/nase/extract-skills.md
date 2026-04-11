@@ -5,11 +5,13 @@ description: Analyze the current session and extract reusable problem-solving pa
 
 Captured patterns compound into lasting productivity gains — don't skip this after non-trivial sessions.
 
+**DO NOT enter plan mode.** Execute steps directly and autonomously.
+
 **Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `--auto-accept` to skip the confirmation gate and auto-approve all candidates)
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 4 for skill creation confirmation. Skip if `--auto-accept` is in $ARGUMENTS.
+Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
 
 ## Steps
 
@@ -27,7 +29,7 @@ Review the conversation history (or focus on $ARGUMENTS if provided). The riches
 
 List 1-3 candidates with one-line descriptions.
 
-### 1.5. Scan for stale skills (confidence decay)
+### 2.5. Scan for stale skills (confidence decay)
 
 Run this scan **after** Step 2 filters candidates — skip entirely if no candidates pass the quality bar. This avoids reading all skill files in sessions that produce no new extractions.
 

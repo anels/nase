@@ -9,7 +9,7 @@ Find the right reviewers for one or more PRs and DM them on Slack.
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 8 for recipient selection and message confirmation. Fetch it once here so it's available when needed.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Step 1 — Parse inputs
 
@@ -104,8 +104,8 @@ Hey [first name], could you help review this? [url] — [TLDR]
 **Cherry-pick group:**
 ```
 Hey [first name], could you help approve these cherry-picks? [TLDR]
-[url 1] (→ release/vX)
-[url 2] (→ release/vY)
+• [url 1] → release/vX
+• [url 2] → release/vY
 ```
 
 Keep it short — people will read the PR description for details. No markdown in the actual DM.

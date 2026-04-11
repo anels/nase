@@ -5,7 +5,7 @@ description: "KB-aware collaborative design skill — turn vague ideas into conc
 
 Turn ideas into concrete, tracked design plan through KB-aware collaborative thinking.
 
-Enter plan mode at the start of Phase 4 (Design Presentation).
+Enter plan mode at the start of Phase 5 (Writing the Design Doc), not during Phase 4 (Design Presentation is interactive Q&A).
 
 ## Design Principles Framework
 
@@ -30,9 +30,9 @@ Before presenting options in Phase 3, explicitly state which ordering you're app
 
 ## Review Mode
 
-Triggered when: user re-runs `/nase:design` on an existing effort (slug already exists in `workspace/tasks/efforts/`), or passes `--review` to force review mode even if auto-detection doesn't match (e.g., the slug is in a non-standard location).
+Triggered when: user re-runs `/nase:design` on an existing effort (slug already exists in `workspace/efforts/`), or passes `--review` to force review mode even if auto-detection doesn't match (e.g., the slug is in a non-standard location).
 
-1. **Read** the existing effort doc from `workspace/tasks/efforts/{slug}.md`
+1. **Read** the existing effort doc from `workspace/efforts/{slug}.md`
 2. **Gather current state** — check repo for changes since the design was written (git log, new patterns, resolved open questions)
 3. **Evaluate against Quality Criteria** (see below) — score each criterion
 4. **Verdict** via `AskUserQuestion`:
@@ -40,7 +40,7 @@ Triggered when: user re-runs `/nase:design` on an existing effort (slug already 
    - **Needs Revision** — specific issues listed with suggested fixes. Return to Phase 2 with the issues as context
    - **Superseded** — requirements changed enough to warrant a fresh design. Archive the old doc (rename to `{slug}-v1.md`) and start Phase 1
 
-The output is a design doc at `workspace/tasks/efforts/{slug}.md` with a lifecycle checklist. Other skills (`/nase:fsd`, `/nase:prep-merge`) update the same file as the effort progresses. `/nase:today` surfaces active efforts automatically.
+The output is a design doc at `workspace/efforts/{slug}.md` with a lifecycle checklist. Other skills (`/nase:fsd`, `/nase:prep-merge`) update the same file as the effort progresses. `/nase:today` surfaces active efforts automatically.
 
 This skill is only allowed to create or edit the design doc. no code edit is allowed.
 
@@ -51,6 +51,8 @@ Always ask for clarification when anything is unclear — do not include uncerta
 ## Setup
 
 If `AskUserQuestion` is not already available, use `ToolSearch` to fetch it before starting. Also fetch `EnterPlanMode` — it's a deferred tool needed at the start of Phase 4.
+
+Read `workspace/config.md` to extract `conversation:` and `output:` language settings. Use conversation language for interview dialogue, output language for the design doc. If config.md is missing, default to English for both.
 
 ## Hard Gate
 
@@ -212,7 +214,7 @@ For **initiatives**: include a decomposition section listing sub-efforts with de
 After user approves the design:
 
 **5a. Write design doc:**
-Save to `workspace/tasks/efforts/{slug}.md` (create `efforts/` dir if missing):
+Save to `workspace/efforts/{slug}.md` (create `efforts/` dir if missing):
 ```markdown
 ---
 status: planned
@@ -235,7 +237,7 @@ repo: {repo-name or "multiple"}
 **5b. Add to todo.md:**
 Append to `workspace/tasks/todo.md` under `## Pending`:
 ```markdown
-- [ ] **{Title}** — {one-line summary} → `workspace/tasks/efforts/{slug}.md`
+- [ ] **{Title}** — {one-line summary} → `workspace/efforts/{slug}.md`
 ```
 
 This makes the effort visible in `/nase:today` output.

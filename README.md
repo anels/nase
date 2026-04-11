@@ -203,7 +203,7 @@ flowchart LR
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:today` | Morning kickoff: today's focus + priorities + blockers |
+| `/nase:today` | Morning kickoff: auto-sync PR/Jira statuses in todo + efforts, then show focus + priorities + blockers |
 | `/nase:learn [tip\|url]` | Capture a tip, or feed a URL (article/repo) → auto-extract learnings → `workspace/tasks/lessons.md` + relevant KB file |
 | `/nase:reflect [task]` | Post-task reflection |
 | `/nase:extract-skills` | Analyze current session → extract reusable patterns as files under `workspace/skills/` |
@@ -395,6 +395,7 @@ workspace/
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   recaps/             ← weekly/monthly recap reports (written by /nase:recap)
   skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
+  efforts/            ← design docs with lifecycle tracking (written by /nase:design; completed efforts move to efforts/done/)
   tasks/
     lessons.md        ← accumulated lessons from /nase:learn and /nase:reflect
     todo.md           ← current task tracking

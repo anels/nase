@@ -38,7 +38,7 @@ python3 -m json.tool .claude/settings.json > /dev/null 2>&1 || python -m json.to
 - Check Stop hook command contains `stop-backup.sh`
 - Check Stop hook command contains `stop-todos.sh`
 - Check PostToolUse hook command contains `track-skill.sh`
-- Check that `worktree-log.sh` is referenced somewhere in `.claude/settings.json` (it may be wired to a PostToolUse or other lifecycle hook)
+- If `worktree-log.sh` exists in `.claude/hooks/`, verify it is referenced in `.claude/settings.json`. If neither the file nor the reference exists, that's OK (optional hook). If the file exists but is NOT referenced, report as warning
 - Pass: valid JSON + all scripts referenced
 - Fail: file missing / invalid JSON / scripts not wired up
 
@@ -108,7 +108,7 @@ command -v jq
 | 4 | Backup config | OK / WARN / FAIL | {target path or issue} |
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
 | 6 | workspace/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
-| 7 | Tools | OK / WARN / FAIL | {git + 7z status} |
+| 7 | Tools | OK / WARN / FAIL | {git + 7z + jq status} |
 | 8 | Commands | {N} found | {missing from settings.json if any} |
 
 **Result: {X}/8 checks passed**

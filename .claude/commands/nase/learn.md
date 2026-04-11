@@ -19,7 +19,7 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and u
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 4 for confirming the knowledge entry. Skip if `--auto-accept` is in $ARGUMENTS.
+Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
 
 ## Steps
 
@@ -61,7 +61,7 @@ This is the step that turns a single source into real understanding. The goal: f
 **3a. Search for related discussions and materials:**
 Using WebSearch, find 3-5 high-quality related sources. Search for:
 - The core concepts/techniques extracted in Step 2 (or the keyword from Step 1)
-- Add qualifiers to find diverse perspectives: `"{topic} tradeoffs"`, `"{topic} vs alternatives"`, `"{topic} production experience"`, `"{topic} best practices {year}"`
+- Add qualifiers to find diverse perspectives: `"{topic} tradeoffs"`, `"{topic} vs alternatives"`, `"{topic} production experience"`, `"{topic} best practices"` (append the current year, e.g. `"best practices 2026"`, to get recent results)
 - Prefer: official docs, engineering blog posts, conference talks, GitHub discussions, Stack Overflow answers with high votes, HN/Reddit discussions with substance
 
 **3b. Cross-reference with existing KB:**
@@ -108,7 +108,9 @@ Combine the original extraction (Step 2) with the deep research (Step 3) into a 
 - {attributed list from Step 3d}
 ```
 
-Show the synthesis to the user, then **immediately invoke the `AskUserQuestion` tool** (do not present the options as plain text):
+If `--auto-accept` is active, skip the confirmation and proceed directly to Step 5 (auto-save).
+
+Otherwise, show the synthesis to the user, then **immediately invoke the `AskUserQuestion` tool** (do not present the options as plain text):
 
 ```
 question: "Save this to the knowledge base?"
@@ -124,12 +126,7 @@ options:
 
 ### 5. Categorize and determine KB target
 
-Map each knowledge item to a KB domain. Read `workspace/kb/.domain-map.md` to get the current domain list first. Use the following as fallback categories only if no existing domain matches:
-- `workflow` — process, tools, habits, Claude Code patterns → `workspace/kb/general/workflow.md`
-- `debugging` — root causes, diagnostic techniques → `workspace/kb/general/debugging.md`
-- `architecture` / `system-design` — design decisions, tradeoffs → `workspace/kb/general/system-design.md`
-- `tech-trends` — emerging tech, industry shifts → `workspace/kb/general/tech-trends.md`
-- **New domain**: if no existing domain fits, create a new KB file and register it in `.domain-map.md` under `## General`
+Map each knowledge item to a KB domain. Read `workspace/kb/.domain-map.md` to get the current domain list first. If no existing domain matches, follow the fallback logic in `/nase:kb-update` Step 1 (which handles ops, general, and project-specific categorization and creates new files as needed).
 
 If the knowledge spans multiple domains, write to each relevant KB file (the overlapping parts, not duplicates — each file gets domain-specific framing).
 

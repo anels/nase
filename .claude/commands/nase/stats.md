@@ -7,7 +7,7 @@ description: Display workspace usage statistics with a GitHub-style activity hea
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 1 if the time range is not specified via $ARGUMENTS. Fetch it once here so it's available when needed.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Steps
 
@@ -41,16 +41,21 @@ Check if `workspace/scripts/stats-collect.sh` exists. If it does, run it:
 bash workspace/scripts/stats-collect.sh "<start>" "<end>"
 ```
 
-This script outputs all metrics to `$TMPDIR_STATS` (a temp directory — caller must clean up after use). It collects:
+This script prints the path to a temp directory on stdout. Capture it and clean up after use:
+
+```bash
+TMPDIR_STATS=$(bash workspace/scripts/stats-collect.sh "<start>" "<end>")
+trap 'rm -rf "$TMPDIR_STATS"' EXIT
+```
+
+It collects:
 - Per-day stats (sessions, commits, PRs) → `$TMPDIR_STATS/daily.csv`
 - Aggregate metrics → `$TMPDIR_STATS/env.sh`
 - Skill usage rankings
 
-Save `$TMPDIR_STATS` path for use in steps 3–5.
-
 <!-- Consider extracting to workspace/scripts/stats-collect.sh if this grows -->
 **If the script does NOT exist**, collect data inline:
-1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)`
+1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)` and register cleanup: `trap 'rm -rf "$TMPDIR_STATS"' EXIT` (ensures cleanup even if the skill errors mid-execution)
 2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (for each `{repo_path}` in `.local-paths`: `git -C {repo_path} log --since="{date}T00:00" --until="{date}T23:59" --oneline 2>/dev/null | wc -l` — sum across all repos), and PRs (grep for PR URLs in the log).
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
@@ -153,7 +158,8 @@ Write to `workspace/stats/report-YYYY-MM-DD.md` (today's date; overwrite if exis
 Generate the daily breakdown table **dynamically** from `$TMPDIR_STATS/daily.csv`:
 
 ```bash
-source "$TMPDIR_STATS/env.sh"
+# Source env.sh only if it exists (the inline collection path does not produce it)
+[ -f "$TMPDIR_STATS/env.sh" ] && source "$TMPDIR_STATS/env.sh"
 GEN_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 REPORT_DATE=$(date +%Y-%m-%d)
 report_file="workspace/stats/report-$REPORT_DATE.md"
@@ -178,8 +184,8 @@ daily_table=$(
       s=0; c=0; p=0
     fi
     echo "| $current | $day_name | $s | $c | $p | — |"
-  done < "$TMPDIR_STATS/date-daynames.txt"
-)
+  done < "$TMPDIR_STATS/date-daynames.txt")
+# Note: the closing ) must be on the same line as `done` or on its own line to close the $(...) assignment
 ```
 
 Knowledge entries: list each entry title + category from `workspace/tasks/lessons.md` matching the date range (same awk filter as step 2c, but also capture the `**Tip:**` line for the title).

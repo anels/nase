@@ -7,7 +7,7 @@ description: Generate a structured recap of completed work plus actionable impro
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 1 if the recap period is not specified via $ARGUMENTS. Fetch it once here so it's available when needed.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Step 1 — Resolve the date range
 
@@ -44,41 +44,39 @@ Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathe
 
 Run these greps against the log files for the date range (i.e. `workspace/logs/YYYY-MM-DD.md` files whose date falls within the period). Run all in parallel.
 
-**Note:** The `{date-range}` placeholder below is not valid bash glob expansion. Expand the date range into a space-separated list of actual filenames (e.g. `workspace/logs/2026-03-24.md workspace/logs/2026-03-25.md ...`) or use a loop/glob like `workspace/logs/2026-03-*.md` when the range falls within a single month. For cross-month ranges, generate the file list with python3 or a date loop.
+**Note:** The `{date-range}` placeholder below is not valid bash glob expansion. Expand the date range into a space-separated list of actual filenames (e.g. `workspace/logs/2026-03-24.md workspace/logs/2026-03-25.md ...`) or use a loop/glob like `workspace/logs/2026-03-*.md` when the range falls within a single month. For cross-month ranges, generate the file list with python3 or a date loop. **Replace `{LOG_FILES}` in all commands below with the expanded file list.**
 
 ```bash
 # PRs opened via FSD (unique PR URLs)
-grep -hE "^- FSD:.*\[https" workspace/logs/{date-range}*.md | grep -oE "https://github[^ \)]+" | sort -u | wc -l
+grep -hE "^- FSD:.*\[https" {LOG_FILES} | grep -oE "https://github[^ \)]+" | sort -u | wc -l
 
 # Address-comments sessions
-grep -hc "^- Address comments:" workspace/logs/{date-range}*.md | awk -F: '{s+=$NF} END{print s}'
+grep -hc "^- Address comments:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
 
 # Prep-merge sessions
-grep -hc "^- Prep merge:" workspace/logs/{date-range}*.md | awk -F: '{s+=$NF} END{print s}'
+grep -hc "^- Prep merge:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
 
 # PRs deep-reviewed (PR Review: or Discuss PR: lines)
-grep -hE "^- (PR Review:|Discuss PR:)" workspace/logs/{date-range}*.md | grep -oE "[A-Za-z-]+#[0-9]+" | sort -u | wc -l
+grep -hE "^- (PR Review:|Discuss PR:)" {LOG_FILES} | grep -oE "[A-Za-z-]+#[0-9]+" | sort -u | wc -l
 
 # Unique SRE ticket IDs
-grep -hE "SRE-[0-9]+" workspace/logs/{date-range}*.md | grep -oE "SRE-[0-9]+" | sort -u | wc -l
+grep -hE "SRE-[0-9]+" {LOG_FILES} | grep -oE "SRE-[0-9]+" | sort -u | wc -l
 
 # SRE canceled vs resolved
-grep -hE "(Canceled|Resolved)" workspace/logs/{date-range}*.md | grep "SRE-" | grep -oE "(Canceled|Resolved)" | sort | uniq -c
+grep -hE "(Canceled|Resolved)" {LOG_FILES} | grep "SRE-" | grep -oE "(Canceled|Resolved)" | sort | uniq -c
 
 # Repos onboarded or refreshed
-grep -hE "Onboarded|Refreshed" workspace/logs/{date-range}*.md | grep -oE "\`[A-Za-z0-9_-]+\`" | sort -u | wc -l
+grep -hE "Onboarded|Refreshed" {LOG_FILES} | grep -oE "\`[A-Za-z0-9_-]+\`" | sort -u | wc -l
 
 # /nase:learn KB infusion events
-grep -hc "^- Learned:" workspace/logs/{date-range}*.md | awk -F: '{s+=$NF} END{print s}'
+grep -hc "^- Learned:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
 
 # Unique commit hashes (repo-wide, incl. teammates)
-cat workspace/logs/{date-range}*.md | grep -oE "^[0-9a-f]{7,10} " | sort -u | wc -l
+cat {LOG_FILES} | grep -oE "^[0-9a-f]{7,10} " | sort -u | wc -l
 
 # Commit breakdown by type (from unique hashes)
-cat workspace/logs/{date-range}*.md | grep -oE "^[0-9a-f]{7,10} " | sort -u | ... # see note below
+cat {LOG_FILES} | grep -oE "^[0-9a-f]{7,10} (feat|fix|refactor|ci|docs|chore|test|perf|build)\(" | sort -u | grep -oE "(feat|fix|refactor|ci|docs|chore|test|perf|build)\(" | sort | uniq -c | sort -rn
 ```
-
-**Note on commit type breakdown**: extract unique hashes, then for each hash find one matching log line and extract its conventional-commit type prefix. Use: `cat workspace/logs/{range}*.md | grep -oE "^[0-9a-f]{7,10} (feat|fix|refactor|ci|docs|chore|test|perf|build)\(" | sort -u | grep -oE "(feat|fix|refactor|ci|docs|chore|test|perf|build)\(" | sort | uniq -c | sort -rn`
 
 Store the results as variables for use in the Stats section.
 

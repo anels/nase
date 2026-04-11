@@ -7,7 +7,7 @@ Restores from timestamped zip backups. Creates a pre-restore snapshot before ove
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Steps 3 and 4 for backup selection and restore confirmation. Fetch it once here so it's available when needed.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Steps
 
@@ -47,16 +47,21 @@ options:
 ### 4. Confirm with user
 Before asking for confirmation, show files that exist in `workspace/` but NOT in the selected backup:
 ```bash
-# List files in the zip — paths should be relative (no workspace/ prefix).
-# If the zip was created from inside workspace/, paths are already relative.
-# If paths have a leading workspace/ prefix, strip it: sed 's|^workspace/||'
-7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sed 's|^workspace/||' | sort > "/tmp/nase-backup-files-$$.txt"
+mkdir -p "$NASE_ROOT/workspace/tmp"
+TMPFILE_BACKUP="$NASE_ROOT/workspace/tmp/nase-backup-files-$$.txt"
+TMPFILE_LOCAL="$NASE_ROOT/workspace/tmp/nase-local-files-$$.txt"
+# List files in the zip (try 7z first, fall back to unzip)
+if command -v 7z &>/dev/null; then
+  7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sed 's|^workspace/||' | sort > "$TMPFILE_BACKUP"
+else
+  unzip -l "$ZIP_PATH" | awk 'NR>3 && /\// {print $NF}' | sed 's|^workspace/||' | sort > "$TMPFILE_BACKUP"
+fi
 # List files in current workspace/ — strip leading ./ so paths are comparable
-(cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > "/tmp/nase-local-files-$$.txt"
+(cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > "$TMPFILE_LOCAL"
 # Files that exist locally but not in the backup (will be deleted by restore)
-comm -23 "/tmp/nase-local-files-$$.txt" "/tmp/nase-backup-files-$$.txt"
+comm -23 "$TMPFILE_LOCAL" "$TMPFILE_BACKUP"
 # Cleanup temp files
-rm -f "/tmp/nase-backup-files-$$.txt" "/tmp/nase-local-files-$$.txt"
+rm -f "$TMPFILE_BACKUP" "$TMPFILE_LOCAL"
 ```
 If any such files exist, warn: "The following files exist locally but not in the backup and will be DELETED by the restore."
 
@@ -76,10 +81,11 @@ cp -rp "$NASE_ROOT/workspace" "$NASE_ROOT/workspace-pre-restore-$(date +%Y%m%dT%
 ```
 Tell the user: "Snapshot created at `workspace-pre-restore-{timestamp}/`. Delete it once you've verified the restore."
 
-Before proceeding, verify the snapshot was created successfully:
+Before proceeding, verify the snapshot was created successfully. Capture the exact snapshot path from the `cp` command above instead of guessing via `ls`:
 ```bash
-snapshot_dir=$(ls -d "$NASE_ROOT"/workspace-pre-restore-* 2>/dev/null | tail -1)
-snapshot_count=$(find "$snapshot_dir" -type f 2>/dev/null | wc -l)
+SNAPSHOT_DIR="$NASE_ROOT/workspace-pre-restore-$(date +%Y%m%dT%H%M%S)"
+# (use the same SNAPSHOT_DIR variable set before the cp command)
+snapshot_count=$(find "$SNAPSHOT_DIR" -type f 2>/dev/null | wc -l)
 ```
 If `$snapshot_dir` does not exist or `$snapshot_count` is 0: abort with "ERROR: Pre-restore snapshot is empty or missing — aborting to prevent data loss. Check disk space and permissions, then retry." Do NOT proceed with deletion.
 
@@ -89,11 +95,10 @@ On a new machine, also suggest `/nase:init` to verify hooks and config.
 Use the same archive tool that created the backup (check file extension: `.zip` → `unzip`, `.7z` → `7z x`):
 ```bash
 rm -rf "$NASE_ROOT/workspace/"
-mkdir -p "$NASE_ROOT/workspace"
-# For .zip backups:
-unzip -o "$ZIP_PATH" -d "$NASE_ROOT/workspace/"
+# For .zip backups (extracts workspace/ from the archive into $NASE_ROOT):
+unzip -o "$ZIP_PATH" -d "$NASE_ROOT/"
 # For .7z backups:
-# 7z x "$ZIP_PATH" -o"$NASE_ROOT/workspace/"
+# 7z x "$ZIP_PATH" -o"$NASE_ROOT/"
 ```
 
 ### 7. Verify integrity

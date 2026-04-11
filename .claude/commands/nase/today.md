@@ -10,18 +10,52 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 
 <workflow>
 
-Run steps 1–4 in parallel, then combine into Step 5 output.
+Run Step 1 first (needed by 1b), then run Steps 1b–4 in parallel, then combine into Step 5 output.
 
 ### 1. Local context
 - Read `workspace/tasks/todo.md` — identify In Progress + top Pending items; rank by impact × urgency (in-progress first)
 - Read `workspace/logs/{yesterday}.md` (most recent `workspace/logs/YYYY-MM-DD.md` before today) — one-line summary of what was done. If no prior log files exist, display "No previous activity logged" for the Yesterday line
+
+### 1b. Status Sync (auto-update tracked items)
+
+Scan `workspace/tasks/todo.md` and active `workspace/efforts/*.md` for tracked PRs and Jira tickets. Check their current status and update files in-place. This step keeps the morning kickoff accurate without manual status maintenance.
+
+**1b-i. Extract tracked items:**
+- From `todo.md`: find all lines containing `[ ]` (unchecked) that have GitHub PR URLs (`github.com/{owner}/{repo}/pull/{number}`) or Jira ticket keys (`[A-Z]+-\d+`). Skip `[x]` lines — they're already done.
+- From `workspace/efforts/*.md`: read each file's YAML frontmatter. **Skip** files where `status:` is `completed` or `closed`. For active files, extract PR URLs from the body (regex: `github.com/([^/]+)/([^/]+)/pull/(\d+)`) and `jira:` key from frontmatter.
+
+**1b-ii. Check PR statuses (via Bash):**
+For each unique PR URL found, run:
+```bash
+gh pr view {number} --repo {owner}/{repo} --json state,mergedAt,closedAt --jq '{state,mergedAt,closedAt}'
+```
+If `gh` fails for any PR (network error, repo access), skip that PR silently.
+
+**1b-iii. Check Jira statuses (via MCP):**
+Read `cloudId` from `workspace/config.md` `## Jira` section. For each unique Jira ticket key, use Atlassian MCP `getJiraIssue` to fetch current status. Extract the status category name.
+If Atlassian MCP unavailable or `cloudId` missing: skip all Jira checks silently.
+
+**1b-iv. Apply updates to `todo.md`:**
+- PR state `MERGED` → change `[ ]` to `[x]`, append or update status annotation to `merged {YYYY-MM-DD}` (use `mergedAt` date)
+- PR state `CLOSED` (not merged) → wrap task title in `~~strikethrough~~`, append `closed (not merged)`
+- PR state `OPEN` → no change to checkbox or annotation
+- Jira status category `Done`/`Closed`/`Resolved` on a `[ ]` item that has no associated PR → change `[ ]` to `[x]`
+- Do NOT touch lines already marked `[x]`
+
+**1b-v. Apply updates to effort files:**
+- If **all** tracked PRs for an effort are `MERGED` AND Jira ticket (if any) is Done → update frontmatter `status: completed`, then move the file from `workspace/efforts/` to `workspace/efforts/done/` (create the `done/` directory if it doesn't exist)
+- If any PR is `CLOSED` (not merged) and no other open/merged PR exists for the effort → update frontmatter `status: closed`, then move to `workspace/efforts/done/`
+- If any PR is still `OPEN` → do NOT change the effort status
+
+**1b-vi. Collect change report:**
+Build a list of all status changes applied. This list feeds the "**Status Updates**" section in the output (Step 5). If no changes were detected, this section is omitted.
 
 ### 2. Stale KB Check
 - Read `workspace/kb/.domain-map.md` — collect all `## Projects` entries
 - For each project KB file, extract the `<!-- Last updated: YYYY-MM-DD -->` date
   - Older than 7 days or missing → add to stale list
 - Sort the stale list by last-updated date ascending (oldest first)
-- For each stale project that has a local repo path in `.local-paths`, run: `gh api repos/{owner}/{repo}/commits?sha={default-branch}&since={last-updated-date}T00:00:00Z --paginate -q 'length'` to count new commits merged to the default branch since the last KB update. Sum the paginated counts. If `gh` fails or repo has no GitHub remote, skip the count silently.
+- For each stale project that has a local repo path in `.local-paths`, run: `gh api repos/{owner}/{repo}/commits?sha={default-branch}&since={last-updated-date}T00:00:00Z --paginate -q 'length'` to count new commits merged to the default branch since the last KB update. Sum the paginated counts. If `gh api` returns a non-zero exit code or empty output, treat the commit count as `unknown` and skip the staleness percentage for that repo — do not let the error propagate.
   - Show the count in the output as `({N} new commits)`
 
 ### 3. Today's commits so far (if any)
@@ -50,6 +84,12 @@ If Slack MCP unavailable or no results: skip silently.
 **Today's Plan — {YYYY-MM-DD}**
 
 Yesterday: [one-line summary from Step 1]
+
+**Status Updates** (if any changes from Step 1b)
+- ✓ {task name} — PR #{N} merged {date} → marked complete
+- ✗ {task name} — PR #{N} closed (not merged) → marked closed
+- ✓ effort/{file} — all PRs merged → status: completed → moved to efforts/done/
+[omit section entirely if no status changes detected]
 
 **Focus**
 1. [top priority item — In Progress or top Pending from todo]
