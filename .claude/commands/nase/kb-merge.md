@@ -10,11 +10,7 @@ Merge an externally shared KB directory into your local `workspace/kb/`, with AI
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Steps 1 and 4 for interactive prompts. Fetch it once here so it's available when needed.
-
-## Why This Matters
-
-Knowledge bases diverge across teammates: you've solved problems they haven't seen, they've learned patterns you don't have. This skill lets you absorb a teammate's KB without losing your own — it adds what's new, intelligently merges what overlaps, and gives you a clear preview of every change before writing anything.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Steps
 
@@ -173,7 +169,7 @@ For each file approved in Step 4:
 
 **New KB files** (`general/`, `projects/`, `ops/`, etc.): Write to `workspace/kb/{category}/{filename}`. Create the directory if it doesn't exist.
 
-**New skill files** (`skills/`): Write the raw content to `workspace/skills/{filename}` (the canonical location). Then generate a thin wrapper at `.claude/commands/nase/workspace/{stem}.md` with YAML frontmatter so the skill is immediately invocable:
+**New skill files** (`skills/`): Write the raw content to `workspace/skills/{filename}`. Then generate a thin wrapper at `.claude/commands/nase/workspace/{stem}.md` (the invocable location) with YAML frontmatter so the skill is immediately invocable:
 ```
 ---
 name: nase:workspace:{stem}

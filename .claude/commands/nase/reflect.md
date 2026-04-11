@@ -5,13 +5,15 @@ description: Run a structured post-task reflection to extract learnings and impr
 
 Fresh reflections capture more than end-of-day summaries. Also invoked by `/wrap-up`.
 
+**DO NOT enter plan mode.** Execute steps directly and autonomously.
+
 If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (including CLAUDE.md update proposals) and auto-apply changes. Used by `/nase:wrap-up`.
 
 **Context:** $ARGUMENTS (optional — name of the task or feature just completed)
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` — needed for Step 5 CLAUDE.md update proposals. Skip if `--auto-accept` is in `$ARGUMENTS`.
+Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
 
 ## Steps
 
@@ -35,7 +37,7 @@ Use `ToolSearch` to fetch `AskUserQuestion` — needed for Step 5 CLAUDE.md upda
 
 4. Save key learnings to `workspace/tasks/lessons.md` (create with `# Lessons` header if missing). Use this format per entry:
    ```
-   ## {category} -- {YYYY-MM-DD} -- {rule or pattern name}
+   ## {category} — {YYYY-MM-DD} — {rule or pattern name}
    **When:** {situation this applies to}
    **Do:** {concrete action or rule}
    ```

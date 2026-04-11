@@ -22,7 +22,7 @@ Auto-skips if today's digest already exists (deduplication enforced in Step 0). 
 
 2. Fetch all sources (from config) in parallel using WebFetch/WebSearch. If WebFetch/WebSearch tools are unavailable, report "Tech digest skipped — web tools not available" and stop. If a source is unreachable, note the failure and continue with available sources. Do not fail the entire digest.
 
-   **Content-hash cache** (see `.claude/docs/content-hash-cache.md`): before analyzing each fetched source, compute its content hash and check against `workspace/tmp/.content-hashes` (key = source URL). If the hash matches the cached entry and the cached date is today, skip re-analysis of that source — its content hasn't changed since the last fetch. Update the cache with new hashes for sources that changed or were fetched for the first time. This saves token cost on sources that publish infrequently (e.g., blog posts that update weekly).
+   **Content-hash cache**: before analyzing each fetched source, compute its content hash and check against `workspace/tmp/.content-hashes` (key = source URL). If the hash matches the cached entry and the cached date is today, skip re-analysis of that source — its content hasn't changed since the last fetch. Update the cache with new hashes for sources that changed or were fetched for the first time. This saves token cost on sources that publish infrequently (e.g., blog posts that update weekly). Implementation: read/write `workspace/tmp/.content-hashes` as a simple `URL HASH DATE` text file (one line per source).
 
 3. Filter for content published in the last 7 days; discard anything unrelated to the filter topics (from config).
 

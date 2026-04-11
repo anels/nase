@@ -5,6 +5,8 @@ description: Run at end of day to capture everything in one autonomous pass — 
 
 End-of-day autonomous pass: reflection → lessons → skill extraction → KB updates → journal entry. Each step feeds the next; skipping early steps is fine — the conditional logic handles this automatically.
 
+**DO NOT enter plan mode.** This skill is fully autonomous — execute all steps directly without requesting user approval. Plan mode breaks the automated flow.
+
 <investigate_before_acting>
 Follow the shared data-gathering algorithm (`workspace-data-gathering.md`) — read today's log/journal, tasks, and lessons. Do NOT read context.md or team profiles; wrap-up does not use them.
 Verify file existence before reading — degrade gracefully if files are missing.
@@ -32,7 +34,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 **Condition:** today's log file has substantive `## Sessions` entries (beyond the auto-created header).
 - If $ARGUMENTS contains "force", run regardless.
 
-**If condition met:** invoke `/nase:reflect --auto-accept` with today's work as context. Capture its output for the journal. Set `reflect=done`.
+**If condition met:** invoke `/nase:reflect --auto-accept` with today's work as context (note: `reflect.md` recognizes `--auto-accept` and skips all interactive prompts). Capture its output for the journal. Set `reflect=done`.
 
 **If condition NOT met:** print "No significant work detected today — skipping reflect." Set `reflect=skipped-no-activity`.
 

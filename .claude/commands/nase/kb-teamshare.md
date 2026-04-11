@@ -10,7 +10,7 @@ Export selected KB files and workspace skills as a portable, sanitized directory
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used throughout Steps 1–4 for interactive prompts. Fetch it once here so it's available when needed.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Step 0: Load Language Config
 
@@ -240,7 +240,7 @@ Create the export directory at the chosen path. Within it, mirror the source str
 
 Write each processed file to its corresponding location.
 
-Then generate a `.domain-map.md` for the export:
+Then generate a `.domain-map.md` for the export. **Only include sections for categories that were selected in Step 2 and have files in the export.** For example, omit the `## Skills` section entirely if no skill files were selected.
 
 ```markdown
 # Domain Map (Exported KB)
@@ -248,19 +248,19 @@ Then generate a `.domain-map.md` for the export:
 <!-- Import KB files with /nase:kb-merge -->
 <!-- Install skill files by copying skills/ contents to your workspace/skills/ -->
 
-## General
+## General          ← only if general/ files are in the export
 - dotnet → general/dotnet.md
 ...
 
-## Projects
+## Projects         ← only if projects/ files are in the export
 - foo → projects/foo.md
 ...
 
-## Ops
+## Ops              ← only if ops/ files are in the export
 - oncall → ops/oncall.md
 ...
 
-## Skills
+## Skills           ← only if skills/ files are in the export
 - investigate-sre-jira → skills/investigate-sre-jira.md
 ...
 ```

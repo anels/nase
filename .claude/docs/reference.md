@@ -57,6 +57,9 @@ workspace/                   ← entirely git-ignored; never committed
       <deployment-type>.md     ← ops runbooks by deployment type (see workspace/kb/.domain-map.md for known types)
   skills/
     {name}.md             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
+  efforts/
+    {slug}.md             ← design docs with lifecycle tracking (written by /nase:design)
+    done/                 ← completed/closed efforts (auto-moved by /nase:today status sync)
   tasks/
     lessons.md            ← accumulated lessons from /nase:learn and /nase:reflect
     todo.md               ← current task tracking

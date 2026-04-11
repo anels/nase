@@ -13,7 +13,7 @@ Good commit messages are searchable documentation. When someone runs `git log --
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 6 for the amend confirmation prompt. Skip in `--auto-accept` mode.
+Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
@@ -52,9 +52,13 @@ git log -1 --format="%P" | tr ' ' '\n' | wc -l  # parent count (merge check)
 
 ### 3. Analyze changes (diff-first strategy)
 
-If the commit has no parent (initial commit, i.e. parent count is 0), use `git show HEAD` or `git diff --cached` instead of the command below.
+**Get the diff** (handle initial commits):
+1. Check parent count: `git rev-list --count HEAD`
+2. If count is 1 (initial commit): `git show HEAD --format="" --patch`
+3. Otherwise: `git diff -U5 HEAD^ HEAD`
 
 ```
+# Normal case:
 git diff -U5 HEAD^ HEAD
 ```
 
@@ -142,7 +146,7 @@ fix(auth): handle null tokens from expired sessions
 
 - **Already pushed**: Warn user about `--force-with-lease` requirement
 - **Merge commit**: Skip — do not amend
-- **No parent** (initial commit): Use `git diff --cached` instead of `HEAD^ HEAD`
+- **No parent** (initial commit): Use `git show HEAD --format="" --patch` (as in Step 3)
 - **Multiple scopes**: Use the most significant scope; mention others in body
 - **Config parse error**: Fall back to defaults with a warning
 

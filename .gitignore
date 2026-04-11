@@ -16,3 +16,4 @@ Thumbs.db
 .claude/scheduled_tasks.lock
 .claude/skills/
 .playwright-cli/
+.playwright-mcp/

@@ -5,7 +5,7 @@ description: Chat-first deep PR review — posts to GitHub only on explicit requ
 
 ## Language
 
-Read `/Users/ruilin.liu/playground/aiteam/nase-02/workspace/config.md` — use the `conversation:` value for all responses in this skill (comments and questions to the user). Use `output:` for anything posted to GitHub.
+Read `workspace/config.md` — use the `conversation:` value for all responses in this skill (comments and questions to the user). Use `output:` for anything posted to GitHub.
 
 ## Phase 0 — Input Guard
 
@@ -42,8 +42,6 @@ For each file touched by the diff, read its key dependencies: interfaces it impl
 ## Step 3 — Launch specialist agents + engage existing comments
 
 **Fire agents immediately** — they only need the diff and KB context from Steps 2–2.5. Do not wait for the comment triage below.
-
-<!-- Model routing is configured in CLAUDE.md — defer to workspace-level settings. -->
 
 | Agent | Focus |
 |-------|-------|
@@ -159,7 +157,7 @@ Do not post anything to GitHub. The user pastes these manually.
 When the user asks to post, approve, or submit:
 
 - **All text in English** — GitHub reviews are always in English
-- **Review state**: `REQUEST_CHANGES` if any confirmed bug or security issue; `APPROVE` if no confirmed bugs or security issues and the PR is ready to merge; `COMMENT` otherwise (findings worth noting but not blocking)
+- **Review state**: determine the appropriate state, then **always confirm with the user before posting** by showing the chosen state and asking "Post as `REQUEST_CHANGES` or prefer `COMMENT`?" — the user gets final say. Guidelines for the initial recommendation: `REQUEST_CHANGES` only if a confirmed issue would cause a production incident (e.g. data corruption, service crash on deploy, security breach) — this is a high bar; `APPROVE` if no confirmed bugs or security issues and the PR is ready to merge; `COMMENT` in all other cases (reviewers will address comments, no need to block)
 - **Approve body**: "LGTM" or "LGTM with nits" — never repeat the fix mechanism or summarize the PR
 - **Inline comments**: keep minimal — same 1–2 sentence rule as drafts, concise
 - **Reactions/replies from Step 3**: post any agreed +1 reactions or "Agreed." replies now

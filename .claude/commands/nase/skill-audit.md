@@ -77,7 +77,7 @@ Flag patterns that look like hardcoded secrets:
 Based on $ARGUMENTS:
 - Single file → `[file]`
 - Directory → glob `{dir}/**/*.md`
-- `all` or empty → glob `workspace/skills/*.md` + `.claude/commands/nase/workspace/*.md`
+- `all` or empty → glob `workspace/skills/*.md` + `.claude/commands/nase/*.md` + `.claude/commands/nase/workspace/*.md`
 
 ### Step 2: Scan each file
 

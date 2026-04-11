@@ -10,11 +10,7 @@ Review and organize the knowledge base — deduplicate, cross-reference, consoli
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool used in Step 6 for execution confirmation. Fetch it once here so it's available when needed.
-
-## Why This Matters
-
-Knowledge bases grow organically — notes get added in the moment without checking what already exists. Over time, the same insight appears in multiple files, related items live in isolation, and old entries become misleading. This skill is the periodic cleanup that keeps the KB useful: it connects what's scattered, removes what's redundant, and surfaces what's forgotten.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Steps
 
@@ -92,9 +88,9 @@ Present as a **Connection Map**:
 
 | From | To | Connection |
 |------|----|-----------:|
-| projects/orchestrator.md | general/dotnet.md | Orchestrator uses .NET patterns documented in general |
-| lessons.md (ADF diagnostic) | general/debugging.md | Lesson should be promoted to debugging KB |
-| ops/dedicated.md | projects/insights.md | Dedicated ops affect Insights deployment |
+| projects/{repo}.md | general/{stack}.md | Project uses stack patterns documented in general |
+| lessons.md ({topic} diagnostic) | general/debugging.md | Lesson should be promoted to debugging KB |
+| ops/{env}.md | projects/{repo}.md | Ops procedures affect project deployment |
 ```
 
 ### Step 4: Surface Stale and Orphaned Content
@@ -191,6 +187,11 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 
 ### Step 6: Execute (with approval)
 
+Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md` **before** prompting (ensures the log is written regardless of the user's next choice):
+```
+- KB review ({scope}) — {N} files scanned, {N} issues found
+```
+
 **Invoke the `AskUserQuestion` tool** (do not present as plain text):
 
 ```
@@ -199,7 +200,7 @@ header: "KB Review — Execute"
 options:
   - label: "Apply quick fixes"  , description: "Cross-refs, dedup, contradiction fixes, domain map updates"
   - label: "Apply all"           , description: "Everything including consolidation and cleanup"
-  - label: "Just the report"     , description: "Save report to workspace/logs/{YYYY-MM-DD}.md and stop"
+  - label: "Just the report"     , description: "Stop here — the review scan is already logged"
 ```
 
 For each change applied:
@@ -232,10 +233,7 @@ Display what was done:
 Next review suggested: {date + 7 days}
 ```
 
-Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
-```
-- KB review ({scope}) — {N} files scanned, {N} issues found, {N} fixes applied
-```
+Update the log entry written in Step 6 to include the apply count (append `, {N} fixes applied` to the existing line).
 
 ## Notes
 

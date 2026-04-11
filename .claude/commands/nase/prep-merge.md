@@ -9,7 +9,7 @@ description: Prepare a PR for merge — verify all comments resolved, squash com
 
 ## Setup
 
-Use `ToolSearch` to fetch `AskUserQuestion` before starting — it's a deferred tool needed in Phases 7 and 10. Fetch it once here so it's available when needed.
+Needs: `AskUserQuestion` (fetch via ToolSearch).
 
 ## Phase 0: Input Guard
 
@@ -172,9 +172,9 @@ Deviation: use `--force-with-lease` instead of normal push. If force-push fails,
 ```bash
 gh pr edit {pr_number} --repo {owner}/{repo} \
   --title "{new_title}" \
-  --body "$(cat <<'EOF'
+  --body "$(cat <<'NASE_PR_BODY'
 {new_description}
-EOF
+NASE_PR_BODY
 )"
 ```
 
@@ -197,7 +197,12 @@ PR ready for merge ✓
   Force-pushed: ✓ (--force-with-lease)
 ```
 
-Use the `AskUserQuestion` tool:
+Append a partial log entry to `workspace/logs/{YYYY-MM-DD}.md` **before** prompting (ensures the log is written regardless of the user's next choice):
+```
+- Prep merge: {repo_name}#{pr_number} — squashed → 1 commit, force-pushed
+```
+
+Then use the `AskUserQuestion` tool:
 
 ```
 question: "Request a review now?"
@@ -207,11 +212,6 @@ options:
     description: "Un-draft the PR, then DM code owners via /nase:request-review"
   - label: "No — I'll handle it"
     description: "Leave as draft; you decide when to promote"
-```
-
-Append to `workspace/logs/{YYYY-MM-DD}.md`:
-```
-- Prep merge: {repo_name}#{pr_number} — squashed {N} commits, updated title/description
 ```
 
 **If "Yes":** first un-draft the PR, then run `/nase:request-review {pr_url}`:
