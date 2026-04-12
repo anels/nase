@@ -35,7 +35,13 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
   - Non-default branch or uncommitted changes → ask user first
   - Always base worktrees on `origin/{default-branch}`
 - **Commit sequence**: `/simplify` (requires claude-plugins-official plugin; skip if not installed) → `/nase:improve-commit-message` → `git push`
-- **Daily log**: after significant tasks, append to `workspace/logs/YYYY-MM-DD.md`
+- **Daily log** — append to `workspace/logs/YYYY-MM-DD.md` in real time (not at end-of-day). Log these events immediately when they happen:
+  - Task completions (one-line summary of what was done)
+  - Mistakes or errors made during the conversation
+  - User corrections or feedback on approach
+  - Key decisions or direction changes
+
+  Format: `- {HH:MM} {event}` under `## Sessions`. Keep entries concise (one line each).
 - **Workspace health**: run `/nase:doctor` when something feels off
 - **Slack messages**: NEVER use `slack_send_message` to post directly — ALWAYS use `slack_send_message_draft` so the user can review and send manually. No exceptions.
 - **No AI attribution in external output**: never add "Co-Authored-By: Claude", "Generated with Claude Code", or similar AI attribution to commits, PR descriptions, review comments, or Slack messages.

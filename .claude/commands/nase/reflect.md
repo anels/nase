@@ -17,7 +17,10 @@ Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
 
 ## Steps
 
-1. Identify the task being reflected on (from $ARGUMENTS or recent context)
+1. Identify the task being reflected on:
+   a. From `$ARGUMENTS` if provided
+   b. Otherwise, read `workspace/logs/{today}.md` to load today's activity as reflection context
+   If both are empty, ask the user what to reflect on.
 
 2. Answer these reflection questions:
    - **What went well?** — techniques, decisions, speed

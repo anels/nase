@@ -51,6 +51,7 @@ Before classifying all threads, identify any where intent is ambiguous or the ri
 
 Ask these questions for each suggestion:
 
+0. **Verify first**: Read the actual file at the referenced line and confirm the reviewer's description matches reality. Reviewers (including AI reviewers like Copilot) can misread diffs — the prose description of what the code looks like may not match the actual code. If the reviewer claims "missing null check" but the check exists, or describes code that doesn't match the file, the suggestion is based on a misread and should be declined regardless of other factors.
 1. **Correctness**: Does the reviewer's suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
 2. **Context**: Does the reviewer have full context? Sometimes a suggestion makes sense locally but conflicts with constraints elsewhere (e.g., API contracts, performance requirements, framework limitations).
 3. **Substance vs. style**: Is this a meaningful improvement to correctness, readability, or maintainability? Or is it a cosmetic/stylistic preference that doesn't materially improve the code?

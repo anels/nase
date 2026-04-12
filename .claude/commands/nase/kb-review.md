@@ -235,6 +235,17 @@ Next review suggested: {date + 7 days}
 
 Update the log entry written in Step 6 to include the apply count (append `, {N} fixes applied` to the existing line).
 
+### Step 8: Schedule Next Run
+
+Write the next recommended execution date to `workspace/tasks/todo.md` so `/nase:today` can surface it:
+
+1. Read `workspace/tasks/todo.md`
+2. Find the `## Scheduled Maintenance` section — if missing, create it just before `## On Hold` (or at the end if `## On Hold` doesn't exist)
+3. Look for an existing line containing `/nase:kb-review` in that section
+   - Found → replace the entire line with the updated date
+   - Not found → append a new line
+4. Format: `- [ ] 📅 {today + 7 days} — \`/nase:kb-review\` — Weekly KB hygiene`
+
 ## Notes
 
 - This skill is read-heavy by design — it needs to load many files to find cross-file patterns. For large KBs, scope to one directory at a time.

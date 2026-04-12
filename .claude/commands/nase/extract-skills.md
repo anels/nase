@@ -143,6 +143,7 @@ Writing guidelines:
 - Steps must be concrete enough that a fresh Claude instance can execute them without asking clarifying questions
 - Explain **why** each step matters, not just **what** to do — this helps the model adapt when the situation doesn't match exactly
 - One skill = one goal; if you're cramming two workflows into one file, split them
+- **MCP tool name verification**: if the skill references any MCP tools (e.g. `mcp__plugin_slack_slack__*`, `mcp__plugin_atlassian_atlassian__*`), verify each tool name against the current session's available tool list before writing. Wrong MCP tool names fail silently at runtime — the skill appears correct but produces no results when executed
 
 ### 6. Cross-reference lessons
 

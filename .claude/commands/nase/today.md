@@ -50,6 +50,18 @@ If Atlassian MCP unavailable or `cloudId` missing: skip all Jira checks silently
 **1b-vi. Collect change report:**
 Build a list of all status changes applied. This list feeds the "**Status Updates**" section in the output (Step 5). If no changes were detected, this section is omitted.
 
+### 1c. Scheduled Maintenance Check
+
+Scan the `## Scheduled Maintenance` section in `workspace/tasks/todo.md` for items due today or overdue:
+
+1. Find all unchecked (`[ ]`) lines matching pattern: `📅 {YYYY-MM-DD} — \`/nase:{skill}\` — {reason}`
+2. Parse the date from each line
+3. Classify:
+   - **Overdue**: date < today
+   - **Due today**: date == today
+   - **Upcoming** (next 3 days): today < date ≤ today + 3
+4. Collect these for the output in Step 5. If none are due/overdue, skip the section.
+
 ### 2. Stale KB Check
 - Read `workspace/kb/.domain-map.md` — collect all `## Projects` entries
 - For each project KB file, extract the `<!-- Last updated: YYYY-MM-DD -->` date
@@ -90,6 +102,12 @@ Yesterday: [one-line summary from Step 1]
 - ✗ {task name} — PR #{N} closed (not merged) → marked closed
 - ✓ effort/{file} — all PRs merged → status: completed → moved to efforts/done/
 [omit section entirely if no status changes detected]
+
+**Maintenance Due** (if any from Step 1c)
+- 🔴 overdue ({N} days): `/nase:{skill}` — {reason}
+- 🟡 due today: `/nase:{skill}` — {reason}
+- 🔵 upcoming ({date}): `/nase:{skill}` — {reason}
+[omit section entirely if nothing due within 3 days]
 
 **Focus**
 1. [top priority item — In Progress or top Pending from todo]
