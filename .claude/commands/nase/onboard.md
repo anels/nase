@@ -149,6 +149,19 @@ Run in parallel:
 
 </workflow>
 
+## Step 8: Schedule Next Batch Refresh
+
+After completing a **batch refresh** (not single repo onboard), write the next recommended execution date to `workspace/tasks/todo.md` so `/nase:today` can surface it:
+
+1. Read `workspace/tasks/todo.md`
+2. Find the `## Scheduled Maintenance` section — if missing, create it just before `## On Hold` (or at the end if `## On Hold` doesn't exist)
+3. Look for an existing line containing `/nase:onboard` in that section
+   - Found → replace the entire line with the updated date
+   - Not found → append a new line
+4. Format: `- [ ] 📅 {today + 3 days} — \`/nase:onboard\` — Batch repo refresh`
+
+Skip this step for single-repo onboard — those are on-demand and don't need scheduling.
+
 ## Notes
 - **Run before every session** — not just once
 - **CLAUDE.md first** — always read repo's CLAUDE.md before exploring code

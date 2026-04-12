@@ -39,6 +39,8 @@ Group comments into threads: top-level comment + all replies sharing the same `i
 
 For each file touched by the diff, read its key dependencies: interfaces it implements, base classes it extends, and primary callers — anything not in the diff itself that explains how the changed code fits into the larger design. Cross-reference the KB (loaded in Step 1) for architectural constraints relevant to the changed area. If the KB references a Confluence doc for this domain, read it. The goal is to have enough context that agent findings can be evaluated against actual design intent, not just the diff in isolation.
 
+**Platform prohibition pre-check (infra PRs only):** If the PR touches infrastructure or networking files (VNet peering, Private Endpoints, DNS, cluster networking, Terraform/Bicep/ARM templates), check the KB for any platform team prohibitions before proceeding to agent analysis. A technically correct implementation of a prohibited operation is a critical finding that takes priority over code-level analysis — surface it immediately rather than burying it among code review findings.
+
 ## Step 3 — Launch specialist agents + engage existing comments
 
 **Fire agents immediately** — they only need the diff and KB context from Steps 2–2.5. Do not wait for the comment triage below.
@@ -74,6 +76,13 @@ Collect the final classifications. **Do not post reactions or replies yet** — 
 
 ## Step 4 — Score, tier, and filter (after agents complete)
 
+**4a. Diff-scope verification (before scoring):**
+For each agent finding, verify it is genuinely NEW in the diff — not pre-existing code. Check whether the flagged line or pattern existed before this PR by reading the base branch version of the file (`git show origin/{base_branch}:{path}`). Pre-existing issues that the PR did not introduce or modify are not the PR author's responsibility — drop them silently (score < 50). This prevents false alarms like flagging a shared helper's side effects when the PR only touched an unrelated code path.
+
+**4b. Verify actual code against agent descriptions:**
+For each remaining finding, read the actual file at the referenced line to confirm the agent's description matches reality. Agent analysis can misread diffs — the prose description of what the code looks like may not match the actual code. If the agent's claim is inaccurate (e.g., "missing null check" but the check exists), drop or downgrade the finding.
+
+**4c. Assign confidence scores:**
 For each issue, assign a confidence score 0–100:
 - **< 50**: pre-existing, false positive, or nitpick — drop silently
 - **50–79**: worth mentioning in discussion but skip inline comment draft
