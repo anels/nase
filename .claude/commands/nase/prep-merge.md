@@ -125,6 +125,15 @@ The PR title should match the commit subject line (the first line of the squash 
 
 Follow `.claude/docs/pr-creation-pattern.md` (steps 1–5) to discover the PR template, draft the description, align the title with the commit subject, preserve co-authors, and exclude AI attribution.
 
+**PR description MUST use the repo's template.** Step 1 of pr-creation-pattern discovers the template file. If found:
+- Read the template and use its exact section headings as the skeleton
+- Fill each section with content derived from the diff, commit history, and task context
+- Preserve checklist items unchecked — do not pre-check boxes
+- Leave sections empty (with their heading) rather than omitting them if content cannot be determined
+- If the existing PR description already follows the template, preserve author-written content and only update sections that changed due to squash/rebase
+
+If no template exists, fall back to the default structure in pr-creation-pattern Step 2.
+
 Present the new title and description to the user for confirmation:
 
 ```

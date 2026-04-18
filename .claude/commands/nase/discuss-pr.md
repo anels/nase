@@ -97,9 +97,40 @@ For each issue, assign a confidence score 0–100:
 
 Track a drop count for items scoring < 50 — reported in the summary line.
 
-## Step 5 — Research open questions
+## Step 5 — Auto-deep-dive and research
 
-Before presenting findings, resolve any "needs context" issues:
+Before presenting findings, **proactively investigate** anything whose confidence depends on behavior outside the diff. Don't ask the user whether to deep dive — decide and do it.
+
+### 5a. Identify deep-dive candidates
+
+Scan the scored findings (from Step 4) and flag any that meet these criteria:
+- **Opaque handoff**: the diff passes a value to a service, library, or repository method whose behavior for the new input is unknown from the diff alone (e.g., a string that used to be an enum value is now passed as a free-form name — does the callee handle it?)
+- **Cross-boundary assumption**: the finding assumes something about a caller, downstream consumer, or deployment environment that isn't visible in the diff
+- **Pattern divergence**: the diff follows a pattern from another controller/service but omits a step that the reference implementation includes (e.g., a validation, a Content check, a type conversion) — unclear if the omission is intentional or a gap
+
+The goal: never present a finding as "medium, worth discussing" when code tracing would resolve it to either "confirmed critical" or "dropped."
+
+### 5b. Trace implementations
+
+For each deep-dive candidate, spawn an Explore agent (sonnet) to trace the code path. Give each agent:
+- The specific question to answer (e.g., "does `DashboardService.GetDashboardAsync` do `Enum.TryParse` internally when it receives a non-enum sourceType string?")
+- Where to look (the implementation repo if known from KB, NuGet package source, or the current repo)
+- What to report: the concrete code path, whether the concern is confirmed or refuted, and evidence (file:line)
+
+Run these in parallel. If the implementation lives in a separate repo listed in `.local-paths`, the agent can read it directly. If it's in a NuGet package with no local source, note the gap and keep the finding as "ask the author" with an explanation of what couldn't be verified.
+
+### 5c. Update findings with evidence
+
+For each deep-dive result:
+- **Confirmed bug**: upgrade the confidence score (often from medium → critical/high), add the evidence trail
+- **Refuted concern**: drop it (score < 50) or downgrade to informational
+- **New finding discovered during trace**: add it as a new finding with its own confidence score
+- **Inconclusive** (no source available): keep the original score but mark as "ask the author" with context on what was checked and what couldn't be verified
+- **Requires domain knowledge**: some questions can't be answered by reading code — product intent, deployment sequencing, business rules, feature scope decisions. Keep these as open questions for the user. The goal of auto-deep-dive is to resolve what code tracing CAN answer, not to eliminate all discussion.
+
+### 5d. Research remaining open questions
+
+For any findings not covered by deep-dive (already high-confidence, or not implementation-dependent):
 - **GitHub**: search code, read related PRs, check git history for the same files
 - **Confluence**: search for design docs, feature trackers, or onboarding pages relevant to the changed area
 - **Result**: either confirm the issue with evidence, or downgrade it to "ask the author"
@@ -130,7 +161,8 @@ For each issue include:
 - Category tag in bold: `**Bug**`, `**Security**`, `**Architecture**`, `**Testability**`
 - File and approximate line
 - One-sentence description with consequence if unfixed
-- Evidence source (e.g. "confirmed via Confluence AS tracker", "introduced in PR #2345")
+- Evidence source (e.g. "confirmed via code trace through DashboardService.cs:332", "confirmed via Confluence AS tracker", "introduced in PR #2345")
+- For deep-dived findings: a brief summary of what was traced and what was found (1-2 sentences — enough to show the work, not a full report)
 
 After presenting, use `AskUserQuestion` to open discussion. Bundle any "ask the author" items together with the next-step prompt into a single question — one bullet per open question, followed by the options. Example shape:
 

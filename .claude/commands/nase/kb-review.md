@@ -17,9 +17,10 @@ Needs: `AskUserQuestion` (fetch via ToolSearch).
 ### Step 0: Determine Scope
 
 Parse $ARGUMENTS to decide what to review:
-- `all` or empty → scan everything: `workspace/kb/general/`, `workspace/kb/projects/`, `workspace/kb/ops/`, `workspace/tasks/lessons.md`, `workspace/kb/.domain-map.md`
+- `all` or empty → scan everything: `workspace/kb/general/`, `workspace/kb/projects/`, `workspace/kb/cross-project/`, `workspace/kb/ops/`, `workspace/tasks/lessons.md`, `workspace/kb/.domain-map.md`
 - `general` → only `workspace/kb/general/*.md`
-- `projects` → only `workspace/kb/projects/*.md`
+- `projects` → only `workspace/kb/projects/**/*.md`
+- `cross-project` → only `workspace/kb/cross-project/*.md`
 - `ops` → only `workspace/kb/ops/*.md`
 - `lessons` → only `workspace/tasks/lessons.md` (review for promotion to KB)
 - A specific filename → review that single file in depth

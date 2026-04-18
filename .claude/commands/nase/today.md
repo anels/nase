@@ -84,10 +84,22 @@ Scan the `## Scheduled Maintenance` section in `workspace/tasks/todo.md` for ite
 **4b. Slack — hot discussions + mentions (last 24h)**
 
 Two parallel queries:
-1. **Configured channels**: read `## Slack > channels` list from `workspace/config.md`; search each channel for threads active in the last 24h (≥ 3 replies or reactions); extract: channel, one-sentence summary, thread link
-2. **@mentions**: search `to:me after:{yesterday}` across all channels to find threads where you were mentioned or pinged
+1. **Configured channels**: read `## Slack > channels` list from `workspace/config.md`; search each channel for threads active in the last 24h (≥ 3 replies or reactions); extract: channel name, channel_id, one-sentence summary, thread_ts
+2. **@mentions**: search `to:me after:{yesterday}` across all channels to find threads where you were mentioned or pinged; extract: channel name, channel_id, one-sentence summary, thread_ts
 
-Merge results, deduplicate, sort by recency. Limit to **top 10 threads** total. For each show: `#{channel}: "{one-sentence summary}" — {link}`.
+Merge results, deduplicate, sort by recency. Keep **top 15 candidates** for filtering.
+
+**4b-filter. Exclude already-acknowledged threads:**
+For each candidate thread, use `slack_read_thread` (with the thread's channel_id + message_ts) to check whether the current user has:
+- **Replied** in the thread (any message where the author matches the current user), OR
+- **Reacted** with any emoji on any message in the thread (check the `reactions` field for the current user's ID)
+
+If either condition is true, the user is already aware — **exclude** that thread from the Slack Pulse output. This avoids surfacing noise the user has already acted on.
+
+**4b-link. Construct clickable Slack thread permalinks:**
+For each surviving thread, build the permalink using: `https://{workspace}.slack.com/archives/{channel_id}/p{thread_ts_without_dot}` (remove the `.` from thread_ts to form the `p` parameter). The workspace domain can be extracted from any Slack search result URL, or default to the team's known domain.
+
+After filtering, limit to **top 10 threads**. For each show: `#{channel}: "{one-sentence summary}" — [link]({permalink})`.
 If Slack MCP unavailable or no results: skip silently.
 
 ### 5. Output
@@ -125,7 +137,7 @@ Yesterday: [one-line summary from Step 1]
 [omit section entirely if no results or MCP unavailable]
 
 **Slack Pulse** (if results from Step 4b)
-- #{channel}: "{one-sentence summary}" — {link}
+- #{channel}: "{one-sentence summary}" — [thread]({permalink})
 [omit section entirely if no hot threads or MCP unavailable]
 
 **Today's Commits** (if any)

@@ -20,6 +20,7 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
    - Deployment/ops runbooks → `workspace/kb/ops/{deployment-type}.md`
    - General stack patterns → `workspace/kb/general/{domain}.md`
    - Project-specific → `workspace/kb/projects/{repo}.md`
+   - Cross-project (spans multiple repos) → `workspace/kb/cross-project/{topic}.md`
    Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
 2. Read the target KB file to understand current state.

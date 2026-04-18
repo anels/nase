@@ -16,9 +16,8 @@ Read this file on demand when you need details about workspace layout, skills, K
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from workspace/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, creates timestamped
                        zip backup of workspace/ (via 7z), applies retention cleanup, warns if notes missing
-    track-skill.sh   ← runs at PreToolUse + PostToolUse (Skill): records /nase:* invocations to
-                       workspace/stats/skill-usage.jsonl for /nase:stats reporting; dual-hook for
-                       better coverage (PostToolUse alone misses some invocations); same-second
+    track-skill.sh   ← runs at PostToolUse (Skill): records /nase:* invocations to
+                       workspace/stats/skill-usage.jsonl for /nase:stats reporting; same-second
                        dedup in script prevents double-counting
     worktree-log.sh  ← runs at WorktreeCreate/WorktreeRemove: appends timestamped
                        entry to today's daily log
@@ -47,12 +46,16 @@ workspace/                   ← entirely git-ignored; never committed
     .domain-map.md        ← project-domain → kb file mappings (managed by /nase:onboard)
     projects/
       <your-repo>.md           ← one file per repo (created by /nase:onboard)
+      tech-debt/               ← tech debt audit reports (created by /nase:tech-debt-audit)
+      decisions/               ← PR decisions & incident logs
     general/
       workflow.md              ← protocols, coding principles, PR rules
       debugging.md             ← debugging techniques, past root causes
       <your-stack>.md          ← general patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
       tech-trends.md           ← rolling 30-day tech digest (auto-managed by /nase:tech-digest)
       tech-trends-archive-YYYY.md ← entries older than 30 days (auto-archived)
+    cross-project/
+      <topic>.md               ← work-related knowledge not tied to a single repo
     ops/
       <deployment-type>.md     ← ops runbooks by deployment type (see workspace/kb/.domain-map.md for known types)
   skills/

@@ -64,6 +64,7 @@ Check for presence of key paths:
 - `workspace/context.md`
 - `workspace/kb/general/`
 - `workspace/kb/projects/`
+- `workspace/kb/cross-project/`
 - `workspace/tasks/lessons.md`
 - `workspace/logs/`
 - Pass: all present
