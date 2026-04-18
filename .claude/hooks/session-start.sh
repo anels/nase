@@ -112,6 +112,8 @@ if [ -d "$SKILLS_DIR" ]; then
     ' "$skill_file")
     # Regenerate if missing or skill file is newer
     if [ ! -f "$cmd_file" ] || [ "$skill_file" -nt "$cmd_file" ]; then
+      # Escape double quotes in description to produce valid YAML
+      desc=$(printf '%s' "$desc" | sed 's/"/\\"/g')
       cat > "$cmd_file" << EOF
 ---
 name: nase:workspace:$name
@@ -125,7 +127,18 @@ EOF
       synced=$((synced + 1))
     fi
   done
+  # Clean up orphaned stubs whose source files no longer exist
+  removed=0
+  for cmd_file in "$CMDS_DIR"/*.md; do
+    [ -f "$cmd_file" ] || continue
+    name=$(basename "$cmd_file" .md)
+    if [ ! -f "$SKILLS_DIR/$name.md" ]; then
+      rm "$cmd_file"
+      removed=$((removed + 1))
+    fi
+  done
   [ "$synced" -gt 0 ] && echo "[session-start] synced $synced skill(s) from workspace/skills/ → /nase:workspace:*"
+  [ "$removed" -gt 0 ] && echo "[session-start] removed $removed orphaned skill stub(s) from .claude/commands/nase/workspace/"
 fi
 
 # Item 8 — suggest /nase:reflect when today has commits

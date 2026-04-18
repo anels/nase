@@ -33,7 +33,8 @@ Usage: /nase:kb-search <query> [in:general|projects|ops] [tag:<tag>] [since:YYYY
 Based on domain filter:
 - No filter → search all `workspace/kb/**/*.md`, excluding `.domain-map.md`
 - `in:general` → `workspace/kb/general/*.md`
-- `in:projects` → `workspace/kb/projects/*.md`
+- `in:projects` → `workspace/kb/projects/**/*.md`
+- `in:cross-project` → `workspace/kb/cross-project/*.md`
 - `in:ops` → `workspace/kb/ops/*.md`
 
 ### Step 3: Search and collect matches

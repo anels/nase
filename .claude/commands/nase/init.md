@@ -182,7 +182,7 @@ Also verify settings.json references all five scripts (grep for `session-start.s
 ### 4. Initialize workspace/ skeleton
 Create the following structure if it does not already exist. Preserve existing files — only create missing ones.
 ```bash
-mkdir -p workspace/kb/projects workspace/kb/general workspace/logs workspace/tasks workspace/journals workspace/skills workspace/stats workspace/recaps
+mkdir -p workspace/kb/projects workspace/kb/projects/tech-debt workspace/kb/projects/decisions workspace/kb/cross-project workspace/kb/general workspace/logs workspace/tasks workspace/journals workspace/skills workspace/stats workspace/recaps
 ```
 
 Create stub files only if missing (do not overwrite existing content):

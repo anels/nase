@@ -1,11 +1,11 @@
 ---
 name: nase:design
-description: "KB-aware collaborative design skill — turn vague ideas into concrete, tracked design docs through structured interview. Reads domain KB before asking questions, explores 2-3 approaches with tradeoffs, and writes a tracked effort doc with lifecycle checklist. Use when starting any non-trivial feature or project. Triggers on: 'design', 'brainstorm', 'plan a feature', 'kickoff', 'start project', 'I want to build...', 'let's design...', or any request that needs collaborative thinking before implementation."
+description: "KB-aware autonomous design skill — researches context first, asks only when genuinely blocked, explores 2-3 approaches with tradeoffs, and writes a tracked effort doc with lifecycle checklist. Use when starting any non-trivial feature or project. Triggers on: 'design', 'brainstorm', 'plan a feature', 'kickoff', 'start project', 'I want to build...', 'let's design...', or any request that needs collaborative thinking before implementation."
 ---
 
-Turn ideas into concrete, tracked design plan through KB-aware collaborative thinking.
+Turn ideas into concrete, tracked design plan through KB-aware autonomous research.
 
-Enter plan mode at the start of Phase 5 (Writing the Design Doc), not during Phase 4 (Design Presentation is interactive Q&A).
+Enter plan mode at the start of Phase 5 (Writing the Design Doc), not during earlier phases.
 
 ## Design Principles Framework
 
@@ -42,15 +42,15 @@ Triggered when: user re-runs `/nase:design` on an existing effort (slug already 
 
 The output is a design doc at `workspace/efforts/{slug}.md` with a lifecycle checklist. Other skills (`/nase:fsd`, `/nase:prep-merge`) update the same file as the effort progresses. `/nase:today` surfaces active efforts automatically.
 
-This skill is only allowed to create or edit the design doc. no code edit is allowed.
+This skill is only allowed to create or edit the design doc. No code edit is allowed.
 
-Always ask for clarification when anything is unclear — do not include uncertain items in the plan.
+When genuinely uncertain about a requirement, ask for clarification — but prefer researching the answer yourself first.
 
 **Input:** $ARGUMENTS — the idea, feature request, or problem statement (can be vague). If empty, use `AskUserQuestion` to ask the user to describe what they want to design.
 
 ## Setup
 
-If `AskUserQuestion` is not already available, use `ToolSearch` to fetch it before starting. Also fetch `EnterPlanMode` — it's a deferred tool needed at the start of Phase 4.
+If `AskUserQuestion` is not already available, use `ToolSearch` to fetch it before starting. Also fetch `EnterPlanMode` — it's a deferred tool needed at the start of Phase 5.
 
 Read `workspace/config.md` to extract `conversation:` and `output:` language settings. Use conversation language for interview dialogue, output language for the design doc. If config.md is missing, default to English for both.
 
@@ -83,57 +83,43 @@ Note any existing tickets, their status, and assignees.
 
 After gathering: synthesize a 3-5 sentence context brief showing what you already know. Present it to the user: "Here's what I found in the KB and codebase before we dive in..."
 
-## Phase 2: Collaborative Design (one question at a time)
+## Phase 2: Autonomous Scope & Constraint Analysis
 
-Interview the user to refine the idea into a concrete design. Rules:
-- **One question at a time** via `AskUserQuestion` — never batch
-- **Multiple choice preferred** with 2-4 options + "Other"
-- **Never ask codebase facts** — look them up yourself (Grep, Read, explore agent)
-- **Focus on**: intent, constraints, success criteria, scope decisions, priority
+Minimize questions — research aggressively, decide autonomously. The user already stated what they want; your job is to fill in the gaps from KB, code, and Jira context.
 
-### 2a. Scope Classification
+### 2a. Infer Scope (don't ask)
 
-First question classifies scope:
-```
-question: "What kind of effort is this?"
-header: "Scope"
-options:
-  - label: "Quick fix"          , description: "< 1 hour, single repo, focused change"
-  - label: "Feature"            , description: "1-3 days, may span multiple files/services"
-  - label: "Initiative"         , description: "Multi-day, cross-cutting, needs decomposition"
-  - label: "Exploration"        , description: "Research/spike — uncertain scope, need to learn first"
-```
+Classify scope automatically based on the input + context:
+- **quick-fix**: single file/config change, well-understood area, <1 hour
+- **feature**: multi-file, 1-3 days, clear boundaries
+- **initiative**: cross-cutting, multi-day, needs decomposition
+- **exploration**: uncertain scope, research needed first
 
-When writing the `scope:` frontmatter value, normalize the user's choice to lowercase-hyphenated form (e.g., "Quick fix" → `quick-fix`).
+When writing the `scope:` frontmatter value, use lowercase-hyphenated form.
 
-- **Quick fix**: streamlined path — 1-2 clarifying questions → minimal design
-- **Feature**: standard path — 3-5 questions → design with alternatives
-- **Initiative**: decomposition path — break into sub-efforts, each gets its own design doc
-- **Exploration**: spike path — time-boxed research plan → findings doc → decide next
+### 2b. Autonomous Research (instead of asking)
 
-### 2b. Clarifying Questions (3-5 based on scope)
+For each gap the KB didn't cover, **look it up** rather than asking:
+- Success criteria → infer from the problem statement + existing patterns
+- Constraints → read repo CLAUDE.md, CI config, existing architecture
+- Dependencies → grep the codebase, check package files
 
-Tailor questions to what the KB didn't already answer. Focus areas:
-- What does "done" look like? (success criteria)
-- Are there constraints the KB doesn't capture? (deadlines, dependencies, stakeholder needs)
-- Which approach do you prefer? (present 2-3 options with tradeoffs — see Phase 3)
+### 2c. Only Ask When Genuinely Blocked
 
-### 2c. Cross-Reference During Interview
+Use `AskUserQuestion` **only** when:
+- There are 2+ equally valid interpretations and the KB gives no signal
+- The task involves a business/stakeholder decision the codebase can't answer
+- The user's input is too vague to even start researching
 
-As the user answers, cross-reference against KB:
-- If user mentions a pattern → check if KB already documents it
-- If user describes a constraint → check if it conflicts with existing architecture
-- If user names a dependency → verify it exists in the repo
+When you do ask, batch all uncertainties into a single question with multiple options. Never ask about things you can look up yourself.
 
-Surface any conflicts: "The KB says X, but you're describing Y — should we update the KB after this?"
+## Phase 3: Approach Exploration (all at once)
 
-## Phase 3: Approach Exploration
+Always present **2-3 options** — even for seemingly obvious problems. A second option sharpens the reasoning for the first. **Show everything in a single message** — no back-and-forth per option.
 
-Always present **2-3 options** — even for seemingly obvious problems. A second option sharpens the reasoning for the first.
+**Step 1 — Declare your principle lens.** State which ordering you're applying from the Design Principles Framework and why (1 sentence).
 
-**Step 1 — Declare your principle lens.** Before presenting options, state which ordering you're applying from the Design Principles Framework and why (1 sentence).
-
-**Step 2 — Present options one at a time** to avoid decision fatigue. For each option use this format:
+**Step 2 — Present ALL options together** in one message. For each option:
 
 ```markdown
 ### Option {N}: {Name}
@@ -144,9 +130,7 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 **Principle alignment:** {which principles this honors; which it trades off}
 ```
 
-After each option, ask: "What's your reaction to this?" — wait for the user before presenting the next.
-
-**Step 3 — Comparative summary.** After all options are presented, show a concise comparison table:
+**Step 3 — Comparison table** (immediately after options, same message):
 
 ```markdown
 | | Option A | Option B | Option C |
@@ -159,13 +143,13 @@ After each option, ask: "What's your reaction to this?" — wait for the user be
 
 Columns: Complexity, KB alignment, key principle scores, Risk. Adapt columns to what actually differs.
 
-**Step 4 — Recommend + Challenge.** Share your recommendation with clear reasoning. Then explicitly challenge it:
+**Step 4 — Recommend + Challenge** (same message). Share your recommendation with clear reasoning. Then explicitly challenge it:
 
-> "That said — is there a more elegant path? Could Option {X} be simplified to capture the core of Option {Y} without the overhead? What if we {specific suggestion}?"
+> "That said — is there a more elegant path? Could Option {X} be simplified to capture the core of Option {Y} without the overhead?"
 
-Push yourself to find at least one concrete way to improve the leading option before asking the user to choose.
+Push yourself to find at least one concrete way to improve the leading option.
 
-**Step 5 — Ask for final choice:**
+**Step 5 — Ask for final choice** (same message, single AskUserQuestion):
 
 ```
 question: "Which approach should we go with?"
@@ -178,9 +162,11 @@ options:
 
 For **quick fixes**: still present 2 options, but keep them brief (one line each) — skip the comparative table.
 
+**The entire Phase 3 is ONE turn** — options, table, recommendation, and choice question are presented together. Never split across multiple messages.
+
 ## Phase 4: Design Presentation
 
-Present the design in sections, scaled to complexity. After each section, check: "Does this look right so far?"
+Present the **full design in a single message** — do not pause between sections for feedback. The self-review loop (Phase 4b) handles quality assurance before the user sees it.
 
 ### Design Structure
 
@@ -209,9 +195,31 @@ Present the design in sections, scaled to complexity. After each section, check:
 
 For **initiatives**: include a decomposition section listing sub-efforts with dependency order.
 
+## Phase 4b: Self-Review Loop (max 3 iterations)
+
+Run an internal quality gate before writing the effort doc.
+
+**For each iteration:**
+
+1. **Score** the draft design against every row in the Quality Criteria table (see below). For each criterion, assign: PASS, WEAK, or FAIL.
+
+2. **If any FAIL or 2+ WEAK**: identify the specific gaps and revise the design in-place. Common fixes:
+   - Specificity FAIL → add concrete numbers, file paths, line counts
+   - Testability FAIL → rewrite success criteria with verifiable conditions
+   - Grounding FAIL → add KB/file references
+   - Scope clarity FAIL → add explicit "Out of scope" items
+   - Risk coverage FAIL → add missing mitigations
+   - KB alignment FAIL → reconcile with documented constraints
+
+3. **If all PASS or at most 1 WEAK**: exit the loop and proceed to Phase 5.
+
+4. **After 3 iterations**: proceed regardless — diminishing returns. Note any remaining WEAK items as open questions in the design.
+
+The user never sees the intermediate review scores — they just get a higher-quality design on the first presentation. If the design needed significant revision (2+ iterations), briefly note what was caught: "Self-review caught X and Y — fixed before presenting."
+
 ## Phase 5: Write Design Doc + Track
 
-After user approves the design:
+After the design passes self-review (Phase 4b), write the effort doc directly — do not ask for approval first. The user reviews the written artifact, not a verbal presentation.
 
 **5a. Write design doc:**
 Save to `workspace/efforts/{slug}.md` (create `efforts/` dir if missing):
@@ -288,20 +296,9 @@ Used by Review Mode and as a self-check before writing the design doc in Phase 5
 | **Risk coverage** | Every identified risk has a mitigation; no hand-waving |
 | **KB alignment** | Design doesn't contradict documented architecture constraints without explicit justification |
 
-## Final Checklist (before writing doc)
-
-Before writing the effort doc in Phase 5, verify:
-- [ ] Success criteria are testable (not vague)
-- [ ] Scope boundaries are explicit (in AND out)
-- [ ] All risks have mitigations
-- [ ] Design references KB patterns where applicable
-- [ ] No open questions that would block implementation
-- [ ] Approach selection rationale is documented
-
 ## Notes
 
 - **KB is the unfair advantage** — always read it before asking the user. The more you know upfront, the fewer questions you need to ask.
-- **One question at a time** — hard rule. Batched questions overwhelm and produce lower-quality answers.
 - **Scale to scope** — a quick fix gets a 3-line design. An initiative gets decomposition. Don't over-plan small things.
 - **Design doc is the durable artifact** — it persists across sessions, visible in `/nase:today`, updated by downstream skills.
 - **If things change during implementation** — update the effort doc. It's a living record, not a frozen spec.

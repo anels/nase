@@ -159,6 +159,28 @@ options:
 
 If aborted: print the worktree path so the user can continue manually, and stop.
 
+## Phase 8b: Update PR Description to Match Template
+
+After push, check if the PR description follows the repo's PR template. Follow `.claude/docs/pr-creation-pattern.md` Step 1 to discover the template.
+
+If a template exists and the current PR description doesn't follow it (missing sections, wrong headings):
+- Fetch current PR body: `gh pr view {pr_number} --repo {owner}/{repo} --json body -q .body`
+- Restructure the description to match the template's section headings
+- Preserve existing author-written content — migrate it into the correct sections
+- Fill the "How to Review" section if empty, based on the changes made in this session
+- Do not overwrite sections the author already filled correctly
+
+Update:
+```bash
+gh pr edit {pr_number} --repo {owner}/{repo} \
+  --body "$(cat <<'NASE_PR_BODY'
+{updated_description}
+NASE_PR_BODY
+)"
+```
+
+If the description already follows the template, skip this phase.
+
 ## Phase 9: Reply & Resolve Comments
 
 After push succeeds, handle each thread using the same two-step pattern: **reply first, then resolve**.

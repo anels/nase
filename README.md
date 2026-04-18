@@ -159,6 +159,26 @@ flowchart LR
 /nase:kb-review                # periodically: deduplicate, cross-reference, clean up stale entries
 ```
 
+### Design before you build
+
+- **KB-aware design** — `/design` reads your KB for domain context, then researches and explores approaches to turn a vague idea into a concrete design doc
+- **Explore tradeoffs** — surfaces 2–3 approaches with tradeoffs before committing to one; you pick the direction
+- **Tracked effort docs** — writes a design doc to `workspace/efforts/` with lifecycle tracking (draft → active → done); `/today` auto-syncs status
+- **Flows into implementation** — once the design is approved, `/fsd` picks up the effort doc as its spec
+
+```mermaid
+flowchart LR
+    A["/design"] --> B(["effort doc"]) --> C["/fsd"] --> D(["draft PR"])
+    style A fill:#0f3460,stroke:#0f3460,color:#fff
+    style D fill:#e94560,stroke:#e94560,color:#fff
+```
+
+```
+/nase:design <idea>            # KB-aware design → design doc in workspace/efforts/
+  review and approve approach
+/nase:fsd <task>               # implement from the design doc
+```
+
 ### Track progress and report
 
 - **Structured recaps on demand** — `/recap` generates a weekly or monthly summary from daily logs, commits, and task completions — no manual note-taking required
@@ -195,6 +215,7 @@ flowchart LR
 | `/nase:onboard <path-or-url>` | Onboard or refresh a single repo (local path or GitHub URL) |
 | `/nase:tech-digest` | Fetch latest tech news → `workspace/kb/general/tech-trends.md` |
 | `/nase:kb-update [domain]` | Update knowledge base with session learnings |
+| `/nase:kb-search <topic>` | Search across all KB files by topic, keyword, or pattern; supports domain/tag/date/confidence filters |
 | `/nase:kb-review [scope]` | Review, organize, and consolidate KB — deduplicate, cross-reference, surface stale content |
 | `/nase:kb-teamshare [path]` | Export selected KB files and workspace skills as a portable, sanitized directory for teammates |
 | `/nase:kb-merge [path]` | Import and merge a teammate's shared KB into your local `workspace/kb/` |
@@ -232,6 +253,13 @@ flowchart LR
 | `/nase:recap [week\|last week\|month\|last month\|YYYY-MM-DD to YYYY-MM-DD]` | Structured recap of work over a period (weekly Mon–Sun, monthly 1st–last day) → chat + auto-saves to `workspace/recaps/` |
 | `/nase:estimate-eta <task>` | Effort estimate |
 | `/nase:stats [7\|30\|all]` | Workspace usage statistics with GitHub-style heatmap → chat summary + `workspace/stats/report-YYYY-MM-DD.md` |
+
+### Security & maintenance
+
+| Command | Purpose |
+|---------|---------|
+| `/nase:skill-audit [path]` | Scan skill files for security risks — command injection, data exfiltration, prompt injection, unsafe file ops; auto-runs during `/nase:kb-merge` |
+| `/nase:tech-debt-audit <repo>` | Audit tech debt, architecture health, best-practices compliance, and modernization opportunities → `workspace/kb/projects/{repo}-tech-debt.md` |
 
 ### Backup & restore
 
@@ -323,7 +351,8 @@ flowchart TD
 |------|------|--------------|
 | `SessionStart` | Every new Claude Code session | Creates `workspace/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target is unreachable; archives tech digest entries older than 30 days; suggests `/nase:reflect` if you made commits today |
 | `Stop` | Every session end | Surfaces pending todos from `workspace/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `workspace/` → backup target; applies retention cleanup; writes status to `workspace/logs/.backup-status` |
-| `PreToolUse` + `PostToolUse` | Before/after every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `workspace/stats/skill-usage.jsonl`; dual-hook improves coverage (PostToolUse alone misses some invocations); same-second dedup prevents double-counting; used by `/nase:stats` |
+| `PostToolUse:Skill` | After every `Skill` tool call | Records `/nase:*` invocations as `{"skill","ts"}` to `workspace/stats/skill-usage.jsonl`; same-second dedup prevents double-counting; used by `/nase:stats` |
+| `PostToolUse:Edit\|Write` | After editing/writing `.sh` files | Runs `shellcheck -S warning` on the edited file to catch shell script issues immediately |
 | `WorktreeCreate` / `WorktreeRemove` | When a git worktree is created or removed | Appends a timestamped entry to today's daily log (`worktree created: <path>` / `worktree removed: <path>`) |
 
 The `Stop` hook reads `backup-target` from `.local-paths` at the workspace root (set by `/nase:init`). If the file doesn't exist, it silently skips.
@@ -339,34 +368,25 @@ The `Stop` hook reads `backup-target` from `.local-paths` at the workspace root 
 ```
 nase/
   .claude/
-    commands/nase/      ← Claude Code slash commands (pre-built)
-      init.md
-      doctor.md
-      help.md
-      today.md
-      onboard.md
-      tech-digest.md
-      kb-update.md
-      learn.md
-      reflect.md
-      extract-skills.md
-      wrap-up.md
-      fsd.md
-      estimate-eta.md
-      improve-commit-message.md
-      request-review.md
-      discuss-pr.md
-      address-comments.md
-      prep-merge.md
-      restore.md
-      stats.md
+    commands/nase/      ← Claude Code slash commands (28 built-in skills)
+      init.md, doctor.md, help.md
+      today.md, onboard.md, tech-digest.md
+      kb-update.md, kb-search.md, kb-review.md, kb-merge.md, kb-teamshare.md
+      learn.md, reflect.md, extract-skills.md, wrap-up.md
+      design.md, fsd.md, estimate-eta.md
+      improve-commit-message.md, request-review.md
+      discuss-pr.md, address-comments.md, prep-merge.md
+      recap.md, restore.md, stats.md, skill-audit.md, tech-debt-audit.md
+      workspace/        ← auto-synced from workspace/skills/ at session start
     hooks/              ← Hook scripts (called by settings.json)
       session-start.sh
       stop-todos.sh
       stop-backup.sh
       track-skill.sh
       worktree-log.sh
-    settings.json       ← Claude Code hooks (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove)
+      edit-typecheck.sh ← opt-in: type-check .cs/.ts/.tsx on edit (disabled by default)
+    docs/               ← Shared algorithm docs referenced by skills (11 files)
+    settings.json       ← Claude Code hooks (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove + Edit|Write)
   CLAUDE.md             ← AI identity + operating rules (loaded by Claude Code automatically)
   README.md             ← this file
 ```
@@ -394,8 +414,13 @@ workspace/
   logs/               ← daily work logs + .backup-status (auto-managed by hooks)
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   recaps/             ← weekly/monthly recap reports (written by /nase:recap)
-  skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
+  skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; auto-synced to .claude/commands/nase/workspace/ at session start)
   efforts/            ← design docs with lifecycle tracking (written by /nase:design; completed efforts move to efforts/done/)
+  plans/              ← implementation plans
+  docs/               ← generated documentation (onboarding guides, architecture docs)
+  reports/            ← structured reports
+  tmp/                ← one-off artifacts, scratch files, debug dumps (cleaned up manually)
+  memory/             ← Claude Code auto-memory persistence
   tasks/
     lessons.md        ← accumulated lessons from /nase:learn and /nase:reflect
     todo.md           ← current task tracking
