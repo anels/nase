@@ -1,0 +1,50 @@
+# Subagent Role Catalog — nase workspace
+# Skills reference role names (e.g., "role: lookup") instead of hardcoding models.
+# To change model routing, edit this file — all skills pick up the change.
+#
+# Usage in skills:
+#   "Spawn a **lookup** agent to scan the repo structure."
+#   → AI reads this file, maps lookup → haiku, includes prompt_prefix
+#
+# Usage in main conversation:
+#   Agent(model="haiku", prompt="This is a simple lookup — keep reasoning minimal. ...")
+
+roles:
+  lookup:
+    model: haiku
+    description: Fast data gathering, simple lookups, grep/glob scans
+    prompt_prefix: "This is a simple lookup — keep reasoning minimal."
+    use_when:
+      - Log/git analysis, file listing, grep/glob searches
+      - Doctor checks, tech-digest source fetching
+      - Onboard structure scans, stats collection
+      - Any task where the answer is in the output, not in reasoning
+
+  worker:
+    model: sonnet
+    description: Standard implementation, review, debugging
+    prompt_prefix: null
+    use_when:
+      - Code changes, KB updates, refactoring
+      - PR review analysis, comment drafting
+      - Debugging, test writing
+      - Skill execution requiring multi-step judgment
+
+  architect:
+    model: opus
+    description: Deep analysis, architecture, security, unfamiliar codebases
+    prompt_prefix: null
+    use_when:
+      - Unfamiliar codebase deep exploration
+      - Security review, threat modeling
+      - Design decisions, architecture trade-offs
+      - Complex cross-repo analysis
+      - Tech debt audit
+
+# Routing rules:
+#   default: worker
+#   Never use architect for something lookup can answer.
+#   For lookup dispatches: always include prompt_prefix in the agent prompt.
+#   When uncertain between lookup and worker: prefer worker (reasoning > speed).
+#   When uncertain between worker and architect: prefer worker unless the task
+#     involves security, architecture decisions, or an unfamiliar codebase.

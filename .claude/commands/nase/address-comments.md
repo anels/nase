@@ -206,7 +206,7 @@ mutation {
 }'
 ```
 
-Process all threads — accept, decline, and reply-only — using this same pattern.
+Process `accept` and `reply-only` threads using this pattern (reply + resolve). For `decline` threads: **reply only, do NOT resolve** — the reviewer may want to respond or push back. Resolving a declined thread shuts down the conversation prematurely.
 
 ## Phase 10: Learn from this session
 

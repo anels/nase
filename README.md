@@ -1,6 +1,5 @@
 # nase — An all-in-one modern software engineering kit for Claude Code
 
-
 A [Claude Code](https://claude.ai/code) kit for AI-assisted software engineering across multiple repositories. Gives you slash commands for onboarding repos, tracking knowledge, generating reports, and auto-backing up your work — all inside Claude Code.
 
 > **Name origin**:
@@ -28,23 +27,42 @@ Then inside Claude Code:
 
 That's it. The workspace is ready. Run `/nase:help` anytime for a full command overview.
 
-Optionally, add to your PowerShell profile (`$PROFILE`) to launch nase from anywhere:
+Optionally, add a shell alias to launch nase from anywhere:
+
+<details>
+<summary>bash / zsh (~/.bashrc or ~/.zshrc)</summary>
+
+```bash
+# Claude Code — nase workspace (adjust path to your clone location)
+nase() { cd ~/my-workspace && claude "$@"; }
+```
+
+</details>
+
+<details>
+<summary>PowerShell ($PROFILE)</summary>
 
 ```powershell
-# Claude Code — nase workspace
-function Invoke-NaseClaude { Set-Location "$HOME\playground\aiteam\nase-01"; claude --dangerously-skip-permissions @args }
+# Claude Code — nase workspace (adjust path to your clone location)
+function Invoke-NaseClaude { Set-Location "$HOME\my-workspace"; claude @args }
 Set-Alias -Name nase -Value Invoke-NaseClaude
 ```
 
+</details>
+
 Then just run `nase` in any terminal to jump into the workspace and open Claude Code.
+
+> **Tip**: Add `--dangerously-skip-permissions` to the `claude` call in the alias to auto-approve tool calls. Only use this if you trust the workspace hooks and skills — it bypasses all confirmation prompts.
 
 ### Prerequisites
 
 - **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — required
 - **Git** — required for hooks and report commands
-- **7z** — required for zip backups (`scoop install 7zip` on Windows)
+- **7z or zip** — required for workspace backups (prefers `7z`, falls back to `zip`; install via `scoop install 7zip` on Windows or `brew install p7zip` on macOS)
+- **jq** — required for skill usage tracking (`track-skill.sh` silently fails without it)
+- **python3** — optional; used for tech-digest archival of entries older than 30 days
 
-#### MCP servers (optional but recommended)
+#### MCP servers (required for full functionality)
 
 | MCP | Used for | Setup |
 |-----|----------|-------|
@@ -230,10 +248,11 @@ flowchart LR
 | `/nase:extract-skills` | Analyze current session → extract reusable patterns as files under `workspace/skills/` |
 | `/nase:wrap-up [force]` | End-of-day routine: reflect → learn → extract-skills → kb-update → journal entry → `workspace/journals/YYYY-MM-DD.md` |
 
-### Autonomous execution
+### Design & autonomous execution
 
 | Command | Purpose |
 |---------|---------|
+| `/nase:design <idea>` | KB-aware collaborative design — research context, explore 2–3 approaches with tradeoffs, write tracked effort doc to `workspace/efforts/` |
 | `/nase:fsd <task>` | Full Self-Develop — ask options upfront, then implement → build → test (fix loop) → simplify → commit → push → draft PR → cleanup, fully autonomous |
 
 ### Git workflow
@@ -259,7 +278,7 @@ flowchart LR
 | Command | Purpose |
 |---------|---------|
 | `/nase:skill-audit [path]` | Scan skill files for security risks — command injection, data exfiltration, prompt injection, unsafe file ops; auto-runs during `/nase:kb-merge` |
-| `/nase:tech-debt-audit <repo>` | Audit tech debt, architecture health, best-practices compliance, and modernization opportunities → `workspace/kb/projects/{repo}-tech-debt.md` |
+| `/nase:tech-debt-audit <repo>` | Audit tech debt, architecture health, best-practices compliance, and modernization opportunities → `workspace/kb/projects/tech-debt/{repo}-tech-debt.md` |
 
 ### Backup & restore
 
@@ -385,8 +404,12 @@ nase/
       track-skill.sh
       worktree-log.sh
       edit-typecheck.sh ← opt-in: type-check .cs/.ts/.tsx on edit (disabled by default)
+    roles.yaml          ← Subagent model routing (lookup/worker/architect → haiku/sonnet/opus)
     docs/               ← Shared algorithm docs referenced by skills (11 files)
-    settings.json       ← Claude Code hooks (SessionStart + Stop + PostToolUse + WorktreeCreate/Remove + Edit|Write)
+    settings.json       ← Hook registrations (SessionStart, Stop, PostToolUse, WorktreeCreate/Remove)
+  .github/
+    workflows/validate.yml ← CI: bash syntax, shellcheck, JSON validation, hook wiring, command inventory
+    CODEOWNERS          ← Code ownership for PR reviews
   CLAUDE.md             ← AI identity + operating rules (loaded by Claude Code automatically)
   README.md             ← this file
 ```
@@ -401,12 +424,15 @@ workspace/
   kb/
     .domain-map.md    ← project-domain → kb file mappings (managed by /nase:onboard)
     projects/         ← one file per repo (architecture, constraints, patterns)
+      tech-debt/      ← tech debt audit reports (written by /nase:tech-debt-audit)
+      decisions/      ← PR decisions & incident logs
     general/
       workflow.md     ← commit rules, PR process, coding principles
       debugging.md    ← debugging techniques, past root causes
       <your-stack>.md ← patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
       tech-trends.md  ← monthly rolling tech digest (auto-appended by /nase:tech-digest)
       tech-trends-archive-YYYY.md  ← entries older than 30 days (auto-archived)
+    cross-project/    ← work-related knowledge not tied to a single repo
     ops/              ← deployment/ops knowledge by deployment type (see workspace/kb/.domain-map.md for known types)
   stats/
     skill-usage.jsonl ← append-only log of /nase:* invocations (auto-written by PostToolUse hook)
@@ -415,7 +441,9 @@ workspace/
   journals/           ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
   recaps/             ← weekly/monthly recap reports (written by /nase:recap)
   skills/             ← auto-extracted reusable patterns (written by /nase:extract-skills; auto-synced to .claude/commands/nase/workspace/ at session start)
-  efforts/            ← design docs with lifecycle tracking (written by /nase:design; completed efforts move to efforts/done/)
+  efforts/            ← design docs with lifecycle tracking (written by /nase:design)
+    done/             ← completed/closed efforts (auto-moved by /nase:today status sync)
+  scripts/            ← utility scripts (e.g. deploy helpers, stats collection)
   plans/              ← implementation plans
   docs/               ← generated documentation (onboarding guides, architecture docs)
   reports/            ← structured reports
@@ -451,7 +479,7 @@ The kit (`.claude/`, `CLAUDE.md`, `README.md`) is tracked by git. Your work cont
 - **Change backup location**: edit the `backup-target=` line in `.local-paths` at the workspace root
 - **Change backup retention**: edit `backup_retention:` in `workspace/config.md` (e.g. `count:100` or `days:7`)
 
-> **Input formats**: `/nase:onboard` accepts Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `.local-paths` — no cloning or network access required.
+> **Input formats**: `/nase:onboard` accepts Unix paths (`/home/user/repos/foo`), macOS paths (`/Users/user/repos/foo`), Windows paths (`C:\foo\bar`), Git Bash paths (`/c/foo/bar`), and GitHub URLs (`https://github.com/Org/Repo` or `git@github.com:Org/Repo.git`). GitHub URLs are resolved to local paths via `.local-paths` — no cloning or network access required.
 
 **Contributing:**
 

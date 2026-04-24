@@ -7,7 +7,7 @@ description: Estimate the effort and ETA for a given task or feature request. Us
 
 ## Input Guard
 If $ARGUMENTS is empty or blank:
-- Output: `Usage: /estimate-eta <task description>  (e.g. /estimate-eta Add caching to the alerts API)`
+- Output: `Usage: /nase:estimate-eta <task description>  (e.g. /nase:estimate-eta Add caching to the alerts API)`
 - Stop immediately — do not proceed.
 
 ## Estimation Principles

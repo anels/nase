@@ -19,9 +19,9 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 ### Identity & Communication
 - **Identity**: at session start, read `workspace/config.md` — use the `AI engineer:` value as your name and `workspace:` as the workspace folder name throughout the session. If `workspace/config.md` is missing, prompt the user to run `/nase:init`.
 - **Name correction**: if your configured name is not "nase" and the user addresses you as "nase", occasionally (1 in 3) grumble and correct them briefly.
-- **Language**: `workspace/config.md → ## Language` — `conversation:` for responses, `output:` for GitHub/Jira/Confluence/Slack. English for code identifiers. Defaults: see global CLAUDE.md.
+- **Language**: **MUST** read `workspace/config.md → ## Language` at session start and follow it strictly — `conversation:` value for all responses and explanations, `output:` value for GitHub/Jira/Confluence/Slack. English for code identifiers only. This is non-negotiable — do not default to English for conversation.
 - **Communication principle** — balance positive reinforcement with risk mitigation. Provide practical guidance and error warnings.
-- **ALWAYS ASK WHEN UNSURE** — if a requirement is ambiguous, a scope is unclear, or there are multiple valid approaches: stop and ask before acting.
+- **ALWAYS ASK WHEN UNSURE** — if a requirement is ambiguous, a scope is unclear, or there are multiple valid approaches: present all interpretations explicitly, then ask which to pursue. Never pick silently and proceed.
 
 ### File & Workspace Rules
 - **Write to `workspace/` by default**: all generated content must go inside `workspace/`. Only write outside `workspace/` when the user explicitly asks. Review for sensitive info before writing outside `workspace/` — this repo is public.
@@ -80,18 +80,22 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
 | `/nase:skill-audit [path]` | Scan skills for security risks (auto-runs in kb-merge) |
 | `/nase:tech-debt-audit <repo>` | Audit tech debt, architecture, best practices, modernization |
 | `/nase:doctor` | Workspace health check |
+| `/nase:init` | First-time setup or reconfigure workspace |
+| `/nase:tech-digest` | Fetch and summarize daily tech news |
+| `/nase:reflect` | Post-task reflection to extract learnings |
 
 For full skills table, workspace layout, KB structure, and architecture notes → read `.claude/docs/reference.md`
 
 ### Model Routing (subagents)
 
-| Task type | Model | Examples |
-|-----------|-------|---------|
-| Data gathering, quick lookup | `haiku` | Logs, grep/glob, doctor, tech-digest |
-| Standard implementation, review | `sonnet` | Code changes, KB updates, debugging |
-| Architecture, deep analysis | `opus` | Unfamiliar codebase, security review, design |
+Defined in `.claude/roles.yaml`. Three roles: **lookup** (haiku), **worker** (sonnet), **architect** (opus). Before spawning a subagent, match the task to a role and use that role's `model` and `prompt_prefix`.
 
-Default: `sonnet`. Never spawn `opus` for something haiku can answer. For haiku dispatches: include "This is a simple lookup — keep reasoning minimal" in the prompt to suppress unnecessary extended thinking.
+Quick reference (source of truth is `.claude/roles.yaml`):
+- **lookup** → `haiku` — data gathering, grep/glob, scans. Always include prompt_prefix: "This is a simple lookup — keep reasoning minimal."
+- **worker** → `sonnet` — code changes, KB updates, debugging, reviews. Default role.
+- **architect** → `opus` — unfamiliar codebases, security, architecture, design.
+
+Rules: default `worker`. Never use `architect` for what `lookup` can answer. When uncertain, prefer `worker`.
 
 ### Bash / Path Rules
 - **Bash tool resets `cwd` between calls** — always use `git -C /absolute/path <cmd>`
@@ -109,6 +113,16 @@ Default: `sonnet`. Never spawn `opus` for something haiku can answer. For haiku 
 - **`7z` or `zip`** — required by `stop-backup.sh` for workspace backups; prefers `7z`, falls back to `zip`
 - **`python3`** — optional; used by `session-start.sh` for tech-digest archival (entries > 30 days); skipped with a warning if absent
 - **`.local-paths`** — machine-specific paths at workspace root (not inside `workspace/`); format: `key=/absolute/path` (one per line); contains `backup-target=` and `RepoName=` entries; managed by `/nase:init` and `/nase:onboard`; NOT backed up
+
+### Hook Event Map
+- **SessionStart** → `session-start.sh`
+- **Stop** → `stop-todos.sh`, `stop-backup.sh`
+- **PostToolUse:Skill** → `track-skill.sh`
+- **PostToolUse:Edit|Write** → inline shellcheck (`.sh` files only)
+- **WorktreeCreate / WorktreeRemove** → `worktree-log.sh`
+
+### Auto Hooks (always active)
+- **Inline shellcheck** — runs on `PostToolUse:Edit|Write` for `.sh` files; auto-runs `shellcheck -S warning` on the edited file. No configuration needed.
 
 ### Opt-in Hooks
 - **`edit-typecheck.sh`** — runs on `PostToolUse:Edit` for `.cs`/`.ts`/`.tsx` files; looks up repo in `workspace/tmp/.typecheck-commands` and runs a quick type-check (30s timeout). Disabled by default — enable via `/update-config`.

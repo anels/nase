@@ -7,6 +7,16 @@ Systematically audit a repository for tech debt, architecture health, best-pract
 
 **Input:** $ARGUMENTS — repo name or path (resolved via `.local-paths` and `workspace/kb/.domain-map.md`)
 
+## Setup
+
+Needs: `AskUserQuestion` (fetch via ToolSearch).
+
+## Input Guard
+
+If $ARGUMENTS is empty or blank:
+- Use AskUserQuestion to ask: "Which repo should I audit?" with options from `workspace/context.md` repos, plus "Other — I'll type the path".
+- If the user cancels: stop.
+
 ## When to use
 
 When you need a comprehensive view of a repo's health — not just "what's messy" but prioritized by impact. Triggers: "audit tech debt", "what should we clean up", "tech debt inventory", "architecture review", "are we following best practices", "what can we modernize", or before a sprint planning session where cleanup work needs justification.
@@ -24,6 +34,8 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - Inconsistent patterns (e.g., some endpoints use middleware, others don't)
    - TODO/FIXME/HACK comments with context
    - Test gaps in critical paths
+   - Silently skipped parameterized tests: for .NET repos, compare `dotnet test --list-tests | wc -l` against `[TestMethod]`/`[Fact]` attribute count. MSTest `[DataRow]` configurations can silently skip execution — CI stays green but tests never run. Pattern: 122 tests (291→413) were silently skipped in Insights-monitoring until caught during review.
+   - CI stale binary patterns: check install/download steps in pipeline YAML for existence-only guards (e.g. `if (Test-Path binary)` or `test -f binary`) instead of version guards (`binary --version`). Stale binaries persist on self-hosted agents between runs and cause silent version drift.
    - Pipeline inefficiencies (redundant stages, unpinned refs)
 
 3. **Architecture review** — step back from individual files and evaluate structural health:
@@ -103,3 +115,10 @@ When you need a comprehensive view of a repo's health — not just "what's messy
 - Don't duplicate findings already tracked in Jira — cross-reference existing tickets
 - Focus on patterns, not individual style nits — a single missing null check isn't tech debt, but 15 endpoints missing input validation is
 - The KB file is the deliverable — it should be useful standalone for sprint planning discussions
+
+## Error Handling
+
+- **Repo path not found**: if the resolved path doesn't exist or `.local-paths` has no match, ask the user for the correct path via AskUserQuestion.
+- **Git commands fail**: if the repo isn't a git repository, report the error and stop.
+- **KB write failure**: if `workspace/kb/projects/tech-debt/` can't be created, fall back to `workspace/tmp/` and note the alternative path.
+- **Scope control**: if the repo has >500 source files, ask the user to narrow scope (specific directories or categories) before starting. A full unbounded audit of a large repo consumes excessive context.
