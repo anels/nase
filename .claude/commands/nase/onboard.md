@@ -7,10 +7,6 @@ Run before EVERY work session on a repo — not just the first time. Projects ev
 
 **Input:** $ARGUMENTS — optional. Local repo path, GitHub URL, or empty for batch refresh.
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Mode Detection
 - Empty/blank → **Batch Refresh Mode**
 - Path or URL → **Single Repo Mode**

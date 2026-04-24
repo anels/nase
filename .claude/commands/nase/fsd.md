@@ -9,10 +9,6 @@ Inspired by Tesla FSD: you describe the destination, buckle up, and it drives. C
 
 ---
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Phase 0: Input Guard
 
 If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and stop.
@@ -198,15 +194,7 @@ Deviation: use `push -u origin {branch_name}` on first push (sets upstream track
 
 ## Phase 8: Pull Request (if PR = Yes)
 
-Follow `.claude/docs/pr-creation-pattern.md` (steps 1–5) to discover the PR template, draft the description, align the title with the commit subject, preserve co-authors (relevant in team mode), and exclude AI attribution.
-
-**PR body MUST use the repo's template.** Step 1 of pr-creation-pattern discovers the template file. If found:
-- Read the template and use its exact section headings as the skeleton
-- Fill each section with content derived from the diff, commit history, and task context
-- Preserve checklist items unchecked — do not pre-check boxes
-- Leave sections empty (with their heading) rather than omitting them if content cannot be determined
-
-If no template exists, fall back to the default structure in pr-creation-pattern Step 2.
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description, align the title with the commit subject, and preserve co-authors (relevant in team mode).
 
 Open a draft PR:
 ```bash
@@ -284,10 +272,8 @@ FSD complete ✓
 Next: open the draft PR, review the diff, then promote to "ready for review".
 ```
 
-Append to `workspace/logs/{YYYY-MM-DD}.md`:
-```
-- FSD: {one-line task summary} → `{branch_name}` [{PR URL or "no PR"}]
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `fsd`).
+Log: `{one-line task summary} → \`{branch_name}\` [{PR URL or "no PR"}]`
 
 ---
 

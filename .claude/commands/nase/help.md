@@ -21,4 +21,4 @@ Pulls from README.md dynamically so the help output always matches the actual av
 - Do not hardcode the command list — always read from README.md so help stays in sync
 - Do not hardcode the KB layout — always scan `workspace/kb/` so it reflects current structure
 - If README.md is missing, fall back to listing `.claude/commands/nase/` filenames
-- If the user specifies a conversation language in config.md, use it for the help output.
+- Follow .claude/docs/language-config.md for conversation vs output language.

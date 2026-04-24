@@ -5,10 +5,6 @@ description: Display workspace usage statistics with a GitHub-style activity hea
 
 **Input:** $ARGUMENTS — optional: `7` (default), `30`, or `all`
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Steps
 
 ### 1. Determine time range
@@ -197,7 +193,7 @@ Report content:
 - Skill usage full ranking (all skills from JSONL, not just top 3)
 - Generation metadata: `Generated: {GEN_TS}`, `Range: {START_DATE} ~ {END_DATE}`, `Period: {N} days`
 
-If the user specifies a conversation language in config.md, use it for the output summary.
+Follow .claude/docs/language-config.md for conversation vs output language.
 
 Clean up the temp directory after writing the report: `rm -rf "$TMPDIR_STATS"`.
 

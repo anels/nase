@@ -15,8 +15,8 @@ set -euo pipefail
 
 command -v jq &>/dev/null || exit 0
 
-WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-CONFIG="$WORKSPACE/workspace/tmp/.typecheck-commands"
+NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+CONFIG="$NASE_ROOT/workspace/tmp/.typecheck-commands"
 [ -f "$CONFIG" ] || exit 0
 
 FILE_PATH=$(jq -r '.tool_input.file_path // empty' 2>/dev/null) || exit 0

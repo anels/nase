@@ -50,9 +50,9 @@ When genuinely uncertain about a requirement, ask for clarification — but pref
 
 ## Setup
 
-If `AskUserQuestion` is not already available, use `ToolSearch` to fetch it before starting. Also fetch `EnterPlanMode` — it's a deferred tool needed at the start of Phase 5.
+Fetch `EnterPlanMode` via ToolSearch — it's a deferred tool needed at the start of Phase 5.
 
-Read `workspace/config.md` to extract `conversation:` and `output:` language settings. Use conversation language for interview dialogue, output language for the design doc. If config.md is missing, default to English for both.
+Follow `.claude/docs/language-config.md` — use conversation language for interview dialogue, output language for the design doc.
 
 ## Hard Gate
 

@@ -17,10 +17,6 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts and u
 - A keyword or topic: `"structured concurrency"` — triggers web research directly
 - Empty: auto-reflect on the most recent conversation
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
-
 ## Steps
 
 ### 1. Detect input type
@@ -150,10 +146,8 @@ If any learning is an important reusable rule or principle:
 
 ### 8. Update daily log and confirm
 
-Append to `workspace/logs/YYYY-MM-DD.md`:
-```
-- Learned: {topic} — {one-line summary} (sources: {N} articles researched) → wrote to {kb-file(s)}
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `learn`).
+Log: `{topic} — {one-line summary} (sources: {N} articles researched) → wrote to {kb-file(s)}`
 
 Report to user:
 - What knowledge was captured (topic + key takeaways)
@@ -161,7 +155,7 @@ Report to user:
 - How many external sources were researched
 - Any new KB domains created
 
-If the user specifies a conversation language in config.md, use it for the output summary.
+Follow .claude/docs/language-config.md for conversation vs output language.
 
 ## Error Handling
 

@@ -11,10 +11,6 @@ Good commit messages are searchable documentation. When someone runs `git log --
 
 - `--auto-accept` — skip the confirmation prompt and amend immediately with the proposed message. Use this when called from automated workflows (e.g., `/nase:fsd`) that should not pause for user input. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
-
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
 Never assume repository state — check it with git commands first.

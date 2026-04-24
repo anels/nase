@@ -163,7 +163,7 @@ Wrap-up written → workspace/journals/{YYYY-MM-DD}.md
 {status line}
 ```
 
-If the user specifies a conversation language in config.md, use it for the output summary.
+Follow .claude/docs/language-config.md for conversation vs output language.
 
 </workflow>
 

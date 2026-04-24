@@ -26,11 +26,10 @@ mkdir -p "$STATS_DIR"
 # Dedup: skip if same skill + same second already recorded
 if [ -f "$JSONL" ]; then
   LAST=$(tail -1 "$JSONL" 2>/dev/null || true)
-  LAST_SKILL=$(echo "$LAST" | jq -r '.skill // empty' 2>/dev/null || true)
-  LAST_TS=$(echo "$LAST" | jq -r '.ts // empty' 2>/dev/null || true)
-  if [ "$LAST_SKILL" = "$SKILL_NAME" ] && [ "$LAST_TS" = "$TS" ]; then
+  LAST_KEY=$(echo "$LAST" | jq -r '"\(.skill)|\(.ts)"' 2>/dev/null || true)
+  if [ "$LAST_KEY" = "$SKILL_NAME|$TS" ]; then
     exit 0
   fi
 fi
 
-echo "{\"skill\":\"$SKILL_NAME\",\"ts\":\"$TS\"}" >> "$JSONL"
+jq -n --arg s "$SKILL_NAME" --arg t "$TS" '{skill:$s,ts:$t}' >> "$JSONL"

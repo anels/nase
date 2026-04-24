@@ -48,7 +48,7 @@ git -C {repo_or_worktree} push origin {branch}
 
 ## Rules That Apply to All Skills
 
-- **No AI attribution**: never add `Co-Authored-By: Claude` or `Generated with Claude Code` to commits or PRs.
+- **No AI attribution**: see CLAUDE.md — never add AI attribution to commits, PRs, or review comments.
 
 ---
 

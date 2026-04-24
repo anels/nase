@@ -7,10 +7,6 @@ description: Prepare a PR for merge — verify all comments resolved, squash com
 
 ---
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Phase 0: Input Guard
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
@@ -123,16 +119,9 @@ The PR title should match the commit subject line (the first line of the squash 
 
 ### 7a–7b: PR Template & Description
 
-Follow `.claude/docs/pr-creation-pattern.md` (steps 1–5) to discover the PR template, draft the description, align the title with the commit subject, preserve co-authors, and exclude AI attribution.
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description, align the title with the commit subject, and preserve co-authors.
 
-**PR description MUST use the repo's template.** Step 1 of pr-creation-pattern discovers the template file. If found:
-- Read the template and use its exact section headings as the skeleton
-- Fill each section with content derived from the diff, commit history, and task context
-- Preserve checklist items unchecked — do not pre-check boxes
-- Leave sections empty (with their heading) rather than omitting them if content cannot be determined
-- If the existing PR description already follows the template, preserve author-written content and only update sections that changed due to squash/rebase
-
-If no template exists, fall back to the default structure in pr-creation-pattern Step 2.
+Follow `.claude/docs/pr-creation-pattern.md` for PR description formatting.
 
 Present the new title and description to the user for confirmation:
 
@@ -206,10 +195,8 @@ PR ready for merge ✓
   Force-pushed: ✓ (--force-with-lease)
 ```
 
-Append a partial log entry to `workspace/logs/{YYYY-MM-DD}.md` **before** prompting (ensures the log is written regardless of the user's next choice):
-```
-- Prep merge: {repo_name}#{pr_number} — squashed → 1 commit, force-pushed
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `prep-merge`) **before** prompting (ensures the log is written regardless of the user's next choice).
+Log: `{repo_name}#{pr_number} — squashed → 1 commit, force-pushed`
 
 Then use the `AskUserQuestion` tool:
 

@@ -11,10 +11,6 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
 
 **Context:** $ARGUMENTS (optional — name of the task or feature just completed)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
-
 ## Steps
 
 1. Identify the task being reflected on:

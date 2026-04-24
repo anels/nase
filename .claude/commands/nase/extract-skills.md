@@ -9,10 +9,6 @@ Captured patterns compound into lasting productivity gains — don't skip this a
 
 **Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `--auto-accept` to skip the confirmation gate and auto-approve all candidates)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch). Skip if `--auto-accept`.
-
 ## Steps
 
 <workflow>
@@ -28,28 +24,6 @@ Review the conversation history (or focus on $ARGUMENTS if provided). The riches
 - **"I wish I had a command for this" moments** — friction points that slowed the work down
 
 List 1-3 candidates with one-line descriptions.
-
-### 2.5. Scan for stale skills (confidence decay)
-
-Run this scan **after** Step 2 filters candidates — skip entirely if no candidates pass the quality bar. This avoids reading all skill files in sessions that produce no new extractions.
-
-Check existing skills for staleness:
-
-1. Read all `workspace/skills/*.md` files
-2. For each file with `confidence:` and `extracted:` frontmatter:
-   - Calculate age in days since `extracted:` date
-   - Apply decay: `effective_confidence = confidence - (age_days / 5)` (loses ~6 points per month)
-   - If effective_confidence < 40: flag as **stale** — candidate for pruning
-   - If effective_confidence 40-59: flag as **aging** — candidate for re-validation
-3. If any stale/aging skills found, report them before proposing new extractions:
-   ```
-   ⚠ Stale skills (consider pruning):
-   - {name} — confidence {original} → {effective} (extracted {date}, {age}d ago)
-
-   ⏳ Aging skills (re-validate or boost):
-   - {name} — confidence {original} → {effective} (extracted {date}, {age}d ago)
-   ```
-4. If a new candidate overlaps with a stale skill, propose replacing it instead of creating a new one
 
 ### 2. Apply the quality bar + confidence scoring
 
@@ -76,6 +50,28 @@ Each candidate must also pass all three qualitative checks:
   - ❌ Fail: "Do what we did earlier with the JSON" — requires session context to understand
 
 If zero candidates pass both the score threshold and qualitative checks: report "No extractable skills found in this session." and stop.
+
+### 2.5. Scan for stale skills (confidence decay)
+
+Skip entirely if no candidates passed Step 2's quality bar.
+
+Check existing skills for staleness:
+
+1. Read all `workspace/skills/*.md` files
+2. For each file with `confidence:` and `extracted:` frontmatter:
+   - Calculate age in days since `extracted:` date
+   - Apply decay: `effective_confidence = confidence - (age_days / 5)` (loses ~6 points per month)
+   - If effective_confidence < 40: flag as **stale** — candidate for pruning
+   - If effective_confidence 40-59: flag as **aging** — candidate for re-validation
+3. If any stale/aging skills found, report them before proposing new extractions:
+   ```
+   ⚠ Stale skills (consider pruning):
+   - {name} — confidence {original} → {effective} (extracted {date}, {age}d ago)
+
+   ⏳ Aging skills (re-validate or boost):
+   - {name} — confidence {original} → {effective} (extracted {date}, {age}d ago)
+   ```
+4. If a new candidate overlaps with a stale skill, propose replacing it instead of creating a new one
 
 ### 3. Check for duplicates
 
@@ -136,7 +132,7 @@ extracted: {YYYY-MM-DD}
 - {important constraints, gotchas, or things that look like they'd work but don't}
 ```
 
-The `confidence:` and `extracted:` frontmatter enables Step 1.5's decay mechanism in future runs.
+The `confidence:` and `extracted:` frontmatter enables Step 2.5's decay mechanism in future runs.
 
 Writing guidelines:
 - First line: plain sentence, no heading — this is what future sessions scan to decide relevance

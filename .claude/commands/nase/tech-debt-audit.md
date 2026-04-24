@@ -7,10 +7,6 @@ Systematically audit a repository for tech debt, architecture health, best-pract
 
 **Input:** $ARGUMENTS — repo name or path (resolved via `.local-paths` and `workspace/kb/.domain-map.md`)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Input Guard
 
 If $ARGUMENTS is empty or blank:
@@ -34,7 +30,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - Inconsistent patterns (e.g., some endpoints use middleware, others don't)
    - TODO/FIXME/HACK comments with context
    - Test gaps in critical paths
-   - Silently skipped parameterized tests: for .NET repos, compare `dotnet test --list-tests | wc -l` against `[TestMethod]`/`[Fact]` attribute count. MSTest `[DataRow]` configurations can silently skip execution — CI stays green but tests never run. Pattern: 122 tests (291→413) were silently skipped in Insights-monitoring until caught during review.
+   - Silently skipped parameterized tests: for .NET repos, compare `dotnet test --list-tests | wc -l` against `[TestMethod]`/`[Fact]` attribute count. MSTest `[DataRow]` configurations can silently skip execution — CI stays green but tests never run.
    - CI stale binary patterns: check install/download steps in pipeline YAML for existence-only guards (e.g. `if (Test-Path binary)` or `test -f binary`) instead of version guards (`binary --version`). Stale binaries persist on self-hosted agents between runs and cause silent version drift.
    - Pipeline inefficiencies (redundant stages, unpinned refs)
 

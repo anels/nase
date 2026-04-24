@@ -7,10 +7,6 @@ description: Address unresolved PR review comments — fetch, analyze, fix code 
 
 ---
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Phase 0: Input Guard
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md` — except on empty input, ask the user for the PR URL using `AskUserQuestion` instead of printing usage.
@@ -235,10 +231,8 @@ PR comments addressed ✓
   Commit: {short_sha} — {commit_subject}
 ```
 
-Append to `workspace/logs/{YYYY-MM-DD}.md`:
-```
-- Address comments: {repo_name}#{pr_number} — {N} resolved ({M} accepted, {K} declined, {J} replies)
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `address-comments`).
+Log: `{repo_name}#{pr_number} — {N} resolved ({M} accepted, {K} declined, {J} replies)`
 
 ---
 

@@ -246,9 +246,5 @@ If the user agrees (or proactively says "add this to KB"), run `/nase:kb-update 
 
 ## Final — Daily Log
 
-Append a summary to `workspace/logs/YYYY-MM-DD.md`:
-```
-### PR Review: <repo>#<number>
-- Reviewed <N> files, found <N> issues across <categories>
-- Key findings: <1-2 line summary>
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`).
+Log: `{repo}#{number} — {N} files, {N} issues ({categories}); key: {1-line summary}`
