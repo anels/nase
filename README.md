@@ -107,67 +107,140 @@ Most Claude Code setups are a collection of prompts. nase is a **persistent AI e
 
 ## Use cases
 
-### Implement a fix or new feature
+### Your daily workflow
 
-- **Idea to merged PR without leaving the chat** — onboard repo context, brainstorm the approach, then let `/fsd` drive the full cycle autonomously: code → test → fix loop → commit → push → draft PR
-- **Smart reviewer discovery** — finds the right people by mining KB for domain experts, then git history for recent contributors, then CODEOWNERS as fallback
+- **Structured start and finish** — `/today` syncs PR and Jira statuses, surfaces priorities, and plans your focus; `/wrap-up` autonomously captures the day's learnings into a journal entry
+- **Continuous learning** — `/reflect` after each task extracts learnings while they're fresh; `/wrap-up` rolls them into KB updates and reusable skills
+- **Zero manual note-taking** — daily logs are auto-created by hooks, commit summaries are auto-appended at session end, and `/recap` generates structured summaries on demand
+
+```mermaid
+flowchart LR
+    A["/today"] --> B["/onboard"]
+    B --> C["focused work"]
+    C --> D["/reflect"]
+    D --> C
+    C --> E["/wrap-up"]
+    E --> F(["journal +<br>KB updated"])
+    style A fill:#0f3460,stroke:#0f3460,color:#fff
+    style F fill:#e94560,stroke:#e94560,color:#fff
+```
+
+```
+/nase:today                    # morning: sync statuses, surface priorities, plan focus
+/nase:onboard                  # refresh repo context for the day
+  focused work                  # implement, review PRs, debug — whatever's on the list
+/nase:reflect                  # after completing a task: extract learnings while fresh
+  ... more work ...
+/nase:wrap-up                  # evening: reflect → learn → extract-skills → kb-update → journal
+```
+
+### Implement a feature or fix
+
+- **Idea to merged PR without leaving the chat** — onboard repo context, optionally design the approach, then let `/fsd` drive the full cycle autonomously: code → test → fix loop → commit → push → draft PR
+- **Smart reviewer discovery** — finds the right people by mining KB for domain experts, then git history for recent contributors, then CODEOWNERS as fallback; assigns them on GitHub and pings via Slack
 - **Interactive feedback loop** — walks through review comments with you: auto-fixes the obvious ones, discusses ambiguous ones 1-by-1
 - **You decide, nase executes** — you stay in the driver's seat on design decisions; nase handles the grunt work end-to-end
 
 ```mermaid
 flowchart LR
-    A["/onboard"] --> B["brainstorm / plan"] --> C["/fsd"] --> D["/request-review"]
-    D --> E["/address-comments"] --> F["/prep-merge"] --> G(["merge ✓"])
+    A["/onboard"] --> B["/design"]
+    B --> C["/fsd"]
+    C --> D["/request-review"]
+    D --> E{feedback?}
+    E -- yes --> F["/address-comments"] --> E
+    E -- approved --> G["/prep-merge"]
+    G --> H(["merge ✓"])
     style A fill:#0f3460,stroke:#0f3460,color:#fff
-    style G fill:#e94560,stroke:#e94560,color:#fff
+    style B fill:#533483,stroke:#533483,color:#fff
+    style H fill:#e94560,stroke:#e94560,color:#fff
 ```
+
+> `/design` (purple) is optional — skip it for simple fixes and go straight from `/onboard` to `/fsd`.
 
 ```
 /nase:onboard <repo>          # load repo context into KB
-  brainstorm / plan            # clarify requirements, design approach
+/nase:design <task>            # (optional) explore approaches, write design doc
 /nase:fsd <task>               # autonomous: implement → test → commit → push → draft PR
-                               #   (fsd will ask if you want to request review at the end)
-/nase:request-review <PR-URL>  # find right reviewers and ping them on Slack
+/nase:request-review <PR-URL>  # find right reviewers, assign on GitHub, ping on Slack
   ⏳ wait for feedback
 /nase:address-comments <PR-URL># discuss or auto-fix each comment → push
-  ⏳ wait for approval
-/nase:prep-merge <PR-URL>      # rebase, squash, clean up, un-draft, request review
+  ⏳ iterate until approved
+/nase:prep-merge <PR-URL>      # rebase, squash, clean up, un-draft
   merge ✓
 ```
 
 ### Review someone else's PR
 
-- **A review partner, not an auto-approver** — nase loads the repo's KB, cross-references Confluence docs and git history, then *discusses* the PR with you
-- **Deepens your understanding** — asks questions, challenges assumptions, surfaces architectural risks and subtle bugs that a context-free linter would miss; you learn the codebase faster and catch things you'd otherwise skim past
-- **Knowledge compounds** — insights from the discussion feed back into the KB, so every review makes future reviews sharper
+- **A review partner, not an auto-approver** — nase loads the repo's KB, cross-references Confluence docs and git history, then *discusses* the PR with you before drafting any comments
+- **Deepens your understanding** — runs parallel specialist agents (architecture, bugs, security, testability, DRY/KISS), then synthesizes findings; you learn the codebase faster and catch things you'd otherwise skim past
+- **Knowledge compounds** — confirmed findings are captured into the KB, so every review makes future reviews sharper
 - **You stay in control** — nase drafts inline comments; you review, edit, and post manually
 
 ```mermaid
 flowchart LR
-    A["/onboard"] --> B["/discuss-pr"] --> C(["post comments"])
+    A["/onboard"] --> B["/discuss-pr"]
+    B --> C["review drafts<br>with nase"]
+    C --> D{post?}
+    D -- yes --> E(["comments on GitHub"])
+    D -- edit --> C
     style A fill:#0f3460,stroke:#0f3460,color:#fff
-    style C fill:#533483,stroke:#533483,color:#fff
+    style E fill:#533483,stroke:#533483,color:#fff
 ```
 
 ```
 /nase:onboard <repo>           # ensure KB is fresh for this repo
 /nase:discuss-pr <PR-URL>      # deep analysis — architecture, bugs, security, patterns
                                #   produces inline comment drafts in chat
-  review drafts, edit, post manually on GitHub
+  review and edit drafts         # discuss findings, adjust comments
+  post to GitHub when ready      # nase posts only on your explicit instruction
 ```
 
-### Grow the knowledge base into new skills
+### Design before you build
+
+- **KB-aware design** — `/design` reads your KB for domain context, then researches and explores approaches to turn a vague idea into a concrete design doc
+- **Explore tradeoffs** — surfaces 2–3 approaches with tradeoffs before committing to one; you pick the direction
+- **Tracked effort docs** — writes a design doc to `workspace/efforts/` with lifecycle tracking (draft → active → done); `/today` auto-syncs status from PR and Jira
+- **Flows into implementation** — once the design is approved, `/fsd` picks up the effort doc as its spec
+
+```mermaid
+flowchart LR
+    A["/onboard"] --> B["/design"]
+    B --> C(["effort doc"])
+    C --> D{approved?}
+    D -- iterate --> B
+    D -- yes --> E["/fsd"]
+    E --> F(["draft PR"])
+    style A fill:#0f3460,stroke:#0f3460,color:#fff
+    style B fill:#533483,stroke:#533483,color:#fff
+    style F fill:#e94560,stroke:#e94560,color:#fff
+```
+
+```
+/nase:onboard <repo>           # load repo context so design is grounded in reality
+/nase:design <idea>            # KB-aware design → effort doc in workspace/efforts/
+  review and iterate             # discuss tradeoffs, refine approach
+/nase:fsd <task>               # implement from the approved design doc
+```
+
+### Build and share knowledge
 
 - **Knowledge that persists** — most AI setups forget everything between sessions; nase captures lessons, articles, and patterns into a structured KB that survives session resets
-- **The workspace programs itself** — `extract-skills` turns recurring patterns into reusable slash commands; you solve a problem once, then never again
-- **KB stays lean** — periodic `kb-review` deduplicates, cross-references, and prunes stale entries instead of letting it become a junk drawer
+- **The workspace programs itself** — `/extract-skills` turns recurring patterns into reusable slash commands; you solve a problem once, then never again
+- **KB stays lean** — periodic `/kb-review` deduplicates, cross-references, and prunes stale entries instead of letting it become a junk drawer
+- **Share with your team** — `/kb-teamshare` exports sanitized KB files and learned skills as a portable package; teammates import with `/kb-merge`
 - **Example — cross-repo automation**: you update a GitHub Actions workflow in one repo and realize every onboarded repo needs the same change. Because nase already knows each repo's structure, CI config, and branch conventions from the KB, you can extract a skill that iterates over all onboarded repos, creates a worktree, applies the change, and opens a draft PR in each — hours of manual context-switching become a single slash command
 
 ```mermaid
 flowchart LR
-    A["/learn"] --> B["/kb-update"] --> C["/extract-skills"] --> D["/kb-review"]
+    A["/learn"] --> B["/kb-update"]
+    B --> C["/extract-skills"]
+    C --> D["/kb-review"]
+    D --> E["/kb-teamshare"]
+    E --> F(["shared with team"])
+    F -.->|teammate| G["/kb-merge"]
     style A fill:#0f3460,stroke:#0f3460,color:#fff
-    style D fill:#e94560,stroke:#e94560,color:#fff
+    style F fill:#e94560,stroke:#e94560,color:#fff
+    style G fill:#533483,stroke:#533483,color:#fff
 ```
 
 ```
@@ -175,26 +248,8 @@ flowchart LR
 /nase:kb-update                # persist session learnings into KB
 /nase:extract-skills           # analyze session → extract reusable patterns as workspace skills
 /nase:kb-review                # periodically: deduplicate, cross-reference, clean up stale entries
-```
-
-### Design before you build
-
-- **KB-aware design** — `/design` reads your KB for domain context, then researches and explores approaches to turn a vague idea into a concrete design doc
-- **Explore tradeoffs** — surfaces 2–3 approaches with tradeoffs before committing to one; you pick the direction
-- **Tracked effort docs** — writes a design doc to `workspace/efforts/` with lifecycle tracking (draft → active → done); `/today` auto-syncs status
-- **Flows into implementation** — once the design is approved, `/fsd` picks up the effort doc as its spec
-
-```mermaid
-flowchart LR
-    A["/design"] --> B(["effort doc"]) --> C["/fsd"] --> D(["draft PR"])
-    style A fill:#0f3460,stroke:#0f3460,color:#fff
-    style D fill:#e94560,stroke:#e94560,color:#fff
-```
-
-```
-/nase:design <idea>            # KB-aware design → design doc in workspace/efforts/
-  review and approve approach
-/nase:fsd <task>               # implement from the design doc
+/nase:kb-teamshare             # export sanitized KB + skills for teammates
+/nase:kb-merge <path>          # import a teammate's shared KB into your workspace
 ```
 
 ### Track progress and report
@@ -202,15 +257,18 @@ flowchart LR
 - **Structured recaps on demand** — `/recap` generates a weekly or monthly summary from daily logs, commits, and task completions — no manual note-taking required
 - **Effort estimation** — `/estimate-eta` breaks down a task and gives a calibrated estimate based on KB context and historical patterns
 - **Usage analytics** — `/stats` shows a GitHub-style heatmap of your skill usage and workspace activity
+- **Data collected automatically** — hooks log every session, commit, and skill invocation; reports just surface what's already there
 
 ```mermaid
-flowchart LR
-    A["/recap"] --> B(["weekly / monthly summary"])
-    C["/estimate-eta"] --> D(["effort estimate"])
-    E["/stats"] --> F(["activity heatmap"])
-    style B fill:#0f3460,stroke:#0f3460,color:#fff
+flowchart TD
+    A["daily logs + skill usage<br><small>auto-collected by hooks</small>"]
+    A --> B["/recap"]
+    A --> C["/stats"]
+    B --> D(["structured summary<br>with improvement tips"])
+    C --> E(["GitHub-style<br>activity heatmap"])
+    style A fill:#16213e,stroke:#0f3460,color:#e0e0e0
     style D fill:#0f3460,stroke:#0f3460,color:#fff
-    style F fill:#0f3460,stroke:#0f3460,color:#fff
+    style E fill:#0f3460,stroke:#0f3460,color:#fff
 ```
 
 ---
