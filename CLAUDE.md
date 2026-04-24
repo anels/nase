@@ -53,38 +53,15 @@ AI engineer: *(see `workspace/config.md` — format: `AI engineer: <name>`)*
   - User corrections or feedback on approach
   - Key decisions or direction changes
 
-  Format: `- {HH:MM} {event}` under `## Sessions`. Keep entries concise (one line each).
+  Format: see `.claude/docs/daily-log-format.md`. Keep entries concise (one line each).
 - **Slack messages**: NEVER use `slack_send_message` to post directly — ALWAYS use `slack_send_message_draft` so the user can review and send manually. No exceptions.
 - **No AI attribution in external output**: never add "Co-Authored-By: Claude", "Generated with Claude Code", or similar AI attribution to commits, PR descriptions, review comments, or Slack messages.
 
 ### Core Skills
 
-| Command | Purpose |
-|---------|---------|
-| `/nase:today` | Morning kickoff — plan today's work |
-| `/nase:onboard` | Refresh all repos at session start |
-| `/nase:onboard <path-or-url>` | Onboard or refresh a single repo |
-| `/nase:learn <tip>` | Capture a tip, mistake pattern, or article |
-| `/nase:kb-update [domain]` | Persist durable architectural knowledge |
-| `/nase:kb-search <topic>` | Search across all KB files |
-| `/nase:design <idea>` | KB-aware collaborative design → tracked effort doc |
-| `/nase:fsd <task>` | Autonomous implement → commit → draft PR |
-| `/nase:recap [period]` | Structured recap of completed work |
-| `/nase:wrap-up` | End of day reflect + journal |
-| `/nase:improve-commit-message` | Part of commit sequence |
-| `/nase:request-review <PR-URL(s)>` | DM code owners to review on Slack |
-| `/nase:discuss-pr <PR-URL>` | Chat-first PR review; post to GitHub on request |
-| `/nase:address-comments <PR-URL>` | Fix or reply to unresolved PR comments |
-| `/nase:prep-merge <PR-URL>` | Rebase on base branch, squash, force-push, finalize PR for merge |
-| `/nase:restore` | Restore workspace/ from a zip backup |
-| `/nase:skill-audit [path]` | Scan skills for security risks (auto-runs in kb-merge) |
-| `/nase:tech-debt-audit <repo>` | Audit tech debt, architecture, best practices, modernization |
-| `/nase:doctor` | Workspace health check |
-| `/nase:init` | First-time setup or reconfigure workspace |
-| `/nase:tech-digest` | Fetch and summarize daily tech news |
-| `/nase:reflect` | Post-task reflection to extract learnings |
+See [README.md — Available commands](README.md#available-commands) for the full table. Key commands: `/nase:today`, `/nase:onboard`, `/nase:fsd`, `/nase:design`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`.
 
-For full skills table, workspace layout, KB structure, and architecture notes → read `.claude/docs/reference.md`
+For workspace layout, KB structure, shared docs, and architecture notes → read `.claude/docs/reference.md`
 
 ### Model Routing (subagents)
 
@@ -118,14 +95,9 @@ Rules: default `worker`. Never use `architect` for what `lookup` can answer. Whe
 - **SessionStart** → `session-start.sh`
 - **Stop** → `stop-todos.sh`, `stop-backup.sh`
 - **PostToolUse:Skill** → `track-skill.sh`
-- **PostToolUse:Edit|Write** → inline shellcheck (`.sh` files only)
+- **PostToolUse:Edit|Write** → inline shellcheck (`.sh` files only; always active)
+- **PostToolUse:Edit** → `edit-typecheck.sh` (opt-in; `.cs`/`.ts`/`.tsx`; enable via `/update-config`)
 - **WorktreeCreate / WorktreeRemove** → `worktree-log.sh`
-
-### Auto Hooks (always active)
-- **Inline shellcheck** — runs on `PostToolUse:Edit|Write` for `.sh` files; auto-runs `shellcheck -S warning` on the edited file. No configuration needed.
-
-### Opt-in Hooks
-- **`edit-typecheck.sh`** — runs on `PostToolUse:Edit` for `.cs`/`.ts`/`.tsx` files; looks up repo in `workspace/tmp/.typecheck-commands` and runs a quick type-check (30s timeout). Disabled by default — enable via `/update-config`.
 
 ### Workspace Skills Syncing
 - `session-start.sh` syncs `workspace/skills/*.md` → `.claude/commands/nase/workspace/` at every session start

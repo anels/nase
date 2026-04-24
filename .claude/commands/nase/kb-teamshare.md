@@ -8,19 +8,9 @@ Export selected KB files and workspace skills as a portable, sanitized directory
 **Input:** $ARGUMENTS
 (Optional: target directory path. If not provided, will ask interactively.)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Step 0: Load Language Config
 
-Read `workspace/config.md` and extract:
-- `conversation:` → language for all AskUserQuestion prompts and responses to the user in this session
-- `output:` → language for any text written into the exported files themselves
-
-If `workspace/config.md` is missing or has no `## Language` section, default both to English.
-
-Use these settings consistently throughout every step below.
+Follow `.claude/docs/language-config.md`. Use conversation language for prompts/responses, output language for exported file content.
 
 ## Why This Matters
 
@@ -290,10 +280,8 @@ Your teammate can import KB files with: /nase:kb-merge {export-dir}
 Skill files: copy the skills/ directory contents to their workspace/skills/
 ```
 
-Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
-```
-- KB export ({N} KB files + {N} skills, categories: {list}) → {export-dir}
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `kb-teamshare`).
+Log: `{N} KB files + {N} skills, categories: {list} → {export-dir}`
 
 ## Notes
 

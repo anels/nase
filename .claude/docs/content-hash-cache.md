@@ -61,5 +61,5 @@ Since skills run as Claude prompts (not bash scripts), the hash check is done co
 
 ## Skills Using This Pattern
 
-- `/nase:tech-digest` — caches source content hashes to skip unchanged sources
+- `/nase:tech-digest` — uses content hashing inline (same pattern, not referencing this doc directly)
 - `/nase:onboard` — caches repo CLAUDE.md + key file hashes to skip full re-scan when unchanged

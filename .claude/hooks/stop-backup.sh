@@ -46,7 +46,7 @@ fi
 REAL_TARGET=$(realpath -m "$TARGET" 2>/dev/null || readlink -f "$TARGET" 2>/dev/null || echo "$TARGET")
 # Denylist for the most obvious dangerous roots
 case "$REAL_TARGET" in
-  / | "$HOME" | /c | /c/ | /Users | /home | /tmp | /var | /etc | /usr )
+  / | "$HOME" | /Users | /home | /tmp | /var | /etc | /usr )
     log_status "ERROR" "unsafe target path: $TARGET (resolves to: $REAL_TARGET)"
     exit 1
     ;;

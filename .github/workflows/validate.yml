@@ -43,6 +43,7 @@ jobs:
           grep -q "stop-todos.sh" .claude/settings.json     || { echo "FAIL: stop-todos.sh not wired in settings.json"; exit 1; }
           grep -q "stop-backup.sh" .claude/settings.json    || { echo "FAIL: stop-backup.sh not wired in settings.json"; exit 1; }
           grep -q "track-skill.sh" .claude/settings.json    || { echo "FAIL: track-skill.sh not wired in settings.json"; exit 1; }
+          grep -q "worktree-log.sh" .claude/settings.json  || { echo "FAIL: worktree-log.sh not wired in settings.json"; exit 1; }
 
       - name: Command inventory check
         run: |

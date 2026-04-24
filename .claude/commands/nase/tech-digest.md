@@ -39,7 +39,7 @@ Auto-skips if today's digest already exists (deduplication enforced in Step 0). 
 (one ### block per section defined in config)
 ```
 
-If the user specifies a conversation language in config.md, use it for the output summary.
+Follow .claude/docs/language-config.md for conversation vs output language.
 
 5. Ensure `workspace/kb/general/tech-trends.md` exists (create with `# Tech Trends\n` header if missing; use an absolute path resolved from the workspace root, not a relative path). Then prepend the digest (newest-first ordering): read the full file → insert the new digest block immediately after the `# Tech Trends` header line → write the entire file back. This keeps newest entries at the top.
 

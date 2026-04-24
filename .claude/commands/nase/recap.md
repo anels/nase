@@ -5,10 +5,6 @@ description: Generate a structured recap of completed work plus actionable impro
 
 **Input:** $ARGUMENTS
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Step 1 — Resolve the date range
 
 If $ARGUMENTS is blank, use the `AskUserQuestion` tool (single-select) before proceeding:
@@ -48,16 +44,16 @@ Run these greps against the log files for the date range (i.e. `workspace/logs/Y
 
 ```bash
 # PRs opened via FSD (unique PR URLs)
-grep -hE "^- FSD:.*\[https" {LOG_FILES} | grep -oE "https://github[^ \)]+" | sort -u | wc -l
+grep -hE "^\- [0-9]{2}:[0-9]{2} \| fsd:.*https" {LOG_FILES} | grep -oE "https://github[^ \)]+" | sort -u | wc -l
 
 # Address-comments sessions
-grep -hc "^- Address comments:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
+grep -hcE "^\- [0-9]{2}:[0-9]{2} \| address-comments:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
 
 # Prep-merge sessions
-grep -hc "^- Prep merge:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
+grep -hcE "^\- [0-9]{2}:[0-9]{2} \| prep-merge:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
 
-# PRs deep-reviewed (PR Review: or Discuss PR: lines)
-grep -hE "^- (PR Review:|Discuss PR:)" {LOG_FILES} | grep -oE "[A-Za-z-]+#[0-9]+" | sort -u | wc -l
+# PRs deep-reviewed (review: tag lines)
+grep -hE "^\- [0-9]{2}:[0-9]{2} \| review:" {LOG_FILES} | grep -oE "[A-Za-z-]+#[0-9]+" | sort -u | wc -l
 
 # Unique SRE ticket IDs
 grep -hE "SRE-[0-9]+" {LOG_FILES} | grep -oE "SRE-[0-9]+" | sort -u | wc -l
@@ -66,10 +62,10 @@ grep -hE "SRE-[0-9]+" {LOG_FILES} | grep -oE "SRE-[0-9]+" | sort -u | wc -l
 grep -hE "(Canceled|Resolved)" {LOG_FILES} | grep "SRE-" | grep -oE "(Canceled|Resolved)" | sort | uniq -c
 
 # Repos onboarded or refreshed
-grep -hE "Onboarded|Refreshed" {LOG_FILES} | grep -oE "\`[A-Za-z0-9_-]+\`" | sort -u | wc -l
+grep -hE "^\- [0-9]{2}:[0-9]{2} \| onboard:" {LOG_FILES} | grep -oE "\`[A-Za-z0-9_-]+\`" | sort -u | wc -l
 
 # /nase:learn KB infusion events
-grep -hc "^- Learned:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
+grep -hcE "^\- [0-9]{2}:[0-9]{2} \| learn:" {LOG_FILES} | awk -F: '{s+=$NF} END{print s}'
 
 # Unique commit hashes (repo-wide, incl. teammates)
 cat {LOG_FILES} | grep -oE "^[0-9a-f]{7,10} " | sort -u | wc -l

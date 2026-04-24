@@ -100,7 +100,7 @@ Most Claude Code setups are a collection of prompts. nase is a **persistent AI e
 - **Daily workflow out of the box** — morning: `/nase:today` → work: `/nase:onboard <repo>` + `/nase:learn <url>` → evening: `/nase:wrap-up` (autonomous: reflect → learn → extract-skills → kb-update → journal).
 - **Learn from anything** — `/nase:learn` accepts plain text, GitHub repo URLs, or article URLs. Fetches content, filters for your stack, extracts learnings, and writes to `lessons.md` + the appropriate KB domain file.
 - **Tech digest on autopilot** — `/nase:tech-digest` fetches configured sources (blogs, changelogs, HN), filters for your stack, and prepends a dated digest to `tech-trends.md`. Entries older than 30 days are archived automatically.
-- **Self-programming** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as slash commands under `workspace/skills/`. See [Grow the knowledge base into new skills](#grow-the-knowledge-base-into-new-skills).
+- **Self-programming** — `/nase:extract-skills` analyzes the current session, identifies reusable patterns, and saves them as slash commands under `workspace/skills/`. See [Build and share knowledge](#build-and-share-knowledge).
 - **Auto-backup** — a `Stop` hook runs at every session end, creating a timestamped zip of `workspace/` at your configured backup path. Configurable retention policy (keep last N backups or last N days) cleans up old archives automatically.
 
 ---

@@ -8,10 +8,6 @@ Review and organize the knowledge base — deduplicate, cross-reference, consoli
 **Input:** $ARGUMENTS
 (Optional scope: `projects`, `general`, `ops`, `lessons`, or `all`. Default: `all`.)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Steps
 
 ### Step 0: Determine Scope
@@ -240,10 +236,8 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 
 ### Step 6: Execute (with approval)
 
-Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md` **before** prompting (ensures the log is written regardless of the user's next choice):
-```
-- KB review ({scope}) — {N} files scanned, {N} issues found
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `kb-review`) **before** prompting (ensures the log is written regardless of the user's next choice).
+Log: `({scope}) — {N} files scanned, {N} issues found`
 
 **Invoke the `AskUserQuestion` tool** (do not present as plain text):
 

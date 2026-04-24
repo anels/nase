@@ -19,12 +19,14 @@ If found, read it. Strip HTML comments (`<!-- ... -->`) — these are instructio
 
 ## 2. Draft PR Description
 
-**If a template was found:** use it as the skeleton. For each section the template defines, fill it with content derived from:
-- The full diff and changed files
-- The original PR body (if updating an existing PR — preserve context the author already wrote)
-- The commit history
+**If a template was found:** use it as the skeleton. Apply all of the following rules:
 
-Do not invent content for sections that cannot be determined from the code changes (e.g., leave Jira ticket placeholders as-is if no ticket is known). Preserve any checklist items from the template — do not pre-check boxes.
+- Use the template's exact section headings — do not rename, reorder, or merge them.
+- Fill each section with content derived from the full diff, changed files, commit history, and task context.
+- Preserve checklist items unchecked — do not pre-check boxes.
+- Leave sections empty (with their heading) rather than omitting them if content cannot be determined.
+- Do not invent content for sections that cannot be determined from the code changes (e.g., leave Jira ticket placeholders as-is if no ticket is known).
+- If updating an existing PR: preserve author-written content and migrate it into the correct sections; only update sections that changed.
 
 **If no template exists:** use this default structure:
 
@@ -44,8 +46,4 @@ The PR title must match the commit subject line (the first line of the commit me
 
 When squashing or creating commits from multi-author work (e.g., team mode with multiple contributors), add `Co-Authored-By` trailers for non-primary authors so their contribution is preserved in git history.
 
-**Exclude AI attribution** — never add `Co-Authored-By: Claude` or similar.
-
-## 5. No AI Attribution
-
-Do not include "Generated with Claude Code", "Co-Authored-By: Claude", or any AI attribution in the PR title, description, or commits.
+No AI attribution — see CLAUDE.md.

@@ -5,10 +5,6 @@ description: Initialize or reconfigure the nase workspace. Use for first-time se
 
 **Input:** $ARGUMENTS (optional: AI engineer name, e.g. `/init Alice`)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Steps
 
 ### 0. Check current state

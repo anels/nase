@@ -104,9 +104,29 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 
 ---
 
+## Shared Docs (`.claude/docs/`)
+
+| Doc | Purpose |
+|-----|---------|
+| `build-test-loop.md` | Build → test → fix loop used by `fsd` and `address-comments` |
+| `commit-push-pattern.md` | Stage → secrets scan → commit → improve → push sequence |
+| `content-hash-cache.md` | SHA-based change detection to skip unchanged content (used by `onboard`) |
+| `daily-log-format.md` | Standardized log entry format and canonical skill tags |
+| `github-queries.md` | Shared GraphQL queries for PR data (reviews, comments, checks) |
+| `kb-template.md` | Template for new repo KB files (used by `onboard`) |
+| `language-config.md` | Canonical algorithm for loading conversation vs output language |
+| `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
+| `pr-input-guard.md` | Input validation for skills that take a PR URL |
+| `repo-resolution.md` | Resolve GitHub URLs / repo names to local paths via `.local-paths` |
+| `worktree-pattern.md` | Safe worktree creation with `EnterWorktree` avoidance |
+| `workspace-data-gathering.md` | Load journals/logs/tasks within a date range (used by `recap`, `wrap-up`) |
+| `reference.md` | This file — workspace layout, KB structure, architecture notes |
+
+---
+
 ## Skills — Full Reference
 
-See the [Available commands table in README.md](README.md#available-commands) for the full list of `/nase:*` commands with descriptions.
+See the [Available commands table in README.md](../../README.md#available-commands) for the full list of `/nase:*` commands with descriptions.
 
 ---
 

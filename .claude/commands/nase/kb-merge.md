@@ -8,10 +8,6 @@ Merge an externally shared KB directory into your local `workspace/kb/`, with AI
 **Input:** $ARGUMENTS
 (Optional: path to the imported KB directory. If not provided, will ask interactively.)
 
-## Setup
-
-Needs: `AskUserQuestion` (fetch via ToolSearch).
-
 ## Steps
 
 ### Step 1: Locate the Imported KB
@@ -235,10 +231,8 @@ If any `MERGE CONFLICT` comments were inserted, remind the user:
 Run /nase:kb-review to find and resolve them.
 ```
 
-Append a one-line entry to `workspace/logs/{YYYY-MM-DD}.md`:
-```
-- KB merge from {source} — KB: {N} added, {N} updated; Skills: {N} added, {N} updated; {N} skipped
-```
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `kb-merge`).
+Log: `from {source} — KB: {N} added, {N} updated; Skills: {N} added, {N} updated; {N} skipped`
 
 ## Notes
 
