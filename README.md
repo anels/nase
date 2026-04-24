@@ -136,30 +136,32 @@ flowchart LR
 
 ### Implement a feature or fix
 
-- **Idea to merged PR without leaving the chat** — onboard repo context, optionally design the approach, then let `/fsd` drive the full cycle autonomously: code → test → fix loop → commit → push → draft PR
+- **Design first for complex tasks** — `/design` reads your KB, explores 2–3 approaches with tradeoffs, and writes a tracked effort doc to `workspace/efforts/`; `/today` auto-syncs effort status from PR and Jira. Skip `/design` for simple fixes.
+- **Idea to merged PR without leaving the chat** — `/fsd` drives the full cycle autonomously: code → test → fix loop → commit → push → draft PR
 - **Smart reviewer discovery** — finds the right people by mining KB for domain experts, then git history for recent contributors, then CODEOWNERS as fallback; assigns them on GitHub and pings via Slack
 - **Interactive feedback loop** — walks through review comments with you: auto-fixes the obvious ones, discusses ambiguous ones 1-by-1
-- **You decide, nase executes** — you stay in the driver's seat on design decisions; nase handles the grunt work end-to-end
 
 ```mermaid
 flowchart LR
     A["/onboard"] --> B["/design"]
-    B --> C["/fsd"]
-    C --> D["/request-review"]
-    D --> E{feedback?}
-    E -- yes --> F["/address-comments"] --> E
-    E -- approved --> G["/prep-merge"]
-    G --> H(["merge ✓"])
+    B --> C{approved?}
+    C -- iterate --> B
+    C -- yes --> D["/fsd"]
+    A -.->|simple fix| D
+    D --> E["/request-review"]
+    E --> F{feedback?}
+    F -- yes --> G["/address-comments"] --> F
+    F -- approved --> H["/prep-merge"]
+    H --> I(["merge ✓"])
     style A fill:#0f3460,stroke:#0f3460,color:#fff
     style B fill:#533483,stroke:#533483,color:#fff
-    style H fill:#e94560,stroke:#e94560,color:#fff
+    style I fill:#e94560,stroke:#e94560,color:#fff
 ```
-
-> `/design` (purple) is optional — skip it for simple fixes and go straight from `/onboard` to `/fsd`.
 
 ```
 /nase:onboard <repo>          # load repo context into KB
-/nase:design <task>            # (optional) explore approaches, write design doc
+/nase:design <task>            # (complex tasks) explore approaches → effort doc
+  review and iterate             # discuss tradeoffs, refine until approved
 /nase:fsd <task>               # autonomous: implement → test → commit → push → draft PR
 /nase:request-review <PR-URL>  # find right reviewers, assign on GitHub, ping on Slack
   ⏳ wait for feedback
@@ -193,33 +195,6 @@ flowchart LR
                                #   produces inline comment drafts in chat
   review and edit drafts         # discuss findings, adjust comments
   post to GitHub when ready      # nase posts only on your explicit instruction
-```
-
-### Design before you build
-
-- **KB-aware design** — `/design` reads your KB for domain context, then researches and explores approaches to turn a vague idea into a concrete design doc
-- **Explore tradeoffs** — surfaces 2–3 approaches with tradeoffs before committing to one; you pick the direction
-- **Tracked effort docs** — writes a design doc to `workspace/efforts/` with lifecycle tracking (draft → active → done); `/today` auto-syncs status from PR and Jira
-- **Flows into implementation** — once the design is approved, `/fsd` picks up the effort doc as its spec
-
-```mermaid
-flowchart LR
-    A["/onboard"] --> B["/design"]
-    B --> C(["effort doc"])
-    C --> D{approved?}
-    D -- iterate --> B
-    D -- yes --> E["/fsd"]
-    E --> F(["draft PR"])
-    style A fill:#0f3460,stroke:#0f3460,color:#fff
-    style B fill:#533483,stroke:#533483,color:#fff
-    style F fill:#e94560,stroke:#e94560,color:#fff
-```
-
-```
-/nase:onboard <repo>           # load repo context so design is grounded in reality
-/nase:design <idea>            # KB-aware design → effort doc in workspace/efforts/
-  review and iterate             # discuss tradeoffs, refine approach
-/nase:fsd <task>               # implement from the approved design doc
 ```
 
 ### Build and share knowledge
