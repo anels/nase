@@ -75,19 +75,19 @@ options:
 ```
 
 ### 5. Create pre-restore snapshot
-Before any changes, create a local snapshot for rollback:
+Before any changes, capture the timestamp once and create a local snapshot for rollback:
 ```bash
-cp -rp "$NASE_ROOT/workspace" "$NASE_ROOT/workspace-pre-restore-$(date +%Y%m%dT%H%M%S)/"
+TS=$(date +%Y%m%dT%H%M%S)
+SNAPSHOT_DIR="$NASE_ROOT/workspace-pre-restore-$TS"
+cp -rp "$NASE_ROOT/workspace" "$SNAPSHOT_DIR/"
 ```
-Tell the user: "Snapshot created at `workspace-pre-restore-{timestamp}/`. Delete it once you've verified the restore."
+Tell the user: "Snapshot created at `workspace-pre-restore-$TS/`. Delete it once you've verified the restore."
 
-Before proceeding, verify the snapshot was created successfully. Capture the exact snapshot path from the `cp` command above instead of guessing via `ls`:
+Before proceeding, verify the snapshot was created successfully:
 ```bash
-SNAPSHOT_DIR="$NASE_ROOT/workspace-pre-restore-$(date +%Y%m%dT%H%M%S)"
-# (use the same SNAPSHOT_DIR variable set before the cp command)
 snapshot_count=$(find "$SNAPSHOT_DIR" -type f 2>/dev/null | wc -l)
 ```
-If `$snapshot_dir` does not exist or `$snapshot_count` is 0: abort with "ERROR: Pre-restore snapshot is empty or missing — aborting to prevent data loss. Check disk space and permissions, then retry." Do NOT proceed with deletion.
+If `$SNAPSHOT_DIR` does not exist or `$snapshot_count` is 0: abort with "ERROR: Pre-restore snapshot is empty or missing — aborting to prevent data loss. Check disk space and permissions, then retry." Do NOT proceed with deletion.
 
 On a new machine, also suggest `/nase:init` to verify hooks and config.
 

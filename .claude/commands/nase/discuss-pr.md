@@ -33,6 +33,8 @@ gh api repos/<owner/repo>/pulls/<PR>/reviews --paginate
 
 Save: title, body, head SHA, changed file list, full diff, existing inline comments (with `id`, `path`, `line`, `body`, `user.login`, `in_reply_to_id`), existing reviews (with `id`, `state`, `body`, `user.login`).
 
+**PR size gate:** Check `additions + deletions` from PR metadata. If > 1500 lines, flag to user before proceeding: "This PR is {N} lines — single-pass review reliability drops significantly at this size. Consider recommending the author split by concern (e.g. API surface vs data layer vs migrations) before deep review." The user decides whether to proceed or ask for a split. This prevents discovering mid-review that the PR is too large to hold in context reliably (lesson from Insights#4290: 3k+ lines required double-review with different findings each pass).
+
 Group comments into threads: top-level comment + all replies sharing the same `in_reply_to_id`.
 
 ## Step 2.5 — Collect context
@@ -40,6 +42,8 @@ Group comments into threads: top-level comment + all replies sharing the same `i
 For each file touched by the diff, read its key dependencies: interfaces it implements, base classes it extends, and primary callers — anything not in the diff itself that explains how the changed code fits into the larger design. Cross-reference the KB (loaded in Step 1) for architectural constraints relevant to the changed area. If the KB references a Confluence doc for this domain, read it. The goal is to have enough context that agent findings can be evaluated against actual design intent, not just the diff in isolation.
 
 **Platform prohibition pre-check (infra PRs only):** If the PR touches infrastructure or networking files (VNet peering, Private Endpoints, DNS, cluster networking, Terraform/Bicep/ARM templates), check the KB for any platform team prohibitions before proceeding to agent analysis. A technically correct implementation of a prohibited operation is a critical finding that takes priority over code-level analysis — surface it immediately rather than burying it among code review findings.
+
+**Performance claim check:** Scan the PR title and body for performance claims ("X% faster", "reduces latency", "N× throughput", "improves performance"). If found, check whether the PR body includes a benchmark table with: test environment, workload description, before/after median + p95, and measurement methodology. If missing, add a finding: "Performance claim without benchmark data — the first reviewer will ask for it, adding 1-3 days of review latency. Recommend author add a benchmark table to the PR body." (Lesson from Insights-LookerML#1197 review cycle.)
 
 ## Step 3 — Launch specialist agents + engage existing comments
 
@@ -112,7 +116,7 @@ The goal: never present a finding as "medium, worth discussing" when code tracin
 
 ### 5b. Trace implementations
 
-For each deep-dive candidate, spawn an Explore agent (sonnet) to trace the code path. Give each agent:
+For each deep-dive candidate, spawn an Explore agent (role: worker) to trace the code path. Give each agent:
 - The specific question to answer (e.g., "does `DashboardService.GetDashboardAsync` do `Enum.TryParse` internally when it receives a non-enum sourceType string?")
 - Where to look (the implementation repo if known from KB, NuGet package source, or the current repo)
 - What to report: the concrete code path, whether the concern is confirmed or refuted, and evidence (file:line)

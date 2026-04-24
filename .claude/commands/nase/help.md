@@ -12,22 +12,13 @@ Pulls from README.md dynamically so the help output always matches the actual av
    - The intro paragraph (what nase is and what it does)
    - The **Available commands** section (all command tables)
    - The **Automatic hooks** section
-3. Append this footer:
-
----
-**KB layout**
-```
-workspace/kb/
-  projects/   ← per-repo knowledge (architecture, constraints, patterns)
-  general/    ← cross-project (stack patterns, workflow, debugging, tech-trends)
-workspace/tasks/   ← lessons.md, todo.md
-workspace/logs/    ← daily logs + .backup-status
-```
-**Local paths**: `.local-paths` at workspace root (backup target + repo paths). Set during `/nase:init`.
+3. Append a **KB layout** footer — generate it dynamically by scanning `workspace/kb/` subdirectories and `workspace/tasks/`, `workspace/logs/`. Show each directory with a one-line description of its contents. Do not hardcode the layout — the actual directory structure is the source of truth.
+4. Also list workspace-specific skills by scanning `workspace/skills/*.md` filenames.
 
 ---
 
 ## Notes
 - Do not hardcode the command list — always read from README.md so help stays in sync
+- Do not hardcode the KB layout — always scan `workspace/kb/` so it reflects current structure
 - If README.md is missing, fall back to listing `.claude/commands/nase/` filenames
 - If the user specifies a conversation language in config.md, use it for the help output.

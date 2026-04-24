@@ -32,7 +32,7 @@ From the task in $ARGUMENTS, infer the most likely target repo by matching keywo
 Then fetch latest and check the repo's git state:
 ```bash
 git -C {repo} fetch origin
-git -C {repo} symbolic-ref refs/remotes/origin/HEAD | sed 's|refs/remotes/origin/||'
+git -C {repo} symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || git -C {repo} remote show origin 2>/dev/null | sed -n '/HEAD branch/s/.*: //p'
 git -C {repo} status --short
 git -C {repo} branch --show-current
 ```
@@ -45,14 +45,26 @@ options: one option per repo in context.md, plus "Other — I'll type the path"
 ```
 After receiving answer, immediately proceed to Phase 2.
 
-## Phase 2: Upfront Config — 3 questions, front-loaded, then autonomous
+## Phase 2: Upfront Config — 4 questions, front-loaded, then autonomous
 
-Ask all 3 questions before touching any code. After the last answer, drive to completion without pausing. The value of FSD is that decisions happen once, upfront — not scattered throughout execution.
+Ask all 4 questions before touching any code. After the last answer, drive to completion without pausing. The value of FSD is that decisions happen once, upfront — not scattered throughout execution.
+
+**Q0 — Success criteria:**
+```
+question: "How will we know this is done?"
+header: "Done When [1/4]"
+options:
+  - label: "Tests pass"        , description: "All new + existing tests green (default for code changes)"
+  - label: "Manual verify"     , description: "I'll check it myself after you push"
+  - label: "Spec the criteria" , description: "I'll describe exactly what done looks like"
+```
+If "Spec the criteria": use AskUserQuestion with a free-text prompt to collect the criteria. Store as `success_criteria` for use in Phase 4 and Phase 5.
+After receiving answer, immediately ask Q1.
 
 **Q1 — Execution mode:**
 ```
 question: "How should I implement this task?"
-header: "Execution Mode [1/3]"
+header: "Execution Mode [2/4]"
 options:
   - label: "Direct"  , description: "I implement it myself (fast, good for focused tasks)"
   - label: "Team"    , description: "Spawn coordinated agents in parallel (better for complex multi-area work)"
@@ -62,7 +74,7 @@ After receiving answer, immediately ask Q2.
 **Q2 — Worktree isolation:**
 ```
 question: "Create an isolated git worktree for this task?"
-header: "Isolation [2/3]"
+header: "Isolation [3/4]"
 options:
   - label: "Yes — worktree" , description: "Recommended: keeps the main branch clean while I work"
   - label: "No"             , description: "Work directly in the repo checkout"
@@ -72,7 +84,7 @@ After receiving answer, immediately ask Q3.
 **Q3 — Pull request:**
 ```
 question: "Open a draft PR on GitHub when done?"
-header: "Pull Request [3/3]"
+header: "Pull Request [4/4]"
 options:
   - label: "Yes — draft PR" , description: "Push branch and open a draft PR (you review and promote when ready)"
   - label: "No"             , description: "Just commit and push the branch"
@@ -136,6 +148,8 @@ Read the repo's `CLAUDE.md` (if not already read) for coding standards and const
 | Complex business component / OOP modelling | domain entity, stateful service, multi-class hierarchy | First Principles → SOLID → DRY |
 
 Use the lead principles as the primary design lens. The others (DRY, YAGNI, KISS, SOLID) still apply but yield to the lead when they conflict.
+
+**Complexity self-check (before writing any code):** Ask: "Would a senior engineer say this design is overcomplicated?" If yes — simplify first. Common signals: abstract class for a single implementor, config system for a single value, error handling for impossible scenarios, >3 layers of indirection for a straight-line operation.
 
 **Step 1 — DRY scan (before writing any code):**
 Grep for existing utilities, helpers, or patterns that overlap with the task. Reuse before creating. If a partial abstraction already exists, extend it rather than duplicating.

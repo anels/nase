@@ -45,10 +45,14 @@ gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 --decod
 
 For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd).
 
-Matching rules (simplified gitignore-style):
+Matching rules (GitHub CODEOWNERS syntax):
 - `/path/to/dir/` — matches anything under that directory
 - `*.ext` — matches by extension anywhere
 - `*` catch-all — matches everything, but more specific rules below it override
+- `**` — recursive match (e.g., `docs/**` matches all files under any `docs/` subdirectory)
+- `!pattern` — negation (explicitly un-owns files matching the pattern)
+- Trailing `/` — directory-only match
+- `@org/team` entries — note these for the report but skip for DM purposes (teams can't be DM'd directly; resolve individual members from KB if possible)
 
 **3c. Exclude the PR author and alumni** — skip the PR author's handle. Also check the KB for an "Alumni" or "no longer on team" section and skip anyone listed there.
 
@@ -138,3 +142,13 @@ Only send to the people the user confirmed in question 1.
 ## Step 9 — Send DMs (parallel)
 
 Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed.
+
+## Step 10 — Assign reviewers on GitHub
+
+After sending DMs, also assign confirmed reviewers on the PR so it appears in their GitHub review queue:
+
+```bash
+gh pr edit {pr_number} --repo {owner}/{repo} --add-reviewer {handle1},{handle2},...
+```
+
+If a reviewer doesn't have a GitHub handle (Slack-only), skip them for this step. Report which handles were assigned.

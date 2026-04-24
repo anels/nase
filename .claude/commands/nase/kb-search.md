@@ -50,13 +50,38 @@ Grep each in-scope file for the search terms (case-insensitive). For each match,
 
 Collect all passing entries with their source file paths.
 
+**Header-aware relevance scoring:** When counting search term occurrences for ranking, apply a **2x weight multiplier** for matches found in `### YYYY-MM-DD — {topic}` header lines. Headers are topically focused, so a match there is a stronger relevance signal than a match in the body. Specifically:
+- Count occurrences in the entry's header line → multiply by 2
+- Count occurrences in the body (everything after the header) → multiply by 1
+- Sum = **weighted relevance score** (used in Step 4 ranking)
+
+**Fuzzy fallback** — if the grep returns zero matches across all in-scope files:
+1. Split the search query on hyphens, spaces, underscores, and camelCase boundaries (e.g., `insightsMonitoring` → `insights`, `monitoring`; `oncall-alert-patterns` → `oncall`, `alert`, `patterns`)
+2. Re-search with each individual term (still case-insensitive)
+3. Only keep entries that match **≥2 terms** (if the split produced 3+ terms) or **≥1 term** (if the split produced 1-2 terms)
+4. Set a flag `fuzzy_fallback = true` so Step 4 can adjust the output header
+
+Fuzzy fallback never mixes with exact results — it activates only when exact search returns 0 results.
+
 ### Step 4: Rank and present results
 
-Sort by:
-1. **Relevance** (descending): count of search term occurrences in the entry
-2. **Date** (descending): newer entries rank higher within the same relevance score
+For each matched entry, compute:
+- **Relevance score**: weighted occurrence count from Step 3 (header at 2x, body at 1x)
+- **Freshness date**: the MORE RECENT of (a) the entry's `### YYYY-MM-DD` date and (b) the file's mtime via `stat -f %m` (converted to YYYY-MM-DD). If stat fails for a file, use entry date only. Performance optimization: if `workspace/tmp/kb-health-report.md` exists and was generated today, prefer its freshness data over running stat on every file.
 
-Present up to 10 results in this format:
+Sort by:
+1. **Relevance** (descending): weighted occurrence count
+2. **Freshness** (descending): more recent "last active" date wins ties
+3. **Alphabetical** (ascending): file path as final tiebreaker
+
+Present up to 10 results. If `fuzzy_fallback` is true, use the alternate header:
+
+```
+## KB Search — "{original query}" · {N} partial match(es)
+⚠️ No exact match found. Showing partial matches for: {split terms joined by ", "}
+```
+
+Otherwise use the standard header:
 
 ```
 ## KB Search — "{query}" · {N} result(s) [{filters applied}]
@@ -82,6 +107,22 @@ Suggestions:
 - Add to KB: run `/nase:learn {query}` to research and document this topic
 ```
 
+### Step 4b: Related entries via cross-references
+
+After presenting primary results, check each matched file for `> See also:` links. Collect the unique link targets (other KB files) that are NOT already in the primary results.
+
+If any exist, append a "Related" section after the last result:
+
+```
+---
+### Related (via cross-references)
+- [{linked file topic}]({path}) — linked from {source file basename}
+- ...
+(showing up to 3 related files)
+```
+
+Limit to 3 related files. If multiple matched files link to the same target, show it once and note all source files. If no `> See also:` links exist in matched files, skip this section entirely.
+
 ### Step 5: Offer next actions
 
 After displaying results (when results exist), print:
@@ -95,6 +136,8 @@ No interactive prompt — keep this skill fast and non-blocking.
 ## Notes
 
 - This skill is **read-only** — it never writes to the KB
+- **Fuzzy fallback** splits on hyphens, spaces, underscores, and camelCase boundaries. Activates only when exact search returns 0 results — never mixes with exact results
+- **File mtime** uses macOS `stat -f %m` syntax. If `workspace/tmp/kb-health-report.md` exists and was generated today, use its freshness data instead of running stat on every file (performance optimization)
 - For fuzzy matching, use multiple short keywords rather than long phrases
 - Entries without `**Tags:**` or `**Confidence:**` fields are included in all unfiltered searches; the metadata fields are optional
 - The `in:` filter is fastest — use it when you know the domain

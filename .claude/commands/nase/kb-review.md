@@ -27,24 +27,29 @@ Parse $ARGUMENTS to decide what to review:
 
 ### Step 1: Scan and Index
 
-Read all KB files in parallel for efficiency. For each file, build a mental index of:
+Read all KB files in parallel for efficiency. For each file, build an index of:
 - **Topics covered** (1-line per major section or entry)
 - **Key entities** mentioned (repos, tickets, dates, tools, services)
-- **Last updated** (most recent date found in the content)
 - **Entry count** (number of dated entries or sections)
+- **Last active date** — use dual-track detection:
+  - **Track 1 (entry date):** most recent `### YYYY-MM-DD` date found in the content
+  - **Track 2 (file mtime):** run `stat -f %m {file}` (macOS) to get Unix epoch, convert to YYYY-MM-DD. If `stat` fails for any file (broken symlink, permission denied), skip Track 2 for that file.
+  - **Last active = the MORE RECENT of Track 1 and Track 2**
+  - ⚠️ mtime is a "best effort" signal — `/nase:restore` resets all mtimes to restore-time. **Detection:** if >80% of scanned files share the same mtime (within 60 seconds of each other), ignore Track 2 entirely and rely solely on entry dates.
 
 Present a **KB Overview Table**:
 
 ```
 ## KB Overview — {scope}
 
-| File | Topics | Entries | Last Updated | Health |
-|------|--------|---------|-------------|--------|
-| general/debugging.md | Synthetic alerts, ADF diagnostics | 3 | 2026-03-17 | 🟢 |
-| projects/orchestrator.md | Architecture, migrations, CI | 5 | 2026-03-18 | 🟢 |
-| ... | ... | ... | ... | ... |
+| File | Topics | Entries | Last Active | Source | Health |
+|------|--------|---------|------------|--------|--------|
+| general/debugging.md | Synthetic alerts, ADF diagnostics | 3 | 2026-03-17 | entry | 🟢 |
+| projects/orchestrator.md | Architecture, migrations, CI | 5 | 2026-04-20 | mtime | 🟢 |
+| ... | ... | ... | ... | ... | ... |
 
-Legend: 🟢 Active (updated <14d) | 🟡 Aging (14-30d) | 🔴 Stale (>30d) | ⚪ Empty
+Legend: 🟢 Active (<14d) | 🟡 Aging (14-30d) | 🔴 Stale (>30d) | ⚪ Empty
+Source: "entry" = date from ### header, "mtime" = date from file modification time
 ```
 
 ### Step 2: Detect Duplicates and Overlaps
@@ -93,6 +98,53 @@ Present as a **Connection Map**:
 | lessons.md ({topic} diagnostic) | general/debugging.md | Lesson should be promoted to debugging KB |
 | ops/{env}.md | projects/{repo}.md | Ops procedures affect project deployment |
 ```
+
+### Step 3b: Relationship Graph
+
+Build a relationship graph across all in-scope KB files using two signal types:
+
+**Explicit links:** Count existing `> See also:` lines in each file. Parse the markdown link target to identify which KB file is referenced. Record inbound and outbound counts per file.
+
+**Implicit mentions:** For each KB file, extract its basename without extension (e.g., `insights-monitoring` from `insights-monitoring.md`). Then scan every OTHER file's content for that basename string (case-insensitive). A match means the other file implicitly references this one. Exclude:
+- Self-references (file mentioning its own basename)
+- Matches inside `> See also:` lines (already counted as explicit)
+- **Basenames shorter than 5 characters** (e.g., `cli`, `sre`) — these produce too many false positives. Short-named files are tracked via explicit `> See also:` links only.
+
+For each file, record:
+- **Outbound explicit** — count of `> See also:` links FROM this file
+- **Outbound implicit** — count of other-file basenames mentioned in this file's body
+- **Inbound explicit** — count of `> See also:` links in OTHER files pointing TO this file
+- **Inbound implicit** — count of other files whose body mentions THIS file's basename
+
+Present a **Relationship Summary** (each subsection is capped to prevent output bloat — parse `--verbose` from $ARGUMENTS in Step 0 to remove caps):
+
+```
+## Relationship Graph
+
+### 🔗 Hub files (top 5 by total connections)
+| File | In (explicit) | In (implicit) | Out (explicit) | Out (implicit) | Total |
+|------|--------------|--------------|----------------|----------------|-------|
+| projects/insights.md | 5 | 12 | 9 | 3 | 29 |
+| ... | ... | ... | ... | ... | ... |
+
+### 🏝️ Orphans (zero inbound references — max 10)
+- `general/spark-scala.md` — 0 inbound links, 2 outbound. Consider: is this file discoverable?
+- ...
+
+### 🔄 Clusters (groups of 3+ mutually-referencing files — max 5)
+- **insights-* family:** insights.md ↔ insights-monitoring.md ↔ insights-containerimages.md ↔ insights-dashboarding.md ↔ insights-ops.md
+- ...
+
+### ➡️ Missing reciprocal links (A links to B, but B doesn't link back — max 10)
+| From | Links to | But missing backlink |
+|------|----------|---------------------|
+| general/debugging.md | ops/oncall.md | ops/oncall.md → general/debugging.md |
+| ... | ... | ... |
+```
+
+If any section exceeds its cap, append: `({N} more — run /nase:kb-review --verbose for full list)`.
+
+**Feed into Step 5:** Missing reciprocal links become "Quick Fix" candidates (add `> See also:` backlinks). Orphans become "Cleanup" candidates (review for relevance). Clusters with overlapping content feed into Step 2 consolidation suggestions.
 
 ### Step 4: Surface Stale and Orphaned Content
 
@@ -220,6 +272,13 @@ For each change applied:
 5. Do NOT delete the lesson — it stays as the original record; the KB gets the clean, distilled version
 
 ### Step 7: Summary
+
+**Write report to file:** Before displaying the summary, concatenate all output from Steps 1, 2, 3, 3b, 4, and 4b into `workspace/tmp/kb-health-report.md` (create `workspace/tmp/` if missing). Overwrite any existing file. Add a header:
+```
+# KB Health Report — {YYYY-MM-DD}
+Generated by `/nase:kb-review {scope}` on {YYYY-MM-DD HH:MM}
+```
+This file is referenced by `/nase:kb-search` for cached freshness and relationship data.
 
 Display what was done:
 
