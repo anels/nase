@@ -34,13 +34,18 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - CI stale binary patterns: check install/download steps in pipeline YAML for existence-only guards (e.g. `if (Test-Path binary)` or `test -f binary`) instead of version guards (`binary --version`). Stale binaries persist on self-hosted agents between runs and cause silent version drift.
    - Pipeline inefficiencies (redundant stages, unpinned refs)
 
-3. **Architecture review** — step back from individual files and evaluate structural health:
-   - **Layering violations** — does business logic leak into controllers/API handlers? Do data access patterns bypass the intended service layer?
-   - **Dependency direction** — do lower-level modules depend on higher-level ones? Are there circular dependencies between projects/packages?
-   - **Separation of concerns** — are there "god classes" or "god functions" that do too much? Are cross-cutting concerns (logging, auth, validation) scattered instead of centralized?
-   - **API surface** — are internal types exposed publicly? Are DTOs reused as domain models (or vice versa)?
-   - **Scaling bottlenecks** — single-threaded processing where parallelism is possible, in-memory state that prevents horizontal scaling, missing queue/async patterns for heavy work
-   - **Configuration sprawl** — settings scattered across env vars, appsettings, code constants, and DB rows with no single source of truth
+3. **Architecture review** — step back from individual files and evaluate structural health.
+
+   **Use Ousterhout vocabulary and heuristics from `workspace/kb/general/system-design.md` § Deep Modules, Design It Twice, Vertical Slices.** Frame every finding in terms of *module / interface / depth / seam / adapter / leverage / locality* — don't drift into "component", "service", or "boundary". Apply the **deletion test** and the **one-adapter-vs-two-adapters** rule before flagging missing abstractions; apply *the interface is the test surface* before flagging testability concerns.
+
+   **Concerns to scan for (frame each in the vocabulary above):**
+   - **Shallow modules** — interface nearly as complex as the implementation; thin wrappers that add no leverage. Run the deletion test before flagging.
+   - **Layering violations** — business logic leaking into controllers/API handlers; data access bypassing the intended service seam.
+   - **Dependency direction** — lower-level modules depending on higher-level ones; circular dependencies between projects/packages.
+   - **God modules** — classes or functions that do too much; cross-cutting concerns (logging, auth, validation) scattered across modules instead of pulled behind a single seam.
+   - **API surface leaks** — internal types exposed publicly; DTOs reused as domain models (or vice versa) — both indicate a missing seam.
+   - **Scaling bottlenecks** — single-threaded processing where parallelism is possible; in-memory state that prevents horizontal scaling; missing queue/async patterns for heavy work.
+   - **Configuration sprawl** — settings scattered across env vars, appsettings, code constants, and DB rows with no single source of truth (a missing config seam).
 
 4. **Best practices compliance** — check whether the repo follows its own documented standards and ecosystem conventions:
    - **Repo-level docs**: read `CLAUDE.md` and `CONTRIBUTING.md` if present. If `<repo>/docs/` exists, enumerate files under it and read only relevant guidance docs (e.g. `best-practices.md`, `coding-guidelines.md`, architecture, ADRs, conventions). Also read similarly named guideline files elsewhere in the repo. Compare actual code against what these docs prescribe — gaps between documented standards and reality are high-value findings.

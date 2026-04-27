@@ -151,21 +151,27 @@ Grep for existing utilities, helpers, or patterns that overlap with the task. Re
 **If execution mode = Team:**
 Invoke the `/team` skill with the task from $ARGUMENTS, including the classified task type and its principle order. **Each agent prompt MUST include the repo's build and test commands** (from KB or `CLAUDE.md`) and instruct the agent to verify its changes compile after editing. Wait for all agents to complete, then **immediately run a full build + test** before proceeding to Phase 5. If the build or tests fail, fix the issues (this counts as iteration 1 of Phase 5).
 
-**If execution mode = Direct — follow Red → Green → Refactor:**
+**If execution mode = Direct — follow Red → Green → Refactor in vertical slices:**
 
-1. **Red** — write tests first (skip for non-testable tasks like configuration, documentation, or infrastructure files):
+**Vertical-slice rule (do not violate):** one test → one implementation → repeat. Never write all tests up front and then all implementation. See `workspace/kb/general/system-design.md` § Vertical Slices (TDD) for the rationale (horizontal slicing produces tests of *imagined* behavior). The first cycle is a tracer bullet that proves the end-to-end path; subsequent cycles cover one behavior each.
+
+For each behavior, do one full Red→Green cycle before starting the next:
+
+1. **Red** — write ONE test for the next behavior (skip for non-testable tasks like configuration, documentation, or infrastructure files):
    - Scan existing test files to understand conventions (location, naming, assertion style, mocking patterns).
-   - Write failing tests that describe the expected behavior. Keep tests minimal and specific — one concern per test.
-   - Run the tests. Confirm they fail *for the right reason* (not a compile error — the feature genuinely doesn't exist yet).
+   - Write a single failing test that describes one observable behavior through the public interface (not implementation details — a test that would survive an internal refactor).
+   - Run the test. Confirm it fails *for the right reason* (not a compile error — the behavior genuinely doesn't exist yet).
 
-2. **Green** — implement the minimum to pass:
-   - Apply the top-ranked principle from Step 0 as the primary design lens. Do not implement anything the tests don't require (YAGNI).
-   - Write the smallest implementation that makes the tests pass.
-   - Re-run the tests. All new tests must be green; no existing tests may regress.
+2. **Green** — implement the minimum to pass THIS test:
+   - Apply the top-ranked principle from Step 0 as the primary design lens. Do not implement anything the current test doesn't require (YAGNI). Do not anticipate the next test's needs.
+   - Write the smallest implementation that makes this single test pass.
+   - Re-run the test. It must be green; no existing tests may regress.
+   - Loop back to Red for the next behavior. Stop when all planned behaviors are covered.
 
-3. **Refactor** — apply the lead principles from Step 0:
+3. **Refactor** — apply the lead principles from Step 0 once all Red→Green cycles are done:
+   - Never refactor while RED. Get to GREEN first.
    - Walk the lead principles: does the code satisfy each? If not, refactor until it does before moving on.
-   - Re-run tests after each refactor pass to confirm nothing broke.
+   - Re-run the full test suite after each refactor pass to confirm nothing broke.
 
 ---
 

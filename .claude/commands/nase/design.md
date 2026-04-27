@@ -1,6 +1,6 @@
 ---
 name: nase:design
-description: "KB-aware autonomous design skill — researches context first, asks only when genuinely blocked, explores 2-3 approaches with tradeoffs, and writes a tracked effort doc with lifecycle checklist. Use when starting any non-trivial feature or project. Triggers on: 'design', 'brainstorm', 'plan a feature', 'kickoff', 'start project', 'I want to build...', 'let's design...', or any request that needs collaborative thinking before implementation."
+description: "KB-aware autonomous design skill — researches context first, asks only when genuinely blocked, explores 2-3 approaches with tradeoffs, and writes a tracked effort doc with lifecycle checklist. Also supports `--grill` mode: stress-test an existing plan via one-question-at-a-time interview that walks the decision tree, recommends an answer per branch, and writes resolutions back to the effort doc. Use when starting any non-trivial feature or project. Triggers on: 'design', 'brainstorm', 'plan a feature', 'kickoff', 'start project', 'I want to build...', 'let's design...', or — for grill mode — 'grill me', 'grill this plan', 'stress-test plan', 'challenge this design', 'walk the decision tree', or `/nase:design --grill <slug>`."
 ---
 
 Turn ideas into concrete, tracked design plan through KB-aware autonomous research.
@@ -27,6 +27,14 @@ Apply these five principles to every design. The **order matters** — it change
 - **Complex Component / OO Modeling**: First Principles → SOLID → YAGNI → KISS → DRY
 
 Before presenting options in Phase 3, explicitly state which ordering you're applying and why. Use the principles as a lens to evaluate each option — not just pros/cons, but *which principle each option honors or violates*.
+
+## Mode Detection
+
+Before Phase 1, scan `$ARGUMENTS` for mode flags. Strip the flag from `$ARGUMENTS` before downstream parsing.
+
+- `--grill` present → enter **Grill Mode**: stress-test an existing plan via one-question-at-a-time interview. Skip all phases below and follow `.claude/docs/grill-mode.md`.
+- `--review` present → enter **Review Mode** (next section).
+- Otherwise: auto-detect Review Mode if the slug already exists in `workspace/efforts/`. If not, run normal design flow (Phase 1 onward).
 
 ## Review Mode
 

@@ -82,8 +82,8 @@ Rules: default `worker`. Never use `architect` for what `lookup` can answer. Whe
 
 ### CI Pipeline
 - **GitHub Actions** (`.github/workflows/validate.yml`) runs on push/PR to `main`
-- Checks: `bash -n` + `shellcheck` on all 5 hooks (`session-start`, `stop-todos`, `stop-backup`, `track-skill`, `worktree-log`), JSON validation, hook wiring, command inventory, bash syntax in skills
-- **Run locally before pushing**: `bash -n .claude/hooks/*.sh && shellcheck -S warning .claude/hooks/*.sh`
+- Checks: `bash -n` + `shellcheck` on all 6 hooks (`session-start`, `stop-todos`, `stop-backup`, `track-skill`, `worktree-log`, `block-dangerous-git`), JSON validation, hook wiring (glob-driven against `.claude/hooks/*.sh`), command inventory, skill bash syntax + shellcheck (error-level, suppressions in `.shellcheckrc`), hook regression tests (`tests/hooks/`), shared-doc reference integrity (`tests/check-shared-doc-refs.sh`), markdown internal-link check (lychee, offline)
+- **Run locally before pushing**: `bash tests/check-all.sh` — runs the same gates CI does, in one command
 
 ### Runtime Dependencies
 - **`jq`** — required by `track-skill.sh`; skill usage tracking silently fails without it
@@ -94,6 +94,7 @@ Rules: default `worker`. Never use `architect` for what `lookup` can answer. Whe
 ### Hook Event Map
 - **SessionStart** → `session-start.sh`
 - **Stop** → `stop-todos.sh`, `stop-backup.sh`
+- **PreToolUse:Bash** → `block-dangerous-git.sh` (blocks `reset --hard`, `clean -f`, `branch -D`, `checkout/restore .`, `config --global`, `--no-verify`, push to protected branches, force-push to main/master/develop)
 - **PostToolUse:Skill** → `track-skill.sh`
 - **PostToolUse:Edit|Write** → inline shellcheck (`.sh` files only; always active)
 - **PostToolUse:Edit** → `edit-typecheck.sh` (opt-in; `.cs`/`.ts`/`.tsx`; enable via `/update-config`)
@@ -111,6 +112,7 @@ Rules: default `worker`. Never use `architect` for what `lookup` can answer. Whe
 - `reference.md` — full workspace layout, KB structure, execution style, architecture notes (read on demand, not every session)
 - `repo-resolution.md` — canonical algorithm for resolving GitHub URLs / repo names to local paths via `.local-paths`, and loading the correct KB file
 - `workspace-data-gathering.md` — shared algorithm for loading journals/logs/tasks within a date range (used by `/nase:recap` and `/nase:wrap-up`)
+- `grill-mode.md` — algorithm for `/nase:design --grill` mode (one-question-at-a-time stress-test with codebase exploration, writes resolutions to effort doc)
 - 8 more shared docs live here (build-test-loop, worktree-pattern, commit-push-pattern, pr-creation-pattern, content-hash-cache, github-queries, kb-template, pr-input-guard) — see `reference.md` for descriptions
 - Skills reference these docs instead of duplicating logic — if you change an algorithm, update the shared doc
 
