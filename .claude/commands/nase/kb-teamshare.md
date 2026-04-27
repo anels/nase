@@ -57,7 +57,7 @@ options:
 
 ### Step 3: Select Specific Files
 
-Read `workspace/kb/.domain-map.md` to get the list of KB files in each selected KB category. For `skills/`, list all `.md` files found in `workspace/skills/`.
+Read `workspace/kb/.domain-map.md` to get the list of KB files in each selected KB category. For `skills/`, list all `.md` files found in `workspace/skills/` **and `workspace/skills/docs/`** — the `docs/` subdir holds companion docs that travel with their parent skill (e.g. `app-insights-kql.md` for `investigate-sre-jira.md`).
 
 First **invoke `AskUserQuestion`**:
 
@@ -111,7 +111,60 @@ Parse the user's answer (whether a preset option or custom "Other" text with num
 
 Record the final list of files to export, separated by type:
 - KB files: absolute paths under `workspace/kb/`
-- Skill files: absolute paths under `workspace/skills/`
+- Skill files: absolute paths under `workspace/skills/` (including `workspace/skills/docs/`)
+
+### Step 3.5: Cascade Dependencies
+
+A picked file may reference other workspace files. If those references aren't in the export set, Step 4b would delete the lines — silently amputating real content. Cascade pulls them in automatically so the export stays self-contained.
+
+**Algorithm** (run after Step 3 selection is recorded, before Step 4 processing):
+
+1. Maintain a `selected` set (start with the user's picks) and a `frontier` queue (initially the same).
+2. While `frontier` is non-empty:
+   - Pop a file. Read it.
+   - Scan for these reference patterns (markdown link or plain text):
+     - `workspace/kb/<category>/<file>.md`
+     - `workspace/skills/<file>.md`
+     - `workspace/skills/docs/<file>.md`
+   - For each referenced path that exists on disk and is NOT in `selected`: add it to `selected` and `frontier`.
+3. Stop when `frontier` is empty or after 5 hops (defensive cap against accidental cycles).
+
+**Why cascade matters**: when a teammate imports an exported skill, every `workspace/skills/docs/X.md` reference must resolve — otherwise the skill points at files they don't have. Same for KB cross-references. Auto-cascading keeps the export coherent without forcing the user to hand-trace every dependency tree.
+
+**Show the cascade before proceeding**. If any files were added, list them so the user can opt out:
+
+```
+## Cascade-included files
+
+You picked:
+- skills/investigate-sre-jira.md
+
+Auto-pulled in (referenced by your picks):
+- skills/docs/sre-cli-tools.md       ← from investigate-sre-jira.md:27
+- skills/docs/azure-pipeline-failures.md ← from investigate-sre-jira.md:231
+- skills/docs/kubefabric-runbooks.md ← from investigate-sre-jira.md:232
+- skills/docs/customer-issue-flow.md ← from investigate-sre-jira.md:621
+- skills/docs/app-insights-kql.md    ← from investigate-sre-jira.md:633
+- ops/customer-issues.md             ← from investigate-sre-jira.md:634
+```
+
+Then **invoke `AskUserQuestion`**:
+
+```
+question: "Include the cascade-pulled files?"
+header: "Cascade"
+options:
+  - label: "Include all (recommended)"
+    description: "Keeps the export self-contained — references will resolve"
+  - label: "Skip cascade — use only my original picks"
+    description: "Step 4b will delete dangling reference lines from the export"
+  - label: "Let me exclude some"
+    description: "I'll list the ones to drop"
+```
+
+If "Let me exclude some": print the cascade list with numbers and ask for the numbers to drop (same pattern as Step 3).
+
+If the cascade set is empty (no new files pulled in), skip this prompt entirely.
 
 ### Step 4: Process Each File
 
@@ -135,16 +188,16 @@ Apply by scanning each line for these path prefixes and substituting. If a path 
 
 Internal KB cross-references use the form `workspace/kb/category/file.md`. These break when the files are exported to a different directory. Fix them as follows:
 
+After Step 3.5 cascade, almost every reference should resolve to a file in the export. The remaining cases are edge cases (cycles broken by the depth cap, or files the user chose to exclude in cascade).
+
 - **If the linked file IS in the export set:** rewrite the link to a relative path within the export directory.
   - `workspace/kb/general/dotnet.md` → `general/dotnet.md`
   - `workspace/kb/projects/foo.md` → `projects/foo.md`
+  - `workspace/skills/investigate-sre-jira.md` → `skills/investigate-sre-jira.md`
+  - `workspace/skills/docs/sre-cli-tools.md` → `skills/docs/sre-cli-tools.md`
   - Markdown link format: `[text](workspace/kb/X/Y.md)` → `[text](X/Y.md)`
   - Plain text references: replace the path string directly
 - **If the linked file is NOT in the export set:** remove the entire line containing the link. A dangling reference with no destination is worse than nothing — it just confuses the reader.
-
-Similarly, for skill file references (e.g. `workspace/skills/investigate-sre-jira.md`):
-- If the referenced skill IS in the export set: rewrite to `skills/investigate-sre-jira.md`
-- If NOT in the export set: remove the entire line
 
 #### 4c — Privacy Classification
 
@@ -224,6 +277,9 @@ Create the export directory at the chosen path. Within it, mirror the source str
 │   └── ...
 ├── skills/
 │   ├── investigate-sre-jira.md
+│   ├── docs/
+│   │   ├── sre-cli-tools.md
+│   │   └── ...
 │   └── ...
 └── .domain-map.md
 ```
@@ -289,4 +345,5 @@ Log: `{N} KB files + {N} skills, categories: {list} → {export-dir}`
 - The goal is portability and privacy, not perfect formatting. If a transformation is ambiguous, ask the user — a prompt is cheaper than accidentally sharing sensitive data.
 - `workspace/tasks/lessons.md` and daily logs are intentionally excluded — they're personal records, not KB.
 - The exported directory is self-contained: no references to `workspace/` should remain after Step 4.
-- Skill files in `workspace/skills/` are treated as plain markdown — apply the same path-stripping, privacy review, and translation pipeline as KB files.
+- Skill files in `workspace/skills/` (and companion docs in `workspace/skills/docs/`) are treated as plain markdown — apply the same path-stripping, privacy review, and translation pipeline as KB files. Preserve the `docs/` subdir on export so `<skill>.md` references like `workspace/skills/docs/<doc>.md` resolve at the recipient's end.
+- Cascade (Step 3.5) is the primary mechanism for keeping the export self-contained. Trust it over manual picking — when in doubt, let cascade pull a file in. Manual exclusion is for cases where the user explicitly does not want a referenced file shared (e.g., it contains sensitive content), not for trimming size.

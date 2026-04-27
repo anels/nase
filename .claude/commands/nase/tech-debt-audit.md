@@ -30,7 +30,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - Inconsistent patterns (e.g., some endpoints use middleware, others don't)
    - TODO/FIXME/HACK comments with context
    - Test gaps in critical paths
-   - Silently skipped parameterized tests: for .NET repos, compare `dotnet test --list-tests | wc -l` against `[TestMethod]`/`[Fact]` attribute count. MSTest `[DataRow]` configurations can silently skip execution — CI stays green but tests never run.
+   - Silently skipped or not-run .NET tests: don't compare `dotnet test --list-tests` against attribute counts in source — parameterized tests expand into multiple cases and attributes are framework-specific. Instead, run `dotnet test --logger trx` and inspect the TRX results for discovered vs executed/skipped/not-run discrepancies. Keep framework guidance separate: MSTest `[TestMethod]`/`[DataRow]`, xUnit `[Fact]`/`[Theory]`, NUnit `[Test]`/`[TestCase]`. CI stays green but tests never run.
    - CI stale binary patterns: check install/download steps in pipeline YAML for existence-only guards (e.g. `if (Test-Path binary)` or `test -f binary`) instead of version guards (`binary --version`). Stale binaries persist on self-hosted agents between runs and cause silent version drift.
    - Pipeline inefficiencies (redundant stages, unpinned refs)
 
@@ -43,7 +43,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - **Configuration sprawl** — settings scattered across env vars, appsettings, code constants, and DB rows with no single source of truth
 
 4. **Best practices compliance** — check whether the repo follows its own documented standards and ecosystem conventions:
-   - **Repo-level docs**: read `CLAUDE.md`, `CONTRIBUTING.md`, `docs/`, and any `best-practices.md` or `coding-guidelines.md` in the repo. Compare actual code against what these docs prescribe — gaps between documented standards and reality are high-value findings.
+   - **Repo-level docs**: read `CLAUDE.md` and `CONTRIBUTING.md` if present. If `<repo>/docs/` exists, enumerate files under it and read only relevant guidance docs (e.g. `best-practices.md`, `coding-guidelines.md`, architecture, ADRs, conventions). Also read similarly named guideline files elsewhere in the repo. Compare actual code against what these docs prescribe — gaps between documented standards and reality are high-value findings.
    - **Framework/ecosystem conventions**: for .NET repos check alignment with Microsoft's recommended patterns (Options pattern, dependency injection, middleware pipeline). For Node/TS check ESLint/Prettier config consistency, module structure. For Go check standard project layout, error handling idioms.
    - **KB-documented patterns**: read the repo's KB file for established patterns and constraints — verify the codebase still follows them (e.g., KB says "all queries go through repository layer" — grep for direct DB access in controllers).
 
@@ -89,7 +89,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
 
    ## High ROI (fix first)
    ### {Finding title}
-   **Severity:** N/5 | **Effort:** S/M/L/XL | **Category:** {category}
+   **Severity:** N/5 | **Effort:** S/M/L/XL | **ROI:** High/Medium/Low | **Category:** {category}
    {Description + specific file/line references}
 
    ## Medium ROI

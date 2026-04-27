@@ -17,9 +17,7 @@ Note any focus areas the user specifies (e.g. "architecture", "security", "skip 
 
 Default focus if none specified: architecture, bugs, security, testability, DRY/KISS, code comments.
 
-Follow `.claude/docs/repo-resolution.md`:
-- **Part 1** (Repo Resolution): extract `owner/repo` from the PR URL, look up the repo name in `.local-paths`. If not found, ask the user for the local path and append it.
-- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it.
+Resolve repo from PR URL and load the KB file — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
 ## Step 2 — Fetch PR metadata and existing comments
 
@@ -75,6 +73,8 @@ Classification rules:
 - 🔍 **needs-research** — unclear without more context; look into code or Confluence before deciding
 
 After presenting the table, ask: "Does this look right? Any to change?" Then for each 🔍 item — research the code, check Confluence or git history, and give your own take before finalizing classification.
+
+**Prior-round fix verification:** For any 🔧 needs-fix items that originate from an EARLIER review round (comments that predate the most recent commit), do not auto-classify as ✅ can-resolve based on the author's "addressed" reply alone. Verify the fix was actually applied: run `git show <sha>` for the commit claimed to address the issue and confirm the fix appears in the diff. If the commit doesn't contain the fix, keep the item as 🔧 needs-fix. This prevents silently re-approving unaddressed findings — Insights-monitoring pattern: bot + prior CHANGES_REQUESTED both flagged cache mutation; verification of commit 48e856dd confirmed fix before APPROVE (lesson: 2026-04-15).
 
 Collect the final classifications. **Do not post reactions or replies yet** — batched into Step 8, posted only on explicit request.
 
@@ -140,6 +140,27 @@ For any findings not covered by deep-dive (already high-confidence, or not imple
 - **Result**: either confirm the issue with evidence, or downgrade it to "ask the author"
 
 ## Step 6 — Present findings and open discussion
+
+**Show quality scorecard first**, then the findings.
+
+### PR Quality Scorecard
+
+Rate each dimension 1–5 based on evidence from the diff, tests, and PR description. One phrase of justification per row. Finish with an overall score (average, rounded) and a one-sentence verdict.
+
+| 维度 | 分数 | 说明 |
+|------|------|------|
+| 代码质量 | N/5 | 命名/约定/清洁度 |
+| 架构/设计 | N/5 | DRY/KISS/分层/SRP |
+| 测试 | N/5 | 覆盖度、用例质量、边界场景 |
+| 安全 | N/5 | 输入验证/auth/无凭证泄漏 |
+| PR 规范 | N/5 | 描述清晰度、大小合理、提交质量 |
+| **总体** | **N/5** | **一句话总结** |
+
+Score guide: 5 = exemplary, 4 = solid, 3 = adequate, 2 = needs work, 1 = significant gaps. If a dimension is not applicable (e.g. security for a pure refactor), mark N/A and exclude from the average.
+
+**⚠️ Internal only — never post this scorecard to GitHub.** It must not appear in inline comments, review bodies, or any GitHub API call (Steps 7–8). It exists solely as a quick read for the reviewer.
+
+---
 
 **Summary line first** — one line showing the count per tier and how many were dropped:
 ```
