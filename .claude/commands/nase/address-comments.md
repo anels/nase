@@ -13,9 +13,7 @@ Follow the PR input guard in `.claude/docs/pr-input-guard.md` — except on empt
 
 ## Phase 1: Locate Repo & Fetch Context
 
-Follow `.claude/docs/repo-resolution.md`:
-- **Part 1** (Repo Resolution): resolve the repo from the PR URL's `owner/repo` — extract the repo name and look it up in `.local-paths`. If not found, ask the user for the local path and append it to `.local-paths`.
-- **Part 2** (KB File Loading): derive the domain key from the repo name, find the KB file in `workspace/kb/.domain-map.md`, and read it.
+Resolve repo from PR URL and load the KB file — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
 ## Phase 2: Fetch Latest & Unresolved Review Threads
 

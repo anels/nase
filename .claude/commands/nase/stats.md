@@ -101,7 +101,7 @@ Include legend: `░ = 0  ▒ = 1  ▓ = 2  █ = 3+`
 
 Days with no log file are treated as 0 sessions (░).
 
-To iterate dates cross-platform (macOS and Linux), use Python3 — already listed as a runtime dependency:
+To iterate dates cross-platform (macOS and Linux), use Python3. If `python3` is unavailable in the environment, fall back to a bash loop using `date -j -v+${i}d` (BSD/macOS) with `date -d "$START_DATE + $i days"` (GNU/Linux) as fallback.
 
 ```shell
 python3 -c "

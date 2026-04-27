@@ -21,9 +21,7 @@ Read `workspace/context.md` — list of repos and their purposes.
 
 Read `workspace/config.md` and extract the `output:` language (for PR title, description, commit messages, and all GitHub-facing content). Default to English if the file is missing or has no `## Language` section.
 
-From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Follow `.claude/docs/repo-resolution.md`:
-- **Part 1** (Repo Resolution): resolve the local path from the inferred repo name. If not found in `.local-paths`, use AskUserQuestion to ask the user, then append to `.local-paths`.
-- **Part 2** (KB File Loading): load the KB file — focus on **Build & Run Commands**, **Architecture**, **Critical Constraints**.
+From the task in $ARGUMENTS, infer the most likely target repo by matching keywords, domain area, and tech stack against the repo list. Resolve repo path and load the KB file (focus on **Build & Run Commands**, **Architecture**, **Critical Constraints**) — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
 Then fetch latest and check the repo's git state:
 ```bash

@@ -22,7 +22,9 @@ Each skill uses its own suffix (e.g. `fsd`, `address-comments`, `prep-merge`).
 git -C {repo_path} worktree add {worktree_path} {ref}
 ```
 
-Where `{ref}` is typically `origin/{branch_name}` (an existing remote branch) or `-b {new_branch} origin/{default_branch}` (a new branch).
+Where `{ref}` is one of:
+- `origin/{branch_name}` — existing remote branch (most skills, e.g. address-comments, prep-merge)
+- `-b {new_branch} origin/{default_branch}` — create a new branch off default (e.g. fsd)
 
 After creating the worktree, if you need the local branch to track the remote (not detached HEAD):
 
