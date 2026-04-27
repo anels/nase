@@ -1,9 +1,20 @@
 # nase — An all-in-one modern software engineering kit for Claude Code
+```
+                                      
+ ████████    ██████    █████   ██████ 
+▒▒███▒▒███  ▒▒▒▒▒███  ███▒▒   ███▒▒███
+ ▒███ ▒███   ███████ ▒▒█████ ▒███████ 
+ ▒███ ▒███  ███▒▒███  ▒▒▒▒███▒███▒▒▒  
+ ████ █████▒▒████████ ██████ ▒▒██████ 
+▒▒▒▒ ▒▒▒▒▒  ▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒   ▒▒▒▒▒▒  
+                                      
+```
 
 A [Claude Code](https://claude.ai/code) kit for AI-assisted software engineering across multiple repositories. Gives you slash commands for onboarding repos, tracking knowledge, generating reports, and auto-backing up your work — all inside Claude Code.
 
 > **Name origin**:
 > - **nase** stands for ***N***ot ***A*** ***S***oftware ***E***ngineer or ***N***ot ***A***I ***S***oftware ***E***ngineer
+> - **nase** is also a recursive acronym for ***N***ase is an ***A***ssistant for ***S***oftware ***E***ngineer
 > - **nase** sounds like 那谁 (*nà shuí*) in Chinese — the casual "hey, whatsyourname" you say when summoning someone whose name you can't be bothered to remember: *"oi, whatsyourname, come take care of this."* A fitting name for an AI you summon to handle engineering tasks.
 
 ---
@@ -162,6 +173,7 @@ flowchart LR
 /nase:onboard <repo>          # load repo context into KB
 /nase:design <task>            # (complex tasks) explore approaches → effort doc
   review and iterate             # discuss tradeoffs, refine until approved
+  /nase:design --grill <slug>    # (optional) stress-test the plan one question at a time
 /nase:fsd <task>               # autonomous: implement → test → commit → push → draft PR
 /nase:request-review <PR-URL>  # find right reviewers, assign on GitHub, ping on Slack
   ⏳ wait for feedback

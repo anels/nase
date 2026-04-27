@@ -15,39 +15,40 @@ jobs:
 
       - name: Install tools
         run: |
-          sudo apt-get install -y shellcheck python3
+          sudo apt-get install -y shellcheck python3 jq
 
-      - name: Bash syntax check
+      - name: Bash syntax check (hooks)
         run: |
-          bash -n .claude/hooks/session-start.sh
-          bash -n .claude/hooks/stop-todos.sh
-          bash -n .claude/hooks/stop-backup.sh
-          bash -n .claude/hooks/track-skill.sh
-          bash -n .claude/hooks/worktree-log.sh
+          set -euo pipefail
+          for f in .claude/hooks/*.sh; do bash -n "$f"; done
 
-      - name: shellcheck
-        run: |
-          shellcheck -S warning .claude/hooks/session-start.sh
-          shellcheck -S warning .claude/hooks/stop-todos.sh
-          shellcheck -S warning .claude/hooks/stop-backup.sh
-          shellcheck -S warning .claude/hooks/track-skill.sh
-          shellcheck -S warning .claude/hooks/worktree-log.sh
+      - name: shellcheck (hooks)
+        run: shellcheck -S warning .claude/hooks/*.sh
 
       - name: JSON validation
-        run: |
-          python3 -m json.tool .claude/settings.json > /dev/null
+        run: python3 -m json.tool .claude/settings.json > /dev/null
 
       - name: Hook wiring check
+        # Every hook on disk must be wired in settings.json, except opt-in
+        # hooks that are intentionally not wired by default.
         run: |
-          grep -q "session-start.sh" .claude/settings.json || { echo "FAIL: session-start.sh not wired in settings.json"; exit 1; }
-          grep -q "stop-todos.sh" .claude/settings.json     || { echo "FAIL: stop-todos.sh not wired in settings.json"; exit 1; }
-          grep -q "stop-backup.sh" .claude/settings.json    || { echo "FAIL: stop-backup.sh not wired in settings.json"; exit 1; }
-          grep -q "track-skill.sh" .claude/settings.json    || { echo "FAIL: track-skill.sh not wired in settings.json"; exit 1; }
-          grep -q "worktree-log.sh" .claude/settings.json  || { echo "FAIL: worktree-log.sh not wired in settings.json"; exit 1; }
+          set -euo pipefail
+          OPT_IN_REGEX='^(edit-typecheck)$'
+          MISSING=0
+          for f in .claude/hooks/*.sh; do
+            name=$(basename "$f" .sh)
+            [[ "$name" =~ $OPT_IN_REGEX ]] && continue
+            if ! grep -q "${name}.sh" .claude/settings.json; then
+              echo "FAIL: ${name}.sh not wired in settings.json"
+              MISSING=1
+            fi
+          done
+          exit "$MISSING"
 
       - name: Command inventory check
+        # Every /nase:<cmd> mentioned in README must have a corresponding skill file.
         run: |
-          # Assert all commands listed in README exist as .md files
+          set -euo pipefail
           MISSING=0
           while IFS= read -r cmd; do
             file=".claude/commands/nase/${cmd}.md"
@@ -56,17 +57,48 @@ jobs:
               MISSING=1
             fi
           done < <(grep -oE '/nase:[a-z-]+' README.md | sed 's|/nase:||' | sort -u)
-          [ "$MISSING" -eq 0 ] || exit 1
+          exit "$MISSING"
 
-      - name: Skill bash syntax lint
+      - name: Skill bash syntax + shellcheck
+        # Suppression rules for snippet noise live in .shellcheckrc (single
+        # source of truth shared with local pre-push runs).
         run: |
+          set -uo pipefail
           FAIL=0
           for f in .claude/commands/nase/*.md; do
-            if awk '/```bash/{p=1;next} /```/{p=0} p' "$f" | bash -n 2>/tmp/err; then
-              :
-            else
-              echo "FAIL: invalid bash syntax in $f: $(cat /tmp/err)"
+            blocks=$(awk '/```bash/{p=1;next} /```/{p=0} p' "$f")
+            [ -z "$blocks" ] && continue
+            if ! err=$(echo "$blocks" | bash -n 2>&1); then
+              echo "FAIL: invalid bash syntax in $f: $err"
+              FAIL=1
+            fi
+            if ! sc=$(echo "$blocks" | shellcheck --shell=bash -S error - 2>&1); then
+              echo "FAIL: shellcheck errors in $f:"
+              echo "$sc"
               FAIL=1
             fi
           done
           exit "$FAIL"
+
+      - name: Hook regression tests
+        run: bash tests/hooks/test-block-dangerous-git.sh
+
+      - name: Shared-doc reference integrity
+        run: bash tests/check-shared-doc-refs.sh
+
+      - name: Markdown internal-link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Pin lychee binary so flag compatibility (notably --include-fragments)
+          # is reproducible across runs. Action prepends `lychee-` to this value
+          # when constructing the release URL — provide bare `vX.Y.Z`.
+          lycheeVersion: v0.15.1
+          args: >-
+            --offline
+            --no-progress
+            --include-fragments
+            --exclude-path workspace
+            --exclude-path .omc
+            --exclude-path node_modules
+            './**/*.md'
+          fail: true
