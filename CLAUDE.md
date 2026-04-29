@@ -112,7 +112,8 @@ Rules: default `worker`. Never use `architect` for what `lookup` can answer. Whe
 - `reference.md` — full workspace layout, KB structure, execution style, architecture notes (read on demand, not every session)
 - `repo-resolution.md` — canonical algorithm for resolving GitHub URLs / repo names to local paths via `.local-paths`, and loading the correct KB file
 - `workspace-data-gathering.md` — shared algorithm for loading journals/logs/tasks within a date range (used by `/nase:recap` and `/nase:wrap-up`)
-- `grill-mode.md` — algorithm for `/nase:design --grill` mode (one-question-at-a-time stress-test with codebase exploration, writes resolutions to effort doc)
+- `design-grill-mode.md` — algorithm for `/nase:design --grill` mode (one-question-at-a-time stress-test with codebase exploration, writes resolutions to effort doc)
+- `design-review-mode.md` — algorithm for `/nase:design --review` mode (re-evaluate existing effort doc, verdict: APPROVED/Needs Revision/Superseded)
 - 8 more shared docs live here (build-test-loop, worktree-pattern, commit-push-pattern, pr-creation-pattern, content-hash-cache, github-queries, kb-template, pr-input-guard) — see `reference.md` for descriptions
 - Skills reference these docs instead of duplicating logic — if you change an algorithm, update the shared doc
 
