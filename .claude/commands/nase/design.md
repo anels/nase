@@ -32,23 +32,13 @@ Before presenting options in Phase 3, explicitly state which ordering you're app
 
 Before Phase 1, scan `$ARGUMENTS` for mode flags. Strip the flag from `$ARGUMENTS` before downstream parsing.
 
-- `--grill` present → enter **Grill Mode**: stress-test an existing plan via one-question-at-a-time interview. Skip all phases below and follow `.claude/docs/grill-mode.md`.
+- `--grill` present → enter **Grill Mode**: stress-test an existing plan via one-question-at-a-time interview. Skip all phases below and follow `.claude/docs/design-grill-mode.md`.
 - `--review` present → enter **Review Mode** (next section).
 - Otherwise: auto-detect Review Mode if the slug already exists in `workspace/efforts/`. If not, run normal design flow (Phase 1 onward).
 
 ## Review Mode
 
-Triggered when: user re-runs `/nase:design` on an existing effort (slug already exists in `workspace/efforts/`), or passes `--review` to force review mode even if auto-detection doesn't match (e.g., the slug is in a non-standard location).
-
-1. **Read** the existing effort doc from `workspace/efforts/{slug}.md`
-2. **Gather current state** — check repo for changes since the design was written (git log, new patterns, resolved open questions)
-3. **Evaluate against Quality Criteria** (see below) — score each criterion
-4. **Verdict** via `AskUserQuestion`:
-   - **APPROVED** — design holds, no changes needed. Suggest proceeding to `/nase:fsd`
-   - **Needs Revision** — specific issues listed with suggested fixes. Return to Phase 2 with the issues as context
-   - **Superseded** — requirements changed enough to warrant a fresh design. Archive the old doc (rename to `{slug}-v1.md`) and start Phase 1
-
-The output is a design doc at `workspace/efforts/{slug}.md` with a lifecycle checklist. Other skills (`/nase:fsd`, `/nase:prep-merge`) update the same file as the effort progresses. `/nase:today` surfaces active efforts automatically.
+Triggered when `--review` is present in `$ARGUMENTS`, or auto-detected when the slug already exists in `workspace/efforts/`. Skip all phases below and follow `.claude/docs/design-review-mode.md`.
 
 This skill is only allowed to create or edit the design doc. No code edit is allowed.
 
@@ -268,20 +258,9 @@ options:
 ```
 If yes: use the project key from the repo's KB file (or ask the user). Issue type: Task or Story. Set summary to the effort title, description to the design summary, and add a note linking back to the effort doc path.
 
-**5d. Exit plan mode and offer meaningful next steps:**
+**5d. Exit plan mode and stop:**
 
-Exit plan mode, then ask via `AskUserQuestion`:
-
-```
-question: "Design is saved. What would you like to do next?"
-header: "Next Step"
-options:
-  - label: "Critic review"      , description: "I'll spawn oh-my-claudecode:critic with the full effort doc to challenge the design before you commit to implementation"
-  - label: "Start implementation" , description: "Engage /nase:fsd for autonomous implementation right away"
-  - label: "Park it"            , description: "Come back to it later — it'll surface in /nase:today"
-```
-
-Do NOT ask "should I proceed?" or "ready to execute?" — those are non-choices. Always offer the critic option so the user can get a second-opinion pass before building.
+Exit plan mode. Design doc is saved — no follow-up prompt. The effort will surface in `/nase:today`. The user decides the next action.
 
 ## Lifecycle Updates (by other skills)
 
