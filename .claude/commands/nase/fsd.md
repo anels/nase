@@ -39,9 +39,11 @@ options: one option per repo in context.md, plus "Other — I'll type the path"
 ```
 After receiving answer, immediately proceed to Phase 2.
 
-## Phase 2: Upfront Config — 4 questions, front-loaded, then autonomous
+## Phase 2: Upfront Config — 4–5 questions, front-loaded, then autonomous
 
-Ask all 4 questions before touching any code. After the last answer, drive to completion without pausing. The value of FSD is that decisions happen once, upfront — not scattered throughout execution.
+Ask all questions before touching any code. After the last answer, drive to completion without pausing. The value of FSD is that decisions happen once, upfront — not scattered throughout execution.
+
+Store answers: `execution_mode` = Q1 answer, `tdd_mode` = (Q4 = "Yes").
 
 **Q0 — Success criteria:**
 ```
@@ -60,8 +62,9 @@ After receiving answer, immediately ask Q1.
 question: "How should I implement this task?"
 header: "Execution Mode [2/4]"
 options:
-  - label: "Direct"  , description: "I implement it myself (fast, good for focused tasks)"
-  - label: "Team"    , description: "Spawn coordinated agents in parallel (better for complex multi-area work)"
+  - label: "Direct"                      , description: "I implement it myself (fast, good for focused tasks)"
+  - label: "Team"                        , description: "Spawn coordinated agents in parallel (better for complex multi-area work)"
+  - label: "Direct with Phase isolation" , description: "I orchestrate sequential subagents, one per code layer — prevents context rot on large features"
 ```
 After receiving answer, immediately ask Q2.
 
@@ -82,6 +85,18 @@ header: "Pull Request [4/4]"
 options:
   - label: "Yes — draft PR" , description: "Push branch and open a draft PR (you review and promote when ready)"
   - label: "No"             , description: "Just commit and push the branch"
+```
+After receiving answer:
+- If Q1 = "Team": proceed to Phase 3 immediately.
+- Otherwise: ask Q4.
+
+**Q4 — Strict TDD** (only when Q1 ≠ "Team"):
+```
+question: "Enforce strict TDD? (RED→GREEN→Refactor hard gates per slice)"
+header: "Strict TDD [5/5]"
+options:
+  - label: "No"  , description: "Advisory Red→Green→Refactor — current default behavior"
+  - label: "Yes" , description: "Hard gates: test must FAIL before any implementation; PASS = stop and report"
 ```
 After receiving answer, proceed to Phase 3 immediately — do not wait for further input.
 
@@ -128,6 +143,87 @@ This gate prevents hallucinated API contracts. Cost: ~30s for unfamiliar APIs. C
 
 ---
 
+## Phase 3.7: Task Decomposition (execution_mode = "Direct with Phase isolation" only)
+
+**Skip entirely** if execution_mode ≠ "Direct with Phase isolation". Jump to Phase 4.
+
+**Step 1 — Complexity precheck:**
+Analyze task + KB context from Phase 1. Attempt to decompose into code-layer sub-phases. If the natural decomposition yields only 1 phase → skip isolation entirely, fall back to Direct mode, notify user: "Task is simple enough for direct implementation — phase isolation skipped." Proceed to Phase 4 as Direct.
+
+**Step 2 — Decompose (if ≥2 phases):**
+Decompose into 2–5 sequential sub-phases. Boundary rule: **code layer** (data model / API / test coverage / UI) — not file count or time estimate. Dependencies determine ordering (Phase B needs Phase A's output).
+
+**Step 3 — Write state file:**
+Create `workspace/tmp/fsd-phases-{branch_name}.md`:
+
+```markdown
+# FSD Phase Plan: {branch_name}
+Created: {YYYY-MM-DD HH:MM}
+Task: {task_description}
+Repo: {repo_name} | Branch: {branch_name}
+Build: {build_cmd} | Test: {test_cmd}
+KB constraints: {3-5 line summary of key constraints}
+
+## Phases
+### Phase A: {name}
+Goal: ...
+Files expected: ...
+Done when: ...
+Status: pending
+
+## Completion Log
+(subagents append here on phase finish)
+```
+
+**Step 4 — Confirm loop:**
+Show decomposition to user. Present 3 options via AskUserQuestion:
+- **Proceed** → start subagent execution
+- **Adjust** (describe changes) → Claude revises plan, shows again; loop until Proceed or Cancel
+- **Cancel → Direct mode** → abort isolation, continue with standard Phase 4 as Direct
+
+**Step 5 — Sequential subagent execution (after Proceed):**
+For each phase, invoke `Agent` tool sequentially (wait for completion before next). Prompt template:
+
+```
+You are implementing Phase {X}: {phase_name} of a multi-phase feature.
+
+Context file: workspace/tmp/fsd-phases-{branch_name}.md — read it for task context,
+KB constraints, and what prior phases completed.
+
+Goal: {phase_goal}
+Repo path: {repo_path} (absolute)
+Branch: {branch_name}
+Build command: {build_cmd}
+Test command: {test_cmd}
+
+{tdd_block}
+
+After all changes: run build{test_suffix}. If both pass: append a 3-5 line summary to
+## Completion Log, then stop.
+If build or tests fail after 3 attempts: append "FAILED: {phase_name} — {reason}" to
+## Completion Log and stop — do not commit.
+```
+
+Where `{tdd_block}` (inject verbatim when tdd_mode = true):
+```
+TDD gates are MANDATORY per vertical slice:
+RED: Write one test → run → must FAIL (assertion failure, not compile error). PASS = STOP.
+GREEN: Minimum implementation → test GREEN → full suite zero new failures.
+Refactor: Apply lead principles → re-run full suite → all green.
+Exception: config/docs/infra → skip RED, mark [RED skip: non-testable].
+```
+
+Where `{test_suffix}` = ` + test` unless Q0 = "Manual verify" (subagents run build only).
+
+**Step 6 — Verify:**
+After all Agent calls complete, read the Completion Log. Every phase entry must be present and must not start with "FAILED".
+
+**Error recovery:** Any FAILED entry or missing phase entry → stop. Report: "Phase {X} failed — state file preserved at `workspace/tmp/fsd-phases-{branch_name}.md`." Do NOT proceed to Phase 7 (commit). Preserve the state file for diagnosis.
+
+**State file cleanup:** Delete `workspace/tmp/fsd-phases-{branch_name}.md` at Phase 9 (worktree removal) or at the start of Phase 10 (no-worktree flow).
+
+---
+
 ## Phase 4: Implement (TDD — Red → Green → Refactor)
 
 Read the repo's `CLAUDE.md` (if not already read) for coding standards and constraints. Read the relevant KB section on architecture so changes fit the existing design.
@@ -151,7 +247,16 @@ Grep for existing utilities, helpers, or patterns that overlap with the task. Re
 **If execution mode = Team:**
 Invoke the `/team` skill with the task from $ARGUMENTS, including the classified task type and its principle order. **Each agent prompt MUST include the repo's build and test commands** (from KB or `CLAUDE.md`) and instruct the agent to verify its changes compile after editing. Wait for all agents to complete, then **immediately run a full build + test** before proceeding to Phase 5. If the build or tests fail, fix the issues (this counts as iteration 1 of Phase 5).
 
-**If execution mode = Direct — follow Red → Green → Refactor in vertical slices:**
+**If execution mode = Direct or "Direct with Phase isolation" — follow Red → Green → Refactor in vertical slices:**
+
+**If tdd_mode = true (Q4=Yes) — strict TDD gates are MANDATORY, not advisory:**
+
+| Gate | Requirement |
+|------|-------------|
+| **RED** | Run test after writing it. Must fail with assertion failure (not compile error). If it PASSES: STOP — report `"RED gate blocked: test '{test_name}' passed immediately. Behavior may already exist, or test doesn't exercise the right code path."` Do not proceed. |
+| **GREEN** | After implementation: test must GREEN + full suite zero new failures. Full suite failures: fix before proceeding — no deferrals. |
+| **Refactor** | Re-run full suite after each refactor pass. All green before Phase 5. |
+| **Non-testable** | Config/docs/infra → skip RED gate. Mark `[RED skip: non-testable]` in progress notes and proceed directly to implementation. |
 
 **Vertical-slice rule (do not violate):** one test → one implementation → repeat. Never write all tests up front and then all implementation. See `workspace/kb/general/system-design.md` § Vertical Slices (TDD) for the rationale (horizontal slicing produces tests of *imagined* behavior). The first cycle is a tracer bullet that proves the end-to-end path; subsequent cycles cover one behavior each.
 

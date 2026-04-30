@@ -5,8 +5,6 @@ description: "KB-aware autonomous design skill — researches context first, ask
 
 Turn ideas into concrete, tracked design plan through KB-aware autonomous research.
 
-Enter plan mode at the start of Phase 5 (Writing the Design Doc), not during earlier phases.
-
 ## Design Principles Framework
 
 Apply these five principles to every design. The **order matters** — it changes which tradeoffs you prioritize first:
@@ -47,8 +45,6 @@ When genuinely uncertain about a requirement, ask for clarification — but pref
 **Input:** $ARGUMENTS — the idea, feature request, or problem statement (can be vague). If empty, use `AskUserQuestion` to ask the user to describe what they want to design.
 
 ## Setup
-
-Fetch `EnterPlanMode` via ToolSearch — it's a deferred tool needed at the start of Phase 5.
 
 Follow `.claude/docs/language-config.md` — use conversation language for interview dialogue, output language for the design doc.
 
@@ -258,9 +254,9 @@ options:
 ```
 If yes: use the project key from the repo's KB file (or ask the user). Issue type: Task or Story. Set summary to the effort title, description to the design summary, and add a note linking back to the effort doc path.
 
-**5d. Exit plan mode and stop:**
+**5d. Stop:**
 
-Exit plan mode. Design doc is saved — no follow-up prompt. The effort will surface in `/nase:today`. The user decides the next action.
+Design doc saved. No follow-up prompt. Effort surfaces in `/nase:today`. User decides next action.
 
 ## Lifecycle Updates (by other skills)
 
