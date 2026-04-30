@@ -79,7 +79,9 @@ Unrelated PRs → **separate DMs** per PR per person.
 
 ## Step 7 — Draft messages
 
-Write like a colleague asking a quick favour — casual opener, one line on what the change does, then the link. No bullet points, no markdown, no formal sign-off.
+Write like a colleague asking a quick favour — start with the ask, one line on what the change does, then the link. No bullet points, no markdown, no formal sign-off.
+
+**No "Hey [name]," opener.** A Slack DM is already a 1:1 channel — Slack shows the recipient's name in the header, so naming them again in the body just adds noise. Open with the ask itself ("Could you help review this?"). This is purely a Slack-DM convention; if the skill ever drafts to a multi-person channel, an opener that names the target reviewer would be appropriate again.
 
 The TLDR should complete one of these naturally (pick whichever fits):
 - "this mainly fixes …"
@@ -93,17 +95,17 @@ Derive it from the PR title and body; don't invent details.
 
 **Single PR (approval):**
 ```
-Hey [first name], could you help approve this? [url] — [TLDR]
+Could you help approve this? [url] — [TLDR]
 ```
 
 **Single PR (review):**
 ```
-Hey [first name], could you help review this? [url] — [TLDR]
+Could you help review this? [url] — [TLDR]
 ```
 
 **Cherry-pick group:**
 ```
-Hey [first name], could you help approve these cherry-picks? [TLDR]
+Could you help approve these cherry-picks? [TLDR]
 • [url 1] → release/vX
 • [url 2] → release/vY
 ```

@@ -148,7 +148,7 @@ flowchart LR
 ### Implement a feature or fix
 
 - **Design first for complex tasks** — `/design` reads your KB, explores 2–3 approaches with tradeoffs, and writes a tracked effort doc to `workspace/efforts/`; `/today` auto-syncs effort status from PR and Jira. Skip `/design` for simple fixes.
-- **Idea to merged PR without leaving the chat** — `/fsd` drives the full cycle autonomously: code → test → fix loop → commit → push → draft PR
+- **Idea to merged PR without leaving the chat** — `/fsd` drives the full cycle autonomously: code → test → fix loop → commit → push → draft PR. For large features, pick **"Direct with Phase isolation"** at Q1 to orchestrate sequential subagents (context rot prevention); pick **"Yes"** at Q4 to enforce strict TDD gates (RED must fail before GREEN)
 - **Smart reviewer discovery** — finds the right people by mining KB for domain experts, then git history for recent contributors, then CODEOWNERS as fallback; assigns them on GitHub and pings via Slack
 - **Interactive feedback loop** — walks through review comments with you: auto-fixes the obvious ones, discusses ambiguous ones 1-by-1
 
@@ -298,7 +298,7 @@ flowchart TD
 | Command | Purpose |
 |---------|---------|
 | `/nase:design <idea>` | KB-aware collaborative design — research context, explore 2–3 approaches with tradeoffs, write tracked effort doc to `workspace/efforts/` |
-| `/nase:fsd <task>` | Full Self-Develop — ask options upfront, then implement → build → test (fix loop) → simplify → commit → push → draft PR → cleanup, fully autonomous |
+| `/nase:fsd <task>` | Full Self-Develop — ask options upfront (including phase isolation and strict TDD), then implement → build → test (fix loop) → simplify → commit → push → draft PR → cleanup, fully autonomous |
 
 ### Git workflow
 
