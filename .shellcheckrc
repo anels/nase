@@ -1,0 +1,18 @@
+# Project-wide shellcheck config.
+#
+# These suppressions are scoped to skill code-block snippets in
+# `.claude/commands/nase/*.md` (extracted by `.github/workflows/validate.yml`),
+# where placeholders like `{repo}` and `<owner>/<repo>` make several rules noisy
+# without indicating real bugs. They also apply to `tests/` and `.claude/hooks/`
+# scripts run with `shellcheck -S warning`; if a rule starts catching real bugs
+# there, scope it tighter via inline `# shellcheck disable=...` directives.
+#
+# SC2148 — no shebang (snippets aren't standalone scripts)
+# SC2154 — placeholder variables like {repo}/{slug}
+# SC1091 — `source` paths in illustrative examples
+# SC2034 — variables defined for example clarity but unused
+# SC2016 — single-quoted `$var` in jq filters and similar literals
+# SC2260 — `<owner>` placeholder reads as redirection
+# SC2261 — same family
+
+disable=SC2148,SC2154,SC1091,SC2034,SC2016,SC2260,SC2261

@@ -1,0 +1,137 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get install -y shellcheck python3 jq
+
+      - name: Bash syntax check (hooks)
+        run: |
+          set -euo pipefail
+          for f in .claude/hooks/*.sh; do bash -n "$f"; done
+
+      - name: shellcheck (hooks)
+        run: shellcheck -S warning .claude/hooks/*.sh
+
+      - name: JSON validation
+        run: python3 -m json.tool .claude/settings.json > /dev/null
+
+      - name: Hook wiring check
+        # Every hook on disk must be wired in settings.json, except opt-in
+        # hooks that are intentionally not wired by default.
+        run: |
+          set -euo pipefail
+          OPT_IN_REGEX='^(edit-typecheck)$'
+          MISSING=0
+          for f in .claude/hooks/*.sh; do
+            name=$(basename "$f" .sh)
+            [[ "$name" =~ $OPT_IN_REGEX ]] && continue
+            if ! grep -q "${name}.sh" .claude/settings.json; then
+              echo "FAIL: ${name}.sh not wired in settings.json"
+              MISSING=1
+            fi
+          done
+          exit "$MISSING"
+
+      - name: Command inventory check
+        # Every /nase:<cmd> mentioned in README must have a corresponding skill file.
+        run: |
+          set -euo pipefail
+          MISSING=0
+          while IFS= read -r cmd; do
+            file=".claude/commands/nase/${cmd}.md"
+            if [ ! -f "$file" ]; then
+              echo "FAIL: README references /nase:${cmd} but ${file} does not exist"
+              MISSING=1
+            fi
+          done < <(grep -oE '/nase:[a-z-]+' README.md | sed 's|/nase:||' | sort -u)
+          exit "$MISSING"
+
+      - name: Skill bash syntax + shellcheck
+        # Suppression rules for snippet noise live in .shellcheckrc (single
+        # source of truth shared with local pre-push runs).
+        run: |
+          set -uo pipefail
+          FAIL=0
+          for f in .claude/commands/nase/*.md; do
+            blocks=$(awk '/```bash/{p=1;next} /```/{p=0} p' "$f")
+            [ -z "$blocks" ] && continue
+            if ! err=$(echo "$blocks" | bash -n 2>&1); then
+              echo "FAIL: invalid bash syntax in $f: $err"
+              FAIL=1
+            fi
+            if ! sc=$(echo "$blocks" | shellcheck --shell=bash -S error - 2>&1); then
+              echo "FAIL: shellcheck errors in $f:"
+              echo "$sc"
+              FAIL=1
+            fi
+          done
+          exit "$FAIL"
+
+      - name: Shared-doc bash syntax
+        run: |
+          set -uo pipefail
+          FAIL=0
+          for f in .claude/docs/*.md; do
+            blocks=$(awk '/```bash/{p=1;next} /```/{p=0} p' "$f")
+            [ -z "$blocks" ] && continue
+            if ! err=$(printf '%s\n' "$blocks" | bash -n 2>&1); then
+              echo "FAIL: invalid bash syntax in $f: $err"
+              FAIL=1
+            fi
+          done
+          exit "$FAIL"
+
+      - name: Hook regression tests
+        run: |
+          bash tests/hooks/test-block-dangerous-git.sh
+          bash tests/hooks/test-external-write-guards.sh
+          bash tests/hooks/test-style-edit-detect.sh
+          bash tests/hooks/test-stop-backup-safety.sh
+
+      - name: Workspace validation
+        run: bash .claude/scripts/validate-workspace.sh
+
+      - name: Date resolve regression tests
+        run: bash tests/scripts/test-date-resolve.sh
+
+      - name: KB gap scan regression tests
+        run: bash tests/scripts/test-kb-gap-scan.sh
+
+      - name: KB search regression tests
+        run: bash tests/scripts/test-kb-search.sh
+
+      - name: Shared-doc reference integrity
+        run: bash tests/check-shared-doc-refs.sh
+
+      - name: Skill doctrine
+        run: bash tests/check-skill-doctrine.sh
+
+      - name: Markdown internal-link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Pin lychee binary so flag compatibility (notably --include-fragments)
+          # is reproducible across runs. Action prepends `lychee-` to this value
+          # when constructing the release URL — provide bare `vX.Y.Z`.
+          lycheeVersion: v0.15.1
+          args: >-
+            --offline
+            --no-progress
+            --include-fragments
+            --exclude-path workspace
+            --exclude-path .omc
+            --exclude-path node_modules
+            './**/*.md'
+          fail: true

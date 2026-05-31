@@ -1,0 +1,132 @@
+{
+  "autoMemoryDirectory": "workspace/memory",
+  "worktree": {
+    "baseRef": "fresh"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/session-start.sh\"'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/stop-todos.sh\"'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/stop-backup.sh\"'"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=WorktreeRemove bash \"$WORKSPACE/.claude/hooks/worktree-log.sh\"'"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/pre-compact-archive.sh\"'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-skill-prompt.sh\"'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/style-edit-detect.sh\"'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/block-dangerous-git.sh\"'"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__slack_send_message$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/slack-send-guard.sh\"'"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__(update|create)ConfluencePage$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/confluence-size-guard.sh\"'"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__(transitionJiraIssue|editJiraIssue|createJiraIssue|addCommentToJiraIssue|addWorklogToJiraIssue|createIssueLink)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && NASE_ROOT=\"$WORKSPACE\" bash \"$WORKSPACE/.claude/hooks/jira-write-guard.sh\"'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-skill.sh\"'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\" 2>/dev/null); if [[ \"$f\" == *.sh ]] && command -v shellcheck >/dev/null 2>&1; then shellcheck -S warning \"$f\"; fi'"
+          }
+        ]
+      }
+    ]
+  }
+}

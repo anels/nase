@@ -1,0 +1,20 @@
+.omc
+workspace/
+.local-paths
+.full-review/
+
+# OS / IDE temporary files
+.DS_Store
+Thumbs.db
+*.tmp
+*.orig
+.vscode/
+*.swp
+.claude/settings.local.json
+.claude/commands/nase/workspace/
+.serena/
+.claude/scheduled_tasks.lock
+.claude/skills/
+.playwright-cli/
+.playwright-mcp/
+__pycache__/

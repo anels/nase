@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Regression tests for external-write PreToolUse guards.
+set -euo pipefail
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$ROOT"
+
+TMP_ROOT=$(mktemp -d)
+cleanup() {
+  rm -rf "$TMP_ROOT"
+}
+trap cleanup EXIT
+
+mkdir -p "$TMP_ROOT/workspace/logs"
+
+pass=0
+fail=0
+
+report() {
+  local ok="$1" label="$2" detail="${3:-}"
+  if [ "$ok" -eq 1 ]; then
+    printf 'PASS  %-45s %s\n' "$label" "$detail"
+    pass=$((pass + 1))
+  else
+    printf 'FAIL  %-45s %s\n' "$label" "$detail"
+    fail=$((fail + 1))
+  fi
+}
+
+run_hook() {
+  local script="$1" input="$2"
+  set +e
+  OUTPUT=$(printf '%s' "$input" | NASE_ROOT="$TMP_ROOT" bash "$script" 2>&1)
+  RC=$?
+  set -e
+}
+
+expect_rc() {
+  local label="$1" script="$2" input="$3" want="$4" pattern="${5:-}"
+  run_hook "$script" "$input"
+  if [ "$RC" -ne "$want" ]; then
+    report 0 "$label" "rc=$RC want=$want output=$OUTPUT"
+    return
+  fi
+  if [ -n "$pattern" ] && [[ "$OUTPUT" != *"$pattern"* ]]; then
+    report 0 "$label" "missing pattern: $pattern output=$OUTPUT"
+    return
+  fi
+  report 1 "$label" "rc=$RC"
+}
+
+expect_missing_jq() {
+  local label="$1" script="$2" input="$3"
+  set +e
+  # Use an absolute bash and a PATH that contains no jq on either macOS or Ubuntu
+  # (Ubuntu's /bin is a symlink to /usr/bin which contains jq, so PATH=/bin is unsafe).
+  BASH_BIN=$(command -v bash)
+  OUTPUT=$(printf '%s' "$input" | env -i PATH=/nonexistent-nase-jq-test NASE_ROOT="$TMP_ROOT" "$BASH_BIN" "$script" 2>&1)
+  RC=$?
+  set -e
+  if [ "$RC" -eq 2 ] && [[ "$OUTPUT" == *"jq is required"* ]]; then
+    report 1 "$label"
+  else
+    report 0 "$label" "rc=$RC output=$OUTPUT"
+  fi
+}
+
+slack_send='{"tool_name":"mcp__plugin_slack_slack__slack_send_message","tool_input":{"channel_id":"C1","text":"hi"}}'
+slack_send_alt='{"tool_name":"mcp__slack_workspace__slack_send_message","tool_input":{"channel_id":"C1","text":"hi"}}'
+slack_draft='{"tool_name":"mcp__plugin_slack_slack__slack_send_message_draft","tool_input":{"channel_id":"C1","text":"hi"}}'
+expect_rc "slack direct send blocked" .claude/hooks/slack-send-guard.sh "$slack_send" 2 "slack_send_message is forbidden"
+expect_rc "slack alternate namespace blocked" .claude/hooks/slack-send-guard.sh "$slack_send_alt" 2 "slack_send_message is forbidden"
+expect_rc "slack draft allowed" .claude/hooks/slack-send-guard.sh "$slack_draft" 0
+expect_rc "slack malformed JSON blocked" .claude/hooks/slack-send-guard.sh "{" 2 "could not parse"
+
+small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short"}}')
+large_body=$(printf '%*s' 60001 '' | tr ' ' x)
+large_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body}}')
+large_confluence_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__updateConfluencePage",tool_input:{body:$body}}')
+wide_body=$(printf '中%.0s' {1..20001})
+wide_confluence=$(jq -cn --arg body "$wide_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body}}')
+confluence_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluencePage","tool_input":{"pageId":"1"}}'
+expect_rc "confluence small body allowed" .claude/hooks/confluence-size-guard.sh "$small_confluence" 0
+expect_rc "confluence large body blocked" .claude/hooks/confluence-size-guard.sh "$large_confluence" 2 "confluence-size-guard"
+expect_rc "confluence alternate namespace blocked" .claude/hooks/confluence-size-guard.sh "$large_confluence_alt" 2 "confluence-size-guard"
+expect_rc "confluence UTF-8 byte limit blocked" .claude/hooks/confluence-size-guard.sh "$wide_confluence" 2 "bytes"
+expect_rc "confluence read allowed" .claude/hooks/confluence-size-guard.sh "$confluence_read" 0
+expect_rc "confluence malformed JSON blocked" .claude/hooks/confluence-size-guard.sh "{" 2 "could not parse"
+
+jira_transition_tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
+jira_transition=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
+jira_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{"issueIdOrKey":"SRE-1"}}'
+expect_rc "jira read allowed without token" .claude/hooks/jira-write-guard.sh "$jira_read" 0
+expect_rc "jira mutation without token blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "no jira-write-token"
+expect_rc "jira malformed JSON blocked" .claude/hooks/jira-write-guard.sh "{" 2 "could not parse"
+
+created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+jq -n --arg tool "$jira_transition_tool" --arg created "$created" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira matching token allowed" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 0 "jira token consumed" "token still exists"
+else
+  report 1 "jira token consumed"
+fi
+
+jq -n --arg tool "$jira_transition_tool" --arg created "$created" \
+  '{tool_name:$tool,issue_key:"SRE-2",created_at:$created,payload_summary:"SRE-2 -> Done"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira issue mismatch blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "token issue mismatch"
+
+jira_transition_alt_tool="mcp__atlassian_rovo_mcp__transitionJiraIssue"
+jira_transition_alt=$(jq -cn --arg tool "$jira_transition_alt_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
+jq -n --arg tool "$jira_transition_alt_tool" --arg created "$created" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira alternate namespace allowed" .claude/hooks/jira-write-guard.sh "$jira_transition_alt" 0
+
+jira_link_tool="mcp__plugin_atlassian_atlassian__createIssueLink"
+jira_link=$(jq -cn --arg tool "$jira_link_tool" '{tool_name:$tool,tool_input:{inwardIssue:"SRE-1",outwardIssue:"SRE-2"}}')
+jq -n --arg tool "$jira_link_tool" --arg created "$created" \
+  '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_summary:"link SRE-1 SRE-2"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira issue-link token allowed" .claude/hooks/jira-write-guard.sh "$jira_link" 0
+
+jq -n --arg tool "$jira_link_tool" --arg created "$created" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"link SRE-1 only"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira issue-link missing endpoint blocked" .claude/hooks/jira-write-guard.sh "$jira_link" 2 "unapproved SRE-2"
+
+expect_missing_jq "slack missing jq blocked" .claude/hooks/slack-send-guard.sh "$slack_send"
+expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$jira_transition"
+expect_missing_jq "confluence missing jq blocked" .claude/hooks/confluence-size-guard.sh "$small_confluence"
+
+printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]
