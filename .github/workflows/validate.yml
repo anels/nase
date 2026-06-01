@@ -104,6 +104,9 @@ jobs:
       - name: Workspace validation
         run: bash .claude/scripts/validate-workspace.sh
 
+      - name: Local sensitive artifact scan
+        run: bash tests/check-local-sensitive-artifacts.sh
+
       - name: Date resolve regression tests
         run: bash tests/scripts/test-date-resolve.sh
 
@@ -112,6 +115,9 @@ jobs:
 
       - name: KB search regression tests
         run: bash tests/scripts/test-kb-search.sh
+
+      - name: Today stats regression tests
+        run: bash tests/scripts/test-today-stats.sh
 
       - name: Shared-doc reference integrity
         run: bash tests/check-shared-doc-refs.sh
@@ -134,4 +140,5 @@ jobs:
             --exclude-path .omc
             --exclude-path node_modules
             './**/*.md'
+            '.claude/**/*.md'
           fail: true

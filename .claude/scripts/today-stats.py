@@ -31,10 +31,11 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 NASE_ROOT = Path(__file__).resolve().parents[2]
+PROMPT_TOOL_DEDUPE_WINDOW = timedelta(seconds=60)
 
 
 def read_workspace_name(root: Path) -> str:
@@ -78,9 +79,9 @@ def collect_session_tokens(today: str, workspace_name: str) -> dict:
 def collect_skill_usage(root: Path, today: str) -> dict:
     """Tolerant JSON parser for mixed-shape JSONL (compact + pretty-printed)."""
     path = root / "workspace" / "stats" / "skill-usage.jsonl"
-    counts: dict[str, int] = {}
+    records: list[dict] = []
     if not path.is_file():
-        return counts
+        return {}
     text = path.read_text(errors="ignore")
     decoder = json.JSONDecoder()
     idx = 0
@@ -106,10 +107,48 @@ def collect_skill_usage(root: Path, today: str) -> dict:
                 today_seen = True
                 skill = d.get("skill")
                 if skill:
-                    counts[skill] = counts.get(skill, 0) + 1
+                    records.append({
+                        "skill": skill,
+                        "ts": ts,
+                        "source": d.get("source", ""),
+                        "dt": parse_event_ts(ts),
+                    })
             elif today_seen and ts > today:
                 break
+    counts: dict[str, int] = {}
+    for event in dedupe_prompt_tool_events(records):
+        skill = event["skill"]
+        counts[skill] = counts.get(skill, 0) + 1
     return counts
+
+
+def dedupe_prompt_tool_events(records: list[dict]) -> list[dict]:
+    prompt_times: dict[str, list[datetime]] = {}
+    kept: list[dict] = []
+    for event in sorted(records, key=lambda e: e["ts"]):
+        skill = event["skill"]
+        dt = event["dt"]
+        if event["source"] == "prompt":
+            kept.append(event)
+            if dt is not None:
+                prompt_times.setdefault(skill, []).append(dt)
+            continue
+        if dt is not None:
+            recent_prompt = any(
+                timedelta(0) <= (dt - prompt_dt) <= PROMPT_TOOL_DEDUPE_WINDOW
+                for prompt_dt in prompt_times.get(skill, [])
+            )
+            if recent_prompt:
+                continue
+        kept.append(event)
+    return kept
+
+
+def parse_event_ts(ts: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def main() -> int:

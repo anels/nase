@@ -150,7 +150,7 @@ rm -rf "$TMPDIR_STATS"
 
 ### 6. Cross-check with `/usage` (Claude Code 2.1.149+)
 
-The `skill-usage.jsonl` ledger is populated by `PostToolUse:Skill` (`track-skill.sh`) and `UserPromptSubmit` (`track-skill-prompt.sh`). It still may miss unusual invocation paths; Step 4 notes the undercount risk. Claude Code 2.1.149+ also has `/usage` for current-window cost/token breakdowns.
+The `skill-usage.jsonl` ledger is populated by `PostToolUse:Skill` (`track-skill.sh`) and `UserPromptSubmit` (`track-skill-prompt.sh`). Prompt/tool pairs for the same skill are deduped within a short window; unusual invocation paths may still be missed. Claude Code 2.1.149+ also has `/usage` for current-window cost/token breakdowns.
 
 If `claude --version` reports 2.1.149 or newer, append this line to the chat output:
 

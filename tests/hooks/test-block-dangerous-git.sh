@@ -95,6 +95,12 @@ test_case "restore dot"          "g""it res""tore ."                            
 test_case "restore top pathspec" "g""it res""tore :/"                           block
 test_case "restore magic top pathspec" "g""it res""tore ':(top)'"               block
 test_case "config global"        "g""it co""nfig --global user.email x@y"       block
+test_case "config hooksPath"     "g""it co""nfig core.hooksPath /dev/null"      block
+test_case "config local hooksPath" "g""it co""nfig --local core.hooksPath /dev/null" block
+test_case "config hooksPath equals" "g""it co""nfig core.hooksPath=/dev/null"   block
+test_case "config commit gpg false" "g""it co""nfig commit.gpgsign false"       block
+test_case "config tag gpg false" "g""it co""nfig tag.gpgsign false"             block
+test_case "config bool commit gpg false" "g""it co""nfig --bool commit.gpgsign false" block
 test_case "no-verify push"       "g""it pu""sh --no-verify origin feat/x"       block
 test_case "no-verify push after ref" "g""it pu""sh origin feat/x --no-verify"   block
 test_case "no-verify commit after msg" "g""it co""mmit -m fix --no-verify"      block
@@ -152,8 +158,13 @@ test_case "optional locks global opt reset" "g""it --no-optional-locks res""et -
 test_case "config-env global opt reset" "g""it --config-env=foo=BAR res""et --hard" block
 test_case "config-env alias hidden reset" "ALIAS='res""et --hard' g""it --config-env=alias.wipe=ALIAS wipe" block
 test_case "config-env alias arg hidden reset" "ALIAS='res""et --hard' g""it --config-env alias.wipe=ALIAS wipe" block
+test_case "config-env hooksPath hidden" "HOOKS=/dev/null g""it --config-env=core.hooksPath=HOOKS co""mmit -m fix" block
+test_case "config-env commit gpg hidden" "SIGN=false g""it --config-env commit.gpgsign=SIGN co""mmit -m fix" block
 test_case "alias config reset"   "g""it -c alias.wipe='!g""it res""et --hard' wipe" block
 test_case "alias config reset uppercase key" "g""it -c Alias.wipe='!g""it res""et --hard' wipe" block
+test_case "global opt hooksPath" "g""it -c core.hooksPath=/dev/null co""mmit -m fix" block
+test_case "global opt commit gpg false" "g""it -c commit.gpgsign=false co""mmit -m fix" block
+test_case "global opt tag gpg false" "g""it -c tag.gpgsign=false ta""g v1.2.3" block
 test_case "alias config push main" "g""it -c alias.pm='!g""it pu""sh origin main' pm" block
 test_case "non-shell alias reset" "g""it -c alias.wipe='res""et --hard' wipe" block
 test_case "non-shell alias push main" "g""it -c alias.pm='pu""sh origin main' pm" block
@@ -204,6 +215,10 @@ test_case "reset path named hard" "g""it res""et -- --hard"                     
 test_case "rebase main"          "g""it re""base main"                          allow
 test_case "config-env safe status" "FOO=bar g""it --config-env=foo=FOO sta""tus" allow
 test_case "config safe alias"     "g""it co""nfig alias.st 'sta""tus --short'"  allow
+test_case "config read hooksPath" "g""it co""nfig --get core.hooksPath"         allow
+test_case "config read commit gpg" "g""it co""nfig commit.gpgsign"              allow
+test_case "config commit gpg true" "g""it co""nfig commit.gpgsign true"         allow
+test_case "global opt commit gpg true" "g""it -c commit.gpgsign=true co""mmit -m fix" allow
 test_case "empty"                ""                                             allow
 
 # False-positive guards — git mentioned inside string literal must not block

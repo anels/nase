@@ -4,7 +4,8 @@ set -euo pipefail
 # PostToolUse hook — track /nase:* skill invocations to JSONL
 # Input: JSON on stdin with tool_input.skill
 
-NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
+[ -z "$NASE_ROOT" ] && exit 0
 STATS_DIR="$NASE_ROOT/workspace/stats"
 JSONL="$STATS_DIR/skill-usage.jsonl"
 
@@ -43,6 +44,14 @@ mkdir -p "$STATS_DIR"
 if [ -f "$JSONL" ]; then
   LAST=$(tail -1 "$JSONL" 2>/dev/null || true)
   if [[ "$LAST" == *"\"skill\":\"$SKILL_NAME\""*"\"ts\":\"$TS\""* ]]; then
+    exit 0
+  fi
+  if tail -50 "$JSONL" 2>/dev/null | jq -e --arg s "$SKILL_NAME" --arg t "$TS" '
+    ($t | fromdateiso8601) as $now
+    | select(.skill == $s and .source == "prompt" and (.ts | type == "string"))
+    | (.ts | fromdateiso8601? // 0) as $event
+    | select($event > 0 and ($now - $event) >= 0 and ($now - $event) <= 60)
+  ' >/dev/null 2>&1; then
     exit 0
   fi
 fi

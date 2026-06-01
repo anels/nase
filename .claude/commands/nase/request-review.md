@@ -52,7 +52,7 @@ Matching rules (GitHub CODEOWNERS syntax):
 - `*.ext` — matches by extension anywhere
 - `*` catch-all — matches everything, but more specific rules below it override
 - `**` — recursive match (e.g., `docs/**` matches all files under any `docs/` subdirectory)
-- `!pattern` — negation (explicitly un-owns files matching the pattern)
+- Empty owner line — explicitly leaves matching files unowned; GitHub CODEOWNERS does **not** support `!pattern` negation
 - Trailing `/` — directory-only match
 - `@org/team` entries — note these for the report but skip for DM purposes (teams can't be DM'd directly; resolve individual members from KB if possible)
 
