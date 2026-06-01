@@ -37,6 +37,10 @@ is_basename() {
   [[ "$word" == "$name" || "$word" == */"$name" ]]
 }
 
+lowercase() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 is_shell_keyword() {
   case "$1" in
     if|then|elif|else|fi|while|until|do|done|for|select|'case'|'esac'|'!')
@@ -190,34 +194,59 @@ skip_prefix_wrapper() {
 
 scan_git_config_value() {
   local config_value="$1"
-  local key value alias_body
+  local key value key_lc value_lc alias_body
 
   key="${config_value%%=*}"
   value="${config_value#*=}"
   if [ "$key" = "$config_value" ]; then
     return 0
   fi
-  if ! printf '%s' "$key" | grep -qi '^alias\.'; then
-    return 0
-  fi
-  case "$value" in
-    '!'*)
-      alias_body="${value#!}"
+
+  key_lc=$(lowercase "$key")
+  value_lc=$(lowercase "$value")
+  case "$key_lc" in
+    core.hookspath)
+      block 'git config core.hooksPath (changes hook path)'
       ;;
-    *)
-      alias_body="git $value"
+    commit.gpgsign|tag.gpgsign)
+      case "$value_lc" in
+        false|no|off|0)
+          block "git config $key=false (bypassing signing)"
+          ;;
+      esac
       ;;
   esac
-  scan_nested_command "$alias_body"
+
+  if printf '%s' "$key" | grep -qi '^alias\.'; then
+    case "$value" in
+      '!'*)
+        alias_body="${value#!}"
+        ;;
+      *)
+        alias_body="git $value"
+        ;;
+    esac
+    scan_nested_command "$alias_body"
+  fi
 }
 
 scan_git_config_env_arg() {
   local config_env="$1"
   local key="${config_env%%=*}"
+  local key_lc
 
-  if printf '%s' "$key" | grep -qi '^alias\.'; then
-    block 'git --config-env alias.* (hidden alias body can bypass git safety checks)'
-  fi
+  key_lc=$(lowercase "$key")
+  case "$key_lc" in
+    alias.*)
+      block 'git --config-env alias.* (hidden alias body can bypass git safety checks)'
+      ;;
+    core.hookspath)
+      block 'git --config-env core.hooksPath (hidden hook path can bypass hooks)'
+      ;;
+    commit.gpgsign|tag.gpgsign)
+      block "git --config-env $key (hidden signing config can bypass signing)"
+      ;;
+  esac
 }
 
 split_segments() {
@@ -520,7 +549,7 @@ has_arg() {
   return 1
 }
 
-scan_git_config_alias_args() {
+scan_git_config_args() {
   local idx=1 arg key value
 
   while [ "$idx" -lt "${#NORM_ARGS[@]}" ]; do
@@ -548,7 +577,12 @@ scan_git_config_alias_args() {
 
   [ "$idx" -lt "${#NORM_ARGS[@]}" ] || return 0
   key="${NORM_ARGS[$idx]}"
-  value="${NORM_ARGS[$((idx + 1))]:-}"
+  if [[ "$key" == *=* ]]; then
+    scan_git_config_value "$key"
+    return 0
+  fi
+  [ $((idx + 1)) -lt "${#NORM_ARGS[@]}" ] || return 0
+  value="${NORM_ARGS[$((idx + 1))]}"
   scan_git_config_value "$key=$value"
 }
 
@@ -583,7 +617,7 @@ apply_policy() {
       if has_flag "--global" || has_flag "--system"; then
         block 'git config --global/--system (modifies user/system config)'
       fi
-      scan_git_config_alias_args
+      scan_git_config_args
       ;;
     commit|push|merge|rebase|cherry-pick)
       has_flag "--no-verify" && block 'skipping hooks (--no-verify)'

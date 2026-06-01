@@ -30,7 +30,7 @@ If absent, surface a friendly note (`track-skill.sh` may have never fired; `jq` 
 
 ### Step 2: Aggregate by skill
 
-Parse JSONL with `jq`. Each entry has at minimum `{skill, ts}` and (post-2026-05) optional `{status}` plus optional `{source}` (`skill` or `prompt`). Treat missing `status` as `success` for backward compatibility.
+Parse JSONL with Python so prompt/tool pairs for the same slash command are deduped. Each entry has at minimum `{skill, ts}` and (post-2026-05) optional `{status}` plus optional `{source}` (`skill` or `prompt`). Treat missing `status` as `success` for backward compatibility.
 
 Produce a per-skill record:
 - `total` — all-time invocations
@@ -42,17 +42,77 @@ Produce a per-skill record:
 
 ```bash
 TODAY=$(date -u +%Y-%m-%d)
-jq -r --arg today "$TODAY" '
-  . as $e | {skill, ts, status: (.status // "success")}
-' "$JSONL" \
-| jq -s 'group_by(.skill)[] | {
-    skill: .[0].skill,
-    total: length,
-    last_used: (max_by(.ts) | .ts[0:10]),
-    last_30d: (map(select(.ts > (now - 30*86400 | strftime("%Y-%m-%dT%H:%M:%SZ")))) | length),
-    last_7d:  (map(select(.ts > (now - 7*86400  | strftime("%Y-%m-%dT%H:%M:%SZ")))) | length),
-    success_rate: ((map(select(.status == "success")) | length) / length)
-  }'
+python3 - "$JSONL" "$TODAY" <<'PY'
+import json
+import sys
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+
+path = sys.argv[1]
+today = sys.argv[2]
+now = datetime.now(timezone.utc)
+window = timedelta(seconds=60)
+
+def parse_ts(ts):
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+events = []
+with open(path, encoding="utf-8", errors="ignore") as fh:
+    for line in fh:
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        skill = data.get("skill")
+        ts = data.get("ts", "")
+        if not skill or not ts:
+            continue
+        events.append({
+            "skill": skill,
+            "ts": ts,
+            "status": data.get("status", "success"),
+            "source": data.get("source", ""),
+            "dt": parse_ts(ts),
+        })
+
+prompt_times = defaultdict(list)
+kept = []
+for event in sorted(events, key=lambda item: item["ts"]):
+    dt = event["dt"]
+    skill = event["skill"]
+    if event["source"] == "prompt":
+        kept.append(event)
+        if dt is not None:
+            prompt_times[skill].append(dt)
+        continue
+    if dt is not None and any(timedelta(0) <= dt - p <= window for p in prompt_times[skill]):
+        continue
+    kept.append(event)
+
+by_skill = defaultdict(list)
+for event in kept:
+    by_skill[event["skill"]].append(event)
+
+for skill, items in sorted(by_skill.items()):
+    dated = [item for item in items if item["dt"] is not None]
+    last_dt = max((item["dt"] for item in dated), default=None)
+    total = len(items)
+    success = sum(1 for item in items if item["status"] == "success")
+    out = {
+        "skill": skill,
+        "total": total,
+        "last_used": max(item["ts"] for item in items)[:10],
+        "last_30d": sum(1 for item in dated if now - item["dt"] <= timedelta(days=30)),
+        "last_7d": sum(1 for item in dated if now - item["dt"] <= timedelta(days=7)),
+        "success_rate": success / total,
+    }
+    if last_dt is not None:
+        out["days_since_last"] = max(0, (datetime.fromisoformat(today).date() - last_dt.date()).days)
+    print(json.dumps(out, sort_keys=True))
+PY
 ```
 
 ### Step 3: Discover skills with zero uses

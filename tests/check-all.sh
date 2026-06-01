@@ -85,12 +85,16 @@ bash tests/hooks/test-stop-backup-safety.sh || failed=$((failed+1))
 section "workspace validation"
 bash .claude/scripts/validate-workspace.sh || failed=$((failed+1))
 
+section "local sensitive artifact scan"
+bash tests/check-local-sensitive-artifacts.sh || failed=$((failed+1))
+
 section "script regression tests"
 bash tests/scripts/test-date-resolve.sh || failed=$((failed+1))
 bash tests/scripts/test-kb-gap-scan.sh || failed=$((failed+1))
 bash tests/scripts/test-help-summary.sh || failed=$((failed+1))
 bash tests/scripts/test-kb-hygiene-scan.sh || failed=$((failed+1))
 bash tests/scripts/test-kb-search.sh || failed=$((failed+1))
+bash tests/scripts/test-today-stats.sh || failed=$((failed+1))
 
 section "shared-doc reference integrity"
 bash tests/check-shared-doc-refs.sh || failed=$((failed+1))
@@ -104,7 +108,8 @@ if command -v lychee >/dev/null 2>&1; then
     --exclude-path workspace \
     --exclude-path .omc \
     --exclude-path node_modules \
-    './**/*.md' || failed=$((failed+1))
+    './**/*.md' \
+    '.claude/**/*.md' || failed=$((failed+1))
 else
   printf 'SKIP: lychee not installed locally; GitHub Actions still runs this gate.\n'
 fi

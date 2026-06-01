@@ -37,6 +37,17 @@ green()  { printf '\033[32m%s\033[0m' "$1"; }
 
 section() { printf '\n--- %s ---\n' "$1"; }
 
+skill_scan_text() {
+  awk '
+    /^```/ { in_code = !in_code; next }
+    in_code { next }
+    /^### Recommended profiles$/ { in_example_section = 1; next }
+    /^### / && in_example_section { in_example_section = 0 }
+    in_example_section { next }
+    { print }
+  ' "$1"
+}
+
 # ---------- D1: curl-with-PAT regression -----------------------------------
 section "D1: no curl with ADO PAT"
 # Pattern: curl ... -u ":$SOMETHING_PAT" OR curl ... -u ":$ADO_PAT" / $AZURE_DEVOPS_PAT etc.
@@ -129,14 +140,15 @@ section "W1: mutation skills reference external-mutation-policy.md"
 # Keywords that indicate the skill performs an external mutation
 MUTATION_RE='(updateConfluencePage|createConfluencePage|transitionJiraIssue|createJiraIssue|editJiraIssue|slack_send_message($|[^_])|gh pr create|gh pr edit|gh pr ready|--add-reviewer|pulls/\{pr_number\}/comments|resolveReviewThread|az pipelines run [^a-z]|az pipelines runs cancel|az pipelines runs update|az rest --method (post|put|patch|delete))'
 w1_hits=""
-for f in $(grep -rlE "$MUTATION_RE" "${SKILL_DIRS[@]}" 2>/dev/null \
-  | grep -v 'check-skill-doctrine.sh' \
-  | grep -v 'external-mutation-policy.md' \
-  | grep -v 'workspace/skills/docs/' || true); do
+while IFS= read -r f; do
+  case "$f" in
+    *check-skill-doctrine.sh|*external-mutation-policy.md|*workspace/skills/docs/*) continue ;;
+  esac
+  skill_scan_text "$f" | grep -qE "$MUTATION_RE" || continue
   if ! grep -q 'external-mutation-policy.md' "$f" 2>/dev/null; then
     w1_hits+="  $f"$'\n'
   fi
-done
+done < <(find "${SKILL_DIRS[@]}" -maxdepth 2 -name '*.md' -type f 2>/dev/null)
 if [[ -n "$w1_hits" ]]; then
   yellow "WARN"; printf ': mutation-capable skills missing reference to external-mutation-policy.md:\n'
   printf '%s' "$w1_hits"
