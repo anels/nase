@@ -109,6 +109,30 @@ Stateful skills read prior output and adjust later behavior.
 
 Brittle Boundaries (`onboard.md:112`) records each repo's top 3 high-risk areas plus a touch protocol.
 
+## Workspace write safety
+
+Durable workspace writes use a stage-then-apply shape. Skills write proposed
+content to `workspace/tmp/`, show a diff, then check target mtime/hash again
+immediately before replacing or appending. This prevents stale KB/doc writes
+from overwriting edits made by another session.
+
+Append-only logs and JSONL stats are exceptions; they may append directly but
+must not rewrite existing entries.
+
+## Runtime configuration
+
+Workspace skills should read drift-prone org/project/page/model/tool values from
+`workspace/config.md` or a documented repo-local source before using hardcoded
+fallbacks. Tool and model names are runtime-probed where possible, because
+connector names, Claude Code subcommands, and model aliases change over time.
+
+## Reference integrity
+
+`tests/check-shared-doc-refs.sh` validates both `.claude/docs/*.md` and
+`workspace/skills/docs/*.md` references from core commands, shared docs, and
+workspace skills. This catches deleted or renamed shared-doc dependencies before
+they break a skill at runtime.
+
 ---
 
 ## Bug-class generalization in PR comments

@@ -140,6 +140,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `kb-teamshare-file-processing.md` | File processing pipeline for `kb-teamshare` Step 4 — path stripping (4a), internal link rewriting (4b), privacy classification (4c), output language translation (4d) |
 | `kb-template.md` | Template + Writing Conventions for new repo KB files (used by `onboard`, `learn`, `kb-update`, `kb-review`) |
 | `language-config.md` | Canonical algorithm for loading conversation vs output language |
+| `ms-learn-grounding.md` | Read-only verification of Azure / .NET / Microsoft SDK claims via the `ms-learn` MCP server. Used by `onboard` Step 3j; conditional on a Microsoft-stack trigger. |
 | `lessons-format.md` | Canonical format for `workspace/tasks/lessons.md` entries (header, body, signal-to-noise rules) |
 | `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
 | `pr-input-guard.md` | Input validation for skills that take a PR URL |
@@ -150,6 +151,8 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `verification-matrix.md` | Verification evidence matrix used by `fsd` and `discuss-pr` to declare task done |
 | `workspace-data-gathering.md` | Load journals/logs/tasks within a date range (used by `recap`, `wrap-up`) |
 | `worktree-pattern.md` | Safe worktree creation with `EnterWorktree` avoidance |
+| `workspace-runtime-config.md` | Runtime config registry rules for org/project/page/model/tool names used by workspace skills |
+| `workspace-write-guard.md` | Staging, diff, and mtime/hash guard for durable workspace writes |
 
 ---
 

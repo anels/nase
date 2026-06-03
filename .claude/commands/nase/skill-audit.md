@@ -77,14 +77,16 @@ Flag patterns that look like hardcoded secrets:
 
 ### 7. Tool Privilege Hygiene (WARN)
 
-Claude Code 2.1.152+ supports `disallowed-tools` in skill/command frontmatter. Listed tools are removed for the duration of the skill, so the harness blocks unsafe code paths even if the skill body or fetched text asks for them. Flag a skill when:
+Claude Code permission boundaries are enforced by permission deny rules, CLI / SDK disallowed-tool options, sandboxing, and PreToolUse hooks. `allowed-tools` frontmatter pre-approves tools; it is not a restriction. Do not treat skill frontmatter as the primary blocking boundary for unsafe tools.
 
-- The skill body contains Category 1 / 2 / 4 / 5 patterns AND the frontmatter does NOT declare `disallowed-tools` covering the dangerous surface.
-- The skill is read-only by design (KB search, status report) but frontmatter does not block `Bash`, `Edit`, `Write`, `WebFetch`.
-- The skill operates on local files only but does not block `WebFetch`, `WebSearch`, MCP network tools.
-- The skill is mutation-only (deletes/edits) and does not block `mcp__*__send_message` / `mcp__*__create*` tools that would let it externalize the change.
+Flag a skill when:
 
-Pair every Category 7 finding with the concrete frontmatter snippet the skill should adopt — see [Mitigation: `disallowed-tools`](#mitigation-disallowed-tools) below.
+- The skill body contains Category 1 / 2 / 4 / 5 patterns and no enforcing boundary is documented for the dangerous surface.
+- The skill is read-only by design (KB search, status report) but has no deny rule / plan-mode / sandbox / hook guard preventing edits or external writes.
+- The skill operates on local files only but has no deny rule or hook guard for web/network/MCP write tools.
+- The skill is mutation-only (deletes/edits) and has no deny rule or hook guard for Slack/Jira/Confluence/GitHub/ADO mutation tools that would let it externalize the change.
+
+Pair every Category 7 finding with the concrete deny-rule / hook / sandbox mitigation the operator should adopt — see [Mitigation: permission deny rules](#mitigation-permission-deny-rules) below.
 
 ## Execution
 
@@ -106,7 +108,7 @@ For each file:
    - Line number or section where found
    - The specific pattern matched
    - Why it's risky (one sentence)
-   - For Category 7: the recommended `disallowed-tools` frontmatter snippet
+   - For Category 7: the recommended permission deny-rule / hook / sandbox mitigation
 
 ### Step 3: Determine verdict per file
 
@@ -143,50 +145,55 @@ Scanned: {N} files
 - {recommendation: "All clear" or "Remove/quarantine FAIL files before use"}
 ```
 
-## Mitigation: `disallowed-tools`
+## Mitigation: permission deny rules
 
-Available in Claude Code 2.1.152+. Skills and slash commands can declare `disallowed-tools` in frontmatter. While that skill is active, every listed tool is removed from Claude's toolbox, so prompt-injection text cannot call a blocked tool. Use this for Categories 1, 2, 4, 5, and 7.
+Claude Code permissions support allow, ask, and deny rules. Deny rules are evaluated before ask/allow and are enforced by Claude Code, not by the model. A bare deny rule such as `Bash` removes that tool from Claude's context; scoped rules such as `Bash(git push *)` keep the tool available but block matching calls.
 
-### Frontmatter shape
+Use permission deny rules, `--disallowedTools` / SDK `disallowed_tools`, sandboxing, or PreToolUse hooks for Categories 1, 2, 4, 5, and 7. `allowed-tools` in frontmatter only pre-approves matching tools and does not block anything else.
 
-```yaml
----
-name: skill-name
-description: "..."
-disallowed-tools:
-  - Bash
-  - Edit
-  - Write
-  - WebFetch
----
+### Settings shape
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push *)",
+      "Bash(curl *)",
+      "WebFetch",
+      "mcp__plugin_slack_slack__slack_send_message"
+    ]
+  }
+}
 ```
 
-Tool names match the registered tool identifiers (e.g. `Bash`, `Edit`, `Write`, `WebFetch`, `WebSearch`, `NotebookEdit`, and the fully-qualified `mcp__<server>__<tool>` form for MCP tools). Tool names are case-sensitive and there is no wildcard — list each one explicitly.
+Rule names match registered tool identifiers (e.g. `Bash`, `Edit`, `Write`, `WebFetch`, `WebSearch`, and fully-qualified `mcp__<server>__<tool>` form for MCP tools). Prefer scoped Bash rules over blanket `Bash` when the skill still needs safe read/build commands.
 
 ### Recommended profiles
 
-| Skill purpose | Suggested `disallowed-tools` |
+| Skill purpose | Suggested enforcement |
 |---|---|
-| Read-only KB / search / status report | `Bash`, `Edit`, `Write`, `NotebookEdit`, `WebFetch`, `WebSearch` |
-| Local-only mutation (file edits, no network) | `WebFetch`, `WebSearch`, MCP write tools (`mcp__plugin_slack_slack__slack_send_message_draft`, `mcp__plugin_atlassian_atlassian__createJiraIssue`, etc.) |
-| Web research only (no local writes) | `Edit`, `Write`, `NotebookEdit`, `Bash` |
-| Single-MCP-server skill (e.g. Slack draft only) | every `mcp__*` tool from other servers + `Bash`, `Edit`, `Write`, `NotebookEdit` |
+| Read-only KB / search / status report | Run in plan/read-only mode; deny `Edit`, `Write`, external write MCP tools, and risky Bash mutations |
+| Local-only mutation (file edits, no network) | Deny `WebFetch`, web-search tools, and external write MCP tools; keep repo-local Bash scoped to build/test/git read commands |
+| Web research only (no local writes) | Deny `Edit`, `Write`, repo mutation Bash, and external write MCP tools |
+| Single-MCP-server skill (e.g. Slack draft only) | Deny other MCP write tools plus repo mutation Bash; allow only the needed read/draft tools |
+| Destructive/local cleanup skill | Prefer sandbox/worktree isolation plus PreToolUse hooks; deny broad filesystem delete commands unless exact paths are guarded |
 
 ### Reporting the recommendation
 
-For every Category 7 finding, the audit report should include a ready-to-paste diff for the skill's frontmatter, e.g.:
+For every Category 7 finding, the audit report should include a ready-to-paste permission snippet or hook recommendation, e.g.:
 
-```diff
- ---
- name: example-skill
- description: "..."
-+disallowed-tools:
-+  - Bash
-+  - WebFetch
- ---
+```json
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push *)",
+      "WebFetch"
+    ]
+  }
+}
 ```
 
-The operator can apply the mitigation directly from the audit report.
+If a setting would be too broad for the whole workspace, recommend a PreToolUse hook or running the skill in a restricted permission mode instead of weakening the rule.
 
 ## Notes
 

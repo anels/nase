@@ -25,6 +25,7 @@ If `$ARGUMENTS` contains `--exa` (optionally with `--depth fast|deep|deep-reason
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. The KB entry written in Step 6 follows `.claude/docs/kb-template.md` (structural headers English; freeform body follows `conversation:`).
 Follow `.claude/docs/confidential-marker.md` — check only user-provided input and the session content being used as the learning seed, not this command file or policy docs. If that content contains `[CONFIDENTIAL]`, refuse to seed research from it and ask for a sanitized restatement.
+Follow `.claude/docs/workspace-write-guard.md` for staged KB writes and final mtime/hash drift checks.
 
 ### 1. Detect input type
 
@@ -124,6 +125,16 @@ If deep research was skipped or failed and a retry is the only concrete useful a
 
 **If it clears the bar**: continue with the synthesis below.
 
+**4.1. Auto-accept quality gate.**
+
+If `--auto-accept` is active, the notability bar is necessary but not sufficient. Auto-save only when all are true:
+- target KB domain is unambiguous from `.domain-map.md` or the routing rules
+- source quality is concrete: at least two independent credible sources, or one official/primary source, or a session-derived failure/decision with direct repo evidence
+- the entry is not a generic best-practice restatement already covered by existing KB
+- no new KB domain is required
+
+If any condition fails, write only the draft to `workspace/tmp/learn-draft-{slug}.md`, report the failed quality condition in one line, and stop without mutating durable KB files.
+
 Combine the original extraction (Step 2) with the deep research (Step 3) into a unified knowledge summary using this structure (this is the **file content**, not chat output):
 
 ```
@@ -156,7 +167,7 @@ Combine the original extraction (Step 2) with the deep research (Step 3) into a 
    - **Topic:** `{Topic Title}` — `{one-sentence Core Insight}`
    - **Takeaways:** `{N}` · **Sources:** `{N}`
 
-If `--auto-accept` is active, skip the confirmation and proceed directly to Step 5 (auto-save) — no draft file needed in that path; write straight to KB.
+If `--auto-accept` is active and Step 4.1 passed, skip the confirmation and proceed directly to Step 5 (auto-save) — no draft file needed in that path; write straight to KB.
 
 Otherwise, after emitting the draft summary above, **immediately invoke the `AskUserQuestion` tool** (do not present the options as plain text):
 
@@ -181,6 +192,7 @@ If the knowledge spans multiple domains, write to each relevant KB file (the ove
 ### 6. Write to KB
 
 For each target KB file:
+- Apply `.claude/docs/workspace-write-guard.md`: stage the final target content to `workspace/tmp/`, diff it, and re-check target mtime/hash immediately before writing. In `--auto-accept`, skip the prompt only if Step 4.1 passed; never skip the final drift check.
 - If the file exists: read it, find the right section, and **append or merge** the new knowledge. Don't duplicate content that's already there — enrich it instead. Add a date comment: `<!-- Added: YYYY-MM-DD -->`
 - If the file doesn't exist: create it with a header and the synthesized content, then register in `.domain-map.md`
 

@@ -1,11 +1,23 @@
 ---
 name: nase:discuss-pr
-description: "Read-only PR analysis — runs parallel specialist agents (architecture, bugs, security, testability, DRY/KISS) and drafts inline comments without posting or changing code. Use when reviewing a PR for the first time, doing a self-review, or preparing comments. Triggers: 'analyze PR', 'self-review', 'prepare review comments', 'review PR #N', PR URL + 'review without posting'. For acting on existing reviewer feedback (fix code + push), use /nase:address-comments instead."
+description: "Read-only PR analysis — first identifies what problem the PR solves in larger repo/product context, then checks logic correctness, design quality, simpler implementation options, security, and testability before drafting inline comments without posting or changing code. Use when reviewing a PR for the first time, doing a self-review, or preparing comments. Triggers: 'analyze PR', 'self-review', 'prepare review comments', 'review PR #N', PR URL + 'review without posting'. For acting on existing reviewer feedback (fix code + push), use /nase:address-comments instead."
 ---
 
 ## Language
 
 Read `workspace/config.md`: `conversation:` for chat/questions, `output:` for GitHub text.
+
+## Review stance
+
+Default question order:
+
+1. What problem is this PR solving, for which users/components, and why now?
+2. Does the implementation actually satisfy that intent across the changed code paths?
+3. Does the design fit the larger system boundaries, ownership, and adjacent patterns?
+4. Is there a simpler, more coherent implementation that reduces risk or maintenance cost?
+5. Are tests, security checks, and PR hygiene sufficient for the risk level?
+
+Keep findings anchored to the PR's intent. Drop unrelated pre-existing issues. Treat "more elegant" as actionable only when the alternative is concretely simpler, safer, easier to test, or a better fit with existing patterns.
 
 ## Phase 0 — Input Guard
 
@@ -15,7 +27,7 @@ Follow the PR input guard in `.claude/docs/pr-input-guard.md`. If `$ARGUMENTS` i
 
 Note any focus areas the user specifies (e.g. "architecture", "security", "skip nitpicks").
 
-Default focus if none specified: architecture, bugs, security, testability, DRY/KISS, code comments.
+Default focus if none specified: problem fit, logic correctness, design/elegance, architecture, security, testability, code comments.
 
 Resolve repo from PR URL and load the KB file — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
@@ -23,14 +35,14 @@ Resolve repo from PR URL and load the KB file — see `.claude/docs/repo-resolut
 
 Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.md` (PR Metadata section). Use `additions + deletions` from that metadata before fetching the diff:
 
-- If total diff lines > 5000: run `gh pr diff <PR> --repo <owner/repo> --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
+- If total diff lines > 5000: run `gh pr diff {pr_number} --repo {owner}/{repo} --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
 - Otherwise fetch the full diff.
 
 Also run in parallel:
 
 ```
-gh api repos/<owner/repo>/pulls/<PR>/comments --paginate
-gh api repos/<owner/repo>/pulls/<PR>/reviews --paginate
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" --paginate
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/reviews" --paginate
 ```
 
 Save: title, body, head SHA, changed file list, full diff or diff stat, existing inline comments (with `id`, `path`, `line`, `body`, `user.login`, `in_reply_to_id`), existing reviews (with `id`, `state`, `body`, `user.login`).
@@ -41,20 +53,58 @@ Group comments into threads: top-level comment + all replies sharing the same `i
 
 ## Step 2.5 — Collect context
 
-For each touched file, read key dependencies/callers needed to judge design intent. Cross-reference KB and relevant Confluence docs.
+Before judging the implementation, write a private review frame. Use it to guide the rest of the review and show it in the final answer.
+
+Answer:
+
+- What problem, symptom, risk, or product gap does this PR claim to solve?
+- What is the old behavior, and why is it insufficient?
+- What is the new approach, and which changed files are core vs incidental?
+- What larger workflow, service boundary, data contract, deployment path, or user path does this touch?
+- What constraints should shape the solution: compatibility, feature flags, migration order, observability, performance, ownership, or rollout safety?
+
+If the PR body does not explain the problem, infer carefully from the title, commits, changed files, tests, linked issue references, and nearby git history. Mark the problem as `unclear` instead of inventing intent. Missing or ambiguous problem framing is a review finding for non-trivial PRs.
+
+For each core touched file, read key dependencies/callers needed to judge design intent. Separate core behavioral files from tests, generated files, formatting-only changes, and incidental wiring. Cross-reference KB and relevant Confluence docs.
+
+For design/elegance review, compare with adjacent implementations and propose an alternative only when it clearly reduces behavior risk, ownership confusion, duplication, or future maintenance cost.
 
 **Platform prohibition pre-check (infra PRs):** for networking/infra files, check KB for platform prohibitions before agent analysis. Surface prohibited operations immediately.
 
 **Performance claim check:** if title/body claims speed/latency/throughput gains, require benchmark data: environment, workload, before/after median + p95, methodology. Missing data becomes a finding.
 
-## Step 3 — Launch specialist agents + engage existing comments
+## Step 3 — Build risk map, select specialists, and engage existing comments
+
+Before launching any specialist agents, build a private risk map. This avoids running every specialist on every PR.
+
+Risk map rows:
+
+| Area | Signals | Risk | Specialist(s) |
+|------|---------|------|---------------|
+| Problem fit | unclear body, linked issue mismatch, core path not touched | low/med/high | Problem fit |
+| Logic | state transitions, null/default changes, async, retries, persistence | low/med/high | Logic correctness |
+| Design | new abstraction, duplicated flow, changed boundary, many files | low/med/high | Design/elegance, Architecture |
+| Security | auth, tenant isolation, secrets, external input, telemetry export | low/med/high | Security |
+| Verification | non-trivial behavior, missing tests, migration/deploy path | low/med/high | Testability |
+| Review history | recurring comments, same files recently reverted, old decisions | low/med/high | Git history |
+| Comments/docs | comments changed or code contradicts existing comments | low/med/high | Code comments |
+| Pipeline/data | ETL, SQL, EventHub/Queue/Timer, LookerML, Avro/Parquet | low/med/high | Pipeline gates |
+
+Selection rule:
+- Always cover `Problem fit`, `Logic correctness`, and `Testability` in the main review pass.
+- Spawn a specialist only when its risk row is `med` or `high`, or the user explicitly requested that focus.
+- Skip `Security`, `Git history`, `Code comments`, and `Pipeline gates` when their trigger signals are absent.
+- Run Codex second-opinion only for high-risk PRs, security-sensitive PRs, large diffs, unfamiliar core areas, or explicit user request.
+- Show the selected specialist list in the final output so omissions are auditable.
 
 **Pipeline-touch detection:** if diff touches `*.sql`, ETL/ingestion/aggregation paths, Avro/Parquet, Databricks notebooks, LookerML, or EventHub/Queue/Timer Functions, add the Pipeline gates agent.
 
 | Agent | Focus |
 |-------|-------|
+| **Problem fit** | Whether the PR solves the framed problem end-to-end without overreaching or leaving the main gap open |
+| **Logic correctness** | Branch conditions, state transitions, null/default behavior, async/race risks, idempotency, data loss, bad fallbacks |
+| **Design/elegance** | Whether a simpler local pattern, clearer API boundary, smaller abstraction, or less duplicated flow would solve the same problem better |
 | **Architecture** | DRY violations, KISS violations, layering issues, SRP violations, abstraction quality |
-| **Bugs** | Logic errors, null/undefined risks, race conditions, incorrect async usage, data loss |
 | **Security** | Input validation, header injection, credential exposure, SSRF, auth bypass risks |
 | **Testability** | Missing coverage for new paths, tests that only chase signatures, untestable designs. **Also emit a verification-bar recommendation** (see Step 5.5 classification) and check the PR body for a test plan section — if absent for any non-trivial change, emit a `[MED]` finding tagged `Verification gap`. |
 | **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
@@ -70,7 +120,7 @@ For each touched file, read key dependencies/callers needed to judge design inte
 
 Output exactly the three gates plus per-gate verdict: ✅ evidenced / ⚠️ unclear / 🔧 missing. If any gate is 🔧 missing for a production pipeline, score as `[HIGH]` (≥80) at minimum.
 
-**Codex second-opinion agent** — gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly if MCP is not loaded:
+**Codex second-opinion agent** — conditional per the risk-map selection rule above. Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly if MCP is not loaded:
 
 - `cwd` = absolute repo path
 - `prompt` = `{repo_name} / PR #{pr_number} — {pr_title}`, PR diff (or diff stat + top changed file snippets for PRs >5000 lines), and one-line summary of each queued Claude finding so Codex looks for new angles without duplicates
@@ -112,6 +162,12 @@ For each issue, assign a confidence score 0–100:
 - **< 50**: pre-existing, false positive, or nitpick — drop silently
 - **50–79**: worth mentioning in discussion but skip inline comment draft
 - **≥ 80**: confirmed issue — include in final output and draft a comment
+
+Scoring emphasis:
+- Confirmed logic bugs, contract violations, data loss, auth gaps, or rollout hazards are high or critical.
+- A PR that does not solve its stated problem, or solves only a side symptom, is high confidence when the code path is verified.
+- Missing problem framing or verification for a non-trivial PR is medium unless it hides production/data risk.
+- Design improvements are medium by default; raise only when the design creates concrete correctness, scalability, ownership, or future-change risk.
 
 **Confidence tiers** (used in Step 6 output):
 | Tier | Range | Label |
@@ -175,11 +231,13 @@ Skill-specific outputs:
 
 Order in chat:
 1. Summary line — counts per tier + dropped count
-2. **Verification block** (from Step 5.5) — recommended bar + PR-description plan status
-3. PR Quality Scorecard (table below)
-4. Findings grouped by confidence tier (Critical / High / Medium)
-5. Triage classifications from Step 3 — if any unresolved comments existed
-6. Inline open questions — one bullet each for domain inputs code tracing cannot answer.
+2. Problem framing table with rows: `Problem`, `Larger context`, `Core change`, `Verdict`
+3. Risk map — selected specialist list + one-line reason for any skipped optional specialist
+4. **Verification block** (from Step 5.5) — recommended bar + PR-description plan status
+5. PR Quality Scorecard (table below)
+6. Findings grouped by confidence tier (Critical / High / Medium)
+7. Triage classifications from Step 3 — if any unresolved comments existed
+8. Inline open questions — one bullet each for domain inputs code tracing cannot answer.
 
 ### Verification block
 
@@ -193,8 +251,10 @@ Rate each dimension 1-5 from diff/tests/PR description. One phrase per row; aver
 
 | Dimension | Score | Justification |
 |------|------|------|
+| Problem fit | N/5 | clarity of intent and whether the implementation solves it |
+| Logic | N/5 | correctness of branches, state, contracts, and edge cases |
+| Design | N/5 | simplicity, local patterns, abstraction quality, maintainability |
 | Code quality | N/5 | naming, conventions, cleanliness |
-| Architecture | N/5 | DRY / KISS / layering / SRP |
 | Tests | N/5 | coverage, case quality, edge cases; recommended verification bar met (see Step 5.5); PR-description test plan present |
 | Security | N/5 | input validation, auth, no leaked secrets |
 | PR hygiene | N/5 | description clarity, size, commit quality |
@@ -331,11 +391,11 @@ Put the recommended option first and append `(recommended)` to its label.
 
 ```
 # Thumbs-up reaction
-gh api repos/<owner/repo>/pulls/comments/<comment_id>/reactions \
+gh api "repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions" \
   --method POST --raw-field content="+1"
 
 # Short reply
-gh api repos/<owner/repo>/pulls/<PR>/comments/<comment_id>/replies \
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
   --method POST --raw-field body="Agreed."
 ```
 

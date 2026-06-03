@@ -10,6 +10,8 @@ Run before EVERY work session on a repo — not just the first time. Projects ev
 **Step 0 — Language preflight (MUST run first):** follow `.claude/docs/language-config.md` → Minimum Step 0 block. KB file content follows `.claude/docs/kb-template.md` (structural headers English; freeform body follows `conversation:`).
 Follow `.claude/docs/citation-validator.md` — validate source-file citations in the repo KB before the onboard result is final.
 Follow `.claude/docs/kb-hygiene.md` — validate existing KB claims before trusting them, and keep historical notes by marking corrections instead of deleting them.
+Follow `.claude/docs/workspace-write-guard.md` for staged KB/workspace writes and final mtime/hash drift checks.
+Follow `.claude/docs/workspace-runtime-config.md` before using org/project/page/model/tool values that can drift.
 
 ## Fixed Run Flow
 
@@ -102,7 +104,16 @@ python3 .claude/scripts/kb-hygiene-scan.py --repo-root "{repo}" --kb-file "works
 
 Before running the expensive 6-parallel-scan in Step 3, check if the repo has changed since the last onboard:
 
-1. Compute a hash key: `repo:<org>/<repo-name>` (derive org from git remote URL — handles both HTTPS `https://github.com/Org/Repo(.git)?` and SSH `git@github.com:Org/Repo(.git)?` forms: `git -C {repo} remote get-url origin | sed -E 's|\.git$||; s|^.*[:/]([^/:]+)/[^/:]+$|\1|'`; if org can't be determined, use the full absolute path as key: `repo:<absolute-path>`)
+1. Compute a hash key: `repo:<org>/<repo-name>` from the git remote URL. Use a parser that preserves both owner and repo:
+   ```bash
+   remote=$(git -C {repo} remote get-url origin 2>/dev/null || true)
+   owner_repo=$(printf '%s\n' "$remote" \
+     | sed -E 's#^https://([^/@]+@)?github.com/##; s#^git@github.com:##; s#^ssh://git@github.com/##; s#/*$##; s#\.git$##')
+   case "$owner_repo" in
+     */*) key="repo:$owner_repo" ;;
+     *) key="repo:$(cd {repo} && pwd)" ;;
+   esac
+   ```
 2. Read `workspace/tmp/.content-hashes` and look up this key (see `.claude/docs/content-hash-cache.md`)
 3. Compute a fresh hash from: `git -C {repo} rev-parse HEAD` (current commit SHA) + the repo's `CLAUDE.md` content (captures manual edits not yet committed)
 4. Read the KB's last deep-scan date from `## Knowledge Hygiene → Last deep scan`. If missing, treat it as stale.
@@ -206,9 +217,20 @@ Fill the engineer-facing sections in `.claude/docs/kb-template.md`:
 
 Synthesize mental model: stack, architecture, deployment, CI/CD, observability, code standards, cross-project links, key constraints, and safe change paths.
 
+### 3j. Microsoft Learn Grounding (Azure / .NET / Microsoft SDK only)
+
+Conditional read-only verification of Microsoft-technology claims against authoritative `learn.microsoft.com` docs via the `ms-learn` MCP server. Algorithm, trigger conditions, candidate selection, outcome handling, failure modes, and audit-trail shape live in `.claude/docs/ms-learn-grounding.md`. Skip entirely when none of the trigger conditions hit (most non-Microsoft-stack repos).
+
+Capped at 8 candidates / 16 MCP calls per run. Conflicts surface as Open Questions in Step 8 — never auto-rewrite the KB. If the `ms-learn` MCP is not connected, log a one-line skip in the onboard report and continue to Step 4 without blocking.
+
 ### 4. Create or Update KB Entry
 
 See template in `.claude/docs/kb-template.md`.
+Apply `.claude/docs/workspace-write-guard.md`:
+- stage the proposed KB file to `workspace/tmp/staged-onboard-{domain}-{timestamp}.md`
+- show the diff for existing KB files, or first 40 lines for new files
+- immediately before writing, confirm the target mtime/hash did not change since Step 2
+- if drift is detected, preserve the staged file and stop instead of overwriting
 
 - First-time: write `workspace/kb/projects/{domain}.md` fresh using the template.
 - Refresh: enrich existing file — update current-state sections, add new decisions, update `<!-- Last updated -->` date, and update `## Knowledge Hygiene`. Do not wipe valid content.
@@ -221,6 +243,8 @@ Skip entirely if no Azure Pipeline YAML files were found in Step 3d.
 Otherwise follow `.claude/docs/azure-pipeline-kb-extract.md` Step 4.5 — covers both the KB write (4.5a: where to place the section, idempotency rules for user-filled `definitionId` values) and the user-facing confirmation report shape (4.5b). The skill-side action here is just to invoke the spec; do not duplicate the rules below.
 
 ### 5. Update Workspace Files
+
+For `workspace/context.md`, `.local-paths`, `workspace/kb/.domain-map.md`, and MEMORY quick-reference updates, use the same staged write + final mtime/hash drift check from `.claude/docs/workspace-write-guard.md`. Skip the MEMORY update in batch subagents as already noted below.
 
 Run in parallel:
 
