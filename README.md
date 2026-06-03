@@ -89,7 +89,7 @@ Useful daily add-ons:
 brew install ast-grep gitleaks difftastic duckdb ccusage
 ```
 
-Generate task-specific install commands from this machine's availability:
+Generate task-specific availability and Homebrew install commands:
 
 ```bash
 python3 .claude/scripts/tool-availability.py --all --format table
@@ -97,10 +97,12 @@ python3 .claude/scripts/tool-availability.py --all --missing --install brew
 ```
 
 Narrow tools such as `actionlint`, `semgrep`, `trivy`, `lychee`, `hadolint`,
-`rga`, `qsv`, `http`, `grpcurl`, `pandoc`, `poppler`, `qpdf`, `magick`, and
-`hyperfine` are detectable by `/nase:doctor --deep`; install them only when a
-workflow needs that evidence. Selection rules live in
-`.claude/docs/cli-tooling.md`.
+`rga`, `qsv`, `http`, `grpcurl`, `markitdown`, `pandoc`, `poppler`, `qpdf`,
+`magick`, and `hyperfine` are detectable by `/nase:doctor --deep`; install them
+only when a workflow needs that evidence. Python-package tools such as
+`markitdown` may show a non-Homebrew install hint in the availability table;
+`--install brew` only prints Homebrew-installable formulas. Selection rules live
+in `.claude/docs/cli-tooling.md`.
 
 #### MCP servers
 
