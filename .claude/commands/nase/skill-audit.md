@@ -110,6 +110,12 @@ For each file:
    - Why it's risky (one sentence)
    - For Category 7: the recommended permission deny-rule / hook / sandbox mitigation
 
+### Step 2.5: Optional Semgrep supplement
+
+Follow `.claude/docs/cli-tooling.md`. Probe with `python3 .claude/scripts/tool-availability.py --group review --format json`. The native 7-category scan remains canonical; `semgrep` is only a supplement.
+
+Use `semgrep` when available for executable snippets or helper scripts referenced by the skill, especially injection, exfiltration, unsafe subprocess, and credential patterns. Do not mark a file PASS only because `semgrep` is clean, and do not mark it FAIL until the native scan or a manual source-line check confirms the risky instruction.
+
 ### Step 3: Determine verdict per file
 
 - **PASS** — no findings at all

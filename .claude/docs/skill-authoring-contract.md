@@ -72,6 +72,7 @@ CI check: `tests/check-skill-doctrine.sh → D1` (hard fail).
 - Guard `$()` substitution failures with `|| { echo "ERROR: ..." >&2; return 1; }` when downstream depends on the value being non-empty
 - `gh api --paginate -q 'length'` emits per-page lengths — sum via `awk '{s+=$1} END {print s}'` or use `jq -s 'add | length'`
 - Verify `command -v` before invoking optional binaries (`gh`, `az`, `7z`)
+- Follow `.claude/docs/cli-tooling.md` before adding a new optional CLI dependency to a skill; prefer `.claude/scripts/tool-availability.py` for machine-local probes and keep missing optional tools warning-only unless the current workflow cannot produce reliable evidence without them
 
 ---
 

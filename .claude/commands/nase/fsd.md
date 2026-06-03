@@ -262,6 +262,23 @@ On success: proceed to Phase 5.5.
 
 ---
 
+## Phase 5.25: Optional Post-Edit CLI Gates
+
+Follow `.claude/docs/cli-tooling.md`. Probe local optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`, then run only the gates that match changed files. Missing optional tools are warning-only and must not block a working implementation unless the current task explicitly depends on that evidence.
+
+Use the same merge-base command shown in Phase 5.5 to classify changed files:
+
+- Shell files (`*.sh`, hooks, script snippets promoted to files): run `shellcheck` when available; run `shfmt -d` when available and either apply the formatting or report why it was skipped.
+- GitHub Actions workflows (`.github/workflows/*.{yml,yaml}`): run `actionlint` when available.
+- Dockerfiles: run `hadolint` when available.
+- Secret-risk changes: run `gitleaks detect --redact --report-format json --report-path -` when available, keeping any findings redacted.
+- YAML / TOML / XML / HCL / JSON config edited by the task: use `yq` when available to parse or extract the exact fields the implementation depends on.
+- Repeated structural code edits: use `ast-grep` when available to verify the pattern across all touched call sites.
+
+Treat every optional gate result as a candidate signal. Verify findings against the changed source lines before changing code, and include skipped gates only when the skip affects confidence.
+
+---
+
 ## Phase 5.5: Diff-Size Guardrail (soft gate)
 
 Measure the diff against the base branch:

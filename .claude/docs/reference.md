@@ -117,6 +117,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 |-----|---------|
 | `build-test-loop.md` | Build → test → fix loop used by `fsd`, `address-comments`, `prep-merge` |
 | `citation-validator.md` | Validate Jira, GitHub, Confluence, and source-file references before report-like skills mark saved artifacts as trusted |
+| `cli-tooling.md` | Optional CLI tool selection, availability probing, install mapping, and skill integration rules |
 | `closing-block.md` | TLDR + tint closing block for `today` / `wrap-up` outputs |
 | `confidential-marker.md` | `[CONFIDENTIAL]` routing tag rules so sensitive daily-log lines stay out of KB, recap, export, and report flows |
 | `commit-push-pattern.md` | Stage → secrets scan → commit → improve → push sequence |
@@ -169,6 +170,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `today-stats.py` | Emit a single date's session, token, and skill-usage counts as `key=value` lines. Used by `wrap-up` Step 4d. |
 | `log-range.py` | Emit existing daily-log file paths for a date range (inclusive). Silently drops non-existent dates. Used by `recap` Step 4.5. |
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
+| `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, or Homebrew install command. Used by `doctor` and optional tooling-aware skills. |
 
 ---
 

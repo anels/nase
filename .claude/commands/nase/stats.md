@@ -43,6 +43,8 @@ Fallback if python3 unavailable: compute manually. `END_DATE` is always today.
 
 ### 2. Scan data sources
 
+Follow `.claude/docs/cli-tooling.md` for optional large-data aggregation. Probe with `python3 .claude/scripts/tool-availability.py --group data --group usage --format json`. Missing data tools must not block stats.
+
 Check if `workspace/scripts/stats-collect.sh` exists. If it does, run it:
 
 ```bash
@@ -69,6 +71,10 @@ It collects:
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
 6. Count KB files modified (cross-platform): `python3 -c "import os,datetime; start=datetime.date.fromisoformat('$START_DATE'); print(sum(1 for f in __import__('glob').glob('workspace/kb/**/*.md',recursive=True) if datetime.date.fromtimestamp(os.path.getmtime(f))>=start))"` (avoids GNU-only `find -newermt` which fails on macOS).
+
+If the date range is large or `workspace/stats/skill-usage.jsonl` / `$TMPDIR_STATS/daily.csv` has thousands of rows, prefer `duckdb` to aggregate before reading output into the model. Use `qsv` for quick CSV sampling when that is enough; treat `mlr` / `jc` as advanced fallbacks only for formats where they clearly reduce parsing work. Keep the model input to compact counts, top-N rows, and chart-ready CSV; never paste raw JSONL/CSV dumps into chat.
+
+If `ccusage` is available, run it with `--json` for the same date window and include only compact coding-agent token/cost totals. Treat this as usage telemetry, not proof of completed work.
 
 ### 3. Build column chart
 

@@ -184,6 +184,21 @@ Get configured build, lint, typecheck, and test commands from the KB file or rep
 Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding.
 On success: proceed to Phase 7.5.
 
+## Phase 7.25: Optional Post-Edit CLI Gates
+
+Follow `.claude/docs/cli-tooling.md`. Probe local optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`, then run only the gates that match files changed while addressing accepted review threads. Missing optional tools are warning-only and must not block replies or thread resolution when the code/test evidence is otherwise adequate.
+
+Classify the current diff against `origin/{pr_branch}`:
+
+- Shell files (`*.sh`, hooks, generated script fixes): run `shellcheck` when available; run `shfmt -d` when available and apply formatting only if it stays within the accepted thread scope.
+- GitHub Actions workflows (`.github/workflows/*.{yml,yaml}`): run `actionlint` when available.
+- Dockerfiles: run `hadolint` when available and only apply fixes within accepted thread scope.
+- Secret-risk changes: run `gitleaks detect --redact --report-format json --report-path -` when available, keeping findings redacted.
+- YAML / TOML / XML / HCL / JSON config touched by a reviewer request: use `yq` when available to parse or extract the fields under review.
+- Repeated structural edits across multiple files: use `ast-grep` when available to confirm every intended call site was updated.
+
+Scanner/tool output is not reviewer intent by itself. Verify findings against the review thread, diff scope, and source lines before expanding the patch.
+
 ## Phase 7.5: Codex Review-Thread Resolution Gate
 
 Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly to Phase 8 if MCP is not loaded.
