@@ -1,6 +1,6 @@
 # Codex MCP — Invocation Contract
 
-> Canonical contract for delegating a review / verify / adversary / mutual-grill pass to the Codex MCP (`gpt-5.5`, `model_reasoning_effort = "xhigh"`) — independent second-model opinion.
+> Canonical contract for delegating a review / verify / adversary / mutual-grill pass to the Codex MCP (model resolved from runtime config / MCP default; `model_reasoning_effort` set per task) — independent second-model opinion.
 >
 > Reference-only doc. Cited from `/nase:discuss-pr` (review specialist), `/nase:fsd` Phase 6.5 (verify gate), `/nase:address-comments` Phase 7.5 (thread-resolution verifier), `/nase:tech-debt-audit` Step 7.5 (audit sanity pass), and `/nase:design --grill` Step 3.5 / 5.5 (mutual grill). Edit here, not in the caller skills.
 
@@ -22,6 +22,8 @@ The MCP is added via:
 ```bash
 claude mcp add codex --scope user -- /Applications/Codex.app/Contents/Resources/codex mcp-server
 ```
+
+Model aliases drift. Read `.claude/docs/workspace-runtime-config.md` before hardcoding a Codex/OpenAI model name in any skill; prefer the MCP server's configured default unless the task requires a verified model-specific behavior.
 
 ## Invocation contract
 

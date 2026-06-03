@@ -1,6 +1,6 @@
 ---
 name: nase:address-comments
-description: "Fix unresolved PR review comments — makes code changes, pushes, sweeps failed PR gates when the fix is mechanical, then resolves threads. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
+description: "Fix unresolved PR review comments — makes code changes, pushes, checks currently failed PR gates once, fixes mechanical failures only, then resolves threads. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
 ---
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
@@ -282,46 +282,34 @@ NASE_PR_BODY
 
 If the description already follows the template, skip this phase.
 
-## Phase 8.7: PR Gates Sweep
+## Phase 8.7: Current PR Gate Check
 
-Skip entirely if `no_commit=true` AND Phase 8b made no PR body change — without a new commit or body edit, CI won't re-run, so there's nothing to sweep.
+Skip entirely if `no_commit=true` AND Phase 8b made no PR body change — without a new commit or body edit, CI won't re-run, so there is no new gate state to inspect.
 
-After push (+ optional body update) the repo's PR-triggered workflows re-run against the new head. Wait for them, fix mechanically-fixable failures, and *only then* move on to Phase 9 — replying to a reviewer while their PR is still red is wasted context.
+After push (+ optional body update), read the PR gate state once. Do not wait or poll. If a gate is already failed at the time of the read and has a mechanical, documented fix, apply that fix. If checks are pending, queued, canceled, skipped unexpectedly, or unknown, report the current state and proceed to Phase 9 without claiming gates are green.
 
-This phase does not grant a blanket external-write approval. Polling checks and reading logs are automatic. Any `gh pr edit`, new commit, or extra push must go through the same concrete gate as the phase that owns that mutation: Phase 8b for PR body/title edits, Phase 8 for code commits/pushes, and `.claude/docs/external-mutation-policy.md → GitHub auth account guard` immediately before each `gh` mutation.
+This phase does not grant a blanket external-write approval. Reading checks and failed-run logs is automatic. Any `gh pr edit`, new commit, or extra push must go through the same concrete gate as the phase that owns that mutation: Phase 8b for PR body/title edits, Phase 8 for code commits/pushes, and `.claude/docs/external-mutation-policy.md → GitHub auth account guard` immediately before each `gh` mutation.
 
-**Step 8.7a — Wait for queued checks to finish.**
+**Step 8.7a — Read current checks once.**
 
 ```bash
-sleep 15  # let GitHub queue checks after push
-deadline=$(( $(date +%s) + 600 ))  # 10-min cap; address-comments sessions are not long-poll jobs
 checks_read_failed=false
-while [ "$(date +%s)" -lt "$deadline" ]; do
-  checks_err=$(mktemp)
-  status_json=$(gh pr checks {pr_number} --repo {owner}/{repo} --json bucket,state,name,workflow,link 2>"$checks_err")
-  checks_rc=$?
-  if [ "$checks_rc" -ne 0 ] && [ "$checks_rc" -ne 8 ]; then
-    echo "Unable to read PR checks; skipping PR gate sweep rather than treating checks as green." >&2
-    cat "$checks_err" >&2
-    checks_read_failed=true
-    rm -f "$checks_err"
-    break
-  fi
-  rm -f "$checks_err"
-  if [ -z "$status_json" ]; then
-    echo "Unable to read PR checks: gh returned no JSON. Skipping PR gate sweep." >&2
-    checks_read_failed=true
-    break
-  fi
-  pending=$(printf '%s' "$status_json" | jq '[.[] | select(.bucket == "pending")] | length')
-  [ "$pending" = "0" ] && break
-  sleep 30
-done
+checks_err=$(mktemp)
+status_json=$(gh pr checks {pr_number} --repo {owner}/{repo} --json bucket,state,name,workflow,link 2>"$checks_err")
+checks_rc=$?
+if [ "$checks_rc" -ne 0 ] && [ "$checks_rc" -ne 8 ]; then
+  echo "Unable to read PR checks; skipping PR gate check rather than treating checks as green." >&2
+  cat "$checks_err" >&2
+  checks_read_failed=true
+fi
+rm -f "$checks_err"
+if [ "${checks_read_failed:-false}" != true ] && [ -z "$status_json" ]; then
+  echo "Unable to read PR checks: gh returned no JSON. Skipping PR gate check." >&2
+  checks_read_failed=true
+fi
 ```
 
-If `checks_read_failed=true`: report that PR gate status is unknown, log `PR gates: unknown (check read failed)`, and proceed to Phase 9 without claiming gates are green.
-
-If the deadline hits with checks still pending: report the pending list and proceed to Phase 9 with a note that the sweep was cut short. Don't block the whole session on a slow integration job.
+If `checks_read_failed=true`: report that PR gate status is unknown, log `PR gates: unknown (check read failed)`, skip the remaining Phase 8.7 steps, and proceed to Phase 9 without claiming gates are green.
 
 **Step 8.7b — Identify failures.**
 
@@ -330,7 +318,9 @@ failed=$(printf '%s' "$status_json" | jq -r '.[] | select(.bucket == "fail") | [
 non_green=$(printf '%s' "$status_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | [.name, .bucket, (.workflow // ""), (.link // "")] | @tsv')
 ```
 
-Zero failures and zero `non_green` rows → log `PR gates: all green` to the daily log and skip to Phase 9. If `failed` is empty but `non_green` is not empty (for example, canceled checks), report those rows as non-mechanical gate states and proceed to Phase 9 without claiming gates are green.
+Zero failures and zero `non_green` rows → log `PR gates: all green` to the daily log and skip to Phase 9. If `failed` is empty but `non_green` is not empty (for example, pending or canceled checks), report those rows as non-mechanical gate states and proceed to Phase 9 without claiming gates are green.
+
+If failures exist alongside pending checks, fix only the currently failed rows with known mechanical recipes. Report the pending rows, but do not wait for them.
 
 **Step 8.7c — Classify and apply fixes (max 2 fix iterations).**
 
@@ -348,7 +338,7 @@ When a recipe needs a failed-run log, derive `run_id` from the check `link` (`..
 | `Lint Code Base` / super-linter | If the workflow has `continue-on-error: true` (advisory), log but skip — these don't block merge. Otherwise the bot auto-commits fixes back to the PR branch; `git -C {worktree_path} pull --ff-only` so the local worktree matches, then move on. |
 | Anything else | Fetch failed-run log; summarize the failure in 3 lines; present via `AskUserQuestion` with options `Fix manually now` / `Skip — leave failing` / `Show full log`. Honor the user's choice. |
 
-After any fix that produces a new commit or PR-metadata edit, return to Step 8.7a to re-poll. Hard-cap at 2 sweep iterations to avoid loops where a fix keeps breaking another gate.
+After any fix that produces a new commit or PR-metadata edit, read current checks once again. Hard-cap at 2 fix iterations to avoid loops where a fix keeps breaking another gate.
 
 **Step 8.7d — KB backfill prompt.**
 

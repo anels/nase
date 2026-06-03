@@ -131,7 +131,7 @@ Architecture details live in [`docs/architecture.md`](docs/architecture.md).
 /nase:fsd <task>               # implement → test → commit → push → draft PR
 /nase:request-review <PR-URL>  # find right reviewers, assign on GitHub, ping on Slack
   ⏳ wait for feedback
-/nase:address-comments <PR-URL> # discuss or auto-fix each comment → push → gate sweep
+/nase:address-comments <PR-URL> # discuss or auto-fix each comment → push → current failed gate check
   ⏳ iterate until approved
 /nase:prep-merge <PR-URL>      # rebase, squash, clean up, un-draft
   merge ✓
@@ -224,7 +224,7 @@ Architecture details live in [`docs/architecture.md`](docs/architecture.md).
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
 | `/nase:request-review <PR-URL(s)>` | Find reviewers (KB → git history → CODEOWNERS) and send Slack DMs |
 | `/nase:discuss-pr <PR-URL>` | KB-driven PR review discussion in chat; reads & engages existing review comments (+1/reply/discuss), drafts inline comments for manual posting, triggers KB update on confirmed findings |
-| `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push, sweep mechanical PR gate failures, resolve, and capture learnings to KB |
+| `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push, check current PR gates once, fix mechanical failures only, resolve, and capture learnings to KB |
 | `/nase:prep-merge <PR-URL>` | After multiple review iterations, commit history gets messy and PR title/description drift from the final state — rebase on the target branch, squash commits, verify comments resolved, rewrite PR title/description to match what was actually delivered, then optionally un-draft and request review |
 
 ### Reporting

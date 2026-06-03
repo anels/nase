@@ -41,11 +41,19 @@ If the KB yields confident owners for all changed areas → proceed to 3c (skip 
 
 Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read the file directly: `cat {repo_path}/CODEOWNERS 2>/dev/null || cat {repo_path}/.github/CODEOWNERS 2>/dev/null`. Otherwise fetch via:
 ```bash
-gh api repos/<owner>/<repo>/contents/CODEOWNERS --jq '.content' | base64 --decode
+gh api "repos/{owner}/{repo}/contents/CODEOWNERS" --jq '.content' | base64 --decode
 ```
 (Use `--decode` long form — works on both macOS and Linux; `base64 -d` fails on macOS.)
 
-For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd).
+Before matching, ask GitHub for CODEOWNERS parse errors when the API is available:
+```bash
+gh api "repos/{owner}/{repo}/codeowners/errors" --jq '.errors[]? | [.line, .kind, .message] | @tsv' 2>/dev/null
+```
+If errors are returned, report them and avoid treating the fallback matcher as authoritative for affected lines.
+
+Prefer a repo-provided or installed CODEOWNERS parser when one is already available (for example a checked-in script, a package-lock-backed `npx` command, or a language-native parser). If no parser is available, use the documented fallback below and label it `fallback CODEOWNERS match`.
+
+For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd). If the fallback matcher cannot confidently model a pattern, report the file under `unresolved owner candidates` instead of guessing.
 
 Matching rules (GitHub CODEOWNERS syntax):
 - `/path/to/dir/` — matches anything under that directory
@@ -53,6 +61,7 @@ Matching rules (GitHub CODEOWNERS syntax):
 - `*` catch-all — matches everything, but more specific rules below it override
 - `**` — recursive match (e.g., `docs/**` matches all files under any `docs/` subdirectory)
 - Empty owner line — explicitly leaves matching files unowned; GitHub CODEOWNERS does **not** support `!pattern` negation
+- Lines using unsupported CODEOWNERS syntax are ignored by GitHub; do not invent owners for those lines
 - Trailing `/` — directory-only match
 - `@org/team` entries — note these for the report but skip for DM purposes (teams can't be DM'd directly; resolve individual members from KB if possible)
 
