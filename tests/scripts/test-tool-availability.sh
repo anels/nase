@@ -45,6 +45,7 @@ rows = json.load(open(sys.argv[1], encoding="utf-8"))
 by_tool = {row["tool"]: row for row in rows}
 expected = {
     "httpie": ("http", "httpie"),
+    "markitdown": ("markitdown", None),
     "pdftotext": ("pdftotext", "poppler"),
     "imagemagick": ("magick", "imagemagick"),
     "miller": ("mlr", "miller"),
@@ -56,6 +57,7 @@ for tool, (binary, brew) in expected.items():
     row = by_tool[tool]
     assert row["binary"] == binary, (tool, row)
     assert row["brew"] == brew, (tool, row)
+assert by_tool["markitdown"]["install"] == "uv tool install 'markitdown[all]'"
 PY
 
 cat > "$TMPDIR_TEST/bin/rg" <<'SH'
@@ -88,6 +90,10 @@ assert_cmd "baseline install excludes lychee" bash -c "! grep -q 'lychee' '$inst
 table_out="$TMPDIR_TEST/table.txt"
 PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --group api --format table > "$table_out"
 assert_cmd "table output names missing httpie formula" grep -q 'brew install httpie' "$table_out"
+
+docs_table_out="$TMPDIR_TEST/docs-table.txt"
+PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --group docs --format table > "$docs_table_out"
+assert_cmd "docs table names markitdown install hint" grep -q "uv tool install 'markitdown\\[all\\]'" "$docs_table_out"
 
 security_json="$TMPDIR_TEST/security.json"
 PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --group security --format json > "$security_json"

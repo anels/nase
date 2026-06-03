@@ -170,7 +170,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `today-stats.py` | Emit a single date's session, token, and skill-usage counts as `key=value` lines. Used by `wrap-up` Step 4d. |
 | `log-range.py` | Emit existing daily-log file paths for a date range (inclusive). Silently drops non-existent dates. Used by `recap` Step 4.5. |
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
-| `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, or Homebrew install command. Used by `doctor` and optional tooling-aware skills. |
+| `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, install hints, or a Homebrew install command for brew-managed tools. Used by `doctor` and optional tooling-aware skills. |
 
 ---
 

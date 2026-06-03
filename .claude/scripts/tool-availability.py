@@ -8,7 +8,7 @@ import json
 import shutil
 import sys
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
 
 @dataclass(frozen=True)
@@ -16,8 +16,9 @@ class Tool:
     group: str
     tool: str
     binary: str
-    brew: str
+    brew: Optional[str]
     impact: str
+    install: Optional[str] = None
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -45,6 +46,14 @@ TOOLS: tuple[Tool, ...] = (
     Tool("api", "grpcurl", "grpcurl", "grpcurl", "gRPC service discovery and calls"),
     Tool("api", "websocat", "websocat", "websocat", "WebSocket smoke checks"),
     Tool("docs", "lychee", "lychee", "lychee", "local Markdown link checks"),
+    Tool(
+        "docs",
+        "markitdown",
+        "markitdown",
+        None,
+        "LLM-oriented conversion from Office docs, PDFs, HTML, data files, archives, images, and audio to Markdown",
+        "uv tool install 'markitdown[all]'",
+    ),
     Tool("docs", "pandoc", "pandoc", "pandoc", "document conversion"),
     Tool("docs", "qpdf", "qpdf", "qpdf", "PDF inspection and transformation"),
     Tool("docs", "pdftotext", "pdftotext", "poppler", "PDF text extraction"),
@@ -64,7 +73,7 @@ def selected_tools(args: argparse.Namespace) -> list[Tool]:
     return selected
 
 
-def status_for(tool: Tool) -> dict[str, str | None]:
+def status_for(tool: Tool) -> dict[str, Optional[str]]:
     path = shutil.which(tool.binary)
     return {
         "group": tool.group,
@@ -73,35 +82,38 @@ def status_for(tool: Tool) -> dict[str, str | None]:
         "status": "ok" if path else "missing",
         "path": path,
         "brew": tool.brew,
+        "install": tool.install or (f"brew install {tool.brew}" if tool.brew else None),
         "impact": tool.impact,
     }
 
 
-def rows_for(tools: Iterable[Tool], missing_only: bool) -> list[dict[str, str | None]]:
+def rows_for(tools: Iterable[Tool], missing_only: bool) -> list[dict[str, Optional[str]]]:
     rows = [status_for(tool) for tool in tools]
     if missing_only:
         rows = [row for row in rows if row["status"] == "missing"]
     return rows
 
 
-def print_table(rows: list[dict[str, str | None]]) -> None:
+def print_table(rows: list[dict[str, Optional[str]]]) -> None:
     if not rows:
         print("All selected tools are available.")
         return
     print("| Group | Tool | Binary | Status | Install | Impact |")
     print("|-------|------|--------|--------|---------|--------|")
     for row in rows:
-        install = f"brew install {row['brew']}" if row["status"] == "missing" else "-"
+        install = str(row["install"] or "manual") if row["status"] == "missing" else "-"
         print(
             f"| {row['group']} | {row['tool']} | `{row['binary']}` | "
             f"{row['status']} | `{install}` | {row['impact']} |"
         )
 
 
-def print_brew_install(rows: list[dict[str, str | None]]) -> None:
-    formulas = sorted({str(row["brew"]) for row in rows if row["status"] == "missing"})
+def print_brew_install(rows: list[dict[str, Optional[str]]]) -> None:
+    formulas = sorted({str(row["brew"]) for row in rows if row["status"] == "missing" and row["brew"]})
     if formulas:
         print("brew install " + " ".join(formulas))
+    elif rows:
+        print("No missing Homebrew-installable tools in selection.")
     else:
         print("All selected tools are available.")
 

@@ -114,6 +114,14 @@ assert_contains "cli-tooling documents integration contracts" \
   ".claude/docs/cli-tooling.md" \
   "## Integration Contracts"
 
+assert_contains "cli-tooling documents markitdown" \
+  ".claude/docs/cli-tooling.md" \
+  '| `docs` | `lychee`, `markitdown`, `pandoc`, `pdftotext`, `qpdf`, `magick` |'
+
+assert_contains "cli-tooling documents converter safety" \
+  ".claude/docs/cli-tooling.md" \
+  'Document converters (`markitdown`, `pandoc`, `pdftotext`) produce untrusted'
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\ncli-tooling integration tests passed.\n'
   exit 0
