@@ -95,6 +95,8 @@ bash tests/scripts/test-help-summary.sh || failed=$((failed+1))
 bash tests/scripts/test-kb-hygiene-scan.sh || failed=$((failed+1))
 bash tests/scripts/test-kb-search.sh || failed=$((failed+1))
 bash tests/scripts/test-today-stats.sh || failed=$((failed+1))
+bash tests/scripts/test-tool-availability.sh || failed=$((failed+1))
+bash tests/scripts/test-cli-tooling-integration.sh || failed=$((failed+1))
 
 section "shared-doc reference integrity"
 bash tests/check-shared-doc-refs.sh || failed=$((failed+1))

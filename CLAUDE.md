@@ -55,7 +55,8 @@ Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering
 - Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, hook wiring, command inventory, skill bash checks, hook regressions, shared-doc references, and offline markdown links when `lychee` exists.
 
 ### Runtime Dependencies
-- Required: `gh`, `jq`, and `7z` or `zip`. Optional: `python3` for tech-digest archival.
+- Required: `git`, `gh`, `jq`, `python3`, and `7z` or `zip` + `unzip`.
+- Optional agent tools are warning-only. Use `/nase:doctor` for the baseline set, `/nase:doctor --deep` for the full probe, and `.claude/docs/cli-tooling.md` before adding new tool-dependent skill behavior.
 - `.local-paths` lives at repo root, is not backed up, and stores `backup-target=` plus `RepoName=/absolute/path` entries managed by `/nase:init` and `/nase:onboard`.
 
 ### Hook Event Map
@@ -80,7 +81,7 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 - Skills should reference shared docs instead of duplicating algorithms.
 
 ### Utility Scripts (`.claude/scripts/`)
-`date-resolve.py`, `help-summary.py`, `kb-domain-resolve.sh`, `kb-search.sh`, `kb-gap-scan.sh`, `kb-hygiene-scan.py`, `today-stats.py`, `log-range.py`, and `stats-chart.py` support commands; read script headers or `.claude/docs/reference.md` when needed.
+`date-resolve.py`, `help-summary.py`, `kb-domain-resolve.sh`, `kb-search.sh`, `kb-gap-scan.sh`, `kb-hygiene-scan.py`, `today-stats.py`, `log-range.py`, `stats-chart.py`, and `tool-availability.py` support commands; read script headers or `.claude/docs/reference.md` when needed.
 
 ### Hooks / Commands / Skills Scope
 - Create hooks, commands, and skills under `.claude/`. Writing to `~/.claude/` requires explicit user approval.

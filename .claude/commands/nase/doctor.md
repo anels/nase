@@ -110,8 +110,26 @@ command -v 7z || { command -v zip && command -v unzip; }
 - Warn: gh installed but `gh auth status` fails — GitHub workflows may fail until `gh auth login` succeeds
 - Warn: neither 7z nor zip+unzip found — workspace backups or restores will fail (install with `brew install p7zip` on macOS, `apt install p7zip-full` on Linux, or `scoop install 7zip` on Windows)
 
+<!-- Why: optional agent tools make search, parsing, and verification more deterministic; missing tools should warn, not fail, so task-specific packs do not block unrelated workflows -->
+### 8. Agent CLI tools
+Read `.claude/docs/cli-tooling.md` for the selection rules and fallback policy.
+
+Baseline check:
+```bash
+python3 .claude/scripts/tool-availability.py --group baseline --format table
+python3 .claude/scripts/tool-availability.py --group baseline --missing --install brew
+```
+- Pass: all baseline tools found
+- Warn: one or more baseline tools missing. Report the missing tool names, the install command from `--missing --install brew`, and the degraded workflow impact from the table.
+- Do not fail doctor solely because recommended tools are missing.
+- If `$ARGUMENTS` contains `--deep`, also run:
+  ```bash
+  python3 .claude/scripts/tool-availability.py --all --format table
+  ```
+  Group output by the tool group column.
+
 <!-- Why: missing command files mean broken /nase:* skills — catches accidental deletions or incomplete installs -->
-### 8. Command files
+### 9. Command files
 - Scan `.claude/commands/nase/` for all `.md` files (including `workspace/` subdirectory)
 - Also check `workspace/skills/*.md` for work-specific skills (these are referenced by `.claude/settings.local.json` command entries)
 - Report total count
@@ -120,7 +138,7 @@ command -v 7z || { command -v zip && command -v unzip; }
 - **Stale thin wrappers**: for each `.claude/commands/nase/workspace/*.md` file, read it and check if the `workspace/skills/{name}.md` file it points to still exists. Flag any wrapper whose target skill file is missing — these are dead references left over after a skill was deleted.
 
 <!-- Why: Claude Code project state (~/.claude/projects/<encoded-cwd>/) accumulates transcripts + config over time; large state slows session start and risks stale data. v2.1.126+ exposes `claude project purge` to clean it. -->
-### 9. Claude Code project state
+### 10. Claude Code project state
 - Resolve project state directory: `~/.claude/projects/$(pwd | sed 's|[/.]|-|g')/` (CC encodes the absolute working-dir path by replacing **both** `/` and `.` with `-` — e.g., `/Users/jane.doe/repo` → `-Users-jane-doe-repo`).
 - If the directory does not exist: report SKIP (first-time use, nothing to clean).
 - If it exists, run `du -sh "$dir"` for total size and `find "$dir" -maxdepth 2 -name '*.jsonl' | wc -l` for transcript file count (jsonl files live one or two levels deep, alongside per-session subdirectories).
@@ -146,10 +164,11 @@ command -v 7z || { command -v zip && command -v unzip; }
 | 5 | Last backup | OK / WARN / FAIL | {timestamp and result} |
 | 6 | workspace/ structure | READY / PARTIAL / EMPTY | {missing paths if any} |
 | 7 | Tools | OK / WARN / FAIL | {git + gh + jq + archive tool status} |
-| 8 | Commands | {N} found | {missing from settings.json if any} |
-| 9 | CC project state | OK / WARN / SKIP | {size + transcript count, or "no state dir"} |
+| 8 | Agent CLI tools | OK / WARN | {baseline present/missing; install command if any} |
+| 9 | Commands | {N} found | {missing from settings.json if any} |
+| 10 | CC project state | OK / WARN / SKIP | {size + transcript count, or "no state dir"} |
 
-**Result: {X}/9 checks passed**
+**Result: {X}/10 checks passed**
 
 **Action items:**
 - {one actionable line per failed or warned check, in priority order}

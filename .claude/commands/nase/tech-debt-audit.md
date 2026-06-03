@@ -44,6 +44,15 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - CI stale binary patterns: check install/download steps in pipeline YAML for existence-only guards (e.g. `if (Test-Path binary)` or `test -f binary`) instead of version guards (`binary --version`). Stale binaries persist on self-hosted agents between runs and cause silent version drift.
    - Pipeline inefficiencies (redundant stages, unpinned refs)
 
+2.5. **Optional scanner seed pass** — follow `.claude/docs/cli-tooling.md`. Probe with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`. These tools seed candidates only; they do not create findings without repo evidence.
+
+   - If `semgrep` is available, run focused read-only scans for the detected stack or changed risk theme. Keep only findings with concrete file/line evidence that match the audit scope.
+   - If `trivy` is available, run a filesystem/dependency/IaC/secret scan appropriate to the repo. Treat vulnerability, secret, and misconfiguration output as leads until the manifest, lockfile, Dockerfile, or IaC file confirms the issue.
+   - If `gitleaks` is available, run `gitleaks detect --redact --report-format json --report-path -` and keep only findings confirmed against tracked repo content or the scoped diff.
+   - If Dockerfiles exist and `hadolint` is available, run `hadolint --format json --no-fail` and verify every Dockerfile finding against the source line and repo build constraints.
+   - If GitHub Actions workflows exist and `actionlint` is available, run it and verify any workflow finding against the YAML source before adding CI debt.
+   - If a scanner is missing or too noisy for the repo size, mark it skipped in the evidence snapshot, not as a finding.
+
 3. **Architecture review** — step back from individual files and evaluate structural health.
 
    **Use Ousterhout vocabulary and heuristics from `workspace/kb/general/system-design.md` § Deep Modules, Design It Twice, Vertical Slices.** Frame every finding in terms of *module / interface / depth / seam / adapter / leverage / locality* — don't drift into "component", "service", or "boundary". Apply the **deletion test** and the **one-adapter-vs-two-adapters** rule before flagging missing abstractions; apply *the interface is the test surface* before flagging testability concerns.

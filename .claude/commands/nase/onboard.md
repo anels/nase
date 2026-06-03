@@ -12,6 +12,7 @@ Follow `.claude/docs/citation-validator.md` — validate source-file citations i
 Follow `.claude/docs/kb-hygiene.md` — validate existing KB claims before trusting them, and keep historical notes by marking corrections instead of deleting them.
 Follow `.claude/docs/workspace-write-guard.md` for staged KB/workspace writes and final mtime/hash drift checks.
 Follow `.claude/docs/workspace-runtime-config.md` before using org/project/page/model/tool values that can drift.
+Follow `.claude/docs/cli-tooling.md` for optional local inventory tools. Probe with `python3 .claude/scripts/tool-availability.py --group baseline --group repo --group ci --format json`; never write this machine-local availability into the repo KB.
 
 ## Fixed Run Flow
 
@@ -127,6 +128,8 @@ Pass `--force` in $ARGUMENTS to bypass this check and always run the full scan.
 
 Run all scan groups in parallel:
 
+**Tool-aware inventory rules** — prefer `fd` for scoped file lists and `rg` for code/config searches when available. Use `rga` only for docs-heavy repos, PDFs, Office docs, or archives; use `just --summary` / `just --json` only when a Justfile exists to discover canonical repo commands; use `ctags --output-format=json` only for very large or unfamiliar repos where a symbol inventory would reduce later searches. Prefer `yq` for YAML, TOML, XML, HCL, and JSON field extraction when the exact field value matters. Fall back to normal file reads and manual parsing when a tool is missing, and record the fallback only in the detailed onboard report if it affects scan confidence.
+
 **3a. Structure & Stack** — top-level dirs (depth 2), key config files (`*.sln`, `package.json`, `go.mod`, `build.sbt`, etc.), README/DESIGN/ARCHITECTURE, entry points, test dirs, `git log --oneline -20`
 
 **3b. Architecture** — go deeper than module names; capture **concrete identifiers** the next session can grep for. Run the bullets below concurrently (independent reads):
@@ -147,6 +150,7 @@ Run all scan groups in parallel:
 - **Per pipeline**: trigger (branch + PR + schedule), stages **→ jobs**, deploy targets (env names + regions), service connections (ARM, GitHub, ACR), required secrets / variable groups, external template refs (with pinned version), approval gates (which env gates which approvers), release strategy (ring/canary/blue-green/direct), and median run time when discoverable (last 10 builds via `az pipelines runs list` when applicable).
 - **Pipeline → Environment matrix**: write a table mapping `(pipeline, env, region, cluster/RG/Function App, approvers)` so the next session can answer *"which pipeline ships RTM to NE prod?"* without re-reading every YAML. Critical for oncall.
 - **Azure Pipeline YAML** specifically: follow `.claude/docs/azure-pipeline-kb-extract.md` for the YAML-specific capture rules (parameters, stages, trigger conditions, resource repo refs). Output feeds Step 4.5.
+- **GitHub Actions YAML**: when `yq` is available, extract `name`, `on`, `jobs.*.runs-on`, `jobs.*.steps[*].uses`, `permissions`, and `concurrency` from workflow files instead of summarizing raw YAML. If `actionlint` is available, run it as a read-only validation pass and record concrete workflow issues in `## PR Gates` or CI/CD notes only after verifying the cited file/line.
 
 **3d.1. PR Gates inventory** — enumerate every check a PR must clear *before* merge so future AI sessions (commit, fsd, prep-merge) don't push work that the CI will reject. Critical because most PR-blocking checks (commit format, Jira key in title, PR-description sections, size labels, migration drift) fail *fast* but only after a push round-trip. Capture them once here.
 

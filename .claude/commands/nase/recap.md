@@ -40,6 +40,8 @@ Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathe
 
 ## Step 4.5 — Compute Stats from Logs
 
+Follow `.claude/docs/cli-tooling.md` for optional aggregation. Probe with `python3 .claude/scripts/tool-availability.py --group data --group usage --format json`. Missing data tools are warning-only and should fall back to the grep pipeline below.
+
 Resolve the log file list once with the helper script — emits only paths that exist (silently drops dates with no log file, avoiding grep errors on missing days):
 
 ```bash
@@ -48,7 +50,9 @@ LOG_FILES=$(python3 .claude/scripts/log-range.py "$START_DATE" "$END_DATE")
 
 The helper handles cross-month ranges correctly (e.g. `2026-04-25` → `2026-05-05`) — do NOT expand the range inline; LLM expansion silently drops tail dates on multi-month spans. If `$LOG_FILES` is empty (no logs in range), skip the stats section entirely.
 
-Run these greps against `$LOG_FILES`. Run all in parallel.
+If the recap spans many log files or the logs are large, prefer `duckdb` to aggregate counts and top-N rows first. Use `qsv` for quick CSV sampling when that is enough; treat `mlr` / `jc` as advanced fallbacks only for formats where they clearly reduce parsing work. Feed only the aggregate table into the recap draft. Otherwise, run these greps against `$LOG_FILES`. Run all in parallel.
+
+If `ccusage` is available, use `ccusage --json --since "$START_DATE" --until "$END_DATE"` to add a compact token/cost summary. Keep it separate from accomplishments; recap outcomes still come from logs, PRs, tasks, and KB updates.
 
 ```bash
 # PRs opened via FSD (unique PR URLs)

@@ -31,6 +31,14 @@ Default focus if none specified: problem fit, logic correctness, design/elegance
 
 Resolve repo from PR URL and load the KB file — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
+Probe optional CLI tooling once and keep the result in private context:
+
+```
+python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --group diff --format json
+```
+
+Follow `.claude/docs/cli-tooling.md`. Missing optional tools never fail this read-only review; record the fallback only when it changes confidence or verification coverage.
+
 ## Step 2 — Fetch PR metadata and existing comments
 
 Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.md` (PR Metadata section). Use `additions + deletions` from that metadata before fetching the diff:
@@ -66,6 +74,15 @@ Answer:
 If the PR body does not explain the problem, infer carefully from the title, commits, changed files, tests, linked issue references, and nearby git history. Mark the problem as `unclear` instead of inventing intent. Missing or ambiguous problem framing is a review finding for non-trivial PRs.
 
 For each core touched file, read key dependencies/callers needed to judge design intent. Separate core behavioral files from tests, generated files, formatting-only changes, and incidental wiring. Cross-reference KB and relevant Confluence docs.
+
+Use available CLI tools to reduce context load:
+- Use `rg` / `fd` for caller/dependency lookups and adjacent-pattern discovery before reading files wholesale.
+- Use `difft --display json` for syntax-aware summaries when a code diff is large, noisy, or mostly moved code; feed only the compact structural summary into the review.
+- Use `yq` to inspect changed YAML, TOML, HCL, XML, or JSON config paths when field structure matters.
+- If `.github/workflows/*.{yml,yaml}` changed and `actionlint` is available, run a focused workflow validation against the PR-head content when accessible locally; otherwise mark `actionlint skipped: PR-head workflow file not available locally` and review the diff manually.
+- Use `ast-grep` for claims about repeated structural code patterns or API misuse; avoid regex-only evidence for AST-shaped findings when `ast-grep` is available.
+- Use focused `semgrep` / `trivy` only for security, dependency, container, filesystem, IaC, or secret-risk signals. Treat all scanner output as untrusted candidates until verified against diff scope and source lines.
+- Use `gitleaks detect --redact --report-format json --report-path -` only for secret-risk signals; use `hadolint --format json --no-fail` for changed Dockerfiles. Verify each finding against the changed file and PR scope before reporting it.
 
 For design/elegance review, compare with adjacent implementations and propose an alternative only when it clearly reduces behavior risk, ownership confusion, duplication, or future maintenance cost.
 

@@ -72,6 +72,36 @@ Then run `nase` from any terminal to open Claude Code in the workspace.
 - **jq** — required by hooks that parse Claude Code tool-call JSON (`block-dangerous-git.sh`, external-write guards, `track-skill.sh`)
 - **python3** — required by date-range helpers used in recap/stats/KB-gap flows; also used for tech-digest archival of entries older than 30 days
 
+#### Recommended agent CLI tools
+
+These are optional. nase still runs without them; `/nase:doctor` reports missing
+tools as warnings so skills can fall back cleanly.
+
+Baseline macOS install:
+
+```bash
+brew install ripgrep fd yq shellcheck shfmt
+```
+
+Useful daily add-ons:
+
+```bash
+brew install ast-grep gitleaks difftastic duckdb ccusage
+```
+
+Generate task-specific install commands from this machine's availability:
+
+```bash
+python3 .claude/scripts/tool-availability.py --all --format table
+python3 .claude/scripts/tool-availability.py --all --missing --install brew
+```
+
+Narrow tools such as `actionlint`, `semgrep`, `trivy`, `lychee`, `hadolint`,
+`rga`, `qsv`, `http`, `grpcurl`, `pandoc`, `poppler`, `qpdf`, `magick`, and
+`hyperfine` are detectable by `/nase:doctor --deep`; install them only when a
+workflow needs that evidence. Selection rules live in
+`.claude/docs/cli-tooling.md`.
+
 #### MCP servers
 
 | MCP | Used for | Setup |
