@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Verify every `.claude/docs/<name>.md` and `workspace/skills/docs/<name>.md`
-# reference in skill / CLAUDE.md / README files points at an existing file.
+# Verify shared doc references in skill / CLAUDE.md / README files point at an
+# existing file. `workspace/` is local and ignored, so workspace doc references
+# are only required to resolve from workspace-owned files.
 # Catches rename/delete drift between skills and their shared docs.
 #
 # Run from repo root:  bash tests/check-shared-doc-refs.sh
@@ -37,6 +38,9 @@ pairs=$({ grep -rZoE '(\.claude/docs|workspace/skills/docs)/[a-zA-Z0-9_-]+\.md' 
 missing=0
 while IFS=$'\t' read -r src ref; do
   [[ -z "$src" || -z "$ref" ]] && continue
+  if [[ "$ref" == workspace/skills/docs/* && "$src" != workspace/skills/* ]]; then
+    continue
+  fi
   if [[ ! -f "$ref" ]]; then
     printf 'MISSING  %s -> %s\n' "$src" "$ref"
     missing=$((missing+1))
