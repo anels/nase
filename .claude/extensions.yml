@@ -1,0 +1,44 @@
+# nase skill-chain extension hooks (MVP)
+#
+# Inspired by GitHub Spec Kit's extension model:
+# https://github.github.com/spec-kit/reference/extensions.html
+# Declare optional/mandatory hooks that run before or after a named skill.
+# Skills read this file via `.claude/scripts/extensions-check.sh <event>`
+# and emit the appropriate hook directives.
+#
+# Event names follow the pattern `before_<skill>` / `after_<skill>`,
+# where <skill> is the bare skill name without the `nase:` prefix
+# (e.g. `before_fsd`, `after_design`).
+#
+# Entry fields:
+#   command     — slash command to invoke (required, e.g. `/nase:onboard`)
+#   description — one-line rationale shown in the reminder (required)
+#   optional    — true: user can ignore. false (default): emit
+#                 EXECUTE_COMMAND to the agent. Default treats missing
+#                 as `false` (mandatory).
+#   enabled     — false to disable an entry without deleting it. Default true.
+#
+# Today this file ships with no active hooks — entries below are
+# commented examples documenting the schema. Uncomment to activate.
+
+schema_version: "1.0"
+
+hooks: {}
+
+# Examples (uncomment and edit to activate):
+#
+# hooks:
+#   before_fsd:
+#     - command: /nase:onboard
+#       description: Refresh repo KB before driving a feature end-to-end
+#       optional: true
+#
+#   after_design:
+#     - command: /nase:kb-search
+#       description: Surface similar prior efforts before locking the approach
+#       optional: true
+#
+#   before_prep-merge:
+#     - command: /nase:simplify
+#       description: Run deslop pass before squashing
+#       optional: false

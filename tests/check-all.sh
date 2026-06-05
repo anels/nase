@@ -81,6 +81,7 @@ bash tests/hooks/test-external-write-guards.sh || failed=$((failed+1))
 bash tests/hooks/test-style-edit-detect.sh || failed=$((failed+1))
 bash tests/hooks/test-session-start.sh || failed=$((failed+1))
 bash tests/hooks/test-stop-backup-safety.sh || failed=$((failed+1))
+bash tests/hooks/test-pre-edit-write-fact-force.sh || failed=$((failed+1))
 
 section "workspace validation"
 bash .claude/scripts/validate-workspace.sh || failed=$((failed+1))
@@ -97,6 +98,9 @@ bash tests/scripts/test-kb-search.sh || failed=$((failed+1))
 bash tests/scripts/test-today-stats.sh || failed=$((failed+1))
 bash tests/scripts/test-tool-availability.sh || failed=$((failed+1))
 bash tests/scripts/test-cli-tooling-integration.sh || failed=$((failed+1))
+bash tests/scripts/test-extensions-check.sh || failed=$((failed+1))
+bash tests/scripts/test-pr-github-helper.sh || failed=$((failed+1))
+bash tests/scripts/test-pr-review-eval.sh || failed=$((failed+1))
 
 section "shared-doc reference integrity"
 bash tests/check-shared-doc-refs.sh || failed=$((failed+1))

@@ -24,6 +24,16 @@ Follows `.claude/docs/external-mutation-policy.md`: batch upfront decisions, onl
 
 If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and stop.
 
+## Phase 0.5: Extension Hooks — before_fsd
+
+Run `bash .claude/scripts/extensions-check.sh before_fsd` and read the output.
+- Lines starting `EXECUTE_COMMAND:` are mandatory — invoke the named slash command (without arguments unless the description specifies) and wait for it to finish before continuing.
+- Lines starting `OPTIONAL_HOOK:` are advisory — surface them in the upfront options block so the user can opt in or skip per run.
+- A single `NO_HOOKS` line means continue normally.
+- Hook source: `.claude/extensions.yml`; schema borrowed from spec-kit. New hooks land there without editing this skill.
+
+The matching `after_fsd` hook runs in Phase 9.5.
+
 ## Phase 1: Infer Context (do the homework before asking anything)
 
 Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for `output:` language (default English if missing).
@@ -462,6 +472,12 @@ Remove the worktree (safe since the branch is already pushed):
 git -C {repo} worktree remove {worktree_path} --force
 ```
 Confirm: "Worktree removed."
+
+---
+
+## Phase 9.5: Extension Hooks — after_fsd
+
+Run `bash .claude/scripts/extensions-check.sh after_fsd` and handle its output using the Phase 0.5 rules.
 
 ---
 

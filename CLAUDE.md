@@ -45,7 +45,7 @@ Guidance for Claude Code when working in this repository.
 See [README.md — Available commands](README.md#available-commands). Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
 
 ### Model Routing (subagents)
-Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering; `worker`/sonnet for default code, KB, debugging, reviews; `architect`/opus for unfamiliar architecture/security/design. Use the role's `model` and `prompt_prefix`. Default `worker`; do not use `architect` for lookup work.
+Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering; `worker`/sonnet for default code, KB, debugging, reviews; `architect`/opus for unfamiliar architecture/security/design. Use the role's `model`, `tools`, and `prompt_prefix`. When spawning a subagent via `Agent()`, pass `tools=` matching the role's whitelist — `lookup` is read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
 
 ### Bash / Path Rules
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, remove it with `git -C {repo} worktree remove {path} --force`.
@@ -64,6 +64,7 @@ Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering
 - `UserPromptSubmit`: `style-edit-detect.sh` injects a reminder to log `[STYLE-DELTA]` when a prompt signals a style edit on a Slack/PR/external-doc draft (see §Style Learning Loop)
 - `Stop`: `stop-todos.sh`, `stop-backup.sh`
 - `PreToolUse:Bash`: `block-dangerous-git.sh` blocks destructive git patterns, protected-branch pushes, and no-verify bypasses
+- `PreToolUse:Edit|Write|MultiEdit`: `pre-edit-write-fact-force.sh` (non-blocking) — on the first edit to a source file per session, emits a reminder demanding callers / public-API impact / instruction origin. Disable with `NASE_FACT_FORCE=0`. Skips `workspace/`, `docs/`, `tests/`, non-source extensions
 - `PostToolUse:Skill`: `track-skill.sh`
 - `PostToolUse:Edit|Write`: shellcheck for `.sh`; `PostToolUse:Edit`: optional `edit-typecheck.sh`
 - `WorktreeCreate` / `WorktreeRemove`: `worktree-log.sh`
@@ -81,7 +82,7 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 - Skills should reference shared docs instead of duplicating algorithms.
 
 ### Utility Scripts (`.claude/scripts/`)
-`date-resolve.py`, `help-summary.py`, `kb-domain-resolve.sh`, `kb-search.sh`, `kb-gap-scan.sh`, `kb-hygiene-scan.py`, `today-stats.py`, `log-range.py`, `stats-chart.py`, and `tool-availability.py` support commands; read script headers or `.claude/docs/reference.md` when needed.
+`date-resolve.py`, `extensions-check.sh`, `help-summary.py`, `kb-domain-resolve.sh`, `kb-search.sh`, `kb-gap-scan.sh`, `kb-hygiene-scan.py`, `pr-github-helper.py`, `pr-review-eval.py`, `today-stats.py`, `log-range.py`, `stats-chart.py`, and `tool-availability.py` support commands; read script headers or `.claude/docs/reference.md` when needed.
 
 ### Hooks / Commands / Skills Scope
 - Create hooks, commands, and skills under `.claude/`. Writing to `~/.claude/` requires explicit user approval.

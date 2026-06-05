@@ -26,10 +26,14 @@ Read this file on demand when you need details about workspace layout, skills, K
     slack-send-guard.sh ← blocks direct Slack sends; use drafts
     jira-write-guard.sh ← token-gates Jira mutation tools
     confluence-size-guard.sh ← blocks oversized Confluence page writes
+    pre-edit-write-fact-force.sh ← runs at PreToolUse:Edit|Write|MultiEdit:
+                       reminds the agent to ground first source-file edits in
+                       callers, public-API impact, and the user instruction
     edit-typecheck.sh ← (opt-in) runs at PostToolUse:Edit for .cs/.ts/.tsx files:
                        looks up repo in workspace/tmp/.typecheck-commands, runs quick
                        type-check (e.g. dotnet build --no-restore). 30s timeout.
                        Disabled by default — enable via /update-config.
+  extensions.yml     ← optional before/after skill-chain hook config
   settings.json      ← hook registrations (SessionStart + Stop + UserPromptSubmit + PreToolUse + PostToolUse + WorktreeRemove)
 .local-paths         ← machine-specific paths: backup-target + repo local paths (key=/path format)
                        lives at workspace root (NOT inside workspace/); managed by /nase:init
@@ -162,11 +166,14 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | Script | Purpose |
 |--------|---------|
 | `date-resolve.py` | Parse natural-language date specs (e.g. "last week", "30", "YYYY-MM-DD to YYYY-MM-DD") to a `START_DATE END_DATE` pair. Used by `recap`, `stats`. |
+| `extensions-check.sh` | Read `.claude/extensions.yml` and emit `OPTIONAL_HOOK`, `EXECUTE_COMMAND`, or `NO_HOOKS` for a named skill-chain event. Used by `fsd`. |
 | `help-summary.py` | Render compact or verbose `/nase:help` output from README.md and workspace directories. Used by `help`. |
 | `kb-domain-resolve.sh` | Resolve a repo name / domain key to its KB file path via `workspace/kb/.domain-map.md`. Used by `repo-resolution.md` callers. |
 | `kb-search.sh` | Full-text + metadata search across KB files. Supports `in:`, `tag:`, `since:`, `confidence:`, `mentions:`, capped previews, `--full`, and `--max-entry-lines`; weighted relevance (header 2×, body 1×); fuzzy fallback. Used by `kb-search`. |
 | `kb-gap-scan.sh` | Scan daily logs and lessons for KB-gap signals (uncertainty, doc lookups, SME teachings). Used by `kb-gap-detect`. |
 | `kb-hygiene-scan.py` | Scan project KB files for stale timestamps, unsafe stale claims, broken repo-source references, and compaction candidates. Used by `onboard`. |
+| `pr-github-helper.py` | Parse GitHub PR refs, centralize read-only `gh` metadata/thread command shapes, and compute PR diff-size gates. Used by PR/review skills. |
+| `pr-review-eval.py` | Validate and score offline PR/review skill eval outputs from `evals/pr-review/evals.json`. |
 | `today-stats.py` | Emit a single date's session, token, and skill-usage counts as `key=value` lines. Used by `wrap-up` Step 4d. |
 | `log-range.py` | Emit existing daily-log file paths for a date range (inclusive). Silently drops non-existent dates. Used by `recap` Step 4.5. |
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |

@@ -12,9 +12,11 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
   hooks/               shell scripts wired in settings.json
   docs/                shared algorithm docs referenced by skills
   scripts/             utility scripts (date resolution, KB search, stats)
+  extensions.yml       optional skill-chain hook config
   roles.yaml           subagent model routing
   settings.json        hook registrations
 docs/                  architecture and reference docs
+evals/                 offline eval cases for high-frequency skills
 tests/                 local/CI validation gates
 workspace/             git-ignored; per-user content
   kb/                  knowledge base (projects/, general/, ops/, cross-project/)
@@ -45,6 +47,7 @@ Hooks are registered in `.claude/settings.json`. Shell output and exit codes fee
 | `Stop` | Every session end | `stop-todos.sh`, `stop-backup.sh` | Surfaces pending todos from `workspace/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `workspace/` at `.local-paths`'s `backup-target`; applies retention cleanup; writes status to `workspace/logs/.backup-status` |
 | `PostToolUse:Skill` | After every `Skill` tool call | `track-skill.sh` | Appends `{"skill","ts","status"}` records to `workspace/stats/skill-usage.jsonl` (status derived from `tool_response.is_error`); same-second dedup |
 | `PostToolUse:Edit\|Write` | After editing/writing `.sh` files | inline | Runs `shellcheck -S warning` on the edited file |
+| `PreToolUse:Edit\|Write\|MultiEdit` | Before editing/writing source files (non-blocking) | `pre-edit-write-fact-force.sh` | Inspired by ECC's [`gateguard-fact-force.js`](https://github.com/affaan-m/everything-claude-code/blob/main/scripts/hooks/gateguard-fact-force.js). On the first edit to a source file (`.py .ts .tsx .js .jsx .go .cs .rb .rs .java .sh .kt .swift .cpp .c .h`) per session, emits a stderr reminder demanding three concrete facts before the change is applied: callers, public-API impact, and the originating instruction. Skips `workspace/`, `docs/`, `tests/`, markdown/JSON/YAML, and brand-new files. Session state lives at `${TMPDIR}/nase-fact-force.${session}.state` with 30-minute inactivity expiry and a 500-entry cap. Disable per-run with `NASE_FACT_FORCE=0`. |
 | `WorktreeRemove` | Worktree lifecycle | `worktree-log.sh` | Appends a timestamped removal entry to today's daily log |
 
 ### `block-dangerous-git.sh` rejection scope
@@ -233,6 +236,7 @@ nase/
   .claude/
     commands/nase/      slash commands (30+ built-in)
     hooks/              hook scripts (called by settings.json)
+    extensions.yml      optional skill-chain hook config
     roles.yaml          subagent model routing
     docs/               shared algorithm docs
     scripts/            utility scripts
@@ -241,6 +245,7 @@ nase/
     workflows/validate.yml
     CODEOWNERS
   docs/                 this directory
+  evals/                offline eval cases and fixtures
   tests/                CI gates
   CLAUDE.md
   README.md
@@ -296,5 +301,6 @@ workspace/
 
 - Skill source: `.claude/commands/nase/*.md` — each command is a single Markdown file with steps and rationale
 - Shared algorithm docs: `.claude/docs/*.md` — referenced from skills (kb-template, daily-log-format, repo-resolution, etc.)
+- Offline evals: `evals/pr-review/` — deterministic output-shape checks for PR/review skills; scorer lives at `.claude/scripts/pr-review-eval.py`
 - Hook regression tests: `tests/hooks/` — exercise every block/allow case for `block-dangerous-git.sh`
 - CI gates: `.github/workflows/validate.yml` and `tests/check-all.sh`
