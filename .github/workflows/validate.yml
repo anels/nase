@@ -100,6 +100,7 @@ jobs:
           bash tests/hooks/test-external-write-guards.sh
           bash tests/hooks/test-style-edit-detect.sh
           bash tests/hooks/test-stop-backup-safety.sh
+          bash tests/hooks/test-pre-edit-write-fact-force.sh
 
       - name: Workspace validation
         run: bash .claude/scripts/validate-workspace.sh
@@ -118,6 +119,15 @@ jobs:
 
       - name: Today stats regression tests
         run: bash tests/scripts/test-today-stats.sh
+
+      - name: Extension hook regression tests
+        run: bash tests/scripts/test-extensions-check.sh
+
+      - name: PR helper regression tests
+        run: bash tests/scripts/test-pr-github-helper.sh
+
+      - name: PR review eval regression tests
+        run: bash tests/scripts/test-pr-review-eval.sh
 
       - name: Shared-doc reference integrity
         run: bash tests/check-shared-doc-refs.sh

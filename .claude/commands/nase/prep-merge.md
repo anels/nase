@@ -19,15 +19,28 @@ Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
 
 ## Phase 1: Fetch PR Metadata
 
-Fetch PR metadata using the **full** variant from `.claude/docs/github-queries.md` (PR Metadata section).
+Parse the PR reference and fetch metadata with the shared helper:
 
-Capture: `headRefName` (PR branch), `baseRefName` (target branch), commit list, changed files, current title/body, state, review decision.
+```bash
+python3 .claude/scripts/pr-github-helper.py parse "$PR_URL_OR_ARGUMENTS"
+python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant full > "$TMPDIR/pr-metadata.json"
+```
+
+The helper's **full** variant centralizes the field set from `.claude/docs/github-queries.md`.
+
+Capture: `headRefOid` (PR head SHA), `headRefName` (PR branch), `baseRefName` (target branch), commit list, changed files, current title/body, state, review decision.
 
 If `state` is not `OPEN`: report "PR is already {state}" and stop.
 
 ## Phase 2: Verify All Comments Resolved
 
-Use the **full variant** GraphQL query from `.claude/docs/github-queries.md` (Unresolved Review Threads section) — needs `author.login` on the first AND last comment for the bot-decline check in 2a.
+Use the shared helper for the full review-thread GraphQL query:
+
+```bash
+python3 .claude/scripts/pr-github-helper.py review-threads "$PR_URL" > "$TMPDIR/pr-review-threads.json"
+```
+
+The helper preserves `author.login` on the first AND last comment for the bot-decline check in 2a.
 
 Filter threads where `isResolved == false`.
 

@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "name": "pr-review-core",
+  "description": "Offline output-shape evals for high-frequency PR/review nase skills.",
+  "cases": [
+    {
+      "id": "discuss-pr-problem-first",
+      "skill": "nase:discuss-pr",
+      "title": "Problem framing before findings",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/123",
+      "expected_output": "The review starts by framing the PR problem/context, then lists verified findings with file:line evidence and does not claim to post GitHub comments.",
+      "assertions": [
+        {
+          "name": "problem/context appears before findings",
+          "type": "ordered_regex",
+          "patterns": [
+            "(?im)^.*(problem|context|review frame|intent).*",
+            "(?im)^.*(finding|comment draft|confirmed issue).*"
+          ]
+        },
+        {
+          "name": "has file line evidence",
+          "type": "must_contain_regex",
+          "pattern": "`?[^`\\s]+:\\d+`?"
+        },
+        {
+          "name": "does not claim GitHub mutation",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(posted|commented on GitHub|resolved thread|submitted review)"
+        }
+      ]
+    },
+    {
+      "id": "discuss-pr-false-positive-filter",
+      "skill": "nase:discuss-pr",
+      "title": "False-positive filtering",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/124 focus on bugs only",
+      "expected_output": "The review distinguishes confirmed issues from dropped or lower-confidence candidates and avoids nit-only comments.",
+      "assertions": [
+        {
+          "name": "mentions confidence or dropped candidates",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(confidence|dropped|false positive|pre-existing)"
+        },
+        {
+          "name": "caps nit language",
+          "type": "max_count_regex",
+          "pattern": "(?i)\\bnit\\b",
+          "count": 2
+        },
+        {
+          "name": "does not use unsupported certainty",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(obviously|clearly broken without evidence|definitely exploitable)"
+        }
+      ]
+    },
+    {
+      "id": "address-comments-classification",
+      "skill": "nase:address-comments",
+      "title": "Review thread classification before mutation",
+      "prompt": "/nase:address-comments https://github.com/example/service/pull/125",
+      "expected_output": "The skill presents unresolved thread classifications and asks for confirmation before code changes, replies, pushes, or resolving threads.",
+      "assertions": [
+        {
+          "name": "classifies every thread",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(accept|decline|reply-only)"
+        },
+        {
+          "name": "asks for plan confirmation",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(review the plan|confirm|proceed|looks good)"
+        },
+        {
+          "name": "does not mutate before confirmation",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(pushed|resolved thread|posted reply|assigned reviewer)"
+        }
+      ]
+    },
+    {
+      "id": "request-review-draft-style",
+      "skill": "nase:request-review",
+      "title": "Concise review-request draft",
+      "prompt": "/nase:request-review https://github.com/example/service/pull/126",
+      "expected_output": "The skill selects candidate reviewers, shows a concise Slack draft, and uses draft/send-gate language.",
+      "assertions": [
+        {
+          "name": "uses review or approval ask",
+          "type": "must_contain_regex",
+          "pattern": "(?i)Could you help (review|approve)"
+        },
+        {
+          "name": "includes a raw PR URL",
+          "type": "must_contain_regex",
+          "pattern": "https://github\\.com/[^\\s]+/pull/[0-9]+"
+        },
+        {
+          "name": "does not directly send Slack",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(sent DM|slack_send_message\\b)"
+        }
+      ]
+    },
+    {
+      "id": "prep-merge-safety-gates",
+      "skill": "nase:prep-merge",
+      "title": "Merge-prep safety gates",
+      "prompt": "/nase:prep-merge https://github.com/example/service/pull/127",
+      "expected_output": "The skill reports branch, unresolved-thread, CI, and protected-branch safety checks before any merge-prep mutation.",
+      "assertions": [
+        {
+          "name": "checks unresolved comments or threads",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(unresolved.*(comment|thread)|review thread)"
+        },
+        {
+          "name": "checks branch or protected branch safety",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(branch|protected|main|develop|release/)"
+        },
+        {
+          "name": "does not claim merge completed",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(merged successfully|merge completed|deleted branch)"
+        }
+      ]
+    }
+  ]
+}

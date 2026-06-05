@@ -12,6 +12,7 @@
 roles:
   lookup:
     model: haiku
+    tools: [Read, Grep, Glob, Bash]   # Bash for readonly probes (git log, ls, gh api); no Edit/Write
     description: Fast data gathering, simple lookups, grep/glob scans
     prompt_prefix: "This is a simple lookup — keep reasoning minimal."
     use_when:
@@ -22,6 +23,7 @@ roles:
 
   worker:
     model: sonnet
+    tools: [Read, Edit, Write, Grep, Glob, Bash, WebFetch, WebSearch]
     description: Standard implementation, review, debugging
     prompt_prefix: null
     use_when:
@@ -32,6 +34,7 @@ roles:
 
   architect:
     model: opus
+    tools: ["*"]                       # unrestricted — architectural work may need anything
     description: Deep analysis, architecture, security, unfamiliar codebases
     prompt_prefix: null
     use_when:
@@ -48,3 +51,9 @@ roles:
 #   When uncertain between lookup and worker: prefer worker (reasoning > speed).
 #   When uncertain between worker and architect: prefer worker unless the task
 #     involves security, architecture decisions, or an unfamiliar codebase.
+#
+# Tool whitelist enforcement:
+#   When spawning a subagent via Agent(), pass `tools=` matching the role's
+#   `tools:` list. lookup MUST NOT receive Edit/Write — it is a read-only role.
+#   Borrowed from affaan-m/ECC agent frontmatter pattern: explicit tools array
+#   prevents role drift (lookup agent silently doing Write work).

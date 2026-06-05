@@ -123,10 +123,17 @@ A personal AI engineering workbench for Claude Code:
 - **Per-repo KB** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and tasks load only relevant files.
 - **30+ slash commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
 - **Hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
+- **Offline PR evals** — `evals/pr-review/` contains deterministic output-shape checks for high-frequency PR/review workflows.
 
 `workspace/` content persists locally and is auto-backed-up. The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) lives in git; your content stays local.
 
 Architecture details live in [`docs/architecture.md`](docs/architecture.md).
+
+Run the PR/review eval schema check locally:
+
+```bash
+python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
+```
 
 ---
 
@@ -289,7 +296,7 @@ Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destr
 
 External-write hooks block direct Slack sends, require a fresh prompted Jira write token, and stop oversized Confluence page writes before they can truncate. Use Slack drafts, explicit Jira confirmation, or a `workspace/tmp/` Confluence patch when those guards fire.
 
-Other hooks: `SessionStart` creates today's log and reports backup status; `UserPromptSubmit` nudges `[STYLE-DELTA]` capture for style corrections and records slash commands; `Stop` backs up `workspace/`; `PostToolUse:Skill` logs `/nase:*`; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts.
+Other hooks: `SessionStart` creates today's log and reports backup status; `UserPromptSubmit` nudges `[STYLE-DELTA]` capture for style corrections and records slash commands; `Stop` backs up `workspace/`; `PostToolUse:Skill` logs `/nase:*`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts.
 
 Full table with behavior details: [`docs/architecture.md` — Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
 

@@ -15,11 +15,21 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ## Step 1 — Parse inputs
 
-Extract `owner/repo` and PR number from each URL. Group PRs by repo.
+Parse each PR reference with the shared helper:
+
+```bash
+python3 .claude/scripts/pr-github-helper.py parse "$PR_URL"
+```
+
+Use the helper's normalized `owner`, `repo`, and `number` fields. Group PRs by repo. If any input cannot be parsed as a single GitHub PR, ask for a corrected URL before fetching metadata.
 
 ## Step 2 — Fetch PR metadata (parallel per PR)
 
-Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.md` (PR Metadata section).
+Fetch PR metadata using the helper's **light** variant, which centralizes the field set from `.claude/docs/github-queries.md`:
+
+```bash
+python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant light
+```
 
 Save: title, url, base branch, changed file paths, additions/deletions count, body.
 

@@ -19,6 +19,14 @@ Follow the PR input guard in `.claude/docs/pr-input-guard.md` — except on empt
 
 ## Phase 1: Locate Repo & Fetch Context
 
+Parse the PR reference with the shared helper before hand-written extraction:
+
+```bash
+python3 .claude/scripts/pr-github-helper.py parse "$PR_URL_OR_ARGUMENTS"
+```
+
+If parsing fails, ask for a single GitHub PR URL. Use the helper's normalized `owner`, `repo`, and `number` for every `gh` call.
+
 Resolve the single local repo from the PR URL and load its KB file — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
 Mutates one repo only. PR URL, KB path, local `origin`, and PR head repo must all match `{owner}/{repo}`; otherwise stop and ask.
@@ -51,9 +59,13 @@ Fetch remote refs for the KB-resolved repo:
 git -C {repo_path} fetch origin
 ```
 
-Use `.claude/docs/github-queries.md` full unresolved-thread GraphQL query.
+Use the shared helper for the full unresolved-thread GraphQL query:
 
-Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, and unresolved threads (`isResolved == false`).
+```bash
+python3 .claude/scripts/pr-github-helper.py review-threads "$PR_URL" --unresolved-only > "$TMPDIR/pr-review-threads.json"
+```
+
+Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, and unresolved threads from that JSON. If the helper or `gh` fails, stop with the raw error; do not fall back to an ad hoc query unless you also update `.claude/scripts/pr-github-helper.py` and its tests.
 
 **Same-repo guard:** `headRepository.nameWithOwner` must match `{owner}/{repo}` case-insensitively. If null or different, stop; this command does not handle forks or second repos.
 

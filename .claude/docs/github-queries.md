@@ -2,6 +2,15 @@
 
 Shared query definitions referenced by nase skills.
 
+Prefer `.claude/scripts/pr-github-helper.py` for standard PR parsing, metadata
+field sets, review-thread retrieval, and diff-size gates. Keep raw query shapes
+here so humans can audit or update the helper without hunting through every
+skill.
+
+```bash
+python3 .claude/scripts/pr-github-helper.py commands "https://github.com/owner/repo/pull/123" --variant light
+```
+
 ---
 
 ## PR Metadata
@@ -14,7 +23,7 @@ Use when you need commit history, review state, and branch info — typically fo
 
 ```bash
 gh pr view {pr_number} --repo {owner}/{repo} \
-  --json number,title,url,body,headRefName,baseRefName,commits,additions,deletions,changedFiles,files,state,reviewDecision
+  --json number,title,url,body,headRefOid,headRefName,baseRefName,commits,additions,deletions,changedFiles,files,state,reviewDecision
 ```
 
 ### Light variant (discuss-pr, request-review)

@@ -29,6 +29,14 @@ Note any focus areas the user specifies (e.g. "architecture", "security", "skip 
 
 Default focus if none specified: problem fit, logic correctness, design/elegance, architecture, security, testability, code comments.
 
+Parse the PR reference with the shared helper before hand-written extraction:
+
+```bash
+python3 .claude/scripts/pr-github-helper.py parse "$PR_URL_OR_ARGUMENTS"
+```
+
+If parsing fails, ask for a single GitHub PR URL. Use the helper's `owner`, `repo`, and `number` fields for subsequent GitHub commands so every PR workflow handles URL variants the same way.
+
 Resolve repo from PR URL and load the KB file — see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
 Probe optional CLI tooling once and keep the result in private context:
@@ -41,9 +49,16 @@ Follow `.claude/docs/cli-tooling.md`. Missing optional tools never fail this rea
 
 ## Step 2 — Fetch PR metadata and existing comments
 
-Fetch PR metadata using the **light** variant from `.claude/docs/github-queries.md` (PR Metadata section). Use `additions + deletions` from that metadata before fetching the diff:
+Fetch PR metadata using the helper's **light** variant, which centralizes the field set from `.claude/docs/github-queries.md`:
 
-- If total diff lines > 5000: run `gh pr diff {pr_number} --repo {owner}/{repo} --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
+```bash
+python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant light > "$TMPDIR/pr-metadata.json"
+python3 .claude/scripts/pr-github-helper.py size-gate --metadata "$TMPDIR/pr-metadata.json" > "$TMPDIR/pr-size-gate.json"
+```
+
+Use `total_lines` and `diff_mode` from the size gate before fetching the diff:
+
+- If `diff_mode` is `stat`: run `gh pr diff {pr_number} --repo {owner}/{repo} --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
 - Otherwise fetch the full diff.
 
 Also run in parallel:
@@ -55,7 +70,7 @@ gh api "repos/{owner}/{repo}/pulls/{pr_number}/reviews" --paginate
 
 Save: title, body, head SHA, changed file list, full diff or diff stat, existing inline comments (with `id`, `path`, `line`, `body`, `user.login`, `in_reply_to_id`), existing reviews (with `id`, `state`, `body`, `user.login`).
 
-**PR size gate:** if `additions + deletions` > 1500, warn: "This PR is {N} lines — single-pass review reliability drops significantly. Consider splitting by concern before deep review." User decides whether to proceed.
+**PR size gate:** if `review_warning` is true, warn: "This PR is {N} lines — single-pass review reliability drops significantly. Consider splitting by concern before deep review." User decides whether to proceed.
 
 Group comments into threads: top-level comment + all replies sharing the same `in_reply_to_id`.
 
