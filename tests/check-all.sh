@@ -101,6 +101,7 @@ bash tests/scripts/test-cli-tooling-integration.sh || failed=$((failed+1))
 bash tests/scripts/test-extensions-check.sh || failed=$((failed+1))
 bash tests/scripts/test-pr-github-helper.sh || failed=$((failed+1))
 bash tests/scripts/test-pr-review-eval.sh || failed=$((failed+1))
+bash tests/scripts/test-voice-profile-routing.sh || failed=$((failed+1))
 
 section "shared-doc reference integrity"
 bash tests/check-shared-doc-refs.sh || failed=$((failed+1))

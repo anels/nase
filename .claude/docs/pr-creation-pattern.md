@@ -2,6 +2,8 @@
 
 Shared sequence for skills that create or update pull requests on GitHub (`fsd`, `prep-merge`).
 
+Before drafting any PR title or body, follow `.claude/docs/voice-profile-routing.md` with `surface=github-pr-body`.
+
 ---
 
 ## 1. Discover PR Template

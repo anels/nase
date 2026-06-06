@@ -298,7 +298,7 @@ The PR title should match the commit subject line (the first line of the squash 
 
 ### 7a–7b: PR Template & Description
 
-Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description, align the title with the commit subject, and preserve co-authors.
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors.
 
 Follow `.claude/docs/pr-creation-pattern.md` for PR description formatting.
 

@@ -380,7 +380,7 @@ Deviation: use `push -u origin {branch_name}` on first push (sets upstream track
 
 ## Phase 8: Pull Request (if PR = Yes)
 
-Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description, align the title with the commit subject, and preserve co-authors (relevant in team mode).
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors (relevant in team mode).
 
 Before the `gh pr create` / `gh pr edit` calls below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`.
 

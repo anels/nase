@@ -3,7 +3,7 @@ name: slack-draft-style
 description: Style rules for Slack messages drafted on behalf of the EM. Read before finalizing any Slack DM or channel message draft.
 ---
 
-Before finalizing any Slack draft, read `workspace/communication-style.md` for the full communication profile (language style, scene-specific tone, fixed habits, values, terminology).
+Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` or `surface=slack-channel`. Read `workspace/communication-style.md` when the routing capsule says the full profile is needed or the message is high-stakes.
 
 After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 4e batches pending deltas into approved style-doc edits.
 
@@ -19,7 +19,8 @@ Apply before presenting the draft to the user:
 - [ ] DM to Chinese-native colleagues (e.g., Haowen): Chinese is OK
 - [ ] Public channels: always English, never Chinese
 - [ ] Use `pls` not `please` in informal DMs; `can you` not `please` in requests
-- [ ] PR review request format: `[link] @reviewer1 @reviewer2 pls help review / pls take a look`
+- [ ] PR review request format: `[link] @reviewer1 @reviewer2 pls help review / pls take a look` or `Could you help review [link] - [TLDR]`
+- [ ] No redundant `this?` after a PR URL in review requests
 - [ ] Reassignment / change notifications: cc all affected people, add "let me know if anything breaks"
 - [ ] Personnel change messages: include a specific memory or detail — no generic templates
 - [ ] Incident update format: symptom → cause → current status → action request; cc TL/PM

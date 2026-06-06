@@ -68,7 +68,7 @@ cat > "$TMPDIR_TEST/request-ok.txt" <<'TXT'
 Candidate reviewers:
 Alice - owns src/cache
 
-Could you help review this? https://github.com/example/service/pull/126 — this mainly fixes stale cache invalidation
+Could you help review https://github.com/example/service/pull/126 - this mainly fixes stale cache invalidation
 Slack draft is staged only after confirmation.
 TXT
 "$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case request-review-draft-style --output "$TMPDIR_TEST/request-ok.txt" >/dev/null

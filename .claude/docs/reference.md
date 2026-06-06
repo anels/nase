@@ -133,6 +133,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `external-mutation-policy.md` | Cross-skill rule: every Slack / Jira / Confluence / GitHub / ADO / cloud mutation goes through draft-first or `AskUserQuestion`. Reference from any mutation-capable skill. |
 | `skill-authoring-contract.md` | Behavior rules for skill authors: language preflight, external mutation, ADO CLI doctrine, bash hygiene, anti-overlap, subagent context. Read before adding a new skill. Enforced by `tests/check-skill-doctrine.sh`. |
 | `style-delta-capture.md` | Capture user corrections to drafted Slack/PR/external-doc text as `[STYLE-DELTA]` log lines and consolidate them into approved `communication-style.md` edits during `wrap-up` |
+| `voice-profile-routing.md` | Surface-specific routing layer for Ruilin's communication profile; callers use a capsule first, then read `workspace/communication-style.md` for high-stakes or ambiguous drafts |
 | `design-auto-mode.md` | Algorithm for `--auto` end-to-end design mode of `/nase:design` |
 | `design-grill-mode.md` | Algorithm for `--grill` stress-test mode of `/nase:design` |
 | `design-review-mode.md` | Algorithm for `--review` re-evaluation mode of `/nase:design` |
@@ -152,7 +153,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `pr-review-verification.md` | Seven-section verification checklist for PR review skills (AI-reviewer audit, cross-ref, diff-vs-HEAD, bot citation triage) |
 | `reference.md` | This file — workspace layout, KB structure, architecture notes |
 | `repo-resolution.md` | Resolve GitHub URLs / repo names to local paths via `.local-paths` |
-| `slack-draft-style.md` | Style checklist for Slack drafts: no greetings, bullets for tech content, English-only in public/non-CN DMs, `pls` over `please`; references `workspace/communication-style.md` for full profile |
+| `slack-draft-style.md` | Style checklist for Slack drafts: no greetings, bullets for tech content, English-only in public/non-CN DMs, `pls` over `please`; routes through `voice-profile-routing.md` and reads `workspace/communication-style.md` when needed |
 | `verification-matrix.md` | Verification evidence matrix used by `fsd` and `discuss-pr` to declare task done |
 | `workspace-data-gathering.md` | Load journals/logs/tasks within a date range (used by `recap`, `wrap-up`) |
 | `worktree-pattern.md` | Safe worktree creation with `EnterWorktree` avoidance |

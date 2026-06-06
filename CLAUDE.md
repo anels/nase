@@ -92,7 +92,7 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 
 ## Communication
 
-- **Voice profile**: before drafting any Slack message or PR description, read `workspace/communication-style.md` (tone, fixed habits, AI-flavor banned list, scene-specific style table)
+- **Voice profile**: before drafting Slack, PR, Jira, Confluence, or other external text, follow `.claude/docs/voice-profile-routing.md` for the output surface; read `workspace/communication-style.md` when the routing capsule calls for the full profile or the draft is high-stakes
 - **Slack messages**: keep concise and conversational; avoid verbose/formal drafts
 - **Jira links**: always include full Jira links (e.g. `https://your-org.atlassian.net/browse/PROJ-123`), never bare ticket numbers
 - **Review requests**: one short paragraph max; mention reviewer by name, link the PR
