@@ -1,13 +1,13 @@
 ---
 name: nase:request-review
-description: Find the right people to review a PR and send them Slack DMs. Use when given one or more PR URLs and asked to notify reviewers, request approval, or ping code owners. Reads CODEOWNERS to match file owners, cross-references the project KB for additional context holders, generates a concise DM (approval request for simple PRs, review request for complex ones), groups cherry-pick PRs into a single message per person, and confirms via AskUserQuestion before sending anything.
+description: Find the right people to review a PR and stage Slack DM drafts. Use when given one or more PR URLs and asked to notify reviewers, request approval, or ping code owners. Reads CODEOWNERS to match file owners, cross-references the project KB for additional context holders, generates a concise DM draft (approval request for simple PRs, review request for complex ones), groups cherry-pick PRs into a single draft per person, and confirms via AskUserQuestion before staging anything.
 ---
 
 # PR Review Requester
 
-Find the right reviewers for one or more PRs and DM them on Slack.
+Find the right reviewers for one or more PRs and stage Slack DM drafts.
 
-Follows `.claude/docs/external-mutation-policy.md` — all Slack messages go through `slack_send_message_draft` (never `_send`), and GitHub reviewer assignment goes through `AskUserQuestion` immediately before `gh pr edit`.
+Follows `.claude/docs/external-mutation-policy.md` — all Slack messages go through `slack_send_message_draft` (never `_send`). This skill only stages Slack drafts; it does not assign reviewers on GitHub. The Slack DM is the request; the reviewer accepts (or declines) by reading the PR. Skipping the GitHub assignment avoids a second mutation that the recipient has to re-acknowledge in their queue.
 
 ## Step 0 — Language preflight (MUST run first, non-negotiable)
 
@@ -164,36 +164,10 @@ Show the drafted message and ask "Stage Slack DM drafts for the selected people?
 - `Stage drafts` — proceed
 - `Cancel` — abort
 
-**Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__plugin_slack_slack__slack_search_users`) and add them to the send list. If the search is ambiguous, surface the candidates and ask the user to clarify before sending.
+**Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__plugin_slack_slack__slack_search_users`) and add them to the draft list. If the search is ambiguous, surface the candidates and ask the user to clarify before staging drafts.
 
 Only stage drafts for the people the user confirmed in question 1.
 
 ## Step 9 — Stage DM drafts (parallel)
 
-Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed.
-
-## Step 10 — Assign reviewers on GitHub
-
-Before the `gh pr edit --add-reviewer` call below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`.
-
-After staging DM drafts, also assign confirmed reviewers on the PR so it appears in their GitHub review queue:
-
-If no confirmed reviewer has a GitHub handle, skip this step. Otherwise, use `AskUserQuestion` immediately before the GitHub mutation and show the concrete payload:
-
-```
-question: "Assign these reviewers on GitHub now?"
-header: "GitHub Reviewers"
-options:
-  - label: "Assign reviewers"
-    description: "{owner}/{repo}#{pr_number}: {handle1},{handle2},..."
-  - label: "Skip GitHub assignment"
-    description: "Slack drafts are staged; leave GitHub reviewers unchanged"
-```
-
-Only run the command below if the user selects "Assign reviewers". This is a separate gate from Slack draft approval because GitHub reviewer assignment is its own external mutation.
-
-```bash
-gh pr edit {pr_number} --repo {owner}/{repo} --add-reviewer {handle1},{handle2},...
-```
-
-If a reviewer doesn't have a GitHub handle (Slack-only), skip them for this step. Report which handles were assigned.
+Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed. Then stop — do not also assign the same people on GitHub. Slack ping is the request; the GitHub review queue updates when the reviewer actually leaves a review.

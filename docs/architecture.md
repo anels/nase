@@ -74,7 +74,7 @@ Regression tests live in `tests/hooks/test-block-dangerous-git.sh`. Add bypass-s
 
 ### `/nase:prep-merge` squash keyword scan
 
-Before squashing commits, `prep-merge.md:130` greps commit messages for load-bearing keywords:
+Before squashing commits, `/nase:prep-merge` Phase 6 greps commit messages for load-bearing keywords:
 
 ```
 fix.?runtime | compat | fallback | pin[._-]?to[._-]?n-?1 | revert.?tfm
@@ -140,7 +140,7 @@ they break a skill at runtime.
 
 ## Bug-class generalization in PR comments
 
-`/nase:address-comments` Step 5.0 (`address-comments.md:131`): when a reviewer flags one incorrect identifier in docs/comments, grep the rest of the diff for the same pattern instead of fixing only that line.
+`/nase:address-comments` Phase 6 (`Cross-reference identifier audit`): when a reviewer flags one incorrect identifier in docs/comments, grep the rest of the diff for the same pattern instead of fixing only that line.
 
 ---
 

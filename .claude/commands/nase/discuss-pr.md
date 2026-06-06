@@ -105,6 +105,8 @@ For design/elegance review, compare with adjacent implementations and propose an
 
 **Performance claim check:** if title/body claims speed/latency/throughput gains, require benchmark data: environment, workload, before/after median + p95, methodology. Missing data becomes a finding.
 
+**Audit-PR list re-grep:** if the PR title/body signals exclusion-list pruning, blanket rule narrowing, allowlist removal, or similar audit work, re-grep every *remaining* entry against the same policy used for the removals. Treat it as "re-audit the full list against the new policy", not "verify the named removals". Flag sibling entries that match the same anti-pattern but escaped the cut.
+
 ## Step 3 — Build risk map, select specialists, and engage existing comments
 
 Before launching any specialist agents, build a private risk map. This avoids running every specialist on every PR.
@@ -181,6 +183,10 @@ Ask "Does this look right? Any to change?" Research each 🔍 item before final 
 
 Apply `.claude/docs/pr-review-verification.md` §4 and §5 on every classification pass.
 
+**Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only — reactions, replies, and resolves remain gated by Step 7 / Step 8.
+
+**Duplicate-of-N reframe check:** when a candidate finding would be dismissed as "duplicate of PR #N" or "superseded by #N", open #N's body + commits first. If #N explicitly defers the surface now being changed (`This PR does NOT change X`, unchecked `[ ]` items, "follow-up planned"), the PRs are complementary, not duplicate — the finding stands.
+
 Collect the final classifications. **Do not post reactions or replies yet** — batched into Step 8, posted only on explicit request.
 
 ## Step 4 — Score, tier, and filter (after agents complete)
@@ -220,6 +226,7 @@ Scan the scored findings (from Step 4) and flag any that meet these criteria:
 - **Opaque handoff**: the diff passes a value to a service, library, or repository method whose behavior for the new input is unknown from the diff alone (e.g., a string that used to be an enum value is now passed as a free-form name — does the callee handle it?)
 - **Cross-boundary assumption**: the finding assumes something about a caller, downstream consumer, or deployment environment that isn't visible in the diff
 - **Pattern divergence**: the diff follows a pattern from another controller/service but omits a step that the reference implementation includes (e.g., a validation, a Content check, a type conversion) — unclear if the omission is intentional or a gap
+- **Activation-PR scope**: the PR is the last in a multi-PR migration that activates dormant infrastructure from earlier PRs. Small diff, large blast radius. Walk every newly live entry point, cross-boundary auth/scope check, and test path that becomes load-bearing only with this PR. If a scoping gap is found, recommend splitting activation so the fix lands before the seed.
 
 Goal: trace when it can move a finding to confirmed or dropped.
 
@@ -258,6 +265,8 @@ Skill-specific outputs:
 - Strictness ceiling: `[MED]`. Always informational — never block-before-merge. Reviewers decide whether to gate.
 
 ## Step 6 — Present findings and open discussion
+
+**Mandatory de-duplication filter (apply before presenting):** map each candidate finding against the existing comment set already fetched in Step 2; do not re-fetch. Drop candidates whose `(file, line, claim)` overlaps an existing open or resolved thread from a human or bot reviewer. If every candidate drops out, output `0 inline + 0 top-level` and state that prior reviewers already covered the diff.
 
 **Output discipline:** chat only, no file write. Narrative uses `conversation:`; GitHub drafts/posts use `output:`. Keep paths, lines, symbols, identifiers in English.
 
