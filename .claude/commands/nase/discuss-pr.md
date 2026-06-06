@@ -386,7 +386,7 @@ Behavior per choice:
 
 **Draft format** (used by Draft+post and Draft+discuss):
 
-- **Voice profile**: before drafting, read `workspace/communication-style.md` — no blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` — don't over-escalate severity, prefer measured assessments.
+- **Voice profile**: before drafting, follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`; read `workspace/communication-style.md` for high-stakes or ambiguous comments. Keep no-blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), and no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` — don't over-escalate severity, prefer measured assessments.
 - **1–2 sentences max** — state the point directly, no preamble or verbose explanation
 - Conversational peer tone — not formal or gatekeeper
 - Lead with the specific concern
@@ -426,7 +426,7 @@ Put the recommended option first and append `(recommended)` to its label.
 **Post sequence** once user picks:
 
 - Approve body: "LGTM" or "LGTM with nits" — never repeat the fix mechanism or summarize the PR
-- Inline comments: same 1–2 sentence rule as drafts, concise, in `output:` language, voice profile per `workspace/communication-style.md`
+- Inline comments: same 1–2 sentence rule as drafts, concise, in `output:` language, voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`
 - Create pending review → add inline comments → submit with the chosen state
 - Also post any Step 3 batched reactions/replies the user agreed to (Step 3 collected the classifications; this is where they go to GitHub)
 

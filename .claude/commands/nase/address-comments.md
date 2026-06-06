@@ -189,7 +189,7 @@ Watch for per-type short-circuits (`if x is None: continue`) before the new gate
 
 ### For decline threads:
 
-Draft a direct reply: clear reason, technical context if needed, no defensive tone.
+Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply`. Draft a direct reply: clear reason, technical context if needed, no defensive tone.
 
 Example: "The current approach handles X because [reason]. Changing to Y would [specific downside]."
 
@@ -203,7 +203,7 @@ One reply per declined thread, ≤3 lines each. Do not batch declines under blan
 
 ### For reply-only threads:
 
-Draft concise, non-defensive reply text.
+Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply`. Draft concise, non-defensive reply text.
 
 Hold all replies until Phase 9 (post-push) so the reviewer sees both the code fix and the reply together.
 
@@ -489,7 +489,7 @@ If the user picks "None — skip all" (or doesn't select any reviewers), skip th
 
 If a Slack user can't be resolved after two tries, surface `"Couldn't resolve {login} on Slack — skipping ping"` and move on.
 
-**Step 9b.4 — Draft (do NOT send) one Slack DM per resolved reviewer.** Use `slack_send_message_draft`. Follow `.claude/docs/slack-draft-style.md`. One short sentence + bare PR URL on its own line (no `<URL|label>` embed, per `feedback_slack-full-url-not-embed`).
+**Step 9b.4 — Draft (do NOT send) one Slack DM per resolved reviewer.** Use `slack_send_message_draft`. Follow `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm`. One short sentence + bare PR URL on its own line (no `<URL|label>` embed, per `feedback_slack-full-url-not-embed`).
 
 Body template:
 

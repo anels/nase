@@ -106,13 +106,13 @@ Cherry-picks share the same intent across different base branches. Group PRs as 
 Cherry-pick group → **one combined DM** per person listing all PR links.
 Unrelated PRs → **separate DMs** per PR per person.
 
-Follow `.claude/docs/slack-draft-style.md` — apply when drafting Slack messages in Steps 7–9.
+Follow `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` — apply when drafting Slack messages in Steps 7–9.
 
 ## Step 7 — Draft messages
 
 Write like a colleague asking a quick favour — start with the ask, one line on what the change does, then the link. No bullet points, no markdown, no formal sign-off.
 
-**No "Hey [name]," opener.** A Slack DM is already a 1:1 channel — Slack shows the recipient's name in the header, so naming them again in the body just adds noise. Open with the ask itself ("Could you help review this?"). This is purely a Slack-DM convention; if the skill ever drafts to a multi-person channel, an opener that names the target reviewer would be appropriate again.
+**No "Hey [name]," opener.** A Slack DM is already a 1:1 channel — Slack shows the recipient's name in the header, so naming them again in the body just adds noise. Open with the ask itself ("Could you help review [url] - [TLDR]"). This is purely a Slack-DM convention; if the skill ever drafts to a multi-person channel, an opener that names the target reviewer would be appropriate again.
 
 The TLDR should complete one of these naturally (pick whichever fits):
 - "this mainly fixes …"
@@ -122,16 +122,16 @@ The TLDR should complete one of these naturally (pick whichever fits):
 
 Derive it from the PR title and body; don't invent details.
 
-**Important: Slack mrkdwn auto-links URLs with `<>` — if a newline follows a URL, the next word gets swallowed into the link tag. Always put the URL and TLDR on the same line, joined by ` — `.**
+**Important: Slack mrkdwn auto-links URLs with `<>` — if a newline follows a URL, the next word gets swallowed into the link tag. Always put the URL and TLDR on the same line, joined by ` - `.**
 
 **Single PR (approval):**
 ```
-Could you help approve this? [url] — [TLDR]
+Could you help approve [url] - [TLDR]
 ```
 
 **Single PR (review):**
 ```
-Could you help review this? [url] — [TLDR]
+Could you help review [url] - [TLDR]
 ```
 
 **Cherry-pick group:**

@@ -100,4 +100,4 @@ If the target surface does not exist in the scene table, add a new row with the 
 - **No duplicate bullets.** Before writing, grep the target section for the rule's key phrase. If present, skip with `existing-rule-already-covered` in chat.
 - **No drift from existing voice.** Match the section's existing bullet/table style.
 - **No new top-level sections without approval.**
-- **Capture, not enforcement.** Future drafts still must read `workspace/communication-style.md`; this loop only updates that source document.
+- **Capture, not enforcement.** Future drafts still must follow `.claude/docs/voice-profile-routing.md`; this loop only updates the source profile at `workspace/communication-style.md`.

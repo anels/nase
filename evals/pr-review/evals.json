@@ -100,6 +100,11 @@
           "name": "does not directly send Slack",
           "type": "must_not_contain_regex",
           "pattern": "(?i)(sent DM|slack_send_message\\b)"
+        },
+        {
+          "name": "does not use redundant this question",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)Could you help (review|approve) this\\?"
         }
       ]
     },
