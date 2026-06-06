@@ -59,15 +59,8 @@ Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering
 - Optional agent tools are warning-only. Use `/nase:doctor` for the baseline set, `/nase:doctor --deep` for the full probe, and `.claude/docs/cli-tooling.md` before adding new tool-dependent skill behavior.
 - `.local-paths` lives at repo root, is not backed up, and stores `backup-target=` plus `RepoName=/absolute/path` entries managed by `/nase:init` and `/nase:onboard`.
 
-### Hook Event Map
-- `SessionStart`: `session-start.sh`
-- `UserPromptSubmit`: `style-edit-detect.sh` injects a reminder to log `[STYLE-DELTA]` when a prompt signals a style edit on a Slack/PR/external-doc draft (see §Style Learning Loop)
-- `Stop`: `stop-todos.sh`, `stop-backup.sh`
-- `PreToolUse:Bash`: `block-dangerous-git.sh` blocks destructive git patterns, protected-branch pushes, and no-verify bypasses
-- `PreToolUse:Edit|Write|MultiEdit`: `pre-edit-write-fact-force.sh` (non-blocking) — on the first edit to a source file per session, emits a reminder demanding callers / public-API impact / instruction origin. Disable with `NASE_FACT_FORCE=0`. Skips `workspace/`, `docs/`, `tests/`, non-source extensions
-- `PostToolUse:Skill`: `track-skill.sh`
-- `PostToolUse:Edit|Write`: shellcheck for `.sh`; `PostToolUse:Edit`: optional `edit-typecheck.sh`
-- `WorktreeCreate` / `WorktreeRemove`: `worktree-log.sh`
+### Hooks
+Hook registrations live in `.claude/settings.json`; hook behavior and file layout are summarized in `.claude/docs/reference.md`. Read those only when debugging or changing hooks.
 
 ### Workspace Skills Syncing
 `session-start.sh` syncs `workspace/skills/*.md` to `.claude/commands/nase/workspace/`; each becomes `/nase:workspace:<name>`. Add a skill by creating `workspace/skills/<name>.md` and restarting.
@@ -75,14 +68,9 @@ Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering
 ### CLAUDE.md Content Rules
 No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 
-### Shared Docs (`.claude/docs/`)
-- `reference.md`: full layout and `.claude/docs/*.md` inventory.
-- `kb-template.md`: KB structure and writing conventions.
-- `repo-resolution.md`: GitHub URL/repo name to local path via `.local-paths`.
+### Reference Loading
+- Do not load docs/scripts inventories at session start. Read `.claude/docs/reference.md` only when you need workspace layout, shared-doc, script, KB, or architecture details.
 - Skills should reference shared docs instead of duplicating algorithms.
-
-### Utility Scripts (`.claude/scripts/`)
-`date-resolve.py`, `extensions-check.sh`, `help-summary.py`, `kb-domain-resolve.sh`, `kb-search.sh`, `kb-gap-scan.sh`, `kb-hygiene-scan.py`, `pr-github-helper.py`, `pr-review-eval.py`, `today-stats.py`, `log-range.py`, `stats-chart.py`, and `tool-availability.py` support commands; read script headers or `.claude/docs/reference.md` when needed.
 
 ### Hooks / Commands / Skills Scope
 - Create hooks, commands, and skills under `.claude/`. Writing to `~/.claude/` requires explicit user approval.

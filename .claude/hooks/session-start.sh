@@ -65,6 +65,25 @@ yaml_double_quote_escape() {
   LC_ALL=C tr -d '\000-\037\177' | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+compact_skill_description() {
+  # Skill descriptions are loaded as command metadata. Keep enough trigger text
+  # for discovery while preventing accidental paragraphs from becoming ambient context.
+  awk -v max=240 '
+    {
+      line = line (line == "" ? "" : " ") $0
+    }
+    END {
+      gsub(/[[:space:]]+/, " ", line)
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (length(line) > max) {
+        line = substr(line, 1, max - 3) "..."
+      }
+      print line
+    }
+  '
+}
+
 {
   # Check last backup status: surface errors AND last successful run timestamp.
   STATUS_FILE="$NASE_ROOT/workspace/logs/.backup-status"
@@ -171,7 +190,7 @@ PYEOF
       allowed_tools=$(extract_frontmatter_block "allowed-tools" "$skill_file")
       disallowed_tools=$(extract_frontmatter_block "disallowed-tools" "$skill_file")
       if [ ! -f "$cmd_file" ] || [ "$skill_file" -nt "$cmd_file" ]; then
-        desc=$(printf '%s' "$desc" | yaml_double_quote_escape)
+        desc=$(printf '%s' "$desc" | compact_skill_description | yaml_double_quote_escape)
         {
           printf '%s\n' '---'
           printf 'name: nase:workspace:%s\n' "$name"

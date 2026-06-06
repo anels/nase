@@ -151,10 +151,17 @@ prompt:
   {task_spec_or_user_prompt_from_fsd}
   ---
 
-  Implementation diff:
-  ```diff
-  {full_diff_or_diffstat_for_oversized}
-  ```
+  Implementation bundle:
+  ---
+  {bundle_path}
+  {merge_base}
+  {diff_stat}
+  {changed_files}
+  {full_diff_for_small_changes_or_top_changed_files_for_large_changes}
+  ---
+
+  If the bundle is insufficient to verify the spec, return NEEDS-HUMAN and list
+  the exact missing files or diff hunks. Do not guess.
 
   Verify.
 ```
@@ -354,13 +361,13 @@ Codex returns `{threadId, content}`. For default one-call modes, only `content` 
 - **Do not blindly act on it.** It is one input to a human-mediated decision (or to the parent skill's aggregation logic).
 - **Append it to the parent skill's findings/resolutions**, tagged `[codex]`, so the user can see where each line came from.
 - **De-duplicate against existing findings.** If Codex repeats something a Claude specialist already raised, collapse them into a single entry with both source tags: `[claude+codex]` (higher confidence).
-- **Truncate aggressively** if the response is verbose — Codex sometimes over-explains.
+- **Truncate aggressively** if the response is verbose — Codex sometimes over-explains. For verifier gates, write the full raw result under the invoking workspace's `workspace/tmp/` and show only verdict, top issues, and the result path.
 
 ## Error handling
 
 - **Tool not loaded** — skip cleanly with the message from the prerequisite check. Do not fall back to Claude-based review.
 - **Codex returns empty `content`** — treat as "no findings". Do not retry; an empty result is meaningful.
-- **Codex returns malformed output** (missing the expected fields for the current mode, or freeform prose) — quote the raw text under a `[codex — unparsed]` section and let the user decide. Don't drop it silently.
+- **Codex returns malformed output** (missing the expected fields for the current mode, or freeform prose) — save the raw text under the invoking workspace's `workspace/tmp/` or a `[codex — unparsed]` section and let the user decide. Don't drop it silently.
 - **Timeout / MCP error** — surface the error, skip the codex pass for this run, continue with the rest of the parent skill.
 
 ## Notes

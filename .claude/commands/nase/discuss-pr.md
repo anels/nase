@@ -58,7 +58,7 @@ python3 .claude/scripts/pr-github-helper.py size-gate --metadata "$TMPDIR/pr-met
 
 Use `total_lines` and `diff_mode` from the size gate before fetching the diff:
 
-- If `diff_mode` is `stat`: run `gh pr diff {pr_number} --repo {owner}/{repo} --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
+- If `diff_mode` is `stat` (default once the PR exceeds 1500 changed lines): run `gh pr diff {pr_number} --repo {owner}/{repo} --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
 - Otherwise fetch the full diff.
 
 Also run in parallel:

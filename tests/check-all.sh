@@ -11,17 +11,24 @@ cd "$ROOT" || exit 1
 
 failed=0
 section() { printf '\n=== %s ===\n' "$1"; }
+run_gate() { "$@" || failed=$((failed+1)); }
+SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || true)
 
 section "bash syntax (hooks)"
 for f in .claude/hooks/*.sh; do
-  bash -n "$f" || failed=$((failed+1))
+  run_gate bash -n "$f"
 done
 
 section "shellcheck (hooks)"
-shellcheck -S warning .claude/hooks/*.sh || failed=$((failed+1))
+if [ -n "$SHELLCHECK_BIN" ]; then
+  run_gate "$SHELLCHECK_BIN" -S warning .claude/hooks/*.sh
+else
+  printf 'FAIL: shellcheck is not installed; hook shellcheck skipped\n'
+  failed=$((failed+1))
+fi
 
 section "JSON (settings.json)"
-python3 -m json.tool .claude/settings.json >/dev/null || failed=$((failed+1))
+run_gate python3 -m json.tool .claude/settings.json >/dev/null
 
 section "hook wiring"
 OPT_IN_REGEX='^(edit-typecheck)$'
@@ -52,15 +59,21 @@ skill_fail=0
 for f in .claude/commands/nase/*.md; do
   blocks=$(awk '/```bash/{p=1;next} /```/{p=0} p' "$f")
   [ -z "$blocks" ] && continue
-  if ! err=$(echo "$blocks" | bash -n 2>&1); then
+  if ! err=$(printf '%s\n' "$blocks" | bash -n 2>&1); then
     printf 'FAIL: invalid bash syntax in %s: %s\n' "$f" "$err"
     skill_fail=1
   fi
-  if ! sc=$(echo "$blocks" | shellcheck --shell=bash -S error - 2>&1); then
-    printf 'FAIL: shellcheck errors in %s:\n%s\n' "$f" "$sc"
-    skill_fail=1
+  if [ -n "$SHELLCHECK_BIN" ]; then
+    if ! sc=$(printf '%s\n' "$blocks" | "$SHELLCHECK_BIN" --shell=bash -S error - 2>&1); then
+      printf 'FAIL: shellcheck errors in %s:\n%s\n' "$f" "$sc"
+      skill_fail=1
+    fi
   fi
 done
+if [ -z "$SHELLCHECK_BIN" ]; then
+  printf 'FAIL: shellcheck is not installed; skill snippet shellcheck skipped\n'
+  skill_fail=1
+fi
 [[ "$skill_fail" -eq 0 ]] || failed=$((failed+1))
 
 section "shared-doc bash syntax"
@@ -76,38 +89,47 @@ done
 [[ "$doc_bash_fail" -eq 0 ]] || failed=$((failed+1))
 
 section "hook regression tests"
-bash tests/hooks/test-block-dangerous-git.sh || failed=$((failed+1))
-bash tests/hooks/test-external-write-guards.sh || failed=$((failed+1))
-bash tests/hooks/test-style-edit-detect.sh || failed=$((failed+1))
-bash tests/hooks/test-session-start.sh || failed=$((failed+1))
-bash tests/hooks/test-stop-backup-safety.sh || failed=$((failed+1))
-bash tests/hooks/test-pre-edit-write-fact-force.sh || failed=$((failed+1))
+for test_file in \
+  tests/hooks/test-block-dangerous-git.sh \
+  tests/hooks/test-external-write-guards.sh \
+  tests/hooks/test-style-edit-detect.sh \
+  tests/hooks/test-session-start.sh \
+  tests/hooks/test-stop-backup-safety.sh \
+  tests/hooks/test-pre-edit-write-fact-force.sh
+do
+  run_gate bash "$test_file"
+done
 
 section "workspace validation"
-bash .claude/scripts/validate-workspace.sh || failed=$((failed+1))
+run_gate bash .claude/scripts/validate-workspace.sh
 
 section "local sensitive artifact scan"
-bash tests/check-local-sensitive-artifacts.sh || failed=$((failed+1))
+run_gate bash tests/check-local-sensitive-artifacts.sh
 
 section "script regression tests"
-bash tests/scripts/test-date-resolve.sh || failed=$((failed+1))
-bash tests/scripts/test-kb-gap-scan.sh || failed=$((failed+1))
-bash tests/scripts/test-help-summary.sh || failed=$((failed+1))
-bash tests/scripts/test-kb-hygiene-scan.sh || failed=$((failed+1))
-bash tests/scripts/test-kb-search.sh || failed=$((failed+1))
-bash tests/scripts/test-today-stats.sh || failed=$((failed+1))
-bash tests/scripts/test-tool-availability.sh || failed=$((failed+1))
-bash tests/scripts/test-cli-tooling-integration.sh || failed=$((failed+1))
-bash tests/scripts/test-extensions-check.sh || failed=$((failed+1))
-bash tests/scripts/test-pr-github-helper.sh || failed=$((failed+1))
-bash tests/scripts/test-pr-review-eval.sh || failed=$((failed+1))
-bash tests/scripts/test-voice-profile-routing.sh || failed=$((failed+1))
+for test_file in \
+  tests/scripts/test-date-resolve.sh \
+  tests/scripts/test-kb-gap-scan.sh \
+  tests/scripts/test-help-summary.sh \
+  tests/scripts/test-kb-hygiene-scan.sh \
+  tests/scripts/test-kb-search.sh \
+  tests/scripts/test-today-stats.sh \
+  tests/scripts/test-tool-availability.sh \
+  tests/scripts/test-cli-tooling-integration.sh \
+  tests/scripts/test-extensions-check.sh \
+  tests/scripts/test-pr-github-helper.sh \
+  tests/scripts/test-pr-review-eval.sh \
+  tests/scripts/test-voice-profile-routing.sh \
+  tests/scripts/test-workspace-data-scan.sh
+do
+  run_gate bash "$test_file"
+done
 
 section "shared-doc reference integrity"
-bash tests/check-shared-doc-refs.sh || failed=$((failed+1))
+run_gate bash tests/check-shared-doc-refs.sh
 
 section "skill doctrine"
-bash tests/check-skill-doctrine.sh || failed=$((failed+1))
+run_gate bash tests/check-skill-doctrine.sh
 
 section "markdown internal-link check"
 if command -v lychee >/dev/null 2>&1; then

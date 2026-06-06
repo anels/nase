@@ -36,7 +36,7 @@ Use **weekly format** for ranges ≤ 14 days; **monthly format** for ranges > 14
 
 ## Steps 2–4 — Gather workspace data
 
-Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="range"` and the date range resolved in Step 1. This loads workspace state, journals/logs, and extracts structured data (activity, tasks, lessons, KB updates, key decisions).
+Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="range"` and the date range resolved in Step 1. Start from the compact scanner payload, then read raw source paths only when a truncated payload lacks required detail. Extract structured data (activity, tasks, lessons, KB updates, key decisions).
 
 ## Step 4.5 — Compute Stats from Logs
 
