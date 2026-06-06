@@ -83,6 +83,35 @@ assert data["diff_mode"] == "full"
 assert data["review_warning"] is False
 PY
 
+cat > "$TMPDIR_TEST/boundary.json" <<'JSON'
+{"additions": 1000, "deletions": 500}
+JSON
+gate_boundary="$TMPDIR_TEST/gate-boundary.json"
+"$PYTHON_BIN" "$SCRIPT" size-gate --metadata "$TMPDIR_TEST/boundary.json" > "$gate_boundary"
+assert_cmd "1500-line PR keeps full diff without warning" "$PYTHON_BIN" - "$gate_boundary" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data["total_lines"] == 1500
+assert data["diff_mode"] == "full"
+assert data["review_warning"] is False
+PY
+
+cat > "$TMPDIR_TEST/mid.json" <<'JSON'
+{"additions": 1000, "deletions": 501}
+JSON
+gate_mid="$TMPDIR_TEST/gate-mid.json"
+"$PYTHON_BIN" "$SCRIPT" size-gate --metadata "$TMPDIR_TEST/mid.json" > "$gate_mid"
+assert_cmd "PR over 1500 lines uses stat diff and warns" "$PYTHON_BIN" - "$gate_mid" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data["total_lines"] == 1501
+assert data["diff_mode"] == "stat"
+assert data["review_warning"] is True
+assert data["stat_threshold"] == 1500
+PY
+
 cat > "$TMPDIR_TEST/large.json" <<'JSON'
 {"additions": 4000, "deletions": 1501}
 JSON

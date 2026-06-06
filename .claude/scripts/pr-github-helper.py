@@ -253,7 +253,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     gate = sub.add_parser("size-gate", help="Classify diff fetch mode from PR metadata JSON")
     gate.add_argument("--metadata", required=True, help="Path to metadata JSON, or - for stdin")
     gate.add_argument("--warn-threshold", type=int, default=1500)
-    gate.add_argument("--stat-threshold", type=int, default=5000)
+    gate.add_argument("--stat-threshold", type=int, default=1500)
 
     return parser.parse_args(argv)
 

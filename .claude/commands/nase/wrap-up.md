@@ -28,7 +28,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Journal entri
 
 ### Step 0: Gather today's activity
 
-Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="day"` (today only). This loads today's log/journal, tasks, lessons, and extracts structured data.
+Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="day"` (today only). Start from the compact scanner payload, then read today's raw log/journal only when a truncated payload lacks required detail.
 
 Key points from the shared algorithm:
 - The `## Sessions` section in `workspace/logs/{YYYY-MM-DD}.md` is the **source of truth** for AI-assisted work.

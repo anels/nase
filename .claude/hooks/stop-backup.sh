@@ -148,7 +148,7 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
 # ---------------------------------------------------------------------------
 COMMIT_DATE=$(date +%Y-%m-%d)
 COMMIT_LOG="$NASE_ROOT/workspace/logs/$COMMIT_DATE.md"
-REPOS=$(grep -v '^\s*#' "$LOCAL_PATHS" | grep -v '^\s*$' | grep -v '^backup-target=' | cut -d= -f2- || true)
+REPOS=$(grep -v '^[[:space:]]*#' "$LOCAL_PATHS" | grep -v '^[[:space:]]*$' | grep -v '^backup-target=' | cut -d= -f2- || true)
 COMMITS=""
 COMMIT_HASHES=""
 if [ -n "$REPOS" ]; then

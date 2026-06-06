@@ -179,6 +179,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `log-range.py` | Emit existing daily-log file paths for a date range (inclusive). Silently drops non-existent dates. Used by `recap` Step 4.5. |
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
 | `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, install hints, or a Homebrew install command for brew-managed tools. Used by `doctor` and optional tooling-aware skills. |
+| `workspace-data-scan.py` | Emit compact, date-filtered workspace context, lessons, journals, and logs with source paths and truncation markers. Used by `workspace-data-gathering.md` callers. |
 
 ---
 

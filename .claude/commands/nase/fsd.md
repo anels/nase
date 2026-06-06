@@ -335,12 +335,22 @@ Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly to Phase 
 Invoke the Codex MCP with the `verify` mode contract from `.claude/docs/codex-review.md`:
 
 - `cwd` = `{worktree_path}` (or `{repo}` if worktree = No)
-- `prompt` = the original task spec from `$ARGUMENTS` (verbatim — do not paraphrase, the spec is the contract), plus the full working-tree diff captured against the merge base:
+- Before invoking Codex, write the verification bundle under the nase workspace as an absolute path, e.g. `{nase_workspace}/workspace/tmp/codex-verify-{short_sha}.md`:
   ```bash
   BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
-  git -C {worktree_or_repo} diff "$BASE"
+  git -C {worktree_or_repo} diff --stat "$BASE"
+  git -C {worktree_or_repo} diff --name-status "$BASE"
+  git -C {worktree_or_repo} ls-files --others --exclude-standard
   ```
-  Also include `git -C {worktree_or_repo} ls-files --others --exclude-standard` and the full content of any task-created untracked files. For diffs >2000 lines, swap to `git -C {worktree_or_repo} diff --stat "$BASE"` plus the 5 most-changed files in full.
+  Include the full diff for changed files only when the total diff is <=2000 lines. For larger diffs, include `diff --stat`, `diff --name-status`, untracked file names, and the 5 most-changed files in full. Do not inline generated/binary/build artifacts; list them with path and size.
+- `prompt` = the original task spec from `$ARGUMENTS` (verbatim — do not paraphrase, the spec is the contract), plus:
+  - bundle path
+  - merge base
+  - changed-file count and total changed lines
+  - full `diff --stat`
+  - untracked task-created file list
+  - full content of the 5 most-changed files when the full diff was not bundled
+  - instruction: "If this manifest is insufficient to verify the spec, return `NEEDS-HUMAN` with the exact missing files or diff hunks instead of guessing."
 - `developer-instructions` = the `verify` template verbatim
 - `sandbox` = `read-only`
 
@@ -355,17 +365,19 @@ REASONING: ...
 **Decision tree:**
 
 - **PASS** → log one line (`Codex verify: PASS`) and proceed to Phase 7. No user prompt.
-- **NEEDS-HUMAN** → present the full Codex output to the user via `AskUserQuestion`:
+- **NEEDS-HUMAN** → write the full Codex output next to the bundle as `codex-verify-{short_sha}-result.md`, then present only `VERDICT`, missing context/files, and the top 5 requested follow-ups via `AskUserQuestion`:
   - Q: "Codex flagged ambiguity — proceed to push or revise first?"
   - Options: `Proceed — push anyway` / `Revise — pause for me to look` / `Show me the diff side-by-side first`
   - Honor the user's choice.
-- **FAIL** → do NOT push. Present the full Codex output. Ask via `AskUserQuestion`:
+- **FAIL** → do NOT push. Write the full Codex output next to the bundle as `codex-verify-{short_sha}-result.md`, then present only `VERDICT`, top 5 failures, and the result path. Ask via `AskUserQuestion`:
   - Q: "Codex says the diff doesn't match the spec. What now?"
   - Options: `Fix it` / `Override — Codex is wrong, push anyway` / `Cancel — abandon this run`
   - On "Fix it": re-enter Phase 3.7 for phase-isolated runs or Phase 4 otherwise, then rerun verifier.
   - On "Override": log reason to daily log with tag `codex-override`.
 
-**Malformed output** (no `VERDICT:` line) → treat as `NEEDS-HUMAN`, present raw `content`, ask the user.
+**Malformed output** (no `VERDICT:` line) → write raw `content` next to the bundle as `codex-verify-{short_sha}-result.md`, treat as `NEEDS-HUMAN`, present a short malformed-output note plus the result path, and ask the user.
+
+If Codex explicitly reports missing context that is available locally, read only those requested files or hunks, update the bundle, and rerun the verifier once. Do not loop beyond one context-completion rerun without asking the user.
 
 Codex reviews the code Claude wrote; do not self-approve in the same active context.
 

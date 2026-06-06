@@ -9,22 +9,32 @@ Shared algorithm for loading workspace activity data within a date range. Used b
 
 ## Algorithm
 
-### 1. Load workspace state (parallel)
+### 1. Load compact workspace state
 
-Read in parallel:
-1. `workspace/context.md` — repo list and domain patterns (resolve local paths from `.local-paths`)
-2. `workspace/tasks/todo.md` — current task states
-3. `workspace/tasks/lessons.md` — full lessons list (filter to entries dated within range)
-4. `workspace/kb/.domain-map.md` — domain → KB file index
+Run the deterministic scanner first:
+
+```bash
+SCAN_OUT=$(mktemp "${TMPDIR:-/tmp}/workspace-data.XXXXXX")
+python3 .claude/scripts/workspace-data-scan.py "$START_DATE" "$END_DATE" --scope "$SCOPE" > "$SCAN_OUT"
+```
+
+Read `$SCAN_OUT` before reading raw workspace files. It contains:
+1. Compact `workspace/tasks/todo.md` plus broad workspace state (`workspace/context.md`, `workspace/kb/.domain-map.md`) only for `SCOPE="range"`.
+2. Only `workspace/tasks/lessons.md` sections dated within the requested range.
+3. One activity payload per day, preferring `workspace/journals/YYYY-MM-DD.md` over `workspace/logs/YYYY-MM-DD.md`.
+4. `path`, `chars`, and `truncated` metadata for every source that may need follow-up reading.
+
+If a payload has `"truncated": true` and the compact content is not enough to answer a required question, read the referenced `path` directly and only around the missing section. Do not pre-load every raw file just because one payload is truncated.
 
 Do NOT load KB domain files upfront — only read a specific one if needed to clarify something mentioned in journals/logs.
 
-### 2. Load journals and logs for each day in range (parallel)
+### 2. Resolve missing detail on demand
 
-Read all `workspace/journals/YYYY-MM-DD.md` and `workspace/logs/YYYY-MM-DD.md` files for the date range in a single parallel batch. Then for each day:
-1. Prefer the journal file if it exists (synthesized daily summary).
-2. Fall back to the log file if no journal exists (raw session notes).
-3. If neither exists, mark the day as no-activity.
+For each day from `$SCAN_OUT`:
+1. Use `source = journal` when present; it is the synthesized daily summary.
+2. Use `source = log` only when no journal exists.
+3. Treat `source = none` as no-activity.
+4. Follow `path` to the raw source only for missing details, preserving exact URLs and source wording when cited.
 
 ### 3. Extract structured data
 
