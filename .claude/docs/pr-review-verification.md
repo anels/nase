@@ -28,11 +28,18 @@ For any 🔧 needs-fix items that originate from an EARLIER review round (commen
 
 A reviewer's ```suggestion fenced code block captures *intent*, not a literal patch — especially when it proposes a different data structure for an existing field. Snippets routinely drop critical wrapping that the original declaration carried: generic args, nullability, equality comparers, modifiers (`readonly`, `init`), `AsReadOnly()` wrappers, type aliases. Read the original declaration's full signature before applying. If the suggestion changes the container type (e.g. `ConcurrentDictionary<string, T?>` with `StringComparer.OrdinalIgnoreCase` → `Dictionary<string, T>.AsReadOnly()`), enumerate: (a) is the comparer still needed? (b) keep nullable value type? (c) widen receiver to `ReadOnlyDictionary<TKey,TValue>`? Restore the dropped wrapping in the final implementation — do not copy-paste the snippet verbatim. Pattern surfaced in a prior dashboarding PR review.
 
-## 7. AI-reviewer citation verification
+## 7. AI-reviewer citation + triage verification
 
-When a bot cites a specific lint rule code (`SC2206`, `SC2207`, ESLint `no-shadow`, pylint codes) or a specific SDK method behavior (option ignored, exception type, deprecation), verify the citation against the local source of truth before accepting the proposed fix:
+Before echoing or accepting any bot-flagged finding — lint citation, SDK behavior claim, "unused import", cross-pattern asymmetry — run three checks against the file at HEAD. The gate decides whether to echo, accept, or decline. Record the verification command + result in the inline reply so the reviewer can audit.
+
+- (a) **Trigger reachability** — grep call sites / consumer repos for the exact pattern that would trigger the issue. Zero matches → the finding is theoretical; follow-up, not blocker.
+- (b) **Runtime contract** — read the installed version's source / types. The installed version is the source of truth, not the bot's generic rule citation.
+- (c) **Historical precedent** — grep the codebase for the same pre-existing pattern. If it lives elsewhere since a vendor commit, the asymmetry is informational, not a regression introduced by this PR.
+
+Examples of (b) — installed source vs. cited rule:
 
 - **Lint rule citations** — run the cited linter on the file at HEAD. Bots routinely attach a rule code to patterns that rule doesn't cover. Sanitized pattern: a bot flagged a bash `for` loop as triggering `SC2206/SC2207`, but `shellcheck` exited 0 on the file — those codes only fire on array-assignment patterns, not `for` loops.
 - **SDK method behavior** — read the installed version's type definitions / source. Sanitized pattern: a bot suggested `{timeout: 30_000}` on `Playwright.Locator.isVisible()`, but the installed `types.d.ts` marked the option deprecated/ignored. The proposed fix does nothing; the correct shape is `await expect(...).toBeVisible({timeout})`.
+- **Unused-using / CS8019** — enumerate types declared in the suspect namespace via `grep -hE "^(public|internal|abstract|sealed)( +(abstract|sealed|partial|static))*( +(class|interface|enum|struct|record))" -- 'path/to/ns-dir/*.cs'`, then `grep -nFwf type-list.txt {flagged-file}`. Any match → the using is needed; decline. Bonus signal: if `build-test` at PR head is already green, CS8019 cannot be triggering on that line; the bot is wrong by construction. Sanitized pattern: bot flagged a transformer's `using …Models` as unused; the file referenced `MetricResponseEntryDto` (defined in that namespace) at multiple lines. Accepting would have broken every call site.
 
-Common failure mode: the bot's *structural* concern is sometimes valid (lint cleanup needed, timeout handling needed) even when the *specific* citation is wrong. Treat citation verification as separate from accepting the underlying concern.
+Common failure mode: the bot's *structural* concern is sometimes valid (lint cleanup needed, timeout handling needed) even when the *specific* citation is wrong. Treat citation verification as separate from the underlying concern.

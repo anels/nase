@@ -94,6 +94,7 @@ Ask about ambiguous/design threads first using full comment chain; collect answe
 Evaluate each suggestion:
 
 0. **Verify first**: apply `.claude/docs/pr-review-verification.md` §3 (File-vs-description). If the reviewer's prose does not match the file at the referenced line, decline the suggestion regardless of other factors.
+0a. **Conditional premise verification**: for suggestions phrased "if X, then change Y", "match the existing pattern A", or "unify on existing behavior", verify X or trace why pattern A exists **before** classifying. If the premise is wrong (other-tool angle, environment difference, unseen workstation hook) or the cited pattern is itself buggy, classify as `decline` and reply with the missed evidence. Cheap premise checks avoid accept-then-revert loops.
 1. **Correctness**: Does the reviewer's suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
 2. **Context**: Does the reviewer have full context? Sometimes a suggestion makes sense locally but conflicts with constraints elsewhere (e.g., API contracts, performance requirements, framework limitations).
 3. **Substance vs. style**: Is this a meaningful improvement to correctness, readability, or maintainability? Or is it a cosmetic/stylistic preference that doesn't materially improve the code?
@@ -168,6 +169,14 @@ Read referenced file/line range. Apply the planned minimal change using repo sta
 
 If accepted change alters logic/adds path, ensure test coverage; add/update test if needed.
 
+**Multi-case malformed-input checklist:** when a comment names multiple input cases that must land differently ("`null` and `[…]` both look like 'no value'", "string and list both should be malformed", "X / Y / Z should all surface as errors"):
+1. Write each named value as a checklist line.
+2. Map each value to its code landing site: `malformed` / `read_errors` / `silent` / `kept`.
+3. If any reviewer-named value lands in `silent`, the fix is not done. Revise until every named case reaches the intended branch.
+4. Verify with a fixture per named case before resolving.
+
+Watch for per-type short-circuits (`if x is None: continue`) before the new gate; they can make a visible check unreachable.
+
 **AI-reviewer assertion-value guard:** apply `.claude/docs/pr-review-verification.md` §1. If the test fails at the suggested expected value, keep the structural improvement (e.g. null-safe cast on the indexer) but restore the original expected value, and note the runtime constraint in the reply. A pattern that survives both null and empty-string is `string.IsNullOrEmpty((string?)token["k"]).Should().BeTrue(...)`.
 
 **Cross-reference identifier audit:** if a reviewer flags an incorrect doc/comment identifier, treat it as a bug class, not one line.
@@ -183,6 +192,14 @@ If accepted change alters logic/adds path, ensure test coverage; add/update test
 Draft a direct reply: clear reason, technical context if needed, no defensive tone.
 
 Example: "The current approach handles X because [reason]. Changing to Y would [specific downside]."
+
+**Per-thread concrete evidence rule:** each decline reply must cite evidence for *this* thread:
+- dead-style file:line ref (`style removed in {sha} — the rule no longer renders`)
+- no-op pre-PR behavior (`{option} was already a no-op in {framework} v{N} — see {link}`)
+- design-intent confirmation (`{property} is consumed at {file}:{line}`)
+- planning-doc redirect (`captured as follow-up in {Jira link}`)
+
+One reply per declined thread, ≤3 lines each. Do not batch declines under blanket "out of scope" / "scope-creep" wording.
 
 ### For reply-only threads:
 

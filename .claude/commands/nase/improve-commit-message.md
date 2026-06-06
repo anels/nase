@@ -82,6 +82,10 @@ Rules:
 - Respect project's `subject-case` rule
 - Be specific about *what* changed; put *why* in the body if needed
 - If the change is too broad for 80 chars, pick the most impactful change for the summary and list the rest in the body
+- **Body shape (commitlint `footer-leading-blank` compatibility):**
+  - Default to one body paragraph, one blank line, then footer trailers (`Co-Authored-By:`, `Closes #N`, `Signed-off-by:`).
+  - If multiple body paragraphs are necessary, keep trailers flush after the last paragraph with exactly one blank-line separator.
+  - Do not leave extra blank lines between body paragraphs and trailers; commitlint can mis-split body/footer and fail even when the trailer is well-formed.
 
 ### 6. Show comparison and amend
 

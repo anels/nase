@@ -149,7 +149,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `lessons-format.md` | Canonical format for `workspace/tasks/lessons.md` entries (header, body, signal-to-noise rules) |
 | `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
 | `pr-input-guard.md` | Input validation for skills that take a PR URL |
-| `pr-review-verification.md` | Five-check verification list for PR review skills (AI-reviewer audit, cross-ref, diff-vs-HEAD) |
+| `pr-review-verification.md` | Seven-section verification checklist for PR review skills (AI-reviewer audit, cross-ref, diff-vs-HEAD, bot citation triage) |
 | `reference.md` | This file — workspace layout, KB structure, architecture notes |
 | `repo-resolution.md` | Resolve GitHub URLs / repo names to local paths via `.local-paths` |
 | `slack-draft-style.md` | Style checklist for Slack drafts: no greetings, bullets for tech content, English-only in public/non-CN DMs, `pls` over `please`; references `workspace/communication-style.md` for full profile |

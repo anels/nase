@@ -128,7 +128,65 @@ if [ -f "$STATE_FILE" ]; then
 fi
 ```
 
-If state file is absent, missing fields, or SHAs differ: continue to Phase 5.
+If state file is absent, missing fields, or SHAs differ: continue to Phase 4.7.
+
+## Phase 4.7: Adjacent Same-File PR Scan
+
+Reason: long-lived PRs (open >24h) often share high-traffic security/hardening files with sibling PRs that landed during the same sprint. Detecting overlap before Phase 5.5 avoids a predictable rebase abort and lets the user choose whether to resolve locally first.
+
+Enumerate files in this PR's diff against the base branch, then check whether any of them were touched on the base branch since the PR opened:
+
+```bash
+# Files in this PR
+PR_FILES=$(git -C {repo_path} diff origin/{base_branch}..origin/{pr_branch} --name-only)
+
+# Commits on base branch since PR opened that touched any of those files
+PR_OPENED_AT=$(jq -r .createdAt "$TMPDIR/pr-metadata.json" 2>/dev/null || echo "")
+overlap_found=0
+scan_ran=0
+if [ -n "$PR_OPENED_AT" ] && [ "$PR_OPENED_AT" != "null" ]; then
+  scan_ran=1
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    overlap=$(git -C {repo_path} log origin/{base_branch} --since="$PR_OPENED_AT" --oneline -- "$f")
+    if [ -n "$overlap" ]; then
+      if [ "$overlap_found" -eq 0 ]; then
+        echo "Base-branch commits since PR opened that touched PR files:"
+      fi
+      overlap_found=1
+      echo "── $f"
+      printf '%s\n' "$overlap" | sed 's/^/    /'
+    fi
+  done <<EOF
+$PR_FILES
+EOF
+else
+  echo "PR opened time unavailable; skip adjacent same-file scan."
+fi
+if [ "$scan_ran" -eq 1 ] && [ "$overlap_found" -eq 0 ]; then
+  echo "No base-branch commits touched PR files since the PR opened."
+fi
+```
+
+If the output says `No base-branch commits touched PR files since the PR opened.`: proceed to Phase 5.
+
+If the output says `PR opened time unavailable; skip adjacent same-file scan.`: proceed to Phase 5 and note that this optional preflight could not run.
+
+If the output lists one or more `── {file}` sections, present the list of (file, base-branch commits, linked PRs if discoverable via commit-message PR refs) and ask via `AskUserQuestion`:
+
+```
+question: "Base branch advanced on {N} file(s) in this PR since it opened. Proceeding into rebase risks a conflict abort mid-flow."
+header: "Adjacent PR Scan"
+options:
+  - label: "Resolve locally first"
+    description: "Stop now; rebase + resolve in main checkout, then re-run prep-merge"
+  - label: "Continue rebase"
+    description: "Proceed into Phase 5.5; accept abort risk"
+  - label: "Abort"
+    description: "Stop without proceeding"
+```
+
+Default reflex: recommend "Resolve locally first" — mid-flow rebase abort costs more context switching than an upfront local resolve. If the user picks "Continue rebase", continue to Phase 5; the Phase 5.5 conflict-handling path is unchanged. If "Abort", clean up and stop.
 
 ## Phase 5: Create Worktree
 
