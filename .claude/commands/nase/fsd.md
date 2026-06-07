@@ -396,7 +396,21 @@ Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR te
 
 Before the `gh pr create` / `gh pr edit` calls below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`.
 
-Open a draft PR:
+Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation:
+
+```
+question: "Create this draft PR?"
+header: "Draft PR"
+options:
+  - label: "Create draft PR"
+    description: "Run gh pr create with the title, body, base, and head shown above"
+  - label: "Skip PR create"
+    description: "Leave the pushed branch without opening a PR"
+```
+
+If skipped, do not call `gh pr create`; report the pushed branch and the command the user can run later.
+
+If approved, run the auth guard and open a draft PR with the approved payload:
 ```bash
 gh pr create \
   --draft \

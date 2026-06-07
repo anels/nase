@@ -267,7 +267,8 @@ If yes: use the project key from the repo's KB file (or ask the user). Issue typ
 {
   "tool_name": "{actual createJiraIssue tool name}",
   "created_at": "{UTC ISO timestamp}",
-  "payload_summary": "Create {PROJECT} issue for {Title}"
+  "payload_summary": "Create {PROJECT} issue for {Title}",
+  "payload_sha256": "{sha256 of canonical createJiraIssue tool_input}"
 }
 ```
 `createJiraIssue` may omit `issue_key` because the issue does not exist yet. Do not reuse this token for any follow-up Jira mutation.

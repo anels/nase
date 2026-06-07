@@ -4,6 +4,7 @@
 # Each gated Jira tool call must be immediately preceded by a fresh single-shot
 # JSON token at workspace/.jira-write-token. The calling skill writes the token
 # after showing the exact payload to the user and receiving explicit approval.
+# The token binds the concrete tool_input via payload_sha256.
 set -euo pipefail
 
 TOKEN_TTL_SECONDS=300
@@ -63,7 +64,8 @@ block() {
     echo "    \"tool_name\": \"$TOOL\","
     echo "    \"issue_key\": \"PROJ-123\","
     echo "    \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
-    echo "    \"payload_summary\": \"short human-readable summary\""
+    echo "    \"payload_summary\": \"short human-readable summary\","
+    echo "    \"payload_sha256\": \"sha256 of jq -cS .tool_input\""
     echo "  }"
     echo ""
     echo "Policy source: .claude/docs/external-mutation-policy.md"
@@ -71,6 +73,18 @@ block() {
   printf '%s BLOCKED %s (%s)\n' "$TS" "$TOOL" "$reason" >> "$LOG"
   [ -f "$TOKEN" ] && rm -f "$TOKEN"
   exit 2
+}
+
+sha256_hex() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+  else
+    block "no SHA-256 helper available"
+  fi
 }
 
 issue_in_csv() {
@@ -93,6 +107,7 @@ fi
 EXPECTED_TOOL=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.tool_name // ""')
 CREATED_AT=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.created_at // ""')
 PAYLOAD_SUMMARY=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.payload_summary // ""')
+EXPECTED_PAYLOAD_SHA=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.payload_sha256 // ""')
 
 EXPECTED_ISSUES=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
   [
@@ -113,9 +128,16 @@ EXPECTED_ISSUES=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
 [ -z "$EXPECTED_TOOL" ] && block "token missing tool_name"
 [ "$EXPECTED_TOOL" = "$TOOL" ] || block "token tool mismatch: expected $EXPECTED_TOOL"
 [ -z "$CREATED_AT" ] && block "token missing created_at"
+[ -z "$EXPECTED_PAYLOAD_SHA" ] && block "token missing payload_sha256"
 if [ -z "$EXPECTED_ISSUES" ] && [[ "$TOOL" != *__createJiraIssue ]]; then
   block "token missing issue_key"
 fi
+
+CANONICAL_TOOL_INPUT=$(printf '%s' "$INPUT" | jq -cS '.tool_input // {}' 2>/dev/null \
+  || block "could not canonicalize tool_input")
+CURRENT_PAYLOAD_SHA=$(printf '%s\n' "$CANONICAL_TOOL_INPUT" | sha256_hex)
+[ "$EXPECTED_PAYLOAD_SHA" = "$CURRENT_PAYLOAD_SHA" ] \
+  || block "token payload mismatch: expected $EXPECTED_PAYLOAD_SHA, got $CURRENT_PAYLOAD_SHA"
 
 CREATED_TS=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$CREATED_AT" +%s 2>/dev/null \
   || date -u -d "$CREATED_AT" +%s 2>/dev/null \

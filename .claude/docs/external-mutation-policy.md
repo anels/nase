@@ -43,15 +43,23 @@ tool call, after the payload-showing `AskUserQuestion` approval:
   "issue_key": "PROJ-123",
   "issue_keys": ["PROJ-123"],
   "created_at": "2026-05-25T19:00:00Z",
-  "payload_summary": "PROJ-123 -> Done"
+  "payload_summary": "PROJ-123 -> Done",
+  "payload_sha256": "{sha256 of canonical tool_input}"
 }
 ```
 
-The hook verifies the tool name, freshness, and issue-key parity, then consumes
-the token. `createJiraIssue` may omit issue keys because the issue does not
-exist yet; link/comment/transition/edit calls must identify their target keys.
-`tool_name` must exactly match the current MCP tool name; the namespace prefix
-may differ by MCP server, so do not blindly copy the example value.
+The hook verifies the tool name, freshness, issue-key parity, and
+`payload_sha256`, then consumes the token. Compute `payload_sha256` from the
+exact Jira MCP `tool_input` that will be sent:
+
+```bash
+PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | shasum -a 256 | awk '{print $1}')
+```
+
+`createJiraIssue` may omit issue keys because the issue does not exist yet;
+link/comment/transition/edit calls must identify their target keys. `tool_name`
+must exactly match the current MCP tool name; the namespace prefix may differ
+by MCP server, so do not blindly copy the example value.
 If the guard cannot parse the hook JSON or its required `jq` dependency is
 missing, it blocks the mutation instead of guessing.
 

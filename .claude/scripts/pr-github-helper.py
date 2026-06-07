@@ -32,6 +32,7 @@ FULL_FIELDS = (
     "title",
     "url",
     "body",
+    "createdAt",
     "headRefOid",
     "headRefName",
     "baseRefName",
@@ -45,7 +46,7 @@ FULL_FIELDS = (
 )
 
 THREADS_QUERY = """
-query($owner: String!, $repo: String!, $number: Int!) {
+query($owner: String!, $repo: String!, $number: Int!, $threadCursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       headRefName
@@ -55,7 +56,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
         name
         nameWithOwner
       }
-      reviewThreads(first: 100) {
+      reviewThreads(first: 100, after: $threadCursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           isResolved
@@ -66,7 +71,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
           originalLine
           originalStartLine
           subjectType
-          comments(first: 20) {
+          comments(first: 100) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               id
               databaseId
@@ -75,6 +84,28 @@ query($owner: String!, $repo: String!, $number: Int!) {
               createdAt
             }
           }
+        }
+      }
+    }
+  }
+}
+""".strip()
+
+THREAD_COMMENTS_QUERY = """
+query($threadId: ID!, $commentCursor: String) {
+  node(id: $threadId) {
+    ... on PullRequestReviewThread {
+      comments(first: 100, after: $commentCursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          databaseId
+          body
+          author { login }
+          createdAt
         }
       }
     }
@@ -150,8 +181,8 @@ def gh_reviews_args(pr: dict[str, Any]) -> list[str]:
     return ["gh", "api", f"repos/{pr['repo_full_name']}/pulls/{pr['number']}/reviews", "--paginate"]
 
 
-def gh_threads_args(pr: dict[str, Any]) -> list[str]:
-    return [
+def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> list[str]:
+    args = [
         "gh",
         "api",
         "graphql",
@@ -161,9 +192,19 @@ def gh_threads_args(pr: dict[str, Any]) -> list[str]:
         f"repo={pr['repo']}",
         "-F",
         f"number={pr['number']}",
-        "-f",
-        f"query={THREADS_QUERY}",
     ]
+    if thread_cursor:
+        args.extend(["-F", f"threadCursor={thread_cursor}"])
+    args.extend(["-f", f"query={THREADS_QUERY}"])
+    return args
+
+
+def gh_thread_comments_args(thread_id: str, comment_cursor: str | None = None) -> list[str]:
+    args = ["gh", "api", "graphql", "-F", f"threadId={thread_id}"]
+    if comment_cursor:
+        args.extend(["-F", f"commentCursor={comment_cursor}"])
+    args.extend(["-f", f"query={THREAD_COMMENTS_QUERY}"])
+    return args
 
 
 def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
@@ -223,6 +264,82 @@ def unresolved_threads_from_response(response: dict[str, Any], unresolved_only: 
     }
 
 
+def _connection_page_info(connection: dict[str, Any]) -> dict[str, Any]:
+    page_info = connection.get("pageInfo") or {}
+    return {
+        "hasNextPage": bool(page_info.get("hasNextPage")),
+        "endCursor": page_info.get("endCursor"),
+    }
+
+
+def _fetch_remaining_comments(thread: dict[str, Any]) -> dict[str, Any]:
+    comments = thread.get("comments") or {}
+    page_info = _connection_page_info(comments)
+    nodes = list(comments.get("nodes") or [])
+    cursor = page_info["endCursor"]
+
+    while page_info["hasNextPage"]:
+        if not cursor:
+            raise RuntimeError(f"thread {thread.get('id')} comments page is missing endCursor")
+        raw = run_gh(gh_thread_comments_args(str(thread["id"]), str(cursor)))
+        response = json.loads(raw)
+        node = response.get("data", {}).get("node")
+        if not isinstance(node, dict):
+            raise RuntimeError(f"could not fetch comments for thread {thread.get('id')}")
+        page = node.get("comments") or {}
+        nodes.extend(page.get("nodes") or [])
+        page_info = _connection_page_info(page)
+        cursor = page_info["endCursor"]
+
+    merged_thread = dict(thread)
+    merged_thread["comments"] = {
+        "nodes": nodes,
+        "pageInfo": {
+            "hasNextPage": False,
+            "endCursor": cursor,
+        },
+    }
+    return merged_thread
+
+
+def fetch_review_threads(pr: dict[str, Any]) -> dict[str, Any]:
+    """Fetch every review thread and every comment page for a PR."""
+    merged_pull_request: dict[str, Any] | None = None
+    all_threads: list[dict[str, Any]] = []
+    cursor: str | None = None
+
+    while True:
+        raw = run_gh(gh_threads_args(pr, cursor))
+        response = json.loads(raw)
+        pull_request = response["data"]["repository"]["pullRequest"]
+        threads_connection = pull_request.get("reviewThreads") or {}
+
+        if merged_pull_request is None:
+            merged_pull_request = {
+                key: value for key, value in pull_request.items() if key != "reviewThreads"
+            }
+
+        for thread in threads_connection.get("nodes") or []:
+            all_threads.append(_fetch_remaining_comments(thread))
+
+        page_info = _connection_page_info(threads_connection)
+        if not page_info["hasNextPage"]:
+            break
+        if not page_info["endCursor"]:
+            raise RuntimeError("reviewThreads page is missing endCursor")
+        cursor = str(page_info["endCursor"])
+
+    assert merged_pull_request is not None
+    merged_pull_request["reviewThreads"] = {
+        "nodes": all_threads,
+        "pageInfo": {
+            "hasNextPage": False,
+            "endCursor": cursor,
+        },
+    }
+    return {"data": {"repository": {"pullRequest": merged_pull_request}}}
+
+
 def emit_json(value: Any) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
@@ -273,8 +390,7 @@ def main(argv: list[str]) -> int:
         elif args.command == "metadata":
             sys.stdout.write(run_gh(gh_metadata_args(pr, args.variant)))
         elif args.command == "review-threads":
-            raw = run_gh(gh_threads_args(pr))
-            emit_json(unresolved_threads_from_response(json.loads(raw), args.unresolved_only))
+            emit_json(unresolved_threads_from_response(fetch_review_threads(pr), args.unresolved_only))
         return 0
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
