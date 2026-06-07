@@ -30,7 +30,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. The `kb-healt
 ### Step 0: Determine Scope
 
 Parse $ARGUMENTS to decide what to review:
-- `all` or empty → scan everything: `workspace/kb/general/`, `workspace/kb/projects/`, `workspace/kb/cross-project/`, `workspace/kb/ops/`, `workspace/tasks/lessons.md`, `workspace/kb/.domain-map.md`
+- `all` or empty → scan everything: `workspace/kb/general/`, `workspace/kb/projects/`, `workspace/kb/cross-project/`, `workspace/kb/ops/`, `workspace/tasks/lessons.md`, `workspace/tasks/todo.md`, `workspace/efforts/**/*.md`, `workspace/kb/.domain-map.md`
 - `general` → only `workspace/kb/general/*.md`
 - `projects` → only `workspace/kb/projects/**/*.md`
 - `cross-project` → only `workspace/kb/cross-project/*.md`
@@ -70,6 +70,8 @@ Compare content across files looking for:
 **Near-duplicates:** Same topic covered from slightly different angles without cross-referencing each other. These aren't necessarily bad — sometimes a pattern belongs in both the general file and the project file — but they should reference each other.
 
 **Contradictions:** Conflicting information across files (e.g., a workflow step that differs between `general/workflow.md` and a project KB).
+
+**Duplicate dated headings:** Same `### YYYY-MM-DD — {topic}` title repeated in one file or across files. Prefer one canonical detailed entry and replace the duplicate with a short pointer.
 
 Present findings:
 
@@ -174,6 +176,60 @@ Claude Code 2.1.149 renders GFM task-list checkboxes (`- [ ]` / `- [x]`) nativel
 
 If any file mixes `[x]` and `[X]`, flag normalization. Otherwise write the literal phrase `GFM checkbox render verified — no action needed` into the current review report so future runs auto-skip.
 
+### Step 4d: Workspace Integrity Audit (all scope only)
+
+For `all` scope, treat the KB as the whole `workspace/` knowledge system, not only files under `workspace/kb/`. Run these deterministic checks and include findings in the report.
+
+**1. Explicit Markdown link integrity**
+
+- Scan Markdown files under `workspace/kb/`, `workspace/tasks/`, `workspace/efforts/`, `workspace/journals/`, and high-signal drafts under `workspace/tmp/*.md`.
+- Only parse explicit Markdown links/images (`[text](target)` / `![alt](target)`). Do not flag plain prose path mentions; broad path-reference checks are too noisy.
+- Ignore external URLs, `mailto:`, pure anchors, and missing heading anchors when the target file exists. Flag only links whose target file path does not exist.
+
+**2. Domain map schema and path integrity**
+
+- Every `.domain-map.md` entry must have both `[last-updated:YYYY-MM-DD]` and `[last-loaded:YYYY-MM-DD]`.
+- Every target path must exist.
+- A target under `workspace/kb/projects/` belongs in `## Projects`; `workspace/kb/general/` in `## General`; `workspace/kb/ops/` in `## Ops`; `workspace/kb/cross-project/` in `## Cross-Project`.
+- Flag duplicate keys or duplicate target paths unless the duplicate is explicitly documented as an alias.
+
+**3. Effort status taxonomy**
+
+- Active effort files under `workspace/efforts/*.md` must use one of: `in-progress`, `planned`, `ready`, `tracked`.
+- Done effort files under `workspace/efforts/done/*.md` must use one of: `completed`, `wontfix`.
+- Flag missing frontmatter, `status: closed`, `status: done`, and active efforts whose lifecycle shows everything completed but the status remains active.
+
+**4. Active todo hygiene**
+
+- `workspace/tasks/todo.md` should contain open work only. Flag any `- [x]` line outside archive files.
+- Completed items should move to `workspace/tasks/archive/todo-cleanup-{YYYY-MM-DD}.md` or an existing dated archive, with the active file keeping a pointer under `## Archived This Cleanup`.
+
+**5. Workspace entry consistency**
+
+- `workspace/context.md` should have a `last reviewed` comment no older than 30 days.
+- If `workspace/config.md` contains legacy `gh_account:`, it should also define explicit `work_gh_account:` and `personal_gh_account:` so the Git Push Policy is unambiguous.
+
+Render the findings:
+
+```
+## Workspace Integrity
+
+### Broken explicit Markdown links
+- `{file}:{line}` → `{target}` (target file missing)
+
+### Domain map issues
+- `{key}` → `{path}` — missing `last-loaded`
+
+### Effort status issues
+- `{file}` — `status: done`; use `completed` in `efforts/done/`
+
+### Todo hygiene
+- `{file}:{line}` — completed item in active todo; archive it
+
+### Entry consistency
+- `{file}` — last reviewed {N} days ago
+```
+
 ### Step 5: Propose Actions
 
 Based on Steps 2-4, propose concrete actions grouped by effort:
@@ -186,6 +242,10 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 - [ ] Fix contradiction: update {file} with correct {fact}
 - [ ] Remove duplicate entry from {file} (canonical version in {other-file})
 - [ ] Add missing `.domain-map.md` entry for {file}
+- [ ] Fix broken explicit Markdown link: `{file}:{line}` → `{target}`
+- [ ] Normalize effort status/frontmatter: `{file}`
+- [ ] Backfill `.domain-map.md` metadata fields for `{key}`
+- [ ] Archive completed todo item from `workspace/tasks/todo.md`
 
 ### Consolidation (review first)
 - [ ] Merge `{file1}` and `{file2}` — overlapping scope, suggest single file
@@ -211,7 +271,7 @@ Log: `({scope}) — {N} files scanned, {N} issues found`
 question: "Review complete. What should I apply?"
 header: "KB Review — Execute"
 options:
-  - label: "Apply quick fixes"  , description: "Cross-refs, dedup, contradiction fixes, domain map updates"
+  - label: "Apply quick fixes"  , description: "Cross-refs, dedup, broken links, status fixes, domain map updates"
   - label: "Apply all"           , description: "Everything including consolidation and cleanup"
   - label: "Just the report"     , description: "Stop here — the review scan is already logged"
 ```
@@ -233,7 +293,7 @@ For each change applied:
 
 ### Step 7: Summary
 
-**Write report to file:** Concatenate all output from Steps 1, 2, 3, 3b, 4, and 4b into `workspace/tmp/kb-health-report.md` (create `workspace/tmp/` if missing). Overwrite any existing file. Add a header:
+**Write report to file:** Concatenate all output from Steps 1, 2, 3, 3b, 4, 4b, 4c, and 4d into `workspace/tmp/kb-health-report.md` (create `workspace/tmp/` if missing). Overwrite any existing file. Add a header:
 ```
 # KB Health Report — {YYYY-MM-DD}
 Generated by `/nase:kb-review {scope}` on {YYYY-MM-DD HH:MM}
@@ -248,7 +308,7 @@ Display the summary line below in chat:
 ## KB Review Complete — {YYYY-MM-DD}
 
 **Scanned:** {N} files across {directories}
-**Found:** {N} duplicates, {N} missing cross-refs, {N} stale entries, {N} promotion candidates
+**Found:** {N} duplicates, {N} missing cross-refs, {N} stale entries, {N} promotion candidates, {N} workspace integrity issues
 **Applied:** {N} quick fixes, {N} consolidations, {N} cleanups
 **Skipped:** {N} items (user chose not to apply)
 
@@ -274,3 +334,4 @@ Write the next recommended execution date to `workspace/tasks/todo.md` so `/nase
 - Historical entries (past decisions, old architecture notes) should NOT be flagged as "stale" — they are records. Only flag entries that describe ongoing/future work with old dates.
 - Lesson promotion follows the procedure in Step 6 — distill (not copy-paste), write to KB using standard entry format, mark as promoted in `lessons.md` with a `> Promoted →` line.
 - Cross-references use the format: `> See also: [{topic}]({relative-path})` at the end of the relevant section.
+- Workspace integrity checks must stay conservative. Prefer missing fewer issues over flagging conceptual path mentions or historical archive text as broken current state.

@@ -65,6 +65,10 @@ expect_missing_jq() {
   fi
 }
 
+payload_sha() {
+  printf '%s' "$1" | jq -cS '.tool_input // {}' | python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+}
+
 slack_send='{"tool_name":"mcp__plugin_slack_slack__slack_send_message","tool_input":{"channel_id":"C1","text":"hi"}}'
 slack_send_alt='{"tool_name":"mcp__slack_workspace__slack_send_message","tool_input":{"channel_id":"C1","text":"hi"}}'
 slack_draft='{"tool_name":"mcp__plugin_slack_slack__slack_send_message_draft","tool_input":{"channel_id":"C1","text":"hi"}}'
@@ -89,14 +93,15 @@ expect_rc "confluence malformed JSON blocked" .claude/hooks/confluence-size-guar
 
 jira_transition_tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
 jira_transition=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
+jira_transition_sha=$(payload_sha "$jira_transition")
 jira_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","tool_input":{"issueIdOrKey":"SRE-1"}}'
 expect_rc "jira read allowed without token" .claude/hooks/jira-write-guard.sh "$jira_read" 0
 expect_rc "jira mutation without token blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "no jira-write-token"
 expect_rc "jira malformed JSON blocked" .claude/hooks/jira-write-guard.sh "{" 2 "could not parse"
 
 created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-jq -n --arg tool "$jira_transition_tool" --arg created "$created" \
-  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done"}' \
+jq -n --arg tool "$jira_transition_tool" --arg created "$created" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira matching token allowed" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
 if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
@@ -105,27 +110,40 @@ else
   report 1 "jira token consumed"
 fi
 
-jq -n --arg tool "$jira_transition_tool" --arg created "$created" \
-  '{tool_name:$tool,issue_key:"SRE-2",created_at:$created,payload_summary:"SRE-2 -> Done"}' \
+jq -n --arg tool "$jira_transition_tool" --arg created "$created" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-2",created_at:$created,payload_summary:"SRE-2 -> Done",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue mismatch blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "token issue mismatch"
 
+jq -n --arg tool "$jira_transition_tool" --arg created "$created" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira token missing payload hash blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "missing payload_sha256"
+
+jira_transition_changed=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1",transition:{id:"999"},comment:"different payload"}}')
+jq -n --arg tool "$jira_transition_tool" --arg created "$created" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira same issue changed payload blocked" .claude/hooks/jira-write-guard.sh "$jira_transition_changed" 2 "token payload mismatch"
+
 jira_transition_alt_tool="mcp__atlassian_rovo_mcp__transitionJiraIssue"
 jira_transition_alt=$(jq -cn --arg tool "$jira_transition_alt_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
-jq -n --arg tool "$jira_transition_alt_tool" --arg created "$created" \
-  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done"}' \
+jira_transition_alt_sha=$(payload_sha "$jira_transition_alt")
+jq -n --arg tool "$jira_transition_alt_tool" --arg created "$created" --arg payload_sha "$jira_transition_alt_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira alternate namespace allowed" .claude/hooks/jira-write-guard.sh "$jira_transition_alt" 0
 
 jira_link_tool="mcp__plugin_atlassian_atlassian__createIssueLink"
 jira_link=$(jq -cn --arg tool "$jira_link_tool" '{tool_name:$tool,tool_input:{inwardIssue:"SRE-1",outwardIssue:"SRE-2"}}')
-jq -n --arg tool "$jira_link_tool" --arg created "$created" \
-  '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_summary:"link SRE-1 SRE-2"}' \
+jira_link_sha=$(payload_sha "$jira_link")
+jq -n --arg tool "$jira_link_tool" --arg created "$created" --arg payload_sha "$jira_link_sha" \
+  '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_summary:"link SRE-1 SRE-2",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue-link token allowed" .claude/hooks/jira-write-guard.sh "$jira_link" 0
 
-jq -n --arg tool "$jira_link_tool" --arg created "$created" \
-  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"link SRE-1 only"}' \
+jq -n --arg tool "$jira_link_tool" --arg created "$created" --arg payload_sha "$jira_link_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"link SRE-1 only",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue-link missing endpoint blocked" .claude/hooks/jira-write-guard.sh "$jira_link" 2 "unapproved SRE-2"
 

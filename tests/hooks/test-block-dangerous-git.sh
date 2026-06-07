@@ -158,10 +158,20 @@ test_case "optional locks global opt reset" "g""it --no-optional-locks res""et -
 test_case "config-env global opt reset" "g""it --config-env=foo=BAR res""et --hard" block
 test_case "config-env alias hidden reset" "ALIAS='res""et --hard' g""it --config-env=alias.wipe=ALIAS wipe" block
 test_case "config-env alias arg hidden reset" "ALIAS='res""et --hard' g""it --config-env alias.wipe=ALIAS wipe" block
+test_case "config-env include path hidden" "CFG=/tmp/gitconfig g""it --config-env include.path=CFG sta""tus" block
 test_case "config-env hooksPath hidden" "HOOKS=/dev/null g""it --config-env=core.hooksPath=HOOKS co""mmit -m fix" block
 test_case "config-env commit gpg hidden" "SIGN=false g""it --config-env commit.gpgsign=SIGN co""mmit -m fix" block
+test_case "git env config hooksPath hidden" "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/tmp g""it co""mmit -m fix" block
+test_case "env wrapper git config hooksPath hidden" "en""v GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/tmp g""it co""mmit -m fix" block
+test_case "git env config alias hidden" "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.wipe GIT_CONFIG_VALUE_0='!g""it res""et --hard' g""it wipe" block
+test_case "git env config include path hidden" "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=include.path GIT_CONFIG_VALUE_0=/tmp/gitconfig g""it sta""tus" block
+test_case "git config parameters include path hidden" "GIT_CONFIG_PARAMETERS='include.path=/tmp/gitconfig' g""it sta""tus" block
+test_case "git config parameters hooksPath hidden" "GIT_CONFIG_PARAMETERS='core.hooksPath=/tmp' g""it co""mmit -m fix" block
+test_case "git config global override" "GIT_CONFIG_GLOBAL=/tmp/gitconfig g""it sta""tus" block
 test_case "alias config reset"   "g""it -c alias.wipe='!g""it res""et --hard' wipe" block
 test_case "alias config reset uppercase key" "g""it -c Alias.wipe='!g""it res""et --hard' wipe" block
+test_case "include path config hidden" "g""it -c include.path=/tmp/gitconfig sta""tus" block
+test_case "includeIf path config hidden" "g""it -c includeIf.gitdir:/tmp/.path=/tmp/gitconfig sta""tus" block
 test_case "global opt hooksPath" "g""it -c core.hooksPath=/dev/null co""mmit -m fix" block
 test_case "global opt commit gpg false" "g""it -c commit.gpgsign=false co""mmit -m fix" block
 test_case "global opt tag gpg false" "g""it -c tag.gpgsign=false ta""g v1.2.3" block
@@ -214,7 +224,9 @@ test_case "reset soft"           "g""it res""et HEAD~1"                         
 test_case "reset path named hard" "g""it res""et -- --hard"                     allow
 test_case "rebase main"          "g""it re""base main"                          allow
 test_case "config-env safe status" "FOO=bar g""it --config-env=foo=FOO sta""tus" allow
+test_case "git env config safe status" "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=advice.detachedHead GIT_CONFIG_VALUE_0=false g""it sta""tus" allow
 test_case "config safe alias"     "g""it co""nfig alias.st 'sta""tus --short'"  allow
+test_case "config read include path" "g""it co""nfig --get include.path"        allow
 test_case "config read hooksPath" "g""it co""nfig --get core.hooksPath"         allow
 test_case "config read commit gpg" "g""it co""nfig commit.gpgsign"              allow
 test_case "config commit gpg true" "g""it co""nfig commit.gpgsign true"         allow
@@ -228,6 +240,8 @@ test_case "non-git command"      "p""ython script.py"                          a
 test_case "ls with git in name"  "l""s -la /tmp/git-stuff"                     allow
 test_case "command echo dangerous" "co""mmand ec""ho \"g""it res""et --hard\""  allow
 test_case "env echo dangerous"   "en""v ec""ho g""it res""et --hard"           allow
+test_case "git env assignment echo" "GIT_CONFIG_KEY_0=core.hooksPath ec""ho ok" allow
+test_case "env git config global echo" "en""v GIT_CONFIG_GLOBAL=/tmp/gitconfig ec""ho ok" allow
 test_case "env unset echo dangerous" "en""v -u FOO ec""ho g""it res""et --hard" allow
 test_case "sudo echo dangerous"  "su""do ec""ho g""it res""et --hard"          allow
 test_case "nohup echo dangerous" "no""hup ec""ho g""it res""et --hard"         allow

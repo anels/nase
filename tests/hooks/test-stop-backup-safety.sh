@@ -111,5 +111,29 @@ else
   fail=$((fail + 1))
 fi
 
+repo="$fixture/tilde-target-repo"
+home_dir="$fixture/home"
+target="$home_dir/nase-backups"
+mkdir -p "$home_dir"
+make_repo "$repo"
+printf 'backup-target=~/nase-backups\n' > "$repo/.local-paths"
+out=$(cd "$repo" && HOME="$home_dir" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "backup expands tilde target before archive" 0 "$rc" "$out"
+if find "$target" -name 'nase-backup-*.zip' -print -quit | grep -q .; then
+  printf 'PASS  tilde backup archive created under HOME\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  expected tilde backup archive under HOME\n      out: %s\n' "$out" >&2
+  fail=$((fail + 1))
+fi
+if [ ! -d "$repo/~/nase-backups" ]; then
+  printf 'PASS  no literal tilde backup directory created\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  literal tilde backup directory was created\n' >&2
+  fail=$((fail + 1))
+fi
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

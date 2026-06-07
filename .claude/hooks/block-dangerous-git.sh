@@ -205,6 +205,9 @@ scan_git_config_value() {
   key_lc=$(lowercase "$key")
   value_lc=$(lowercase "$value")
   case "$key_lc" in
+    include.path|includeif.*.path)
+      block "git config $key (hidden config include can bypass git safety checks)"
+      ;;
     core.hookspath)
       block 'git config core.hooksPath (changes hook path)'
       ;;
@@ -237,6 +240,9 @@ scan_git_config_env_arg() {
 
   key_lc=$(lowercase "$key")
   case "$key_lc" in
+    include.path|includeif.*.path)
+      block "git --config-env $key (hidden config include can bypass git safety checks)"
+      ;;
     alias.*)
       block 'git --config-env alias.* (hidden alias body can bypass git safety checks)'
       ;;
@@ -247,6 +253,40 @@ scan_git_config_env_arg() {
       block "git --config-env $key (hidden signing config can bypass signing)"
       ;;
   esac
+}
+
+scan_git_env_assignment() {
+  local assignment="$1"
+  local key="${assignment%%=*}"
+  local value="${assignment#*=}"
+  local key_lc value_lc
+
+  [ "$key" != "$assignment" ] || return 0
+  key_lc=$(lowercase "$key")
+  case "$key_lc" in
+    git_config_global|git_config_system)
+      block "git environment $key (hidden config file override)"
+      ;;
+    git_config_parameters)
+      value_lc=$(lowercase "$value")
+      case "$value_lc" in
+        *alias.*|*include.path*|*includeif.*.path*|*core.hookspath*|*commit.gpgsign*|*tag.gpgsign*)
+          block "git environment $key (hidden unsafe config)"
+          ;;
+      esac
+      ;;
+    git_config_key_[0-9]*)
+      scan_git_config_env_arg "$value=GIT_CONFIG_VALUE"
+      ;;
+  esac
+}
+
+scan_git_env_assignments() {
+  local assignment
+
+  for assignment in "$@"; do
+    scan_git_env_assignment "$assignment"
+  done
 }
 
 split_segments() {
@@ -372,6 +412,7 @@ split_words() {
 normalize_segment() {
   local segment="$1"
   local idx=0 word found_git=0
+  local -a prefix_assignments=()
 
   split_words "$segment"
   [ "${#WORDS[@]}" -gt 0 ] || return 1
@@ -380,6 +421,7 @@ normalize_segment() {
     word="${WORDS[$idx]}"
 
     if is_assignment "$word"; then
+      prefix_assignments+=("$word")
       idx=$((idx + 1))
       continue
     fi
@@ -424,6 +466,7 @@ normalize_segment() {
             ;;
         esac
         if is_assignment "$word"; then
+          prefix_assignments+=("$word")
           idx=$((idx + 1))
           continue
         fi
@@ -444,6 +487,8 @@ normalize_segment() {
   if [ "$found_git" -ne 1 ]; then
     return 1
   fi
+
+  scan_git_env_assignments "${prefix_assignments[@]}"
 
   while [ "$idx" -lt "${#WORDS[@]}" ]; do
     word="${WORDS[$idx]}"

@@ -28,7 +28,7 @@ python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant full > 
 
 The helper's **full** variant centralizes the field set from `.claude/docs/github-queries.md`.
 
-Capture: `headRefOid` (PR head SHA), `headRefName` (PR branch), `baseRefName` (target branch), commit list, changed files, current title/body, state, review decision.
+Capture: `headRefOid` (PR head SHA), `headRefName` (PR branch), `baseRefName` (target branch), `createdAt` (for Phase 4.7 adjacent same-file scan), commit list, changed files, current title/body, state, review decision.
 
 If `state` is not `OPEN`: report "PR is already {state}" and stop.
 

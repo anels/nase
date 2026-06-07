@@ -100,6 +100,8 @@ case "$REAL_TARGET" in
     ;;
 esac
 
+TARGET="$REAL_TARGET"
+
 # ---------------------------------------------------------------------------
 # Empty-source guard (P1-BAK-01): refuse if source appears empty.
 # Require at least one of: workspace/context.md  OR  workspace/kb/

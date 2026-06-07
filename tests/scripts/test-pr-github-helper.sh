@@ -64,9 +64,11 @@ metadata = data["metadata"]
 assert metadata[:4] == ["gh", "pr", "view", "42"]
 fields = metadata[-1].split(",")
 assert "commits" in fields
+assert "createdAt" in fields
 assert "headRefOid" in fields
 assert "reviewDecision" in fields
 assert data["review_threads"][0:3] == ["gh", "api", "graphql"]
+assert "pageInfo" in data["review_threads"][-1]
 PY
 
 cat > "$TMPDIR_TEST/small.json" <<'JSON'
@@ -147,21 +149,37 @@ PY
 
 cat > "$TMPDIR_TEST/bin/gh" <<'SH'
 #!/usr/bin/env sh
-cat <<'JSON'
-{"data":{"repository":{"pullRequest":{"headRefName":"feature/pr","baseRefName":"main","headRepository":{"nameWithOwner":"acme/widgets"},"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"src/a.ts","line":10,"comments":{"nodes":[{"databaseId":100,"body":"fix this","author":{"login":"alice"}}]}},{"id":"T2","isResolved":true,"path":"src/b.ts","line":20,"comments":{"nodes":[{"databaseId":200,"body":"done","author":{"login":"bob"}}]}}]}}}}}
+args="$*"
+case "$args" in
+  *threadId=T1*commentCursor=COMMENT_PAGE_2*)
+    cat <<'JSON'
+{"data":{"node":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":"COMMENT_END"},"nodes":[{"databaseId":101,"body":"decline","author":{"login":"alice"},"createdAt":"2026-06-01T00:01:00Z"}]}}}}
 JSON
+    ;;
+  *threadCursor=THREAD_PAGE_2*)
+    cat <<'JSON'
+{"data":{"repository":{"pullRequest":{"headRefName":"feature/pr","baseRefName":"main","headRepository":{"nameWithOwner":"acme/widgets"},"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":"THREAD_END"},"nodes":[{"id":"T2","isResolved":true,"path":"src/b.ts","line":20,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":"C2"},"nodes":[{"databaseId":200,"body":"done","author":{"login":"bob"},"createdAt":"2026-06-01T00:02:00Z"}]}},{"id":"T3","isResolved":false,"path":"src/c.ts","line":30,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":"C3"},"nodes":[{"databaseId":300,"body":"still broken","author":{"login":"carol"},"createdAt":"2026-06-01T00:03:00Z"}]}}]}}}}}
+JSON
+    ;;
+  *)
+    cat <<'JSON'
+{"data":{"repository":{"pullRequest":{"headRefName":"feature/pr","baseRefName":"main","headRepository":{"nameWithOwner":"acme/widgets"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"THREAD_PAGE_2"},"nodes":[{"id":"T1","isResolved":false,"path":"src/a.ts","line":10,"comments":{"pageInfo":{"hasNextPage":true,"endCursor":"COMMENT_PAGE_2"},"nodes":[{"databaseId":100,"body":"fix this","author":{"login":"bot"},"createdAt":"2026-06-01T00:00:00Z"}]}}]}}}}}
+JSON
+    ;;
+esac
 SH
 chmod +x "$TMPDIR_TEST/bin/gh"
 threads_out="$TMPDIR_TEST/threads.json"
 PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" review-threads "acme/widgets#42" --unresolved-only > "$threads_out"
-assert_cmd "review-threads filters unresolved threads" "$PYTHON_BIN" - "$threads_out" <<'PY'
+assert_cmd "review-threads paginates and filters unresolved threads" "$PYTHON_BIN" - "$threads_out" <<'PY'
 import json
 import sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 assert data["headRefName"] == "feature/pr"
 assert data["baseRefName"] == "main"
 assert data["headRepository"]["nameWithOwner"] == "acme/widgets"
-assert [thread["id"] for thread in data["threads"]] == ["T1"]
+assert [thread["id"] for thread in data["threads"]] == ["T1", "T3"]
+assert [comment["databaseId"] for comment in data["threads"][0]["comments"]["nodes"]] == [100, 101]
 PY
 
 if [[ "$failures" -eq 0 ]]; then

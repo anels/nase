@@ -130,7 +130,8 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
      "tool_name": "{actual transitionJiraIssue tool name}",
      "issue_key": "{KEY}",
      "created_at": "{UTC ISO timestamp}",
-     "payload_summary": "{KEY} -> Done"
+     "payload_summary": "{KEY} -> Done",
+     "payload_sha256": "{sha256 of canonical transitionJiraIssue tool_input}"
    }
    ```
    One token per Jira tool call; never reuse a token across tickets. Then call `transitionJiraIssue`.
