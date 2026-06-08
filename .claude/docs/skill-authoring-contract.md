@@ -34,6 +34,24 @@ CI check: `tests/check-skill-doctrine.sh → W1`.
 
 ---
 
+## 2.5. Durable workspace writes = staged + drift-checked
+
+Any skill that writes durable local workspace state MUST reference `.claude/docs/workspace-write-guard.md` near the top and use `.claude/scripts/workspace-write-guard.py` for full-file durable writes unless it is using a documented append-only exception. Follow this flow:
+- Read existing target mtime/hash before drafting
+- Stage the proposed output under `workspace/tmp/`
+- Show a diff or planned-path preview before applying
+- Re-check mtime/hash immediately before the write
+- Apply only the documented target
+
+This applies to `workspace/kb/**`, `workspace/tasks/**`, `workspace/skills/**`, `workspace/efforts/**`, `workspace/journals/**`, `workspace/logs/**`, `workspace/context.md`, and `workspace/communication-style.md`. Append-only daily logs, journals, and JSONL stats may use the documented append-only exception, but must still keep writes narrow.
+
+CI check: `tests/check-skill-doctrine.sh → D10` (hard fail).
+
+Auto-write modes (`--auto`, `--auto-accept`, or command-owned automatic writes)
+may skip human confirmation only. They must never skip final drift checks.
+
+---
+
 ## 3. ADO CLI doctrine
 
 Per `feedback_ado-az-cli-only.md`: all Azure DevOps interactions use `az` CLI. Never `curl -u ":$ADO_PAT"` or similar PAT-bearing curl invocations.
@@ -125,9 +143,9 @@ sub-patterns: []     # optional; list combinations, e.g. [pipeline, supervisor] 
 
 Use one of: `pipeline`, `fan-out`, `expert-pool`, `producer-reviewer`, `supervisor`, `utility`.
 
-Required for new skills. Existing skills will be backfilled opportunistically — do not block a PR purely on missing frontmatter for an unchanged skill. Put pattern reasoning in the PR or effort doc when it matters.
+Required for every core skill under `.claude/commands/nase/*.md`. Put pattern reasoning in the PR or effort doc when it matters.
 
-CI check planned, not yet enforced: new skill files missing `pattern:` will fail once the doctrine checker adds this rule. Existing skill files are warn-only until backfill is complete.
+CI check: `tests/check-skill-doctrine.sh → D9` (hard fail).
 
 ---
 
@@ -148,7 +166,7 @@ When a skill chains other skills (`/nase:reflect`, `/nase:learn`, `/team`, etc.)
 
 ## CI
 
-`tests/check-skill-doctrine.sh` enforces sections 1, 2, 3 mechanically. Run via `bash tests/check-all.sh` before pushing any skill change.
+`tests/check-skill-doctrine.sh` enforces sections 1, 2, 2.5, 3, and 8 mechanically, plus archive/import hardening rules. Run via `bash tests/check-all.sh` before pushing any skill change.
 
 ## Editing this doc
 

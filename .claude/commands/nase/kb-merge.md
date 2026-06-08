@@ -1,12 +1,15 @@
 ---
 name: nase:kb-merge
 description: Import and merge a teammate's shared knowledge base into your own workspace KB — intelligently merges overlapping files, shows a diff preview before writing, and updates the domain map. Use when asked "import KB", "merge KB", "import knowledge base", "merge shared KB", "导入KB", "合并知识库", or after receiving a KB export from /nase:kb-teamshare.
+pattern: pipeline
 ---
 
 Merge an externally shared KB directory into your local `workspace/kb/`, with AI-assisted conflict resolution and a diff preview before any changes are written.
 
 **Input:** $ARGUMENTS
 (Optional: path to the imported KB directory. If not provided, will ask interactively.)
+
+Follows `.claude/docs/workspace-write-guard.md`; the existing merge preview plus per-file mtime re-stat is the write guard for approved imports.
 
 **Step 0 — Language preflight (MUST run first):** follow `.claude/docs/language-config.md` → Minimum Step 0 block. Imported KB content keeps its source language.
 
@@ -168,7 +171,7 @@ options:
 
 ### Step 5: Write Changes
 
-**Concurrency guard:** before writing each merged KB or skill file, re-stat the local target and compare its mtime against the mtime captured in Step 2. If it changed mid-flow (another session — e.g. `/nase:kb-update` — wrote to the same file), abort that file's write and report `SKIP: {path} changed during merge — re-run /nase:kb-merge to pick up the new local state`. Other approved files in the same batch still write.
+**Concurrency guard:** before writing each merged KB or skill file, re-stat the local target and compare its mtime against the mtime captured in Step 2. If it changed mid-flow (another session — e.g. `/nase:kb-update` — wrote to the same file), abort that file's write and report `SKIP: {path} changed during merge — re-run /nase:kb-merge to pick up the new local state`. Other approved files in the same batch still write. For new targets, stage the file under `workspace/tmp/` and show the planned path plus first 40 lines before applying.
 
 ```bash
 # Step 2 captured: stat -f %m "$LOCAL_PATH"  (BSD)  /  stat -c %Y "$LOCAL_PATH"  (GNU)

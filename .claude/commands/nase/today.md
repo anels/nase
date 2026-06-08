@@ -1,6 +1,7 @@
 ---
 name: nase:today
 description: Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items and optional concrete next actions from KB, logs, tasks, Jira, and Slack. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff".
+pattern: pipeline
 ---
 
 ## Why
@@ -8,6 +9,8 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 
 **Input:** $ARGUMENTS — optional flags
 - `--verbose`: include full lists (no caps on Active Efforts, Jira, Slack Pulse). Default is the **compact view** with caps applied.
+
+Follows `.claude/docs/workspace-write-guard.md` for status-sync edits to `workspace/tasks/` and `workspace/efforts/`.
 
 ## Steps
 
@@ -26,6 +29,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. If `workspace
 ### 1b. Status Sync (auto-update tracked items)
 
 Scan `workspace/tasks/todo.md` and active `workspace/efforts/*.md` for tracked PRs and Jira tickets. Check their current status and update files in-place. This step keeps the morning kickoff accurate without manual status maintenance.
+Before applying any status update, stage the target file change under `workspace/tmp/`, show a short diff summary, and run the final mtime/hash drift check. Append-only daily-output files are not part of this step.
 
 **1b-i. Extract tracked items:**
 - From `todo.md`: find all lines containing `[ ]` (unchecked) that have GitHub PR URLs (`github.com/{owner}/{repo}/pull/{number}`) or Jira ticket keys (`[A-Z]+-\d+`). Skip `[x]` lines — they're already done.

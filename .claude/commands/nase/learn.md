@@ -1,6 +1,7 @@
 ---
 name: nase:learn
 description: "Capture a tip, article URL, GitHub repo, or cross-project pattern as structured knowledge — researches related materials, writes to general KB, then offers concrete next actions when useful. Use for general programming insights, web-sourced patterns, or learnings that apply across repos. Example: 'async void is dangerous in C#' → /nase:learn. For repo-specific constraints tied to one codebase (API contracts, architectural decisions, naming rules), use /nase:kb-update instead. Triggers: 'remember this', 'save this tip', 'learn from this', article URL, topic keyword."
+pattern: expert-pool
 ---
 
 This skill extracts knowledge from any source (URL, tip, keyword, lesson, conversation), then goes deeper by researching related materials online — finding discussions, alternative approaches, and community insights — before persisting everything directly to the KB. The goal is real understanding, not just note-taking.

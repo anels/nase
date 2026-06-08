@@ -1,6 +1,7 @@
 ---
 name: nase:tech-debt-audit
 description: "Systematically audit a repository for tech debt, architecture health, best-practices compliance, and modernization opportunities — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file. Use when onboarding to a new repo, before a planning cycle, or when asked \"what tech debt do we have?\", \"architecture review\", \"are we following best practices\", or \"what can we modernize\"."
+pattern: pipeline
 ---
 
 Systematically audit a repository for tech debt, architecture health, best-practices compliance, and modernization opportunities — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file.
@@ -10,6 +11,7 @@ Systematically audit a repository for tech debt, architecture health, best-pract
 **Step 0 — Language preflight (MUST run first):** follow `.claude/docs/language-config.md` → Minimum Step 0 block. Finding category labels (`Security`, `Reliability`, etc.) stay English.
 Follow `.claude/docs/confidential-marker.md` — do not convert people-sensitive daily-log context into named blockers or ownership claims.
 Follow `.claude/docs/citation-validator.md` — validate ticket, PR, and file citations in the saved audit before reporting it as final.
+Follow `.claude/docs/workspace-write-guard.md` for the saved tech-debt KB file and `.domain-map.md` registration.
 
 ## Output
 
@@ -109,7 +111,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - For every `PRIORITY CHANGES` item, adjust severity/effort/ROI only when the rationale matches repo evidence.
    - If Codex returns malformed prose, append a short "Codex review notes (unparsed)" section to the draft only if it contains concrete file/path evidence; otherwise ignore it.
 
-8. **Write to KB** — create or update `workspace/kb/projects/tech-debt/{repo}-tech-debt.md`:
+8. **Write to KB** — stage the audit under `workspace/tmp/`, show the planned path / diff summary, re-check mtime/hash, then create or update `workspace/kb/projects/tech-debt/{repo}-tech-debt.md`:
    ```markdown
    # {Repo Name} — Tech Debt Audit
    <!-- Last updated: YYYY-MM-DD -->
@@ -138,7 +140,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    ...
    ```
 
-9. **Register in domain map** — if this is a new KB file, add an entry to `workspace/kb/.domain-map.md`:
+9. **Register in domain map** — if this is a new KB file, stage the `.domain-map.md` update and add an entry to `workspace/kb/.domain-map.md`:
    ```
    - {repo}-tech-debt → workspace/kb/projects/tech-debt/{repo}-tech-debt.md (tech debt audit YYYY-MM-DD)
    ```

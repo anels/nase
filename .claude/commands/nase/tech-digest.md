@@ -1,9 +1,11 @@
 ---
 name: nase:tech-digest
 description: "Fetch and summarize latest tech news from configured sources, filtered to workspace topics, with source links, caching, actionable adoption notes, and concrete follow-up actions when useful. Supports --force, --dry-run, --since, --section, and --sources. Triggers: 'tech news', 'tech digest', 'what's new', 'morning digest', 'tech roundup', 'latest in AI', 'today's news', '今日科技', '科技新闻', '最新动态'."
+pattern: expert-pool
 ---
 
 Auto-skips if today's digest already exists unless `--force` is passed. Safe to invoke multiple times.
+Follows `.claude/docs/workspace-write-guard.md` for `tech-trends.md`, archives, cache updates, and selected follow-up writes. `--dry-run` performs no durable writes.
 
 ## Arguments
 
@@ -104,6 +106,7 @@ Rules:
 
 7. **Write or report**:
    - If `--dry-run` is present, print the digest in chat, skip all writes, and continue to Step 10's dry-run candidate summary. Do not write files, archives, cache, or follow-up artifacts.
+   - For write mode, stage each durable update under `workspace/tmp/`, show the planned path / diff summary, and re-check mtime/hash immediately before applying.
    - Ensure `workspace/kb/general/tech-trends.md` exists. If missing, create it with:
      ```
      # Knowledge Base — Tech Trends & Digests
@@ -118,7 +121,7 @@ Rules:
 
 8. **Lifecycle management — keep tech-trends.md focused (run after writing)**:
    - Count digest entries (headers matching `## Tech Digest — YYYY-MM-DD`) older than 30 days.
-   - If any exist, move them to `workspace/kb/general/tech-trends-archive-{YYYY}.md` (create with `# Tech Trends Archive — {YYYY}\n` header if missing).
+   - If any exist, stage the split, then move them to `workspace/kb/general/tech-trends-archive-{YYYY}.md` (create with `# Tech Trends Archive — {YYYY}\n` header if missing).
    - Use `python3` for date parsing here. If `python3` is unavailable, skip archival and note: "Archival skipped — python3 not available. Run manually when python3 is installed."
    - Report: "Archived N entries older than 30 days to tech-trends-archive-{YYYY}.md."
 

@@ -1,12 +1,15 @@
 ---
 name: nase:kb-review
 description: "Review, organize, consolidate KB files — dedup, cross-ref, surface stale content, promote lessons. Use weekly/monthly as KB hygiene, when KB feels messy, or after several /nase:learn entries. Triggers: 'review KB', 'organize notes', 'clean up KB', 'what's in my KB', '整理笔记'."
+pattern: pipeline
 ---
 
 Review and organize the knowledge base — deduplicate, cross-reference, consolidate, and surface stale content.
 
 **Input:** $ARGUMENTS
 (Optional scope: `projects`, `general`, `ops`, `lessons`, or `all`. Default: `all`. Optional flag: `--verbose` — also dump all sections inline.)
+
+Follows `.claude/docs/workspace-write-guard.md` for quick fixes, consolidation, lesson promotion, todo archival, and domain-map repairs.
 
 ## Output Discipline
 
@@ -278,7 +281,7 @@ options:
 
 For each change applied:
 - Read the target file first
-- Make the edit (add cross-ref, remove duplicate, promote lesson)
+- Stage the edited target under `workspace/tmp/`, show the diff, re-check mtime/hash, then make the edit (add cross-ref, remove duplicate, promote lesson)
 - Track what was changed
 
 **Lesson promotion procedure** (when promoting from `lessons.md`):
@@ -319,7 +322,7 @@ Update the log entry written in Step 6 to include the apply count (append `, {N}
 
 ### Step 8: Schedule Next Run
 
-Write the next recommended execution date to `workspace/tasks/todo.md` so `/nase:today` can surface it:
+Write the next recommended execution date to `workspace/tasks/todo.md` so `/nase:today` can surface it. Stage the todo edit and run the final drift check before applying:
 
 1. Read `workspace/tasks/todo.md`
 2. Find the `## Scheduled Maintenance` section — if missing, create it just before `## On Hold` (or at the end if `## On Hold` doesn't exist)

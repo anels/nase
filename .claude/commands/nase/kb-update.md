@@ -1,11 +1,13 @@
 ---
 name: nase:kb-update
 description: "Persist durable repo-specific knowledge — architecture, constraints, API contracts, naming conventions tied to one codebase. Example: 'the Insights repo requires OrderBy before Skip in EF queries' → /kb-update. For general or cross-project patterns, use /nase:learn instead. Triggers: 'update KB', 'add to knowledge base', 'document this pattern', '记录到KB'."
+pattern: pipeline
 ---
 
 The KB is the workspace's long-term memory — it outlives individual sessions.
 
 **Decision rule:** follow `.claude/docs/kb-write-routing.md` — repo-internal facts (API contract, migration constraint, naming convention, architectural decision) belong here; general patterns / web-sourced articles belong in `/nase:learn`; cross-service contracts go in `workspace/kb/cross-project/`; ops/runbooks go in `workspace/kb/ops/`.
+Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-map.md`, cross-reference edits, and split/move operations. Use `python3 .claude/scripts/workspace-write-guard.py stage` for every full-file durable write.
 
 **Input:** $ARGUMENTS
 (If empty, reflect on recent work and identify what's worth capturing.)
@@ -45,7 +47,7 @@ The KB is the workspace's long-term memory — it outlives individual sessions.
    - Constraints clarified
    - Tools or techniques found useful
 
-4. Append to the appropriate section using this format:
+4. Build the proposed complete target file under `workspace/tmp/`, then run `python3 .claude/scripts/workspace-write-guard.py stage --target {target} --content-file {proposed} --skill kb-update`. Show the helper diff, apply only after the gate or documented auto path, then append to the appropriate section using this format:
 ```
 ### YYYY-MM-DD — {topic}
 **What:** {one-line summary}

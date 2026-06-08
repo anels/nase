@@ -12,6 +12,18 @@ Guidance for Claude Code when working in this repository.
 
 ---
 
+## Architecture Stance
+
+- Treat this repo as a Claude Code workspace kit, not a product repo: commands, hooks, shared docs, tests, and `workspace/` state are the product surface.
+- Prefer deterministic enforcement over prompt-only instructions. Risky behavior belongs in hooks, scripts, tests, or evals; prompts should explain the rule and call the guard.
+- Keep memory human-readable. Durable knowledge goes to Markdown/JSONL under `workspace/`; avoid opaque summaries that a human cannot inspect, diff, or delete.
+- Slice context before reading broadly. Use repo KB, domain maps, `gh`, `rg`, `ast-grep`, focused diffs, and workspace scan scripts before loading large logs or whole directories.
+- Require evidence for technical claims. PR findings, architecture notes, and audit conclusions need source paths, diffs, tests, logs, or command output; drop candidates that cannot be verified.
+- External writes stay gated: Slack drafts, Jira one-shot tokens after approval, Confluence size guards, and GitHub review posting only on explicit user instruction.
+- New commands and skills should reuse shared docs/scripts first. Add a new abstraction only when it removes real repeated workflow complexity and include a local validation path.
+
+---
+
 ## Operating Rules
 
 ### Identity & Communication

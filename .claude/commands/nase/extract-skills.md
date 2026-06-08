@@ -1,11 +1,13 @@
 ---
 name: nase:extract-skills
 description: Analyze the current session and extract reusable problem-solving patterns as new nase skills. Run at the end of any session where you solved a non-trivial problem or found a useful technique. Also triggers on "extract pattern", "save technique", "capture workflow".
+pattern: pipeline
 ---
 
 Captured patterns make future sessions easier to repeat — don't skip this after non-trivial sessions.
 
 **DO NOT enter plan mode.** Execute the steps directly.
+Follows `.claude/docs/workspace-write-guard.md` for `workspace/skills/`, wrapper commands, and lesson writes. Auto-write modes only skip human confirmation; they never skip final drift checks. `--auto-accept` skips only the proposal prompt, not staging or the final drift check.
 
 **Input:** $ARGUMENTS (optional — focus hint, e.g. "the backup fix" or "the onboard workflow"; pass `--auto-accept` to skip the confirmation gate and auto-approve all candidates)
 
@@ -110,7 +112,7 @@ options:
 
 ### 5. Write the skill file(s)
 
-Create `workspace/skills/{name}.md` for each approved skill:
+For each approved skill, stage the raw skill file and wrapper under `workspace/tmp/`, show the diff or first 40 lines for new files, then re-check target mtime/hash before writing. Create `workspace/skills/{name}.md` for each approved skill:
 
 ```markdown
 ---

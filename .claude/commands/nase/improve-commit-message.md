@@ -1,6 +1,7 @@
 ---
 name: nase:improve-commit-message
 description: Analyze the last commit and rewrite its message following conventional commits / commitlint rules. Always invoke before git push — part of the standard commit sequence. Use when asked to "improve commit", "fix commit message", "amend commit", "clean up commit", "before push", or after committing code. Also invoked automatically by /nase:fsd and /nase:prep-merge.
+pattern: utility
 ---
 
 Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why — without opening the diff.

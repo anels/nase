@@ -1,11 +1,13 @@
 ---
 name: nase:address-comments
 description: "Fix unresolved PR review comments — makes code changes, pushes, checks currently failed PR gates once, fixes mechanical failures only, then resolves threads. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
+pattern: pipeline
 ---
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
 Follows `.claude/docs/external-mutation-policy.md`: code push, `gh pr edit`, replies, thread resolution, and Slack DMs each have their own gate.
+Follows `.claude/docs/workspace-write-guard.md` for KB backfills, todo updates, and other durable workspace writes.
 
 ---
 
@@ -368,21 +370,12 @@ If failures exist alongside pending checks, fix only the currently failed rows w
 
 **Step 8.7c — Classify and apply fixes (max 2 fix iterations).**
 
-For each failing check, match `name` against the cached `## PR Gates` table from Phase 1, falling back to the well-known list below. Use the KB's fix recipe when present — the table here is the safety net so the sweep works even for repos that haven't been onboarded with the new gates section yet.
-
-When a recipe needs a failed-run log, derive `run_id` from the check `link` (`.../actions/runs/{run_id}`) before running `gh run view {run_id} --log-failed`. If the link is missing or not a GitHub Actions run URL, summarize the check name + link and ask instead of guessing.
-
-| Gate name pattern | Fix recipe |
-|-------------------|------------|
-| `Commit Lint` / `commitlint` | Pull failed-run log to identify the offending commit subject. If the bad commit has already been pushed, do **not** add a follow-up commit — commitlint will still fail on the original subject. Report the offending subject and ask whether to hand off to `/nase:prep-merge` or `/nase:improve-commit-message` with explicit force-push confirmation. Only run `/nase:improve-commit-message` directly when the offending commit is still local/unpushed. |
-| `PR Description Check` / `pr-description-check` | Re-fetch body. If `## What` < 20 chars: extend with the implementation summary from this session's commits. If `## Testing` < 15 chars: fill with the build/test commands run in Phase 7. Reuse Phase 8b's `gh pr edit` mutation gate. |
-| `PR Size Check` / `pr-size-check` | Workflow only fails when `## How to Review` is empty. Fill it with a short walkthrough drawn from `gh pr diff --name-only` + the per-file 1-line intent. Reuse Phase 8b's `gh pr edit` mutation gate. |
-| `Check for JIRA issue key` / `checkjiraissuekey` | Inspect PR title; if no `[A-Z]+-[0-9]+` token, ask the user for the Jira key. Then show the exact new title and reuse Phase 8b's immediate `gh pr edit` mutation gate before running `gh pr edit {pr_number} --title "{new_title}"`. |
-| `EF Migration Checker` / migration drift | Read the bot's drift comment to learn the missing `<Context>` name. Run `dotnet ef migrations add <Name> --context <Ctx>` in `{worktree_path}`, rerun Phase 7 verification, then re-enter Phase 8 for commit/push (including "Confirm before push" behavior). Do not commit or push directly from this table. |
-| `Lint Code Base` / super-linter | If the workflow has `continue-on-error: true` (advisory), log but skip — these don't block merge. Otherwise the bot auto-commits fixes back to the PR branch; `git -C {worktree_path} pull --ff-only` so the local worktree matches, then move on. |
-| Anything else | Fetch failed-run log; summarize the failure in 3 lines; present via `AskUserQuestion` with options `Fix manually now` / `Skip — leave failing` / `Show full log`. Honor the user's choice. |
-
-After any fix that produces a new commit or PR-metadata edit, read current checks once again. Hard-cap at 2 fix iterations to avoid loops where a fix keeps breaking another gate.
+Follow `.claude/docs/pr-gate-remediation.md` for the current PR-gate sweep:
+use the KB's `## PR Gates` recipe when present, otherwise classify the failed
+check with `python3 .claude/scripts/pr-gate-remediation.py classify --name "$check_name"`
+and apply the shared fallback recipe. Keep the same mutation ownership rules:
+PR body/title edits reuse Phase 8b, code changes re-enter Phase 8, and unknown
+gates ask the user with a 3-line failed-log summary.
 
 **Step 8.7d — KB backfill prompt.**
 
@@ -398,9 +391,9 @@ options:
     description: "Skip backfill; record a [KB-TODO] in workspace/tasks/todo.md so /nase:today surfaces it"
 ```
 
-On **yes**: enumerate `.github/workflows/*.{yml,yaml}` in `{worktree_path}` for `pull_request`-triggered workflows, also run `gh api repos/{owner}/{repo}/branches/{baseRefName}/protection --jq '((.required_status_checks.contexts // []) + ((.required_status_checks.checks // []) | map(.context))) | .[]'` for the branch-protection required list, then write the section into `workspace/kb/projects/{domain}.md` using `.claude/docs/kb-template.md → ## PR Gates` as the shape. Update the file's `<!-- Last updated -->` marker. This is a workspace write — no external mutation gate needed.
+On **yes**: enumerate `.github/workflows/*.{yml,yaml}` in `{worktree_path}` for `pull_request`-triggered workflows, also run `gh api repos/{owner}/{repo}/branches/{baseRefName}/protection --jq '((.required_status_checks.contexts // []) + ((.required_status_checks.checks // []) | map(.context))) | .[]'` for the branch-protection required list, then stage the section under `workspace/tmp/`, diff it, and write it into `workspace/kb/projects/{domain}.md` using `.claude/docs/kb-template.md → ## PR Gates` as the shape. Update the file's `<!-- Last updated -->` marker. This is a workspace write — no external mutation gate needed, but the final mtime/hash drift check still applies.
 
-On **no**: append `- [ ] Backfill PR Gates section in workspace/kb/projects/{domain}.md (next /nase:onboard --force)` to `workspace/tasks/todo.md` under `## Scheduled Maintenance`.
+On **no**: stage and append `- [ ] Backfill PR Gates section in workspace/kb/projects/{domain}.md (next /nase:onboard --force)` to `workspace/tasks/todo.md` under `## Scheduled Maintenance`, using the same final mtime/hash drift check.
 
 Either way, log one line to the daily log (tag: `address-comments`): `PR gates: {observed} observed, {N} failed, {M} fixed, {K} remaining; KB backfill: {yes/no/already-present}`.
 

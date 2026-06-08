@@ -1,6 +1,7 @@
 ---
 name: nase:stats
 description: Display workspace usage statistics inline (no report file) — vertical column chart (per-day ≤14d, per-week >14d), tiered skill usage, and summary counters. For a structured narrative recap of completed work, use /nase:recap instead. Use when asked "show stats", "how active am I", "productivity", "how much have I done", or to review activity patterns over 7/30/all-time windows.
+pattern: utility
 ---
 
 **Input:** $ARGUMENTS — optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`

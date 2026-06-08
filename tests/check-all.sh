@@ -95,6 +95,7 @@ for test_file in \
   tests/hooks/test-style-edit-detect.sh \
   tests/hooks/test-session-start.sh \
   tests/hooks/test-stop-backup-safety.sh \
+  tests/hooks/test-post-edit-shellcheck.sh \
   tests/hooks/test-pre-edit-write-fact-force.sh
 do
   run_gate bash "$test_file"
@@ -120,7 +121,10 @@ for test_file in \
   tests/scripts/test-pr-github-helper.sh \
   tests/scripts/test-pr-review-eval.sh \
   tests/scripts/test-voice-profile-routing.sh \
-  tests/scripts/test-workspace-data-scan.sh
+  tests/scripts/test-local-sensitive-artifacts.sh \
+  tests/scripts/test-shared-workflow-extraction.sh \
+  tests/scripts/test-workspace-data-scan.sh \
+  tests/scripts/test-workspace-write-guard.sh
 do
   run_gate bash "$test_file"
 done
