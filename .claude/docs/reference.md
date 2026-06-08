@@ -128,8 +128,10 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `confluence-adf-pattern.md` | Confluence page update rules: full body requirement, `inlineCard` for Jira links, `hardBreak`, draft pages, content preservation |
 | `content-hash-cache.md` | SHA-based change detection to skip unchanged content while periodically re-analyzing stale cache entries (used by `onboard`, `tech-digest`) |
 | `codex-review.md` | Optional Codex MCP contract for read-only second-opinion review, verification, tech-debt, and mutual-grill passes |
+| `codex-verification-bundle.md` | Shared Codex pre-push verification bundle algorithm used by `fsd` |
 | `cross-repo-validation.md` | Cross-repo outbound/inbound contract validation algorithm used by `onboard` Step 6 |
 | `daily-log-format.md` | Standardized log entry format and canonical skill tags |
+| `effort-lifecycle.md` | Shared lifecycle/status rules for `workspace/efforts/{slug}.md` and related todo entries, used by `design`, `fsd`, and `prep-merge` |
 | `external-mutation-policy.md` | Cross-skill rule: every Slack / Jira / Confluence / GitHub / ADO / cloud mutation goes through draft-first or `AskUserQuestion`. Reference from any mutation-capable skill. |
 | `skill-authoring-contract.md` | Behavior rules for skill authors: language preflight, external mutation, ADO CLI doctrine, bash hygiene, anti-overlap, subagent context. Read before adding a new skill. Enforced by `tests/check-skill-doctrine.sh`. |
 | `style-delta-capture.md` | Capture user corrections to drafted Slack/PR/external-doc text as `[STYLE-DELTA]` log lines and consolidate them into approved `communication-style.md` edits during `wrap-up` |
@@ -149,6 +151,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `ms-learn-grounding.md` | Read-only verification of Azure / .NET / Microsoft SDK claims via the `ms-learn` MCP server. Used by `onboard` Step 3j; conditional on a Microsoft-stack trigger. |
 | `lessons-format.md` | Canonical format for `workspace/tasks/lessons.md` entries (header, body, signal-to-noise rules) |
 | `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
+| `pr-gate-remediation.md` | Mechanical PR gate failure classification and remediation recipes used by `address-comments` |
 | `pr-input-guard.md` | Input validation for skills that take a PR URL |
 | `pr-review-verification.md` | Seven-section verification checklist for PR review skills (AI-reviewer audit, cross-ref, diff-vs-HEAD, bot citation triage) |
 | `reference.md` | This file — workspace layout, KB structure, architecture notes |
@@ -173,6 +176,8 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `kb-search.sh` | Full-text + metadata search across KB files. Supports `in:`, `tag:`, `since:`, `confidence:`, `mentions:`, capped previews, `--full`, and `--max-entry-lines`; weighted relevance (header 2×, body 1×); fuzzy fallback. Used by `kb-search`. |
 | `kb-gap-scan.sh` | Scan daily logs and lessons for KB-gap signals (uncertainty, doc lookups, SME teachings). Used by `kb-gap-detect`. |
 | `kb-hygiene-scan.py` | Scan project KB files for stale timestamps, unsafe stale claims, broken repo-source references, and compaction candidates. Used by `onboard`. |
+| `codex-verify-bundle.py` | Generate the markdown bundle for the Codex pre-push verification gate. Used by `fsd`. |
+| `pr-gate-remediation.py` | Classify failed PR gate names into shared remediation recipes. Used by `address-comments`. |
 | `pr-github-helper.py` | Parse GitHub PR refs, centralize read-only `gh` metadata/thread command shapes, and compute PR diff-size gates. Used by PR/review skills. |
 | `pr-review-eval.py` | Validate and score offline PR/review skill eval outputs from `evals/pr-review/evals.json`. |
 | `today-stats.py` | Emit a single date's session, token, and skill-usage counts as `key=value` lines. Used by `wrap-up` Step 4d. |
@@ -180,6 +185,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
 | `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, install hints, or a Homebrew install command for brew-managed tools. Used by `doctor` and optional tooling-aware skills. |
 | `workspace-data-scan.py` | Emit compact, date-filtered workspace context, lessons, journals, and logs with source paths and truncation markers. Used by `workspace-data-gathering.md` callers. |
+| `workspace-write-guard.py` | Stage, diff, and drift-check durable workspace full-file writes. Used by `design`, `kb-update`, and `wrap-up` write paths. |
 
 ---
 

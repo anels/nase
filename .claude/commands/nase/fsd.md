@@ -1,6 +1,8 @@
 ---
 name: nase:fsd
 description: End-to-end task workflow from plan to merged-ready draft PR — writes and pushes code after upfront options are confirmed. For design-only planning without implementation, use /nase:design instead. Use whenever the user says "fsd", "full self-develop", "full self-drive", "just do it", "run it autonomously", "fire and forget", or hands off a feature/fix task end-to-end. Also trigger when someone gives a task and clearly expects completion after initial setup.
+pattern: pipeline
+sub-patterns: [supervisor]
 ---
 
 Confirm execution options upfront (team mode, worktree, PR), then continue through implementation until done or blocked.
@@ -8,6 +10,7 @@ Confirm execution options upfront (team mode, worktree, PR), then continue throu
 **Input:** $ARGUMENTS — the task description or implementation plan
 
 Follows `.claude/docs/external-mutation-policy.md`: batch upfront decisions, only create/edit PR when `open_pr=true`, and push via standard commit-push pattern.
+Follows `.claude/docs/workspace-write-guard.md` for effort-doc topology/lifecycle updates and any KB writes from research findings.
 
 ## Mode Quick-Reference
 
@@ -154,7 +157,7 @@ Set `{work_root}` = `{worktree_path}` if worktree = Yes, else `{repo}`.
 
 **Finalize `module_inventory`:** keep KB snippet, or derive 5-15 lines inside `{work_root}` from top-level `src/` plus helper/service/util/client files. Carry into subagent prompts.
 
-**Finalize topology (if `topology = needs-work-root`):** grep/glob inside `{work_root}` only, ≤25 lines. If this came from `/nase:design`, append it to `workspace/efforts/{slug}.md` under `## Topology`; otherwise keep it in conversation context for Phase 4.
+**Finalize topology (if `topology = needs-work-root`):** grep/glob inside `{work_root}` only, ≤25 lines. If this came from `/nase:design`, stage and append it to `workspace/efforts/{slug}.md` under `## Topology` using the workspace write guard; otherwise keep it in conversation context for Phase 4.
 
 ---
 
@@ -332,25 +335,21 @@ Do not skip because the change seems small; invoke the skill and let it decide.
 
 Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly to Phase 7 if MCP is not loaded.
 
+Build the verification bundle per `.claude/docs/codex-verification-bundle.md`:
+
+```bash
+BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
+python3 .claude/scripts/codex-verify-bundle.py \
+  --repo "{worktree_or_repo}" \
+  --base "$BASE" \
+  --task "$ARGUMENTS" \
+  --output "{nase_workspace}/workspace/tmp/codex-verify-{short_sha}.md"
+```
+
 Invoke the Codex MCP with the `verify` mode contract from `.claude/docs/codex-review.md`:
 
 - `cwd` = `{worktree_path}` (or `{repo}` if worktree = No)
-- Before invoking Codex, write the verification bundle under the nase workspace as an absolute path, e.g. `{nase_workspace}/workspace/tmp/codex-verify-{short_sha}.md`:
-  ```bash
-  BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
-  git -C {worktree_or_repo} diff --stat "$BASE"
-  git -C {worktree_or_repo} diff --name-status "$BASE"
-  git -C {worktree_or_repo} ls-files --others --exclude-standard
-  ```
-  Include the full diff for changed files only when the total diff is <=2000 lines. For larger diffs, include `diff --stat`, `diff --name-status`, untracked file names, and the 5 most-changed files in full. Do not inline generated/binary/build artifacts; list them with path and size.
-- `prompt` = the original task spec from `$ARGUMENTS` (verbatim — do not paraphrase, the spec is the contract), plus:
-  - bundle path
-  - merge base
-  - changed-file count and total changed lines
-  - full `diff --stat`
-  - untracked task-created file list
-  - full content of the 5 most-changed files when the full diff was not bundled
-  - instruction: "If this manifest is insufficient to verify the spec, return `NEEDS-HUMAN` with the exact missing files or diff hunks instead of guessing."
+- `prompt` = the original task spec from `$ARGUMENTS` verbatim, the bundle path, merge base, changed-file count, and the insufficient-manifest instruction from `.claude/docs/codex-verification-bundle.md`
 - `developer-instructions` = the `verify` template verbatim
 - `sandbox` = `read-only`
 
@@ -462,19 +461,7 @@ Skill-specific outputs:
 
 ## Phase 8b: Effort Doc Update
 
-If $ARGUMENTS contains a slug that matches a file in `workspace/efforts/{slug}.md`, update its lifecycle:
-
-```bash
-# Check if the specific effort doc exists for the inferred slug
-ls workspace/efforts/{slug}.md 2>/dev/null
-```
-
-If the effort doc exists, check off the relevant lifecycle items and update the status:
-- `- [ ] Implementation started` → `- [x] Implementation started — {YYYY-MM-DD}`
-- `- [ ] PR opened` → `- [x] PR opened — {PR URL or branch_name}` (only if PR was created)
-- Update frontmatter: `status: in-progress`
-
-If the slug cannot be inferred from $ARGUMENTS (e.g., fsd was given a raw task, not a slug), skip silently — not every fsd invocation comes from a design doc.
+Follow `.claude/docs/effort-lifecycle.md → FSD Update`. If $ARGUMENTS contains a slug that matches `workspace/efforts/{slug}.md`, stage the lifecycle/status edit with the workspace write guard. If the slug cannot be inferred, skip silently — not every fsd invocation comes from a design doc.
 
 ## Phase 8c: KB Update
 

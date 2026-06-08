@@ -116,6 +116,7 @@ requirements = [
     ("PreToolUse", "jira-write-guard.sh", "JiraIssue"),
     ("PreToolUse", "confluence-size-guard.sh", "ConfluencePage"),
     ("PostToolUse", "track-skill.sh", "Skill"),
+    ("PostToolUse", "post-edit-shellcheck.sh", "Edit|Write"),
 ]
 
 for event, script, matcher in requirements:

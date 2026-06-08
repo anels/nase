@@ -7,6 +7,10 @@ unique filenames when reruns may overlap.
 
 ## Default Flow
 
+Use `.claude/scripts/workspace-write-guard.py` for full-file durable writes. The
+caller still owns producing the complete proposed target content; the helper owns
+target allowlisting, staging, diff output, and final drift rejection.
+
 1. **Read before write.** If the target exists, record both:
    - mtime: `stat -f %m "$file" 2>/dev/null || stat -c %Y "$file"`
    - hash: `shasum -a 256 "$file"`
@@ -24,6 +28,49 @@ unique filenames when reruns may overlap.
    `Target changed while drafting; staged file preserved at {path}`.
 6. **Apply narrowly.** Replace or append only the documented target. Do not run
    broad formatters over adjacent files.
+
+## Helper Usage
+
+Prepare the proposed complete target file first, then run:
+
+```bash
+python3 .claude/scripts/workspace-write-guard.py stage \
+  --target "$target" \
+  --content-file "$proposed" \
+  --skill "$skill" > workspace/tmp/write-guard.json
+```
+
+Show the diff before applying:
+
+```bash
+staged=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["staged"])' workspace/tmp/write-guard.json)
+python3 .claude/scripts/workspace-write-guard.py diff \
+  --target "$target" \
+  --staged "$staged" || true
+```
+
+After the user gate or documented auto-write gate, apply with the recorded
+metadata:
+
+```bash
+mtime_ns=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"]["mtime_ns"])' workspace/tmp/write-guard.json)
+sha256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"]["sha256"])' workspace/tmp/write-guard.json)
+python3 .claude/scripts/workspace-write-guard.py apply \
+  --target "$target" \
+  --staged "$staged" \
+  --expected-mtime-ns "$mtime_ns" \
+  --expected-sha256 "$sha256"
+```
+
+If the target changed, `apply` exits `3` and prints:
+`Target changed while drafting; staged file preserved at {path}`.
+
+Allowed targets are durable workspace paths under `workspace/kb/`,
+`workspace/tasks/`, `workspace/skills/`, `workspace/efforts/`,
+`workspace/journals/`, `workspace/logs/`, `workspace/context.md`,
+`workspace/communication-style.md`, and generated workspace skill wrappers
+under `.claude/commands/nase/workspace/`.
+`workspace/tmp/` is intentionally rejected as a target.
 
 ## Append-Only Exceptions
 

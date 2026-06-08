@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Stage and apply durable workspace writes with drift checks."""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import hashlib
+import json
+import os
+import re
+import shutil
+import sys
+import time
+from pathlib import Path
+
+
+ALLOWED_DIRS = (
+    "workspace/kb",
+    "workspace/tasks",
+    "workspace/skills",
+    "workspace/efforts",
+    "workspace/journals",
+    "workspace/logs",
+    ".claude/commands/nase/workspace",
+)
+ALLOWED_FILES = (
+    "workspace/context.md",
+    "workspace/communication-style.md",
+)
+DISALLOWED_DIRS = (
+    "workspace/tmp",
+)
+
+
+class GuardError(Exception):
+    def __init__(self, message: str, code: int = 2) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def die(message: str, code: int = 2) -> None:
+    raise GuardError(message, code)
+
+
+def relpath(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def root_path(value: str | None) -> Path:
+    if value:
+        return Path(value).expanduser().resolve()
+    return Path.cwd().resolve()
+
+
+def resolve_under_root(root: Path, value: str, label: str) -> Path:
+    raw = Path(value).expanduser()
+    candidate = raw if raw.is_absolute() else root / raw
+    resolved = candidate.resolve(strict=False)
+    if not resolved.is_relative_to(root):
+        die(f"{label} is outside workspace root: {value}")
+    return resolved
+
+
+def validate_target(root: Path, value: str) -> Path:
+    target = resolve_under_root(root, value, "target")
+    rel = relpath(target, root)
+
+    for directory in DISALLOWED_DIRS:
+        if target == root / directory or target.is_relative_to(root / directory):
+            die(f"target is not a durable workspace path: {rel}")
+
+    if rel in ALLOWED_FILES:
+        return target
+
+    for directory in ALLOWED_DIRS:
+        allowed = root / directory
+        if target.is_relative_to(allowed):
+            return target
+
+    die(f"target is not managed by workspace-write-guard: {rel}")
+    return target
+
+
+def validate_staged(root: Path, value: str) -> Path:
+    staged = resolve_under_root(root, value, "staged")
+    tmp_root = root / "workspace" / "tmp"
+    if not staged.is_relative_to(tmp_root):
+        die(f"staged file must be under workspace/tmp: {relpath(staged, root)}")
+    if not staged.is_file():
+        die(f"staged file does not exist: {relpath(staged, root)}")
+    return staged
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def file_state(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {"exists": False, "mtime_ns": "missing", "sha256": "missing"}
+    if not path.is_file():
+        die(f"target is not a regular file: {path}")
+    stat = path.stat()
+    return {
+        "exists": True,
+        "mtime_ns": str(stat.st_mtime_ns),
+        "sha256": sha256_file(path),
+    }
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    slug = slug.strip("-._")
+    return slug[:80] or "write"
+
+
+def staged_path(root: Path, target: Path, skill: str) -> Path:
+    tmp_dir = root / "workspace" / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    target_slug = slugify(relpath(target, root).replace("/", "-"))
+    skill_slug = slugify(skill)
+    suffix = target.suffix or ".txt"
+    return tmp_dir / f"staged-{skill_slug}-{target_slug}-{time.time_ns()}{suffix}"
+
+
+def cmd_stage(args: argparse.Namespace) -> None:
+    root = root_path(args.root)
+    target = validate_target(root, args.target)
+    content = resolve_under_root(root, args.content_file, "content file")
+    if not content.is_file():
+        die(f"content file does not exist: {relpath(content, root)}")
+
+    staged = staged_path(root, target, args.skill)
+    shutil.copyfile(content, staged)
+
+    output = {
+        "mode": "stage",
+        "target_path": relpath(target, root),
+        "target_abs": str(target),
+        "staged": relpath(staged, root),
+        "staged_abs": str(staged),
+        "target": file_state(target),
+        "diff_command": (
+            "python3 .claude/scripts/workspace-write-guard.py diff "
+            f"--target {relpath(target, root)} --staged {relpath(staged, root)}"
+        ),
+    }
+    print(json.dumps(output, indent=2, sort_keys=True))
+
+
+def text_lines(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+
+
+def cmd_diff(args: argparse.Namespace) -> None:
+    root = root_path(args.root)
+    target = validate_target(root, args.target)
+    staged = validate_staged(root, args.staged)
+    diff = difflib.unified_diff(
+        text_lines(target),
+        text_lines(staged),
+        fromfile=relpath(target, root),
+        tofile=relpath(staged, root),
+    )
+    sys.stdout.writelines(diff)
+
+
+def states_match(state: dict[str, object], expected_mtime_ns: str, expected_sha256: str) -> bool:
+    return state["mtime_ns"] == expected_mtime_ns and state["sha256"] == expected_sha256
+
+
+def cmd_apply(args: argparse.Namespace) -> None:
+    root = root_path(args.root)
+    target = validate_target(root, args.target)
+    staged = validate_staged(root, args.staged)
+    current = file_state(target)
+    if not states_match(current, args.expected_mtime_ns, args.expected_sha256):
+        die(
+            "Target changed while drafting; "
+            f"staged file preserved at {relpath(staged, root)}",
+            code=3,
+        )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp_target = target.parent / f".{target.name}.tmp-{os.getpid()}-{time.time_ns()}"
+    try:
+        shutil.copyfile(staged, tmp_target)
+        os.replace(tmp_target, target)
+    finally:
+        if tmp_target.exists():
+            tmp_target.unlink()
+
+    output = {
+        "applied": True,
+        "target": relpath(target, root),
+        "target_abs": str(target),
+        "staged": relpath(staged, root),
+        "target_state": file_state(target),
+    }
+    print(json.dumps(output, indent=2, sort_keys=True))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    stage = sub.add_parser("stage", help="Stage a proposed full-file replacement.")
+    stage.add_argument("--root", default=None)
+    stage.add_argument("--target", required=True)
+    stage.add_argument("--content-file", required=True)
+    stage.add_argument("--skill", required=True)
+    stage.set_defaults(func=cmd_stage)
+
+    diff = sub.add_parser("diff", help="Print a unified diff from target to staged file.")
+    diff.add_argument("--root", default=None)
+    diff.add_argument("--target", required=True)
+    diff.add_argument("--staged", required=True)
+    diff.set_defaults(func=cmd_diff)
+
+    apply = sub.add_parser("apply", help="Apply a staged file if target metadata still matches.")
+    apply.add_argument("--root", default=None)
+    apply.add_argument("--target", required=True)
+    apply.add_argument("--staged", required=True)
+    apply.add_argument("--expected-mtime-ns", required=True)
+    apply.add_argument("--expected-sha256", required=True)
+    apply.set_defaults(func=cmd_apply)
+
+    return parser
+
+
+def main(argv: list[str]) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        args.func(args)
+        return 0
+    except GuardError as exc:
+        print(str(exc), file=sys.stderr)
+        return exc.code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

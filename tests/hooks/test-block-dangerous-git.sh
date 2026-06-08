@@ -37,6 +37,28 @@ test_case() {
   fi
 }
 
+test_case_in_dir() {
+  local desc="$1" cmd="$2" expect="$3" workdir="$4"
+  local rc out
+  out=$(printf '{"tool_input":{"command":%s}}' "$(printf '%s' "$cmd" | jq -Rs .)" | (cd "$workdir" && bash "$HOOK") 2>&1)
+  rc=$?
+  if [[ "$expect" == "block" && "$rc" == "2" ]] || [[ "$expect" == "allow" && "$rc" == "0" ]]; then
+    printf 'PASS  [%s] %-30s rc=%s\n' "$expect" "$desc" "$rc"
+    pass=$((pass+1))
+  else
+    printf 'FAIL  [%s] %-30s rc=%s\n      out: %s\n' "$expect" "$desc" "$rc" "$out"
+    fail=$((fail+1))
+  fi
+}
+
+make_git_repo_on_branch() {
+  local branch="$1" dir
+  dir=$(mktemp -d)
+  git init -q "$dir"
+  git -C "$dir" checkout -q -b "$branch"
+  printf '%s\n' "$dir"
+}
+
 test_missing_jq() {
   local desc="missing jq fails closed"
   local cmd="g""it sta""tus"
@@ -72,6 +94,11 @@ test_invalid_json() {
     fail=$((fail+1))
   fi
 }
+
+MAIN_REPO=$(make_git_repo_on_branch main)
+RELEASE_REPO=$(make_git_repo_on_branch release/sprint-29)
+FEATURE_REPO=$(make_git_repo_on_branch feat/user-avatar)
+trap 'rm -rf "$MAIN_REPO" "$RELEASE_REPO" "$FEATURE_REPO"' EXIT
 
 # Should block — destructive operations
 test_case "reset hard"           "g""it res""et --hard HEAD~1"                  block
@@ -121,6 +148,13 @@ test_case "push origin release"  "g""it pu""sh origin release/sprint-29"        
 test_case "push arbitrary remote release" "g""it pu""sh backup release/sprint-29" block
 test_case "push refspec to release" "g""it pu""sh origin feature:release/sprint-29" block
 test_case "force push main"      "g""it pu""sh --force origin main"             block
+test_case_in_dir "default push from main" "g""it pu""sh" block "$MAIN_REPO"
+test_case_in_dir "remote-only push from main" "g""it pu""sh origin" block "$MAIN_REPO"
+test_case_in_dir "HEAD push from main" "g""it pu""sh origin HEAD" block "$MAIN_REPO"
+test_case_in_dir "force default push from main" "g""it pu""sh --force" block "$MAIN_REPO"
+test_case_in_dir "force-lease default push from main" "g""it pu""sh --force-with-lease" block "$MAIN_REPO"
+test_case_in_dir "default push from release" "g""it pu""sh" block "$RELEASE_REPO"
+test_case_in_dir "HEAD push from release" "g""it pu""sh origin HEAD" block "$RELEASE_REPO"
 test_case "tag force"            "g""it ta""g -f v1.2.3 HEAD"                  block
 test_case "tag force after args"  "g""it ta""g -a v1.2.3 -m msg -f"             block
 test_case "tag --force"          "g""it ta""g --force v1.2.3"                  block
@@ -215,6 +249,10 @@ test_case "tag list"             "g""it ta""g -l"                              a
 test_case "reflog show"          "g""it re""flog show"                         allow
 test_case "push feature"         "g""it pu""sh -u origin feat/user-avatar"      allow
 test_case "force-lease feature"  "g""it pu""sh --force-with-lease origin feat/x" allow
+test_case_in_dir "default push from feature" "g""it pu""sh" allow "$FEATURE_REPO"
+test_case_in_dir "remote-only push from feature" "g""it pu""sh origin" allow "$FEATURE_REPO"
+test_case_in_dir "HEAD push from feature" "g""it pu""sh origin HEAD" allow "$FEATURE_REPO"
+test_case_in_dir "force-lease default push from feature" "g""it pu""sh --force-with-lease" allow "$FEATURE_REPO"
 test_case "fetch"                "g""it -C /tmp/repo fe""tch origin"            allow
 test_case "log"                  "g""it l""og --oneline -5"                     allow
 test_case "status"               "g""it sta""tus --short"                       allow

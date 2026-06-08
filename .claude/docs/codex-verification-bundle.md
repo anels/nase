@@ -1,0 +1,64 @@
+# Codex Verification Bundle
+
+Shared bundle-generation algorithm for the Codex pre-push verification gate.
+Callers invoke Codex per `.claude/docs/codex-review.md`; this doc only owns the
+local markdown bundle that gives Codex enough diff context to verify the spec.
+Callers must still gate per `.claude/docs/codex-review.md → Prerequisite` and
+skip cleanly when the Codex MCP is unavailable.
+
+## Helper
+
+Use:
+
+```bash
+python3 .claude/scripts/codex-verify-bundle.py \
+  --repo "{worktree_or_repo}" \
+  --base "$BASE" \
+  --task "$TASK_SPEC" \
+  --output "{nase_workspace}/workspace/tmp/codex-verify-{short_sha}.md"
+```
+
+The helper writes a markdown bundle containing:
+- task spec verbatim
+- base ref
+- changed-line count
+- `git diff --stat`
+- `git diff --name-status`
+- untracked files
+- full diff when the diff is small
+- a largest-file diff sample when the diff is large
+
+Do not inline generated/binary/build artifacts in the command prompt. Let the
+bundle list them or sample only non-generated text files.
+
+## Codex Prompt Inputs
+
+Pass these fields to the Codex MCP prompt:
+- original task spec from `$ARGUMENTS`, verbatim
+- bundle absolute path
+- merge base
+- changed-file count and total changed lines from the bundle header
+- instruction: `If this manifest is insufficient to verify the spec, return NEEDS-HUMAN with the exact missing files or diff hunks instead of guessing.`
+
+## Result Handling
+
+Expected Codex output:
+
+```
+VERDICT: PASS | FAIL | NEEDS-HUMAN
+SPEC ITEMS NOT ADDRESSED: ...
+SCOPE CREEP: ...
+REASONING: ...
+```
+
+- `PASS`: log `Codex verify: PASS`, no prompt.
+- `NEEDS-HUMAN`: write the full output next to the bundle as
+  `codex-verify-{short_sha}-result.md`, then ask whether to push anyway, revise,
+  or show the diff side-by-side.
+- `FAIL`: do not push. Write the full output next to the bundle, show top
+  failures and result path, then ask whether to fix, override, or cancel.
+- Missing `VERDICT:`: treat as `NEEDS-HUMAN` and store raw output.
+
+If Codex asks for locally available context, read only those requested files or
+hunks, update the bundle, and rerun once. Do not loop beyond one context
+completion rerun without asking.

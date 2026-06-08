@@ -37,13 +37,23 @@ run_hook() {
 JSON
 }
 
+assert_json_context_contains() {
+  local output="$1" needle="$2"
+  jq -e --arg needle "$needle" \
+    '.hookSpecificOutput.hookEventName == "PreToolUse"
+      and (.hookSpecificOutput.additionalContext | contains($needle))' \
+    "$output" >/dev/null
+}
+
 mkdir -p "$TMPDIR_TEST/src" "$TMPDIR_TEST/docs" "$TMPDIR_TEST/tests" "$TMPDIR_TEST/workspace"
 touch "$TMPDIR_TEST/src/app.py" "$TMPDIR_TEST/docs/app.py" "$TMPDIR_TEST/tests/app.py" "$TMPDIR_TEST/workspace/app.py"
 
 run_hook "$TMPDIR_TEST/src/app.py" "$TMPDIR_TEST/src-run"
-assert_cmd "source edit emits reminder" grep -q '\[fact-force\]' "$TMPDIR_TEST/src-run.err"
+assert_cmd "source edit emits additionalContext reminder" assert_json_context_contains "$TMPDIR_TEST/src-run.out" '[fact-force]'
+assert_cmd "source edit does not write stderr" test ! -s "$TMPDIR_TEST/src-run.err"
 
 run_hook "$TMPDIR_TEST/src/app.py" "$TMPDIR_TEST/src-second"
+assert_cmd "same file emits no stdout" test ! -s "$TMPDIR_TEST/src-second.out"
 assert_cmd "same file only warns once" test ! -s "$TMPDIR_TEST/src-second.err"
 
 (
@@ -59,6 +69,7 @@ assert_cmd "relative workspace path skipped" test ! -s "$TMPDIR_TEST/workspace-r
 NASE_FACT_FORCE=0 CLAUDE_SESSION_ID="disabled-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$TMPDIR_TEST/disabled.out" 2>"$TMPDIR_TEST/disabled.err" <<JSON
 {"tool_input":{"file_path":"$TMPDIR_TEST/src/app.py"}}
 JSON
+assert_cmd "NASE_FACT_FORCE emits no stdout" test ! -s "$TMPDIR_TEST/disabled.out"
 assert_cmd "NASE_FACT_FORCE disables hook" test ! -s "$TMPDIR_TEST/disabled.err"
 
 if [[ "$failures" -eq 0 ]]; then

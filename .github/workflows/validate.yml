@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -15,7 +18,7 @@ jobs:
 
       - name: Install tools
         run: |
-          sudo apt-get install -y shellcheck python3 jq
+          sudo apt-get install -y shellcheck python3 jq ripgrep
 
       - name: Full local validation gate
         run: bash tests/check-all.sh

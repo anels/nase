@@ -41,6 +41,19 @@ lowercase() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+set_git_context_dir() {
+  local next_dir="$1"
+
+  if [ -z "$next_dir" ]; then
+    return 0
+  fi
+  if [[ "$next_dir" != /* && -n "${GIT_CONTEXT_DIR:-}" ]]; then
+    GIT_CONTEXT_DIR="${GIT_CONTEXT_DIR%/}/$next_dir"
+  else
+    GIT_CONTEXT_DIR="$next_dir"
+  fi
+}
+
 is_shell_keyword() {
   case "$1" in
     if|then|elif|else|fi|while|until|do|done|for|select|'case'|'esac'|'!')
@@ -414,6 +427,7 @@ normalize_segment() {
   local idx=0 word found_git=0
   local -a prefix_assignments=()
 
+  GIT_CONTEXT_DIR=""
   split_words "$segment"
   [ "${#WORDS[@]}" -gt 0 ] || return 1
 
@@ -506,6 +520,9 @@ normalize_segment() {
         idx=$((idx + 2))
         ;;
       -C|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix|--attr-source)
+        if [ "$word" = "-C" ] && [ $((idx + 1)) -lt "${#WORDS[@]}" ]; then
+          set_git_context_dir "${WORDS[$((idx + 1))]}"
+        fi
         idx=$((idx + 2))
         ;;
       --config-env=*)
@@ -631,6 +648,120 @@ scan_git_config_args() {
   scan_git_config_value "$key=$value"
 }
 
+current_git_branch() {
+  local branch=""
+
+  if [ -n "${GIT_CONTEXT_DIR:-}" ]; then
+    branch=$(git -C "$GIT_CONTEXT_DIR" branch --show-current 2>/dev/null || true)
+    if [ -z "$branch" ]; then
+      branch=$(git -C "$GIT_CONTEXT_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    fi
+  else
+    branch=$(git branch --show-current 2>/dev/null || true)
+    if [ -z "$branch" ]; then
+      branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    fi
+  fi
+
+  printf '%s' "$branch"
+}
+
+is_protected_branch_name() {
+  case "$1" in
+    main|master|develop|release/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+protected_branch_push_msg() {
+  case "$1" in
+    release/*)
+      printf 'default push from release/* branch (use cherry-pick PR flow instead)'
+      ;;
+    *)
+      printf 'default push from protected branch (main/master/develop) per CLAUDE.md'
+      ;;
+  esac
+}
+
+push_option_takes_value() {
+  case "$1" in
+    --receive-pack|--exec|--repo|--push-option|-o)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+collect_push_positionals() {
+  local idx=1 arg saw_remote=0
+
+  PUSH_REMOTE=""
+  PUSH_REFSPECS=()
+  while [ "$idx" -lt "${#NORM_ARGS[@]}" ]; do
+    arg="${NORM_ARGS[$idx]}"
+    case "$arg" in
+      --)
+        idx=$((idx + 1))
+        while [ "$idx" -lt "${#NORM_ARGS[@]}" ]; do
+          arg="${NORM_ARGS[$idx]}"
+          if [ "$saw_remote" -eq 0 ]; then
+            PUSH_REMOTE="$arg"
+            saw_remote=1
+          else
+            PUSH_REFSPECS+=("$arg")
+          fi
+          idx=$((idx + 1))
+        done
+        return 0
+        ;;
+      --receive-pack=*|--exec=*|--repo=*|--push-option=*|-o=*)
+        idx=$((idx + 1))
+        continue
+        ;;
+      -*)
+        if push_option_takes_value "$arg"; then
+          idx=$((idx + 2))
+        else
+          idx=$((idx + 1))
+        fi
+        continue
+        ;;
+      *)
+        if [ "$saw_remote" -eq 0 ]; then
+          PUSH_REMOTE="$arg"
+          saw_remote=1
+        else
+          PUSH_REFSPECS+=("$arg")
+        fi
+        idx=$((idx + 1))
+        ;;
+    esac
+  done
+}
+
+block_implicit_protected_push() {
+  local branch msg refspec normalized
+
+  branch=$(current_git_branch)
+  [ -n "$branch" ] || return 0
+  is_protected_branch_name "$branch" || return 0
+  msg=$(protected_branch_push_msg "$branch")
+
+  if [ "${#PUSH_REFSPECS[@]}" -eq 0 ]; then
+    block "$msg"
+  fi
+
+  for refspec in "${PUSH_REFSPECS[@]}"; do
+    normalized="${refspec#+}"
+    if [ "$normalized" = "HEAD" ] || [ "$normalized" = "@" ]; then
+      block "$msg"
+    fi
+  done
+}
+
 apply_policy() {
   local subcmd="${NORM_ARGS[0]:-}"
   local protected_ref='(refs/heads/)?(main|master|develop)'
@@ -690,6 +821,8 @@ apply_policy() {
 
   # Push to protected branches (any form: explicit ref, HEAD:ref, release/*).
   if [ "$subcmd" = "push" ]; then
+    collect_push_positionals
+    block_implicit_protected_push
     check "${remote_ref}[[:space:]]+\+?${protected_ref}([[:space:]:]|$)" "$protected_msg"
     check "${remote_ref}[[:space:]]+[^[:space:]]+:\+?${protected_ref}([[:space:]]|$)" "$protected_msg"
     check "HEAD:\+?${protected_ref}([[:space:]]|$)" 'push HEAD to protected branch'

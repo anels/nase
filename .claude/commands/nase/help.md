@@ -1,6 +1,7 @@
 ---
 name: nase:help
 description: Display a usage guide for this AI engineer workspace. Use when asked "what commands are available?", "how does nase work?", "help", "show commands", "what can you do?", "what skills do you have?", or for an overview of skills and hooks.
+pattern: utility
 ---
 
 Runs `.claude/scripts/help-summary.py` so README parsing, command capping, KB layout scanning, and workspace-skill listing stay deterministic. Default output is compact; pass `--verbose` for the full README sections.

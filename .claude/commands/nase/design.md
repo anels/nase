@@ -1,10 +1,12 @@
 ---
 name: nase:design
 description: "KB-aware design — researches context, explores 2-3 approaches with tradeoffs, writes a tracked effort doc. Design only, no code (use /nase:fsd to implement). Supports `--grill` (stress-test), `--review` (re-evaluate), `--auto` (end-to-end design pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
+pattern: pipeline
 ---
 
 Turn ideas into a concrete, tracked design plan through KB-aware research.
 Follows `.claude/docs/external-mutation-policy.md` — optional Jira issue creation goes through `AskUserQuestion` plus the Jira write-token backstop.
+Follows `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-lifecycle.md` for `workspace/efforts/` and `workspace/tasks/` writes. Use `python3 .claude/scripts/workspace-write-guard.py stage` for Phase 5 full-file writes. Phase 5 is an approved auto-write path, so it skips the prompt but not staging, diff/preview, or final mtime/hash drift checks.
 
 ## Design Principles Framework
 
@@ -223,7 +225,7 @@ The user never sees the intermediate review scores — they just get a higher-qu
 
 ## Phase 5: Write Design Doc + Track
 
-After the design passes self-review (Phase 4b), write the effort doc directly — do not ask for approval first. The user reviews the written artifact, not a verbal presentation.
+After the design passes self-review (Phase 4b), write the effort doc directly — do not ask for approval first. The user reviews the written artifact, not a verbal presentation. Follow `.claude/docs/effort-lifecycle.md → Design Creation`; build the proposed full `workspace/efforts/{slug}.md` and `workspace/tasks/todo.md` content under `workspace/tmp/`, stage both with `workspace-write-guard.py stage`, show the helper diff, then apply with `workspace-write-guard.py apply`.
 
 **5a. Write design doc:**
 Save to `workspace/efforts/{slug}.md` (create `efforts/` dir if missing):
@@ -279,11 +281,7 @@ Design doc saved. No follow-up prompt. Effort surfaces in `/nase:today`. User de
 
 ## Lifecycle Updates (by other skills)
 
-The effort doc is updated by other skills as the effort progresses — no orchestrator needed:
-- `/nase:fsd` → checks off "Implementation started" + "PR opened", updates `status: in-progress`
-- `/nase:prep-merge` → checks off "Review passed", updates `status: merge-ready` (not "Merged" — actual merge is a human action on GitHub)
-- `/nase:wrap-up` → can reference active efforts in the daily journal
-- User can manually update any lifecycle item at any time
+Effort lifecycle state is owned by `.claude/docs/effort-lifecycle.md`; this command creates the initial doc, while `/nase:fsd`, `/nase:prep-merge`, and `/nase:wrap-up` follow that shared contract for later updates.
 
 ## Quality Criteria
 

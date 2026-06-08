@@ -118,11 +118,15 @@ Configure MCP servers in your Claude Code `settings.json` (or `settings.local.js
 
 ## What nase is
 
-A personal AI engineering workbench for Claude Code:
+A personal AI engineering workbench for Claude Code. It is organized like a
+small kernel around Claude Code: Markdown commands define workflows, lifecycle
+hooks gate risky tool calls, scripts provide deterministic checks, and
+`workspace/` holds human-readable state.
 
-- **Per-repo KB** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and tasks load only relevant files.
-- **30+ slash commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
-- **Hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
+- **Human-readable memory** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and tasks load only relevant files instead of dumping the whole repo into context.
+- **30+ Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
+- **Lifecycle hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
+- **Evidence loops** — PR/review commands require repo evidence, focused tests, and optional read-only Codex checks when configured.
 - **Offline PR evals** — `evals/pr-review/` contains deterministic output-shape checks for high-frequency PR/review workflows.
 
 `workspace/` content persists locally and is auto-backed-up. The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) lives in git; your content stays local.
@@ -134,6 +138,15 @@ Run the PR/review eval schema check locally:
 ```bash
 python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 ```
+
+### Design principles
+
+- **Deterministic guardrails beat prompt promises.** Prompt rules describe intent; hooks and tests enforce the dangerous edges: protected-branch pushes, destructive git, direct Slack sends, Jira mutations, oversized Confluence writes, and shell-script regressions.
+- **Context is sliced, not dumped.** Commands read repo KB, domain maps, GitHub metadata, focused diffs, and script-filtered logs before pulling more files into context.
+- **Knowledge stays reviewable.** Durable memory is plain Markdown under `workspace/kb/`, `workspace/tasks/`, `workspace/skills/`, and `workspace/journals/`; humans can inspect, edit, delete, and share it.
+- **Review claims need evidence.** PR and audit workflows should back findings with source paths, diffs, tests, logs, or `gh`/`rg`/`ast-grep` output, then drop candidates that cannot be verified.
+- **External writes stay human-triggered.** Slack uses drafts, Jira writes require a short-lived token after approval, Confluence writes are size-guarded, and GitHub review posting happens only after explicit instruction.
+- **Skills are files.** New workflow behavior should live as a command, shared doc, script, hook, or eval case, not as hidden state in one conversation.
 
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: nase:kb-gap-detect
 description: Scan recent daily logs and lessons for knowledge-gap signals (uncertainty, doc lookups, SME teachings, first-time encounters, post-error realizations), cluster by topic, cross-check against the KB, and propose KB additions for missing topics. Read-only by default — never writes KB without explicit approval. Complements `/nase:kb-review` (which finds stale/duplicate entries; this finds *missing* ones). Triggers — "knowledge gap", "find KB holes", "what should I document", "查漏补缺", "KB 缺失".
+pattern: pipeline
 ---
 
 Detect knowledge-base gaps by mining daily logs + lessons for repeated questions and learnings that aren't yet captured in the KB.
@@ -12,6 +13,8 @@ Detect knowledge-base gaps by mining daily logs + lessons for repeated questions
 - `--repo NAME` — restrict scan to logs containing this repo name
 - `--auto` — write proposed KB drafts directly without prompting
 - `--verbose` — also dump full report inline in chat
+
+Follows `.claude/docs/workspace-write-guard.md` for applied KB drafts and daily-log apply-count updates. Auto-write modes only skip human confirmation; they never skip final drift checks. `--auto` skips only the prompt, not target staging or `workspace-write-guard.py apply`.
 
 ## Output Discipline
 
@@ -156,7 +159,7 @@ options:
 
 For each applied gap:
 1. Read the target KB file
-2. Append the draft under the appropriate section header (or create the section if missing)
+2. Stage the updated target under `workspace/tmp/`, show the diff, re-check mtime/hash, then append the draft under the appropriate section header (or create the section if missing)
 3. Increment the daily-log apply tally
 
 ### Step 9: Chat summary

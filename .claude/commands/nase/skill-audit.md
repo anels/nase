@@ -1,6 +1,7 @@
 ---
 name: nase:skill-audit
 description: "Scan skill files for security risks — command injection, data exfiltration, prompt injection, unsafe file ops, supply chain threats, and credential exposure. Use before importing external skills, after /nase:kb-merge, or periodically as security hygiene. Triggers on: 'audit skills', 'scan skills', 'skill security', 'check skills for safety', or when importing untrusted skill files."
+pattern: utility
 ---
 
 Scan skill files for security risks before they can cause damage. Returns PASS/WARN/FAIL per file with specific findings.

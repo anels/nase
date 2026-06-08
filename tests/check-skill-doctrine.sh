@@ -11,6 +11,9 @@
 #   D6. restore archive flow missing path traversal / symlink hardening
 #   D7. kb-merge external import flow missing canonical path / symlink hardening
 #   D8. kb-merge generated skill wrappers missing frontmatter sanitization
+#   D9. core skill files missing architecture `pattern:` frontmatter
+#   D10. durable workspace write skills missing workspace-write-guard.md
+#   D11. auto-write modes allowed to skip drift checks
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -260,6 +263,130 @@ if [[ -n "$d8_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': kb-merge wrapper frontmatter sanitization present\n'
+fi
+
+# ---------- D9: core skills declare architecture pattern -------------------
+section "D9: core skills declare architecture pattern"
+d9_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+allowed = {"pipeline", "fan-out", "expert-pool", "producer-reviewer", "supervisor", "utility"}
+hits = []
+
+for path in sorted(Path(".claude/commands/nase").glob("*.md")):
+    if path.parent.name == "workspace":
+        continue
+    text = path.read_text(encoding="utf-8")
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        hits.append(f"  {path}: missing frontmatter")
+        continue
+    fields = {}
+    for line in match.group(1).splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        fields[key.strip()] = value.strip().strip('"').strip("'")
+    pattern = fields.get("pattern")
+    if not pattern:
+        hits.append(f"  {path}: missing pattern")
+    elif pattern not in allowed:
+        hits.append(f"  {path}: invalid pattern '{pattern}'")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d9_hits" ]]; then
+  red "FAIL"; printf ': core skill files missing valid pattern frontmatter:\n'
+  printf '%s\n' "$d9_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': all core skills declare architecture pattern\n'
+fi
+
+# ---------- D10: durable workspace writes use shared guard -----------------
+section "D10: durable workspace writes use workspace-write-guard"
+d10_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+durable_path = re.compile(r"workspace/(?:kb/|tasks/|skills/|efforts/|context\.md|communication-style\.md)")
+write_verb = re.compile(
+    r"\b(write|append|create|update|save|persist|prepend|overwrite|replace|move|delete|remove|promote|mark|register|check off|add to|sync)\b",
+    re.I,
+)
+read_only = re.compile(
+    r"\b(read|scan|search|list|surface|show|report|flag|follow-up|will later|never writes?|read-only|do not write|does not write|without writing)\b",
+    re.I,
+)
+exempt = {
+    "init.md",      # bootstrap creates the first workspace skeleton
+    "restore.md",   # restore owns archive safety and replaces workspace by design
+}
+
+hits = []
+for path in sorted(Path(".claude/commands/nase").glob("*.md")):
+    if path.name in exempt or path.parent.name == "workspace":
+        continue
+    text = path.read_text(encoding="utf-8")
+    if "workspace-write-guard.md" in text:
+        continue
+
+    in_code = False
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if line.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        if durable_path.search(line) and write_verb.search(line) and not read_only.search(line):
+            hits.append(f"  {path}:{lineno}: {line.strip()}")
+            break
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d10_hits" ]]; then
+  red "FAIL"; printf ': durable workspace write skills missing workspace-write-guard.md:\n'
+  printf '%s\n' "$d10_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': durable workspace write skills use shared guard\n'
+fi
+
+# ---------- D11: auto-write modes cannot skip drift checks -----------------
+section "D11: auto-write modes preserve drift checks"
+d11_hits=$(python3 - <<'PY'
+from pathlib import Path
+
+required = "Auto-write modes only skip human confirmation; they never skip final drift checks."
+targets = {
+    ".claude/commands/nase/kb-gap-detect.md": "--auto",
+    ".claude/commands/nase/extract-skills.md": "--auto-accept",
+    ".claude/commands/nase/wrap-up.md": "automatic KB update",
+}
+
+hits = []
+for filename, marker in targets.items():
+    path = Path(filename)
+    text = path.read_text(encoding="utf-8")
+    if marker not in text:
+        hits.append(f"  {path}: missing auto-write marker {marker!r}")
+    elif required not in text:
+        hits.append(f"  {path}: missing exact auto-write drift-check rule")
+    elif "workspace-write-guard.py apply" not in text and path.name != "extract-skills.md":
+        hits.append(f"  {path}: missing helper apply reference")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d11_hits" ]]; then
+  red "FAIL"; printf ': auto-write paths must preserve final drift checks:\n'
+  printf '%s\n' "$d11_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': auto-write modes preserve drift checks\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

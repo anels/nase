@@ -1,11 +1,13 @@
 ---
 name: nase:prep-merge
 description: Prepare a PR for merge — verify all comments resolved, squash commits, force-push, and update PR title/description. Use when given a PR URL and asked to prepare, clean up, squash, finalize, or get a PR merge-ready. Also triggers on "prep merge", "squash and push", "clean up PR", "ready to merge", "finalize PR", or any request to tidy a PR's commit history before merging.
+pattern: pipeline
 ---
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
 Follows `.claude/docs/external-mutation-policy.md` — review-thread resolution, force-push, `gh pr edit`, and `gh pr ready` go through `AskUserQuestion` before the call.
+Follows `.claude/docs/workspace-write-guard.md` for effort lifecycle updates.
 
 ---
 
@@ -375,6 +377,10 @@ gh pr edit {pr_number} --repo {owner}/{repo} \
 NASE_PR_BODY
 )"
 ```
+
+## Phase 9b: Effort Doc Update
+
+Follow `.claude/docs/effort-lifecycle.md → Prep-Merge Update`. If the PR or branch maps to `workspace/efforts/{slug}.md`, stage the `Review passed` lifecycle/status edit with the workspace write guard. Do not mark `Merged`; actual merge is a human action on GitHub.
 
 ## Phase 10: Cleanup & Report
 

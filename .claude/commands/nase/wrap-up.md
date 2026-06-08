@@ -1,6 +1,7 @@
 ---
 name: nase:wrap-up
 description: Run at end of day to capture reflection, lessons, KB updates, and a journal entry in one pass. Use when the user says "wrap up", "end of day", "EOD", "done for today", "closing out", or wants to summarize today's work.
+pattern: pipeline
 ---
 
 End-of-day pass: reflection → lessons → skill extraction → KB updates → style deltas → journal entry. Each step feeds the next; skipping early steps is fine — the conditional logic handles this automatically.
@@ -17,6 +18,7 @@ Verify file existence before reading — degrade gracefully if files are missing
 Follows `.claude/docs/external-mutation-policy.md` — Jira `transitionJiraIssue` calls in Step 5/6 go through `AskUserQuestion` before the API call.
 Follows `.claude/docs/style-delta-capture.md` — Step 4e consumes pending `[STYLE-DELTA]` lines from today's log and proposes approval-gated edits to `workspace/communication-style.md`.
 Follows `.claude/docs/confidential-marker.md` — do not promote `[CONFIDENTIAL]` log content into KB, recap, or journal prose.
+Follows `.claude/docs/workspace-write-guard.md` for KB updates, lessons calibration, style deltas, log compaction, journals, and self-log writes. Auto-write modes only skip human confirmation; they never skip final drift checks. Use `python3 .claude/scripts/workspace-write-guard.py stage` and `workspace-write-guard.py apply` for full-file durable writes; automated append-only exceptions still use narrow writes.
 
 ## Steps
 
@@ -80,6 +82,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
    - New patterns, architectural decisions, constraints clarified, gotchas found.
 3. If meaningful updates exist, write directly to the relevant KB file(s):
    - **Conflict check (lightweight):** Before writing, extract 1–2 key terms from the planned entry and Grep the *target KB file only* (not the full KB directory). If a matching entry is found, compare: if it's a true duplicate, skip the write; if it's genuinely new or complementary information, proceed.
+   - Build each proposed complete KB file under `workspace/tmp/`, stage it with `workspace-write-guard.py stage`, show the helper diff, and apply with `workspace-write-guard.py apply`.
    - Read the target KB file, locate the right section, append the new entry.
    - Use the standard `### YYYY-MM-DD — {topic}` format (same as `/nase:kb-update`).
    - Update the `<!-- Last updated: YYYY-MM-DD -->` timestamp.
@@ -99,7 +102,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 2. For each estimate, check today's session entries and completed tasks for evidence of actual completion time
 3. If the task was completed today, estimate actual elapsed time from session entry timestamps or narrative
 4. Compare realistic estimate vs actual:
-   - Divergence ≥ 30%: append a calibration note to `workspace/tasks/lessons.md` (header format per `.claude/docs/lessons-format.md`):
+   - Divergence ≥ 30%: stage and append a calibration note to `workspace/tasks/lessons.md` (header format per `.claude/docs/lessons-format.md`), then run the final mtime/hash drift check:
      ```
      ## calibration -- {YYYY-MM-DD} -- ETA: {task name}
      **Estimated:** {realistic estimate} | **Actual:** ~{actual} | **Drift:** {over/under} by ~{%}
@@ -145,8 +148,8 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 **If condition met:**
 1. Read the log file. Identify non-confidential `## Sessions` entries with timestamps older than 4 hours (older than `now − 4h`) AND no follow-up activity (no later entry that references the same PR / SRE ticket / file path).
 2. For each stale entry, collapse it to a one-line summary: `HH:MM — {topic} — {outcome}`. Preserve PR / Jira / Confluence URLs verbatim.
-3. Move the original full-text entries into `workspace/logs/archive/{YYYY-MM-DD}-full.md` (append, do not overwrite — multiple wrap-ups in one day may each compact a different slice). Leave `[CONFIDENTIAL]` entries unchanged in the live log; do not summarize or relocate them.
-4. Rewrite the live log: keep the today-header, keep all entries from the last 4 hours full-fidelity, replace older entries with their one-line summaries under a `## Sessions (compacted)` subheading.
+3. Stage the archive append, then move the original full-text entries into `workspace/logs/archive/{YYYY-MM-DD}-full.md` (append, do not overwrite — multiple wrap-ups in one day may each compact a different slice). Leave `[CONFIDENTIAL]` entries unchanged in the live log; do not summarize or relocate them.
+4. Stage and rewrite the live log: keep the today-header, keep all entries from the last 4 hours full-fidelity, replace older entries with their one-line summaries under a `## Sessions (compacted)` subheading. Re-check mtime/hash before applying both log writes.
 
 **If condition NOT met:** skip silently.
 
@@ -209,7 +212,7 @@ Follow `.claude/docs/closing-block.md` for shape, name resolution, style palette
 
 **Section omission (instruction, not part of template):** omit the `## Today's Stats` section if `~/.claude/usage-data/session-meta/` produced no data. Omit `## Lessons` / `## KB Updates` only via their respective skip notes — do not leave headers empty.
 
-1. Write to `workspace/journals/{YYYY-MM-DD}.md`. If the file already exists, overwrite it with the latest content (re-running wrap-up produces a fresh result, not a duplicate append).
+1. Stage and write to `workspace/journals/{YYYY-MM-DD}.md`. If the file already exists, overwrite it with the latest content (re-running wrap-up produces a fresh result, not a duplicate append). For journal rewrites, follow the same helper sequence (`workspace-write-guard.py stage`, diff, then `apply`); use the append-only exception only for narrow log entries.
 
 ```markdown
 # Wrap-up — {YYYY-MM-DD}
@@ -266,7 +269,7 @@ Follow `.claude/docs/language-config.md` for conversation vs output language.
 
 ### Step 7: Self-log (mandatory)
 
-Append a `wrap-up` bullet per `.claude/docs/daily-log-format.md → Self-logging rule`. Summary content: `N lessons captured · M KB updates · style-delta {status} · journal written`.
+Append a `wrap-up` bullet per `.claude/docs/daily-log-format.md → Self-logging rule`. Summary content: `N lessons captured · M KB updates · style-delta {status} · journal written`. Append-only exception applies, but keep the write narrow and do not rewrite unrelated log content.
 
 </workflow>
 

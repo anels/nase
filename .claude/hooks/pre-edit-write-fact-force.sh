@@ -7,7 +7,8 @@
 # before the first edit of a source file in a session: callers/importers,
 # public-API impact, and the originating user instruction.
 #
-# Non-blocking — emits a stderr reminder once per session per file. Exit 0.
+# Non-blocking — emits a PreToolUse additionalContext reminder once per session
+# per file. Exit 0.
 #
 # Scope:
 #   - Fires for Edit/Write/MultiEdit on source files (.py .ts .tsx .js .jsx .go .cs
@@ -82,8 +83,7 @@ fi
 # Record the file as warned.
 echo "$FILE_PATH" >> "$STATE_FILE"
 
-# Emit reminder (stderr, exit 0 — non-blocking).
-cat >&2 <<EOF
+context=$(cat <<EOF
 [fact-force] First edit to $FILE_PATH this session. Before applying, in your
 next response include three facts so the change is grounded, not reflexive:
 
@@ -96,5 +96,9 @@ next response include three facts so the change is grounded, not reflexive:
 
 Inspired by ECC gateguard-fact-force. Disable with NASE_FACT_FORCE=0.
 EOF
+)
+
+jq -n --arg ctx "$context" \
+  '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}'
 
 exit 0
