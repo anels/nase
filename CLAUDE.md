@@ -37,7 +37,7 @@ Guidance for Claude Code when working in this repository.
 - Put one-off artifacts under `workspace/tmp/`.
 
 ### Session Lifecycle
-- First setup: `/nase:init`. First session of the day: `/nase:tech-digest` if today has no entry. If hook output contains `DISPLAY_TO_USER`, show it. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
+- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. If hook output contains `DISPLAY_TO_USER`, show it. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
 
 ### Repo & KB Workflow
 - Before repo work, run `/nase:onboard <path-or-url>` or `/nase:onboard`, then read the repo KB via `workspace/kb/.domain-map.md`. Load only relevant KB files.
@@ -46,7 +46,7 @@ Guidance for Claude Code when working in this repository.
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → `/nase:improve-commit-message` → `git push`.
-- For this repo before push: run `bash tests/check-all.sh` (local link check skips if `lychee` is missing; CI still runs it).
+- For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` and link checks skip if the tools are missing; CI still runs them).
 
 ### Logging & External Services
 - Append real-time one-line entries to `workspace/logs/YYYY-MM-DD.md` for completions, mistakes, user corrections, and decisions. Format: `.claude/docs/daily-log-format.md`.

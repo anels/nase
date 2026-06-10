@@ -18,6 +18,13 @@ Follows `.claude/docs/workspace-write-guard.md` for status-sync edits to `worksp
 
 Run Step 0 first (preflight, blocking), then Step 1 (needed by 1b), then Steps 1b–4b in parallel, then Step 4c (Need Attention), then combine into Step 5 output. Honor `--verbose` from $ARGUMENTS for output caps in Step 5. Generate Step 4d (closing block) last so it can draw on the full picture and render as the final visible block.
 
+**Bash idioms (avoid PATH/zsh pitfalls):**
+- Do **not** use `cut`, `awk`, `sed` inside `$(...)` subshells — Bash-tool zsh PATH is inconsistent and RTK hook can mangle pipelines. Use bash parameter expansion instead: `path="${line#*=}"`, `st="${st_line#status: }"`.
+- Do **not** name variables `status` — zsh reserves it read-only. Use `st`, `pr_state`, etc.
+- When external utilities are unavoidable, call by absolute path: `/usr/bin/grep`, `/usr/bin/stat`, `/opt/homebrew/bin/gh`, `/usr/bin/jq`.
+- For `.local-paths` reads, use `/usr/bin/grep "^${key}=" .local-paths` + `${line#*=}`.
+- For YAML frontmatter `status:` reads, use `/usr/bin/grep -m1 "^status:" "$f"` + `${st_line#status: }`.
+
 ### 0. Language preflight (MUST run first, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. If `workspace/config.md` is missing, default English and note it in the Yesterday line.
@@ -154,7 +161,6 @@ If Slack MCP unavailable or no results: skip silently.
 Build a lightweight `need_attention_items` list from signals already gathered in Steps 1–4 plus one cheap log/lesson scan. This is daily triage, not a full report.
 
 **Additional cheap scans:**
-- **Tech digest state:** check `workspace/kb/general/tech-trends.md` for `## Tech Digest — {today}`. If missing, add a maintenance item and action candidate for `/nase:tech-digest`.
 - **Recent KB gap signals:** run:
   ```bash
   RANGE=$(python3 .claude/scripts/date-resolve.py 7d)
@@ -170,7 +176,6 @@ Build a lightweight `need_attention_items` list from signals already gathered in
 - Overdue or due-today scheduled maintenance from Step 1c
 - Active efforts stalled by mtime or pending checkbox text from Step 1b-vii
 - Stale project KB entries from Step 2, especially those with known new commits
-- Missing tech digest for today
 - Recent KB-gap scan hits
 - Jira tickets from Step 4a whose extracted `updated` timestamp is within the last 48h
 - Slack Pulse threads from Step 4b that survived the already-acknowledged filter
@@ -182,7 +187,7 @@ Build a lightweight `need_attention_items` list from signals already gathered in
 - `tracking_only: true` efforts appear as awareness items only.
 
 **Ranking order:**
-1. User-unblocking items with a concrete next command (`/nase:design --review`, `/nase:onboard`, `/nase:tech-digest`, `/nase:kb-gap-detect`)
+1. User-unblocking items with a concrete next command (`/nase:design --review`, `/nase:onboard`, `/nase:kb-gap-detect`)
 2. Overdue/due maintenance
 3. In-review PRs and Slack/Jira items that likely need user response
 4. Stale KB with known new commits
@@ -199,7 +204,7 @@ For each item, store:
 Cap Need Attention output at 5 items by default; with `--verbose`, show all.
 
 **Action menu:** derive up to three options from the highest-ranked actionable items, plus `Skip`. Allowed option types:
-- `Run maintenance: /nase:{skill}` — due/overdue scheduled maintenance or missing tech digest
+- `Run maintenance: /nase:{skill}` — due/overdue scheduled maintenance
 - `Refresh KB: /nase:onboard {repo-path}` — stale project KB with commits and a resolved repo path
 - `Detect KB gaps: /nase:kb-gap-detect --days 7 --min-recurrence 1` — recent log/lesson signals
 - `Review effort: /nase:design --review {slug}` — stalled active planning/implementation effort
@@ -322,7 +327,7 @@ Append a `today` bullet per `.claude/docs/daily-log-format.md → Self-logging r
 </workflow>
 
 ## Notes
-- If today's tech digest hasn't been run yet, suggest `/nase:tech-digest` first. Check via `grep -c "## Tech Digest — $(date +%F)" workspace/kb/general/tech-trends.md` (≥1 means already run). Do NOT check `workspace/tech-digest/` — that directory does not exist; digests live as headers inside `tech-trends.md`.
+- `/nase:tech-digest` is optional. Do not add it to `/nase:today` Need Attention or the proactive action menu just because today's digest is missing.
 - Emphasis on **what to do today** — yesterday is context only, keep it brief
 - Focus list should be actionable and realistic for one day
 - Skip completed items

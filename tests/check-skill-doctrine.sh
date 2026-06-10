@@ -14,6 +14,7 @@
 #   D9. core skill files missing architecture `pattern:` frontmatter
 #   D10. durable workspace write skills missing workspace-write-guard.md
 #   D11. auto-write modes allowed to skip drift checks
+#   D12. /nase:today treats tech-digest as a proactive action instead of optional
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -334,8 +335,9 @@ for path in sorted(Path(".claude/commands/nase").glob("*.md")):
         continue
 
     in_code = False
+    fence = chr(96) * 3
     for lineno, line in enumerate(text.splitlines(), 1):
-        if line.startswith("```"):
+        if line.startswith(fence):
             in_code = not in_code
             continue
         if in_code:
@@ -387,6 +389,44 @@ if [[ -n "$d11_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': auto-write modes preserve drift checks\n'
+fi
+
+# ---------- D12: today does not push optional tech-digest ------------------
+section "D12: /nase:today keeps tech-digest optional"
+d12_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+path = Path(".claude/commands/nase/today.md")
+text = path.read_text(encoding="utf-8")
+root_guidance = Path("CLAUDE.md").read_text(encoding="utf-8")
+
+hits = []
+try:
+    step4c = text.split("### 4c. Need Attention scan + action menu", 1)[1]
+    step4c = step4c.split("### 4d. Closing block", 1)[0]
+except IndexError:
+    hits.append(f"  {path}: missing Step 4c or Step 4d anchor")
+else:
+    if re.search(r"tech[- ]digest", step4c, re.IGNORECASE):
+        hits.append(f"  {path}: Step 4c mentions tech-digest; keep it out of Need Attention/action menu")
+
+expected_optional_note = chr(96) + "/nase:tech-digest" + chr(96) + " is optional"
+if expected_optional_note not in text:
+    hits.append(f"  {path}: missing explicit optional tech-digest note")
+
+if re.search(r"First session of the day:\s*`/nase:tech-digest`", root_guidance):
+    hits.append("  CLAUDE.md: first-session guidance pushes tech-digest instead of /nase:today")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d12_hits" ]]; then
+  red "FAIL"; printf ': /nase:today should not push optional tech-digest:\n'
+  printf '%s\n' "$d12_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': /nase:today keeps tech-digest optional\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

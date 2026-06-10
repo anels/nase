@@ -6,7 +6,12 @@ pattern: fan-out
 
 ## Language
 
-Read `workspace/config.md`: `conversation:` for chat/questions, `output:` for GitHub text.
+Read `workspace/config.md` for `conversation:` and `output:` values before producing any text.
+
+**Discipline (read once; apply everywhere below):**
+- **Narrative prose** — Review Frame paragraphs, Sense Check evidence cells, Risk map reasons, Scorecard justifications, summary line phrasing, finding descriptions, open-question explanations, AskUserQuestion option labels/descriptions, handoff confirmations → write in the `conversation:` value.
+- **Structural skeleton** — table column headers, code blocks, file paths, line numbers, symbol/identifier names, GitHub-bound drafts, daily-log entries, JSON keys/values, command output → keep English.
+- This rule **outranks** caveman-mode fragments and SKILL-template English defaults. The English examples below are template scaffolding, not a directive to keep narrative in English. When `conversation:` is non-English (e.g. `简体中文`), translate narrative prose; keep skeleton untouched.
 
 ## Review stance
 
@@ -107,6 +112,39 @@ For design/elegance review, compare with adjacent implementations and propose an
 **Performance claim check:** if title/body claims speed/latency/throughput gains, require benchmark data: environment, workload, before/after median + p95, methodology. Missing data becomes a finding.
 
 **Audit-PR list re-grep:** if the PR title/body signals exclusion-list pruning, blanket rule narrowing, allowlist removal, or similar audit work, re-grep every *remaining* entry against the same policy used for the removals. Treat it as "re-audit the full list against the new policy", not "verify the named removals". Flag sibling entries that match the same anti-pattern but escaped the cut.
+
+## Step 2.6 — Sense Check (4 pillars)
+
+Mandatory private evaluation before Step 3. The result must be surfaced early in Step 6 — even when every pillar passes. This block exists because diff-scope (4a), code-matches-description (4b), and verification matrix (5.5) live in different sections and reviewers (and you) miss them when scattered.
+
+Use this to answer four explicit questions about the PR before any specialist runs:
+
+**Pillar 1 — Scope alignment**
+- Extract Jira keys from PR body / title / branch name. Match `[A-Z]+-\d+` (most UiPath projects use `IN-####`); also accept Linear keys when the repo KB references Linear.
+- If a Jira key is found: fetch the ticket via Atlassian MCP `getJiraIssue` (`cloudId` from `workspace/config.md`). Compare ticket summary + description + acceptance criteria against diff scope.
+  - Diff is a strict subset of Jira AC and PR body does not document the partial delivery → flag as ⚠️ partial scope.
+  - Diff exceeds Jira AC (extra files, unrelated edits) and PR body does not justify the extension → flag as ⚠️ scope creep.
+  - MCP unavailable / ticket access denied → mark `Scope` evidence as `Jira fetch skipped: MCP unreachable` and fall back to description-only comparison.
+- If no Jira key is found: compare diff against the PR body's stated change list. Every diff file should map to a body claim; every body claim should map to at least one diff file. Asymmetries become findings.
+
+**Pillar 2 — Rationale soundness**
+- Read Step 2.5 Problem/Old/New/Constraints and ask: given that problem statement, does the chosen approach make sense?
+- Consider one realistic alternative reachable from KB or adjacent code (e.g., feature flag instead of full removal, targeted patch instead of refactor, library upgrade instead of vendoring). If the alternative is concretely simpler/safer/cheaper, surface it as ⚠️; otherwise note the rationale is sound.
+- Do **not** invent alternatives that contradict known platform prohibitions or that the PR body explicitly addresses.
+
+**Pillar 3 — Out-of-scope changes**
+- Walk the changed-file list. For each file, ask: is this directly required by the stated problem?
+- Flag drive-by formatting, unrelated refactors, surprise dependency bumps, leftover debug code, generated-file churn, and unrelated config edits. One ⚠️ per cluster, not per file.
+- Test fixtures and tests for the changed surface are in-scope by default — do not flag.
+
+**Pillar 4 — Test sufficiency**
+- Reuse the Step 5.5 verification matrix result. Verdict here is a one-symbol summary:
+  - ✅ — recommended bar met **and** PR-description test plan present
+  - ⚠️ — partial: either plan missing or one matrix layer untested
+  - ❌ — no plan and no executed verification for non-trivial behavior change
+- ❌ on a non-trivial change is automatically a `[MED]` finding (already emitted by Step 5.5 §4 as `Verification gap`) — do not duplicate as a separate finding here.
+
+Record each pillar's verdict + evidence in a private scratchpad; render in Step 6.
 
 ## Step 3 — Build risk map, select specialists, and engage existing comments
 
@@ -274,12 +312,29 @@ Skill-specific outputs:
 Order in chat:
 1. Summary line — counts per tier + dropped count
 2. Problem framing table with rows: `Problem`, `Larger context`, `Core change`, `Verdict`
-3. Risk map — selected specialist list + one-line reason for any skipped optional specialist
-4. **Verification block** (from Step 5.5) — recommended bar + PR-description plan status
-5. PR Quality Scorecard (table below)
-6. Findings grouped by confidence tier (Critical / High / Medium)
-7. Triage classifications from Step 3 — if any unresolved comments existed
-8. Inline open questions — one bullet each for domain inputs code tracing cannot answer.
+3. **Sense Check block** (from Step 2.6) — four-pillar table
+4. Risk map — selected specialist list + one-line reason for any skipped optional specialist
+5. **Verification block** (from Step 5.5) — recommended bar + PR-description plan status
+6. PR Quality Scorecard (table below)
+7. Findings grouped by confidence tier (Critical / High / Medium)
+8. Triage classifications from Step 3 — if any unresolved comments existed
+9. Inline open questions — one bullet each for domain inputs code tracing cannot answer.
+
+### Sense Check block
+
+Render after Problem framing, before Risk map. Always present even when every pillar passes — this is the explicit "did you actually check the four things" surface.
+
+```
+## Sense Check
+| Pillar | Status | Evidence |
+|---|---|---|
+| Scope vs Jira/description | ✅/⚠️/❌ | IN-#### AC fully covered by diff; or PR body claim {X} matches files {a,b,c}; or Jira fetch skipped: MCP unreachable |
+| Rationale | ✅/⚠️ | why-now traceable to {trigger}; alternative {A} considered, rejected because {reason} |
+| Out-of-scope | ✅/⚠️ | diff confined to {N} files in scope; or drive-by edit at {file:line} |
+| Tests | ✅/⚠️/❌ | plan present + L1/L2 covered; or gap at {layer} |
+```
+
+Status symbols — narrative around them goes in `conversation:` language; pillar names, file paths, IN-#### keys, layer labels stay English.
 
 ### Verification block
 

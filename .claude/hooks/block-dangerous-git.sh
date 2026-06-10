@@ -502,7 +502,9 @@ normalize_segment() {
     return 1
   fi
 
-  scan_git_env_assignments "${prefix_assignments[@]}"
+  if [ "${#prefix_assignments[@]}" -gt 0 ]; then
+    scan_git_env_assignments "${prefix_assignments[@]}"
+  fi
 
   while [ "$idx" -lt "${#WORDS[@]}" ]; do
     word="${WORDS[$idx]}"
