@@ -2,6 +2,7 @@
 name: nase:tech-debt-audit
 description: "Systematically audit a repository for tech debt, architecture health, best-practices compliance, and modernization opportunities — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file. Use when onboarding to a new repo, before a planning cycle, or when asked \"what tech debt do we have?\", \"architecture review\", \"are we following best practices\", or \"what can we modernize\"."
 pattern: pipeline
+sub-patterns: [fan-out]
 ---
 
 Systematically audit a repository for tech debt, architecture health, best-practices compliance, and modernization opportunities — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file.
@@ -54,6 +55,35 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - If Dockerfiles exist and `hadolint` is available, run `hadolint --format json --no-fail` and verify every Dockerfile finding against the source line and repo build constraints.
    - If GitHub Actions workflows exist and `actionlint` is available, run it and verify any workflow finding against the YAML source before adding CI debt.
    - If a scanner is missing or too noisy for the repo size, mark it skipped in the evidence snapshot, not as a finding.
+
+2.75. **Parallel audit fan-out** — use project subagents for independent candidate discovery, then fan in to the main thread for verification.
+
+   Use this when scan domains are read-only, evidence-heavy, and mostly independent. Subagents only produce candidate leads. **The main thread owns verification, scoring, and KB writes**.
+
+   **Dispatch all selected audit agents in one message** so they run concurrently:
+
+   | Agent | Focus | Use when |
+   |---|---|---|
+   | `nase-tech-debt-architecture` | Module depth, layering, dependency direction, API surface, config seams, scaling bottlenecks | Always, unless the scoped audit is explicitly non-code docs only |
+   | `nase-tech-debt-security` | Auth, tenant isolation, input validation, secret handling, dependency/container/IaC security leads | Always for service, infra, dependency, or externally reachable repos |
+   | `nase-tech-debt-ci-test` | CI, build, test discovery, PR gates, stale runner/tool assumptions, DX friction | Always when CI/test/config files exist |
+   | `nase-tech-debt-maintainability` | Duplication, dead code, hardcoded values, TODO/HACK clusters, inconsistent patterns | Always for source-code audits |
+   | `nase-tech-debt-modernization` | Runtime, dependency, language, tooling, and infrastructure modernization with concrete benefit | Always when manifests or build config exist |
+
+   Give every agent the same compact evidence packet:
+   - Absolute repo path and repo-relative scope.
+   - Existing KB constraints and known architecture notes from Step 1.
+   - Tool-availability JSON and scanner seed summary from Step 2.5.
+   - Files already identified as entry points, CI files, manifests, config, and docs.
+   - Output contract: return only a candidate table with `Candidate`, `Category`, `Evidence`, `Why debt`, `Severity hint`, `Effort hint`, and `Verification needed`.
+
+   Guardrails:
+   - Use read-only tools only. Agents must not edit, write, install packages, change branches, create files, or post external comments.
+   - Subagents may run `rg`, `git grep`, `git ls-files`, focused file reads, and no-write scanner commands that are already installed.
+   - If an agent reports `none`, keep that as coverage evidence rather than treating it as a failure.
+   - If an agent times out or returns malformed output, record that gap in the evidence snapshot and continue with the main-thread scan for that domain.
+
+   **Fan-in verification:** merge the returned candidate tables, de-duplicate by `(category, primary file path, claim)`, then verify every surviving candidate against the repo before Step 6. Drop unverified candidates silently unless the uncertainty itself is useful as an open question. Scanner or subagent output is never sufficient by itself.
 
 3. **Architecture review** — step back from individual files and evaluate structural health.
 

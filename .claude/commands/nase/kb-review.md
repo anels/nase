@@ -2,6 +2,7 @@
 name: nase:kb-review
 description: "Review, organize, consolidate KB files — dedup, cross-ref, surface stale content, promote lessons. Use weekly/monthly as KB hygiene, when KB feels messy, or after several /nase:learn entries. Triggers: 'review KB', 'organize notes', 'clean up KB', 'what's in my KB', '整理笔记'."
 pattern: pipeline
+sub-patterns: [fan-out]
 ---
 
 Review and organize the knowledge base — deduplicate, cross-reference, consolidate, and surface stale content.
@@ -48,6 +49,9 @@ Read all KB files in parallel for efficiency. For each file, build an index of:
 - **Key entities** mentioned (repos, tickets, dates, tools, services)
 - **Entry count** (number of dated entries or sections)
 - **Last active date** — follow `.claude/docs/kb-staleness.md` Step A (dual-track entry date + mtime, including the >80%/60-second mtime poison detection that protects against `/nase:restore` resetting timestamps).
+
+For `all` or broad scopes, dispatch `nase-context-kb-researcher` over independent KB domains (`general`, `projects`, `ops`, `cross-project`, `lessons`) in the same turn.
+The main thread owns KB edits and report writes: merge indexes, de-duplicate overlap findings, ask before applying fixes, and write through the workspace write guard.
 
 Present a **KB Overview Table**:
 

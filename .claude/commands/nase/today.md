@@ -2,6 +2,7 @@
 name: nase:today
 description: Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items and optional concrete next actions from KB, logs, tasks, Jira, and Slack. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff".
 pattern: pipeline
+sub-patterns: [fan-out]
 ---
 
 ## Why
@@ -17,6 +18,10 @@ Follows `.claude/docs/workspace-write-guard.md` for status-sync edits to `worksp
 <workflow>
 
 Run Step 0 first (preflight, blocking), then Step 1 (needed by 1b), then Steps 1b–4b in parallel, then Step 4c (Need Attention), then combine into Step 5 output. Honor `--verbose` from $ARGUMENTS for output caps in Step 5. Generate Step 4d (closing block) last so it can draw on the full picture and render as the final visible block.
+
+Local fan-out: use `nase-workspace-state-scanner` for tasks/logs/efforts/scheduled maintenance and `nase-pr-metadata-reader` for tracked PR status summaries when there are multiple PR URLs.
+Slack/Jira MCP queries stay in the main thread because they depend on live connector auth, user identity, and filtering state.
+The main thread owns status-sync writes and the final Need Attention ranking.
 
 **Bash idioms (avoid PATH/zsh pitfalls):**
 - Do **not** use `cut`, `awk`, `sed` inside `$(...)` subshells — Bash-tool zsh PATH is inconsistent and RTK hook can mangle pipelines. Use bash parameter expansion instead: `path="${line#*=}"`, `st="${st_line#status: }"`.

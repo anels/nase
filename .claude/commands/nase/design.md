@@ -2,6 +2,7 @@
 name: nase:design
 description: "KB-aware design — researches context, explores 2-3 approaches with tradeoffs, writes a tracked effort doc. Design only, no code (use /nase:fsd to implement). Supports `--grill` (stress-test), `--review` (re-evaluate), `--auto` (end-to-end design pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
 pattern: pipeline
+sub-patterns: [fan-out]
 ---
 
 Turn ideas into a concrete, tracked design plan through KB-aware research.
@@ -60,6 +61,14 @@ Do NOT write any code or take any implementation action. This skill produces a d
 ## Phase 1: Context Gathering (parallel, before asking anything)
 
 Research first — minimize questions to the user. Run all in parallel:
+
+For non-trivial designs, dispatch local read-only subagents in the same turn:
+- `nase-context-kb-researcher` for KB constraints, prior decisions, ownership, and related efforts.
+- `nase-repo-state-scanner` for repo `CLAUDE.md`, README/docs, git history, branches, entry points, and build/test hints.
+- `nase-workspace-state-scanner` for active efforts, todo overlap, logs, and scheduled work.
+
+The main thread owns design synthesis and workspace writes. Subagents return evidence tables only.
+Reconcile conflicts, ask any user question, choose the final option set, and write `workspace/efforts/` / `workspace/tasks/` through the workspace write guard.
 
 **1a. Parse the idea** — extract keywords, domain areas, tech references from $ARGUMENTS
 
