@@ -40,6 +40,7 @@ pattern='([Aa]uthorization[":[:space:]]*[[:space:]]*[Bb]earer[[:space:]]+[A-Za-z
 hits=$(rg -nIl --hidden --no-ignore \
   -g '*.log' \
   -g '*.json' \
+  -g '*.md' \
   -g '*.txt' \
   -g '*.yml' \
   -g '*.yaml' \

@@ -40,14 +40,22 @@ run_scan() {
 run_scan "$TMPROOT" "$TMPROOT/empty" "$TMPROOT/empty.rc"
 assert_cmd "empty temp root passes" test "$(cat "$TMPROOT/empty.rc")" = "0"
 
+fake_bearer='Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fakePayload.fakeSignature # pragma: allowlist secret'
+
 mkdir -p "$TMPROOT/.omc/sessions"
-cat >"$TMPROOT/.omc/sessions/request.log" <<'LOG'
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fakePayload.fakeSignature # pragma: allowlist secret
-LOG
+printf '%s\n' "$fake_bearer" >"$TMPROOT/.omc/sessions/request.log"
 
 run_scan "$TMPROOT" "$TMPROOT/hit" "$TMPROOT/hit.rc"
 assert_cmd ".omc bearer token fails scan" test "$(cat "$TMPROOT/hit.rc")" = "1"
 assert_cmd ".omc path is reported" grep -q '.omc/sessions/request.log' "$TMPROOT/hit.err"
+
+md_root="$TMPROOT/markdown-log-root"
+mkdir -p "$md_root/workspace/logs"
+printf '%s\n' "$fake_bearer" >"$md_root/workspace/logs/2026-06-10.md"
+
+run_scan "$md_root" "$TMPROOT/md-log" "$TMPROOT/md-log.rc"
+assert_cmd "markdown daily log bearer token fails scan" test "$(cat "$TMPROOT/md-log.rc")" = "1"
+assert_cmd "markdown daily log path is reported" grep -q 'workspace/logs/2026-06-10.md' "$TMPROOT/md-log.err"
 
 if [[ "$failures" -eq 0 ]]; then
   printf '\nlocal-sensitive-artifacts tests passed.\n'
