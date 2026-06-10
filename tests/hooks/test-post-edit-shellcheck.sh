@@ -5,6 +5,11 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT"
 
 HOOK="$ROOT/.claude/hooks/post-edit-shellcheck.sh"
+if ! command -v shellcheck >/dev/null 2>&1; then
+  printf 'SKIP  post-edit-shellcheck requires shellcheck for diagnostic assertions\n'
+  exit 0
+fi
+
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 

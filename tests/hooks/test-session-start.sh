@@ -74,6 +74,17 @@ description: This workspace skill has an intentionally long description that sho
 The full skill body still lives here and should not be truncated by session-start.
 SKILL
 
+cat > "$repo/workspace/skills/multiline-desc.md" <<'SKILL'
+---
+description: |
+  Multiline workspace skill keeps discovery terms.
+  Trigger on alpha beta gamma.
+allowed-tools: Bash(multiline:*)
+---
+
+The full skill body still lives here.
+SKILL
+
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 rc=$?
 if [ "$rc" -eq 0 ]; then
@@ -111,6 +122,18 @@ if [ -f "$long_wrapper" ]; then
   assert_contains "long description indicates truncation" "$long_desc" "..."
 else
   printf 'FAIL  long description wrapper generated\n' >&2
+  fail=$((fail + 1))
+fi
+
+multiline_wrapper="$repo/.claude/commands/nase/workspace/multiline-desc.md"
+if [ -f "$multiline_wrapper" ]; then
+  printf 'PASS  multiline description wrapper generated\n'
+  pass=$((pass + 1))
+  multiline_content=$(cat "$multiline_wrapper")
+  assert_contains "multiline description keeps content" "$multiline_content" 'description: "Multiline workspace skill keeps discovery terms. Trigger on alpha beta gamma."'
+  assert_contains "multiline allowed-tools forwarded" "$multiline_content" "allowed-tools: Bash(multiline:*)"
+else
+  printf 'FAIL  multiline description wrapper generated\n' >&2
   fail=$((fail + 1))
 fi
 

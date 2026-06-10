@@ -59,6 +59,52 @@ extract_frontmatter_block() {
   ' "$file"
 }
 
+extract_skill_description() {
+  local file="$1"
+  awk '
+    function starts_new_key(line) {
+      return line ~ /^[A-Za-z0-9_-]+:[[:space:]]*/
+    }
+    function is_block_scalar(value) {
+      return value ~ /^[|>][+-]?$/
+    }
+    function strip_quotes(line) {
+      if (line ~ /^".*"$/ || line ~ /^'\''.*'\''$/) {
+        return substr(line, 2, length(line) - 2)
+      }
+      return line
+    }
+    /^---$/ {
+      if (NR == 1) { in_front = 1; next }
+      if (in_front) { in_front = 0; next }
+    }
+    in_front && capture_desc && starts_new_key($0) { exit }
+    in_front && capture_desc {
+      if ($0 ~ /^([[:space:]]|$)/) {
+        sub(/^[[:space:]]*/, "")
+        print
+        next
+      }
+      exit
+    }
+    in_front && /^description:[[:space:]]*/ {
+      desc = $0
+      sub(/^description:[[:space:]]*/, "", desc)
+      if (is_block_scalar(desc)) {
+        capture_desc = 1
+      } else {
+        print strip_quotes(desc)
+        exit
+      }
+      next
+    }
+    !in_front && NF {
+      print
+      exit
+    }
+  ' "$file"
+}
+
 yaml_double_quote_escape() {
   # Keep generated command frontmatter valid even when imported skill
   # descriptions contain Windows paths, quotes, or control characters.
@@ -178,15 +224,7 @@ PYEOF
       # Extract frontmatter fields. `description` prefers frontmatter, else first non-empty body line.
       # `allowed-tools` / `disallowed-tools` are forwarded verbatim from source frontmatter when set —
       # they let a source skill restrict the wrapper's tool pool (see /nase:skill-audit mitigation).
-      desc=$(awk '
-        /^---$/ { if (NR==1) { in_front=1; next } else if (in_front) { in_front=0; next } }
-        in_front && /^description:[[:space:]]*/ {
-          sub(/^description:[[:space:]]*/, "")
-          if (match($0, /^".*"$/) || match($0, /^'\''.*'\''$/)) { $0 = substr($0, 2, length($0)-2) }
-          print; exit
-        }
-        !in_front && NF { print; exit }
-      ' "$skill_file")
+      desc=$(extract_skill_description "$skill_file")
       allowed_tools=$(extract_frontmatter_block "allowed-tools" "$skill_file")
       disallowed_tools=$(extract_frontmatter_block "disallowed-tools" "$skill_file")
       if [ ! -f "$cmd_file" ] || [ "$skill_file" -nt "$cmd_file" ]; then
