@@ -14,6 +14,8 @@ section() { printf '\n=== %s ===\n' "$1"; }
 run_gate() { "$@" || failed=$((failed+1)); }
 SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || true)
 SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally; GitHub Actions still runs this gate.'
+ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || true)
+ACTIONLINT_SKIP='SKIP: actionlint is not installed locally; GitHub Actions still runs this gate.'
 
 section "bash syntax (hooks)"
 for f in .claude/hooks/*.sh; do
@@ -29,6 +31,19 @@ fi
 
 section "JSON (settings.json)"
 run_gate python3 -m json.tool .claude/settings.json >/dev/null
+
+section "GitHub Actions lint"
+if [ -n "$ACTIONLINT_BIN" ]; then
+  workflow_files=()
+  for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+    [ -f "$f" ] && workflow_files+=("$f")
+  done
+  if [ "${#workflow_files[@]}" -gt 0 ]; then
+    run_gate "$ACTIONLINT_BIN" "${workflow_files[@]}"
+  fi
+else
+  printf '%s\n' "$ACTIONLINT_SKIP"
+fi
 
 section "hook wiring"
 OPT_IN_REGEX='^(edit-typecheck)$'
@@ -118,6 +133,7 @@ for test_file in \
   tests/scripts/test-local-parallel-subagents.sh \
   tests/scripts/test-tech-debt-subagents.sh \
   tests/scripts/test-cli-tooling-integration.sh \
+  tests/scripts/test-github-actions-hardening.sh \
   tests/scripts/test-extensions-check.sh \
   tests/scripts/test-pr-github-helper.sh \
   tests/scripts/test-pr-review-eval.sh \

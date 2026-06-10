@@ -66,7 +66,7 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 
 ### CI Pipeline
 - `.github/workflows/validate.yml` runs on push/PR to `main`.
-- Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, hook wiring, command inventory, skill bash checks, hook regressions, shared-doc references, and offline markdown links when `lychee` exists.
+- Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, GitHub Actions lint when `actionlint` exists, hook wiring, command inventory, skill bash checks, hook/script regressions, local sensitive artifact scanning, shared-doc references, and offline markdown links when `lychee` exists.
 
 ### Runtime Dependencies
 - Required: `git`, `gh`, `jq`, `python3`, and `7z` or `zip` + `unzip`.

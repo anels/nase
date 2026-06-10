@@ -51,6 +51,14 @@ def find_earliest_log(workspace_root: str) -> datetime.date:
         return fallback
 
 
+def last_days_range(today: datetime.date, days: int) -> tuple[datetime.date, datetime.date]:
+    return today - datetime.timedelta(days=days - 1), today
+
+
+def fallback_range(today: datetime.date) -> tuple[datetime.date, datetime.date]:
+    return last_days_range(today, 7)
+
+
 def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
     today = datetime.date.today()
     s = spec.strip().lower()
@@ -63,10 +71,10 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
             end = datetime.date.fromisoformat(parts[1].strip())
         except ValueError:
             print(f"WARNING: invalid date range '{spec}', defaulting to last 7 days", file=sys.stderr)
-            return today - datetime.timedelta(days=6), today
+            return fallback_range(today)
         if end < start:
             print(f"WARNING: invalid date range '{spec}' (end before start), defaulting to last 7 days", file=sys.stderr)
-            return today - datetime.timedelta(days=6), today
+            return fallback_range(today)
         return start, end
 
     # Numeric days
@@ -81,11 +89,11 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
         days = int(days_text)
         if days > 0:
             try:
-                return today - datetime.timedelta(days=days - 1), today
+                return last_days_range(today, days)
             except OverflowError:
                 pass
         print(f"WARNING: invalid day count '{spec}', defaulting to last 7 days", file=sys.stderr)
-        return today - datetime.timedelta(days=6), today
+        return fallback_range(today)
 
     # Today / yesterday
     if s == "today":
@@ -130,7 +138,7 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
 
     # Fallback: warn and use last 7 days
     print(f"WARNING: unrecognised date spec '{spec}', defaulting to last 7 days", file=sys.stderr)
-    return today - datetime.timedelta(days=6), today
+    return fallback_range(today)
 
 
 def main() -> None:

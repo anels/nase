@@ -135,5 +135,36 @@ else
   fail=$((fail + 1))
 fi
 
+repo="$fixture/append-only-log-repo"
+target="$fixture/append-only-backups"
+make_repo "$repo"
+git -C "$repo" config user.email "nase-test@example.com"
+git -C "$repo" config user.name "nase test"
+git -C "$repo" add workspace/context.md
+git -C "$repo" commit -q -m "seed workspace"
+today=$(date +%Y-%m-%d)
+mkdir -p "$repo/workspace/logs"
+cat > "$repo/workspace/logs/$today.md" <<'LOG'
+# Work Log
+
+## Sessions
+- 09:00 | test: keep this session entry
+
+## Commits
+manual commit note that must stay
+LOG
+printf 'backup-target=%s\nself=%s\n' "$target" "$repo" > "$repo/.local-paths"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "backup keeps existing commit log content" 0 "$rc" "$out"
+if grep -qF "manual commit note that must stay" "$repo/workspace/logs/$today.md"; then
+  printf 'PASS  existing commit section was not rewritten\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  existing commit section was rewritten\n      log: %s\n' "$(cat "$repo/workspace/logs/$today.md")" >&2
+  fail=$((fail + 1))
+fi
+assert_contains "new commit summary appended" "$(cat "$repo/workspace/logs/$today.md")" "seed workspace"
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

@@ -179,17 +179,10 @@ if [ -n "$REPOS" ]; then
     if [ "$COMMIT_DATE:$FINGERPRINT" = "$LAST_FP" ]; then
       echo "[stop-backup] commit summary unchanged — skipping"
     else
-      # Replace: strip all existing ## Commits blocks, then append fresh one
-      if [ -f "$COMMIT_LOG" ]; then
-        awk '
-          /^## Commits$/ { skip=1; next }
-          skip && /^## /  { skip=0 }
-          !skip
-        ' "$COMMIT_LOG" > "${COMMIT_LOG}.tmp" && mv "${COMMIT_LOG}.tmp" "$COMMIT_LOG"
-      fi
+      # Daily logs are append-only; keep prior commit snapshots intact.
       printf "\n## Commits\n%s\n" "$COMMITS" >> "$COMMIT_LOG"
       echo "$COMMIT_DATE:$FINGERPRINT" > "$FP_FILE"
-      echo "[stop-backup] updated commit summary in $COMMIT_LOG"
+      echo "[stop-backup] appended commit summary in $COMMIT_LOG"
     fi
   fi
 fi
