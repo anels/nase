@@ -304,10 +304,14 @@ git -C {worktree_or_repo} ls-files --others --exclude-standard
 
 `total_lines_changed` = tracked insertions + deletions + line count of untracked text files. List binary untracked files but do not count lines.
 
+Reference: Google eng-practices change-sizing — review quality degrades sharply past ~100 lines; >250 lines cuts defect-detection rate roughly in half. See `workspace/kb/general/claude-prompting.md §2026-06-10` for the source-of-truth framing.
+
 | Bucket | Action |
 |--------|--------|
-| ≤ 500 lines | proceed to Phase 6 silently |
-| 501-1500 lines | print one-line caution: `Diff is {N} lines — past the 500-line single-PR guidance.` Continue. |
+| ≤ 100 lines | sweet spot — proceed to Phase 6 silently |
+| 101-250 lines | advisory: print one-line: `Diff is {N} lines — past the ~100-line sweet spot. Split into 2 PRs if a natural seam exists; otherwise continue.` Continue without asking. |
+| 251-500 lines | caution: print `Diff is {N} lines — review quality drops sharply past 250 lines. Consider splitting by topology cluster.` Render `git diff --stat`. Continue without asking. |
+| 501-1500 lines | strong caution: print `Diff is {N} lines — past the 500-line single-PR guidance from Google eng-practices.` Continue without asking, but **mark `large-diff` for Phase 10 daily log automatically.** |
 | > 1500 lines | **pause** — present `git diff --stat` and ask via `AskUserQuestion`: |
 
 ```
@@ -328,6 +332,17 @@ On "Split": stop and suggest split from topology clusters or `git diff --stat`. 
 Run `/nase:simplify` on changed files; it uses `code-simplifier` when installed and self-reviews otherwise. Apply improvements before commit.
 
 Do not skip because the change seems small; invoke the skill and let it decide.
+
+### Anti-rationalization gate (apply before deciding to skip any sub-step in Phases 5–7)
+
+| Rationalization | Reality |
+|---|---|
+| "Linting / format warning is a false positive — leave it." | The CI gate doesn't read intent. Either silence with a justified `// noqa: <code>`-style comment or fix it. Re-running CI on a known-red diff burns minutes per cycle. |
+| "Failing CI test is flaky / unrelated — I'll re-run it." | Per `feedback_ci-unrelated-test-check-develop-first.md`: first `git log --since='48 hours ago' origin/{default} -- <test-path>`. Only after confirming upstream stability is "flaky" allowed; otherwise it's your bug. |
+| "This comment / TODO is obvious — Phase 6 doesn't need to touch it." | Code/comment drift is the #1 source of stale review-cycles. If the comment no longer matches the post-Phase-4 code, fix it now — the reviewer will catch it and you'll re-push anyway. |
+| "Simplifier didn't find anything — diff is already clean." | Verify by reading the simplifier's output, not by inferring from silence. If the run produced no diff, log `simplify: no changes` once and proceed. Skipping the invocation is not equivalent. |
+| "I already squashed once today, second prep-merge can reuse." | Per `feedback_prep-merge-upstream-check.md`: `git log origin/{default}..HEAD` first. Base may have shifted; refresh PR body if so. |
+| "I'm confident the change is small enough to skip Phase 6.5 Codex verify." | Confidence on novel code correlates poorly with correctness. If Codex MCP is loaded, run the gate — the cost is bounded, a wrong push isn't. |
 
 ---
 
@@ -517,7 +532,7 @@ Next: open the draft PR, run the Verification matrix, then promote to "ready for
 
 If Phase 8.5 produced no rows (pure docs / comments change), omit the entire "Verification before promote" block.
 
-Append to daily log following `.claude/docs/daily-log-format.md` (tag: `fsd`).
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `fsd`; add `large-diff` too if Phase 5.5 marked it).
 Log: `{one-line task summary} → \`{branch_name}\` [{PR URL or "no PR"}]`
 
 If the run had a surprise/non-obvious win (novel approach, avoided near-miss, build iters > 1, ambiguous requirement resolved), append to `workspace/journals/{YYYY-MM-DD}.md`:

@@ -303,6 +303,88 @@ Skill-specific outputs:
 - If §4 reports "no plan at all" for any non-trivial change: emit a `[MED]` finding under Testability tagged `Verification gap`, with the full matrix pasted into the inline-comment draft so the author can lift it into the PR body verbatim.
 - Strictness ceiling: `[MED]`. Always informational — never block-before-merge. Reviewers decide whether to gate.
 
+## Step 5.7 — Doubt cycle (adversarial fresh-context pass on findings)
+
+Before presenting findings (Step 6), subject the **non-trivial** findings to a fresh-context adversarial review. Pattern: `CLAIM → EXTRACT → DOUBT → RECONCILE → STOP` (source: `workspace/kb/general/claude-prompting.md §2026-06-10 — addyosmani/agent-skills`).
+
+### When to apply
+
+Run the doubt cycle on any finding where at least one is true:
+- Finding asserts a **non-obvious correctness claim** (race condition, missing guard, scope leak, auth bypass)
+- Finding depends on **cross-boundary behavior** the deep dive (Step 5b) could not fully trace
+- Finding's **blast radius is irreversible** if posted-then-merged (production deploy, data migration, public API contract)
+- Finding upgrades a `medium → critical` severity based on inferred behavior rather than observed code
+
+**Skip for:** style nits, doc typos, mechanical naming, findings already 100% grounded in the diff with no inference. Don't doubt every nitpick — bounded skill, not blanket.
+
+### 5.7a — CLAIM
+
+For each in-scope finding, write the claim + why-it-matters in 2-3 lines (do not surface to user yet — internal):
+
+```
+CLAIM: <one-line restatement of the finding>
+WHY THIS MATTERS: <one-line blast radius if posted-and-wrong>
+```
+
+### 5.7b — EXTRACT
+
+Build the artifact + contract bundle for the adversarial reviewer. Strip your reasoning.
+
+- `ARTIFACT` = the diff hunk(s) the finding cites, plus any cross-boundary code traced in Step 5b
+- `CONTRACT` = what the code is supposed to satisfy (spec from PR body, existing API contract, KB invariants for this repo)
+
+**Do NOT include the CLAIM in the reviewer prompt.** Pass `ARTIFACT + CONTRACT` only — the reviewer must independently determine whether the artifact satisfies the contract. Handing it your conclusion biases the response.
+
+### 5.7c — DOUBT (single-model first, optional cross-model)
+
+Always run a bounded single-model doubt pass first, before any user prompt. Use only `ARTIFACT + CONTRACT`, not CLAIM, original severity, or your prior reasoning. Internal output shape:
+
+```
+SINGLE_MODEL_DOUBT:
+- <issue or "none">
+CONTRACT_GAPS:
+- <gap or "none">
+```
+
+This is the minimum doubt cycle. Cross-model is an optional second reviewer, not the only reviewer.
+
+In **interactive sessions**, always offer cross-model second opinion via `AskUserQuestion`:
+
+```
+Q: "Found {N} non-trivial findings. Want a cross-model second opinion via Codex MCP before presenting?"
+Options:
+  - "Yes — Codex MCP (read-only)" : sends ARTIFACT+CONTRACT, not CLAIM
+  - "Skip — single-model only"    : announce skip in chat, proceed to RECONCILE
+```
+
+If user picks Codex: first apply `.claude/docs/codex-review.md → Prerequisite`. If Codex MCP is unavailable, log `doubt: Codex MCP unavailable, skipped cross-model pass` and continue with single-model RECONCILE. If available, use `.claude/docs/codex-review.md → Mode: finding-doubt`; sandbox = `read-only`; prompt contains the mode's `ARTIFACT + CONTRACT` payload only, not CLAIM, original severity, or queued-finding summaries.
+
+**Shell-safety:** write the full prompt to `workspace/tmp/doubt-pr-{number}-prompt.md` and pipe via stdin. Never inline-interpolate ARTIFACT into a shell-quoted arg — backticks/`$()` in diffs will execute.
+
+**Non-interactive contexts** (autonomous loop / CI / scheduled): cross-model is skipped; announce the skip in the daily log entry. Never invoke an external CLI without explicit user authorization.
+
+### 5.7d — RECONCILE
+
+For each reviewer finding (single-model and/or Codex output), classify in **precedence order** (first match wins):
+
+1. **Contract misread** — reviewer flagged something because the CONTRACT you provided was incomplete. Fix the contract, re-loop (counts as one cycle).
+2. **Valid + actionable** — real issue; update the original finding's severity, evidence, or wording. Mark for inclusion in Step 6.
+3. **Valid trade-off** — real but cost-of-fix exceeds value. Document explicitly; include as `[FYI]` tier in Step 6 with the trade-off note.
+4. **Noise** — false flag because the reviewer lacked context. Note it; ask whether adding that context to the contract would have prevented the flag.
+
+You are still the orchestrator. Rubber-stamping the reviewer is the same failure as ignoring it.
+
+### 5.7e — STOP
+
+Stop when **any** is true:
+- Next iteration returns only trivial / already-considered findings
+- 3 cycles completed (escalate to user before a 4th — say "after 3 cycles, the artifact may not be ready; surfacing as-is")
+- User explicitly says "ship it" / "proceed"
+
+If 3 cycles is "obviously insufficient" because the PR is large, the PR is too big — flag splitting as a Step 6 recommendation, do not lift the bound.
+
+Log a one-line summary to chat before Step 6: `doubt: {N} findings reviewed, {K} cycles, {M} upgraded, {R} refuted, {P} contract-misreads fixed`.
+
 ## Step 6 — Present findings and open discussion
 
 **Mandatory de-duplication filter (apply before presenting):** map each candidate finding against the existing comment set already fetched in Step 2; do not re-fetch. Drop candidates whose `(file, line, claim)` overlaps an existing open or resolved thread from a human or bot reviewer. If every candidate drops out, output `0 inline + 0 top-level` and state that prior reviewers already covered the diff.
