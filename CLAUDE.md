@@ -57,7 +57,9 @@ Guidance for Claude Code when working in this repository.
 See [README.md — Available commands](README.md#available-commands). Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
 
 ### Model Routing (subagents)
-Source: `.claude/roles.yaml`. `lookup`/haiku for grep, scans, and data gathering; `worker`/sonnet for default code, KB, debugging, reviews; `architect`/opus for unfamiliar architecture/security/design. Use the role's `model`, `tools`, and `prompt_prefix`. When spawning a subagent via `Agent()`, pass `tools=` matching the role's whitelist — `lookup` is read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
+Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
+Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`architect` model/tool routing.
+When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist — `lookup` is read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
 
 ### Bash / Path Rules
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, remove it with `git -C {repo} worktree remove {path} --force`.

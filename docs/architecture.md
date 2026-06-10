@@ -8,6 +8,7 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
 
 ```
 .claude/
+  agents/              project-level Claude Code subagents
   commands/nase/       slash commands (one Markdown file per command)
   hooks/               shell scripts wired in settings.json
   docs/                shared algorithm docs referenced by skills
@@ -88,7 +89,7 @@ Scans skill files for command injection, prompt injection, data exfiltration, cr
 
 ### `/nase:design` Phase 2d telemetry blast-radius check
 
-`design.md:113`: if the design touches AppInsights / Azure Functions telemetry surfaces (`host.json` sampling, `TelemetryProcessor`, etc.), requires a Mitigation section in the design doc.
+`design.md` Phase 2d: if the design touches AppInsights / Azure Functions telemetry surfaces (`host.json` sampling, `TelemetryProcessor`, etc.), requires a Mitigation section in the design doc.
 
 ---
 
@@ -146,7 +147,7 @@ they break a skill at runtime.
 
 ## Tech-debt audit vocabulary
 
-`/nase:tech-debt-audit` uses Ousterhout vocabulary (`tech-debt-audit.md:47`) — findings are categorized as:
+`/nase:tech-debt-audit` Step 3 uses Ousterhout vocabulary — findings are categorized as:
 
 - Shallow modules (interface nearly as complex as the implementation)
 - Layering violations (business logic in controllers / API handlers)
@@ -158,7 +159,10 @@ CI rot detection: checks `.trx` test results rather than counting `[Fact]` attri
 
 ## Model routing
 
-`.claude/roles.yaml` defines three roles for subagent dispatch:
+Project-level Claude Code subagents live in `.claude/agents/`. They are Markdown files with frontmatter that Claude Code can invoke directly or use as agent-team teammate types.
+Use them when a repeated workflow needs isolated, read-only candidate gathering or specialist review.
+
+`.claude/roles.yaml` defines lightweight local role names for workflow prompts that do not need a persisted subagent file:
 
 | Role | Model | When to use |
 |------|-------|-------------|
@@ -234,6 +238,7 @@ flowchart TD
 ```
 nase/
   .claude/
+    agents/             project-level Claude Code subagents
     commands/nase/      slash commands (30+ built-in)
     hooks/              hook scripts (called by settings.json)
     extensions.yml      optional skill-chain hook config

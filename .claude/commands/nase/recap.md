@@ -2,6 +2,7 @@
 name: nase:recap
 description: Generate a structured recap of completed work plus actionable improvement suggestions. Use when asked to "recap", "review my work", "review progress", "summarize", "what did I do", or "show my progress" for a week or month. Prompts for period if not specified. Always ends with concrete next-period suggestions.
 pattern: pipeline
+sub-patterns: [fan-out]
 ---
 
 **Input:** $ARGUMENTS
@@ -38,6 +39,9 @@ Use **weekly format** for ranges ≤ 14 days; **monthly format** for ranges > 14
 ## Steps 2–4 — Gather workspace data
 
 Follow the shared data-gathering algorithm in `.claude/docs/workspace-data-gathering.md` with `SCOPE="range"` and the date range resolved in Step 1. Start from the compact scanner payload, then read raw source paths only when a truncated payload lacks required detail. Extract structured data (activity, tasks, lessons, KB updates, key decisions).
+
+For long ranges or noisy logs, dispatch `nase-workspace-state-scanner` over independent date buckets or data categories in the same turn.
+The main thread owns recap synthesis and file writes: merge the returned tables, apply the confidential-marker filter, validate citations, and write `workspace/recaps/` through the workspace write guard.
 
 ## Step 4.5 — Compute Stats from Logs
 

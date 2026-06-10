@@ -115,6 +115,8 @@ for test_file in \
   tests/scripts/test-kb-search.sh \
   tests/scripts/test-today-stats.sh \
   tests/scripts/test-tool-availability.sh \
+  tests/scripts/test-local-parallel-subagents.sh \
+  tests/scripts/test-tech-debt-subagents.sh \
   tests/scripts/test-cli-tooling-integration.sh \
   tests/scripts/test-extensions-check.sh \
   tests/scripts/test-pr-github-helper.sh \

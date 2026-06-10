@@ -321,7 +321,7 @@ The `Stop` hook reads `backup-target` from `.local-paths` (set by `/nase:init`).
 
 ```
 nase/
-  .claude/             kit — slash commands, hooks, scripts, settings (tracked in git)
+  .claude/             kit — subagents, slash commands, hooks, scripts, settings (tracked in git)
   docs/                deeper docs (architecture, internals)
   tests/               CI gates
   CLAUDE.md            AI identity + operating rules (tracked)

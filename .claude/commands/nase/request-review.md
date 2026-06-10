@@ -2,6 +2,7 @@
 name: nase:request-review
 description: Find the right people to review a PR and stage Slack DM drafts. Use when given one or more PR URLs and asked to notify reviewers, request approval, or ping code owners. Reads CODEOWNERS to match file owners, cross-references the project KB for additional context holders, generates a concise DM draft (approval request for simple PRs, review request for complex ones), groups cherry-pick PRs into a single draft per person, and confirms via AskUserQuestion before staging anything.
 pattern: pipeline
+sub-patterns: [fan-out]
 ---
 
 # PR Review Requester
@@ -34,9 +35,16 @@ python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant light
 
 Save: title, url, base branch, changed file paths, additions/deletions count, body.
 
+For multiple PRs, cherry-pick batches, or large diffs, dispatch `nase-pr-metadata-reader` once per PR in the same turn.
+It returns title/body/base/head/changed-file/signals only. The main thread merges those rows before owner resolution.
+
 ## Step 3 — Resolve code owners
 
 Use this priority order — stop as soon as you have confident owners. Always reach the KB before going to GitHub.
+
+When the changed-file list spans multiple areas, dispatch `nase-reviewer-owner-scanner` per repo or per PR after Step 2.
+It may read KB ownership, CODEOWNERS, and git history, but it must not resolve Slack users or stage drafts.
+The main thread owns Slack lookup, recipient confirmation, and draft staging.
 
 **3a. Read project KB**
 
