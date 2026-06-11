@@ -97,7 +97,7 @@ CI check: `tests/check-skill-doctrine.sh → D1` (hard fail).
 ## 7. Subagent context isolation
 
 Subagents spawned via `/team` or `Agent` do NOT inherit the calling session's context. If the subagent needs:
-- Research findings → write to `workspace/tmp/{skill}-{branch}.md` first, pass the path in the prompt
+- Research findings → derive a path-safe slug for branch/repo identifiers, write to `workspace/tmp/{skill}-{slug}.md`, and pass the path in the prompt
 - Repo build/test commands → include verbatim in the prompt (do not assume KB pre-loading)
 - Conversation state → cannot inherit it; either send what's needed or restructure to keep the work in the caller
 

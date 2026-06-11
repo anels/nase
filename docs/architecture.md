@@ -10,12 +10,15 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
 .claude/
   agents/              project-level Claude Code subagents
   commands/nase/       slash commands (one Markdown file per command)
+    workspace/         generated /nase:workspace:* wrappers (git-ignored)
   hooks/               shell scripts wired in settings.json
   docs/                shared algorithm docs referenced by skills
   scripts/             utility scripts (date resolution, KB search, stats)
+  skills/              local Claude Code skills (git-ignored)
   extensions.yml       optional skill-chain hook config
   roles.yaml           subagent model routing
   settings.json        hook registrations
+  settings.local.json  local settings overrides (git-ignored)
 docs/                  architecture and reference docs
 evals/                 offline eval cases for high-frequency skills
 tests/                 local/CI validation gates
@@ -27,7 +30,7 @@ CLAUDE.md              identity + operating rules
 README.md              setup and command reference
 ```
 
-The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) is checked in. `workspace/` is git-ignored; `git pull` updates kit files only.
+The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) is checked in, except local `.claude/settings.local.json`, `.claude/skills/`, and generated `.claude/commands/nase/workspace/` wrappers. `workspace/` is git-ignored; `git pull` updates kit files only.
 
 ---
 
@@ -240,12 +243,15 @@ nase/
   .claude/
     agents/             project-level Claude Code subagents
     commands/nase/      slash commands (30+ built-in)
+      workspace/        generated /nase:workspace:* wrappers (git-ignored)
     hooks/              hook scripts (called by settings.json)
+    skills/             local Claude Code skills (git-ignored)
     extensions.yml      optional skill-chain hook config
     roles.yaml          subagent model routing
     docs/               shared algorithm docs
     scripts/            utility scripts
     settings.json       hook registrations
+    settings.local.json local settings overrides (git-ignored)
   .github/
     workflows/validate.yml
     CODEOWNERS
@@ -294,7 +300,7 @@ workspace/
 
 | Path | In git? | Reason |
 |------|---------|--------|
-| `.claude/` | Yes | Shared workflow improvements |
+| `.claude/` | Yes, except `.claude/settings.local.json`, `.claude/skills/`, and `.claude/commands/nase/workspace/` | Shared workflow improvements; local settings/skills and generated wrappers stay local |
 | `CLAUDE.md` | Yes | Identity + operating rules |
 | `README.md`, `docs/` | Yes | Setup + reference docs |
 | `.local-paths` | No | Machine-specific paths |

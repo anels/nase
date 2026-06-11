@@ -15,6 +15,8 @@
 #   D10. durable workspace write skills missing workspace-write-guard.md
 #   D11. auto-write modes allowed to skip drift checks
 #   D12. /nase:today treats tech-digest as a proactive action instead of optional
+#   D13. workspace/tmp artifact paths embed raw branch names that may contain slashes
+#   D14. generated workspace wrapper descriptions exceed the session-start metadata cap
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -427,6 +429,64 @@ if [[ -n "$d12_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': /nase:today keeps tech-digest optional\n'
+fi
+
+# ---------- D13: temp artifact filenames must use path-safe slugs ----------
+section "D13: branch-derived workspace/tmp artifacts use slugs"
+d13_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+paths = [
+    Path(".claude/commands/nase/fsd.md"),
+    Path(".claude/docs/fsd-phase-decomposition.md"),
+    Path("workspace/skills/deploy-alpha.md"),
+]
+unsafe = re.compile(r"workspace/tmp/[^\n`]*\{(?:branch_name|branch)\}")
+hits = []
+for path in paths:
+    if not path.exists():
+        continue
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if unsafe.search(line):
+            hits.append(f"  {path}:{lineno}: {line.strip()}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d13_hits" ]]; then
+  red "FAIL"; printf ': branch names can contain /; use a slug for workspace/tmp file names:\n'
+  printf '%s\n' "$d13_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': branch-derived workspace/tmp artifacts use path-safe slugs\n'
+fi
+
+# ---------- D14: generated wrappers stay within metadata cap ---------------
+section "D14: generated workspace wrapper descriptions are capped"
+d14_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+hits = []
+for path in sorted(Path(".claude/commands/nase/workspace").glob("*.md")):
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r'^description: "(.*)"$', text, re.M)
+    if not match:
+        continue
+    desc_len = len(match.group(1))
+    if desc_len > 240:
+        hits.append(f"  {path}: description length {desc_len} > 240")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d14_hits" ]]; then
+  red "FAIL"; printf ': generated wrappers should match session-start compact description cap:\n'
+  printf '%s\n' "$d14_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': generated wrapper descriptions are capped\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

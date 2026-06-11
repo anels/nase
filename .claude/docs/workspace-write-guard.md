@@ -1,15 +1,19 @@
 # Workspace Write Guard
 
 Shared guard for skills that write durable workspace files such as `workspace/kb/**`,
-`workspace/tasks/**`, `workspace/skills/**`, generated repo docs, or Confluence drafts.
+`workspace/tasks/**`, `workspace/skills/**`, or other allowed targets listed below.
 Temporary reports under `workspace/tmp/` can skip the mtime gate, but still should use
 unique filenames when reruns may overlap.
 
+For generated repo docs outside the nase workspace, reuse the read/stage/diff/gate/drift
+algorithm manually unless the target is first staged into an allowed workspace path.
+
 ## Default Flow
 
-Use `.claude/scripts/workspace-write-guard.py` for full-file durable writes. The
-caller still owns producing the complete proposed target content; the helper owns
-target allowlisting, staging, diff output, and final drift rejection.
+Use `.claude/scripts/workspace-write-guard.py` for full-file durable writes to
+allowed workspace targets. The caller still owns producing the complete proposed
+target content; the helper owns target allowlisting, staging, diff output, and
+final drift rejection.
 
 1. **Read before write.** If the target exists, record both:
    - mtime: `stat -f %m "$file" 2>/dev/null || stat -c %Y "$file"`
@@ -31,7 +35,8 @@ target allowlisting, staging, diff output, and final drift rejection.
 
 ## Helper Usage
 
-Prepare the proposed complete target file first, then run:
+Prepare the proposed complete target file for an allowed workspace target first,
+then run:
 
 ```bash
 python3 .claude/scripts/workspace-write-guard.py stage \
@@ -70,7 +75,7 @@ Allowed targets are durable workspace paths under `workspace/kb/`,
 `workspace/journals/`, `workspace/logs/`, `workspace/context.md`,
 `workspace/communication-style.md`, and generated workspace skill wrappers
 under `.claude/commands/nase/workspace/`.
-`workspace/tmp/` is intentionally rejected as a target.
+`workspace/tmp/` and arbitrary paths outside the allowlist are intentionally rejected as targets.
 
 ## Append-Only Exceptions
 
