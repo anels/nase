@@ -24,7 +24,8 @@ assert_contains() {
 
 assert_json_reload() {
   local desc="$1" output="$2"
-  if jq -e '.hookSpecificOutput.hookEventName == "SessionStart" and .hookSpecificOutput.reloadSkills == true' >/dev/null 2>&1 <<<"$output"; then
+  local expected="${3:-true}"
+  if jq -e --argjson expected "$expected" '.hookSpecificOutput.hookEventName == "SessionStart" and .hookSpecificOutput.reloadSkills == $expected' >/dev/null 2>&1 <<<"$output"; then
     printf 'PASS  %s\n' "$desc"
     pass=$((pass + 1))
   else
@@ -42,6 +43,21 @@ assert_lte() {
     printf 'FAIL  %s\n      expected <= %s, got %s\n' "$desc" "$max" "$actual" >&2
     fail=$((fail + 1))
   fi
+}
+
+assert_equals() {
+  local desc="$1" actual="$2" expected="$3"
+  if [ "$actual" = "$expected" ]; then
+    printf 'PASS  %s\n' "$desc"
+    pass=$((pass + 1))
+  else
+    printf 'FAIL  %s\n      expected %s, got %s\n' "$desc" "$expected" "$actual" >&2
+    fail=$((fail + 1))
+  fi
+}
+
+file_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 
 fixture=$(mktemp -d)
@@ -85,6 +101,19 @@ allowed-tools: Bash(multiline:*)
 The full skill body still lives here.
 SKILL
 
+mkdir -p "$repo/.claude/commands/nase/workspace"
+cat > "$repo/.claude/commands/nase/workspace/long-desc.md" <<'WRAPPER'
+---
+name: nase:workspace:long-desc
+description: "This stale generated wrapper is intentionally much longer than the current cap and should be regenerated even when its filesystem timestamp is newer than the source skill file. If session-start only compares mtimes, this stale description remains loaded into slash command metadata and wastes context."
+---
+
+Read `workspace/skills/long-desc.md` and follow every step exactly as written.
+
+$ARGUMENTS
+WRAPPER
+touch -t 299901010000 "$repo/.claude/commands/nase/workspace/long-desc.md"
+
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 rc=$?
 if [ "$rc" -eq 0 ]; then
@@ -105,6 +134,7 @@ if [ -f "$wrapper" ]; then
   assert_contains "list disallowed-tools key forwarded" "$content" "disallowed-tools:"
   assert_contains "list disallowed-tools Bash forwarded" "$content" "  - Bash"
   assert_contains "list disallowed-tools Edit forwarded" "$content" "  - Edit"
+  assert_equals "workspace wrapper mode is readable" "$(file_mode "$wrapper")" "644"
 else
   printf 'FAIL  workspace wrapper generated\n' >&2
   fail=$((fail + 1))
@@ -120,6 +150,7 @@ if [ -f "$long_wrapper" ]; then
   assert_lte "long description is capped" "${#long_desc}" 240
   assert_contains "long description keeps trigger terms" "$long_desc" "workspace skill"
   assert_contains "long description indicates truncation" "$long_desc" "..."
+  assert_equals "rewritten stale wrapper mode is readable" "$(file_mode "$long_wrapper")" "644"
 else
   printf 'FAIL  long description wrapper generated\n' >&2
   fail=$((fail + 1))
@@ -140,6 +171,19 @@ fi
 assert_json_reload "reloadSkills true after wrapper sync" "$out"
 assert_contains "warning-only backup status does not abort" "$out" "no successful backup recorded yet"
 assert_contains "backup-target-only local paths does not abort" "$out" "backup target not reachable"
+
+chmod 0600 "$wrapper"
+out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  printf 'PASS  session-start exits cleanly on mode-only repair\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  session-start exits cleanly on mode-only repair (rc=%s)\n      out: %s\n' "$rc" "$out" >&2
+  fail=$((fail + 1))
+fi
+assert_equals "unchanged wrapper mode is repaired" "$(file_mode "$wrapper")" "644"
+assert_json_reload "mode-only repair does not reload skills" "$out" false
 
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

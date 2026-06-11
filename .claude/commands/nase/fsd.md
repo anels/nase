@@ -145,6 +145,8 @@ Print: `FSD options captured — starting implementation.`
 
 Generate `{branch_name}` before the worktree decision: lowercase kebab-case, `feat/` or `fix/` prefix, max 50 chars, strip filler words. If `git show-ref refs/heads/{branch_name} refs/remotes/origin/{branch_name}` finds it, append `-v2`, `-v3`, etc. until free.
 
+Derive `{branch_slug}` only for local artifact paths: replace `/` and other characters outside `[A-Za-z0-9._-]` with `-`, trim leading/trailing `-`, and fall back to `branch` if empty. Never use `{branch_slug}` for git refs.
+
 **If worktree = Yes:**
 1. Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `fsd`. Ref: `origin/{default_branch}`. Use the branch name generated above.
 2. All subsequent git and file operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` — it creates its own worktree and won't adopt this one.
@@ -176,12 +178,14 @@ Before code, check whether external APIs/libraries/frameworks are not already do
      - Extract: method signatures, required parameters, return types, common pitfalls
      - Hold this context for Phase 4 — do not write to KB yet (Phase 8c handles that)
 
-**Track findings for KB:** record `research_gate_findings`. Direct / phase-isolated: keep in context. Team: also write `workspace/tmp/fsd-research-{branch_name}.md` for Phase 8c (subagents don't inherit context):
+**Track findings for KB:** always record `research_gate_findings`:
 ```
 research_gate_findings:
   - {LibraryName}: key method signatures, required params, return types, pitfalls, doc URL
 ```
 Record findings even when obvious to avoid re-researching.
+
+Direct / phase-isolated: keep findings in context. Team: also write the same block to `workspace/tmp/fsd-research-{branch_slug}.md` for Phase 8c and subagent prompts.
 
 ---
 
@@ -231,7 +235,7 @@ Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent p
 - Final `topology` (if any); edit only `affected_files` unless you stop and report back.
 - Phase 3.6 `reuse_findings` and `pre_impl_grep_findings`; reuse patterns and preserve surfaced invariants.
 
-Subagents don't inherit context. If Phase 3.5 wrote `workspace/tmp/fsd-research-{branch_name}.md`, each prompt must tell agents to read it before coding.
+If Phase 3.5 wrote `workspace/tmp/fsd-research-{branch_slug}.md`, each Team prompt must tell agents to read it before coding.
 
 After agents finish, immediately run configured gates. Failures count as Phase 5 iteration 1.
 
@@ -491,7 +495,7 @@ Persist before cleanup:
 
 **2. Implementation discoveries**: if implementation revealed new patterns, architectural insights, or hard constraints specific to the target repo, invoke `/nase:kb-update [domain]` with a concise summary.
 
-Team mode: read/delete `workspace/tmp/fsd-research-{branch_name}.md` if present. Do not defer KB updates to wrap-up.
+Team mode: read and delete `workspace/tmp/fsd-research-{branch_slug}.md` if present. Do not defer KB updates to wrap-up.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 

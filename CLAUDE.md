@@ -32,7 +32,7 @@ Guidance for Claude Code when working in this repository.
 - **Ask when unsure**: if scope or requirements are ambiguous, present the interpretations and ask.
 
 ### File & Workspace Rules
-- `workspace/` is git-ignored and holds personal KB/logs/journals/tmp data; `.claude/`, top-level docs/config, and `tests/` are tracked.
+- `workspace/` is git-ignored and holds personal KB/logs/journals/tmp data; `.claude/`, top-level docs/config, and `tests/` are tracked except local `.claude/settings.local.json`, `.claude/skills/`, and generated `.claude/commands/nase/workspace/` wrappers.
 - Write generated content to `workspace/` by default; write elsewhere only when asked. Review for sensitive data before touching tracked files.
 - Put one-off artifacts under `workspace/tmp/`.
 

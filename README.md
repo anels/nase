@@ -321,7 +321,7 @@ The `Stop` hook reads `backup-target` from `.local-paths` (set by `/nase:init`).
 
 ```
 nase/
-  .claude/             kit — subagents, slash commands, hooks, scripts, settings (tracked in git)
+  .claude/             kit — subagents, slash commands, hooks, scripts, settings (tracked; local settings/skills and generated wrappers ignored)
   docs/                deeper docs (architecture, internals)
   tests/               CI gates
   CLAUDE.md            AI identity + operating rules (tracked)
@@ -332,7 +332,7 @@ nase/
 
 | Path | In git? | Reason |
 |------|---------|--------|
-| `.claude/`, `docs/`, `CLAUDE.md`, `README.md`, `tests/` | Yes | Shared kit + docs |
+| `.claude/`, `docs/`, `CLAUDE.md`, `README.md`, `tests/` | Yes, except `.claude/settings.local.json`, `.claude/skills/`, and `.claude/commands/nase/workspace/` | Shared kit + docs; local settings/skills and generated wrappers stay local |
 | `.local-paths` | No | Machine-specific paths |
 | `workspace/` | No | Per-user content |
 

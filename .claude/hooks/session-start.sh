@@ -227,19 +227,25 @@ PYEOF
       desc=$(extract_skill_description "$skill_file")
       allowed_tools=$(extract_frontmatter_block "allowed-tools" "$skill_file")
       disallowed_tools=$(extract_frontmatter_block "disallowed-tools" "$skill_file")
-      if [ ! -f "$cmd_file" ] || [ "$skill_file" -nt "$cmd_file" ]; then
-        desc=$(printf '%s' "$desc" | compact_skill_description | yaml_double_quote_escape)
-        {
-          printf '%s\n' '---'
-          printf 'name: nase:workspace:%s\n' "$name"
-          printf 'description: "%s"\n' "$desc"
-          [ -n "$allowed_tools" ] && printf '%s\n' "$allowed_tools"
-          [ -n "$disallowed_tools" ] && printf '%s\n' "$disallowed_tools"
-          printf '%s\n\n' '---'
-          printf 'Read `workspace/skills/%s.md` and follow every step exactly as written.\n\n' "$name"
-          printf '$ARGUMENTS\n'
-        } > "$cmd_file"
+      desc=$(printf '%s' "$desc" | compact_skill_description | yaml_double_quote_escape)
+      next_cmd_file=$(mktemp "$CMDS_DIR/.${name}.XXXXXX")
+      {
+        printf '%s\n' '---'
+        printf 'name: nase:workspace:%s\n' "$name"
+        printf 'description: "%s"\n' "$desc"
+        [ -n "$allowed_tools" ] && printf '%s\n' "$allowed_tools"
+        [ -n "$disallowed_tools" ] && printf '%s\n' "$disallowed_tools"
+        printf '%s\n\n' '---'
+        printf 'Read `workspace/skills/%s.md` and follow every step exactly as written.\n\n' "$name"
+        printf '$ARGUMENTS\n'
+      } > "$next_cmd_file"
+      chmod 0644 "$next_cmd_file"
+      if [ ! -f "$cmd_file" ] || ! cmp -s "$next_cmd_file" "$cmd_file"; then
+        mv "$next_cmd_file" "$cmd_file"
         synced=$((synced + 1))
+      else
+        rm -f "$next_cmd_file"
+        chmod 0644 "$cmd_file" 2>/dev/null || true
       fi
     done
     # Clean up orphaned stubs whose source files no longer exist

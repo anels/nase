@@ -2,6 +2,10 @@
 
 Full algorithm for Phase 3.7. Only applies when `execution_mode = "Direct with Phase isolation"`.
 
+`/nase:fsd` Phase 3 provides `{branch_name}` plus path-safe `{branch_slug}`.
+Use `{branch_name}` for git refs and user-facing branch text; use `{branch_slug}`
+for filenames under `workspace/tmp/`.
+
 ---
 
 **Step 1 — Complexity precheck:**
@@ -11,7 +15,7 @@ Analyze task + KB context from Phase 1. Attempt to decompose into code-layer sub
 Decompose into 2–5 sequential sub-phases. Boundary rule: **code layer** (data model / API / test coverage / UI) — not file count or time estimate. Dependencies determine ordering (Phase B needs Phase A's output).
 
 **Step 3 — Write state file:**
-Create `workspace/tmp/fsd-phases-{branch_name}.md`:
+Create `workspace/tmp/fsd-phases-{branch_slug}.md`:
 
 ```markdown
 # FSD Phase Plan: {branch_name}
@@ -59,7 +63,7 @@ For each phase, invoke `Agent` tool sequentially (wait for completion before nex
 ```
 You are implementing Phase {X}: {phase_name} of a multi-phase feature.
 
-Context file: workspace/tmp/fsd-phases-{branch_name}.md — read it for task context, gates, research/preflight, inventory/topology, KB constraints, and prior phases.
+Context file: workspace/tmp/fsd-phases-{branch_slug}.md — read it for task context, gates, research/preflight, inventory/topology, KB constraints, and prior phases.
 
 Goal: {phase_goal}
 Repo path: {work_root} (absolute)
@@ -97,6 +101,6 @@ Read the Completion Log. Every phase entry must exist and not start with "FAILED
 
 On success, return to `/nase:fsd` Phase 5. Phase isolation already implemented the code; do not run `/nase:fsd` Phase 4 again.
 
-**Error recovery:** Any FAILED entry or missing phase entry → stop. Report: "Phase {X} failed — state file preserved at `workspace/tmp/fsd-phases-{branch_name}.md`." Do NOT continue `/nase:fsd`. Preserve the state file for diagnosis.
+**Error recovery:** Any FAILED entry or missing phase entry → stop. Report: "Phase {X} failed — state file preserved at `workspace/tmp/fsd-phases-{branch_slug}.md`." Do NOT continue `/nase:fsd`. Preserve the state file for diagnosis.
 
-**State file cleanup:** Delete `workspace/tmp/fsd-phases-{branch_name}.md` at Phase 9 (worktree removal) or at the start of Phase 10 (no-worktree flow).
+**State file cleanup:** Delete `workspace/tmp/fsd-phases-{branch_slug}.md` at Phase 9 (worktree removal) or at the start of Phase 10 (no-worktree flow).
