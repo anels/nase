@@ -529,6 +529,7 @@ Behavior per choice:
 - Conversational peer tone — not formal or gatekeeper
 - Lead with the specific concern
 - Include the fix direction only if unambiguous
+- For findings that went through `pr-review-verification.md` §7 (citation/triage verification of a bot claim): append one short line with the verification command + result (e.g. `shellcheck exited 0 on this file`) so the author can audit instead of re-litigating
 - **Language:** `output:` value from `workspace/config.md` (drafts are paste-ready for GitHub)
 
 ```

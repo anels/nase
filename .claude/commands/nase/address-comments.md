@@ -212,7 +212,7 @@ Hold all replies until Phase 9 (post-push) so the reviewer sees both the code fi
 ## Phase 7: Build & Test (max 5 iterations)
 
 Get configured build, lint, typecheck, and test commands from the KB file or repo's `CLAUDE.md`.
-Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding.
+Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding. After all gates pass, apply the Step 2.6 test-presence soft gate against `origin/{pr_branch}` — if an accepted thread changed logic but the diff adds no test, the Phase 6 "ensure test coverage" promise was missed; add the test or record the justification in the reply for that thread.
 On success: proceed to Phase 7.5.
 
 ## Phase 7.25: Optional Post-Edit CLI Gates
@@ -230,9 +230,22 @@ Classify the current diff against `origin/{pr_branch}`:
 
 Scanner/tool output is not reviewer intent by itself. Verify findings against the review thread, diff scope, and source lines before expanding the patch.
 
-## Phase 7.5: Codex Review-Thread Resolution Gate
+## Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly to Phase 8 if MCP is not loaded.
+Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is not loaded, skip cleanly past only the Codex invocation.
+
+Do NOT skip this gate: replying to and resolving someone's review threads is an outward-facing, hard-to-undo action, so it always gets the single-model fallback check below.
+
+**Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
+- the unresolved review threads from Phase 2 (full comment chains)
+- the final post-Phase-4 category map and drafted replies from Phase 6
+- the same diff payload described for the Codex prompt below
+
+Ask it to judge independently, per thread:
+- does the diff/reply actually address what the reviewer asked?
+- is any decline reply factually wrong?
+
+Do NOT include your own classification reasoning or expected verdict. It must answer in the same `VERDICT:` shape below; apply the same decision tree. Log `thread-resolution verify: single-model fallback (Codex unavailable)`; overrides use tag `fallback-verify`.
 
 Invoke the Codex MCP with the `comment-resolution` mode contract from `.claude/docs/codex-review.md`:
 

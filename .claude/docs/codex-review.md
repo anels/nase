@@ -12,9 +12,14 @@ Aligns with the global rule in `~/.claude/CLAUDE.md` → `Keep authoring and rev
 
 ## Prerequisite — MCP availability check (canonical gate)
 
-Before invoking, confirm `mcp__codex__codex` is loaded in the current session. If it isn't, the caller skips cleanly: proceeds without the Codex pass, no prompt, no failure, log one line and continue.
+Before invoking, confirm `mcp__codex__codex` is loaded in the current session. If it isn't, the caller skips cleanly past the Codex MCP call: no Codex prompt, no Codex failure, log one line and continue.
 
-**Never fall back to a Claude-based reviewer.** That defeats the cross-model purpose and is the whole reason this contract exists.
+**Never treat a Claude-based reviewer as a Codex substitute.** That defeats the cross-model purpose and is the whole reason this contract exists.
+
+A caller may still define a separate mandatory local verifier after the Codex call is skipped, for example a read-only `verifier` subagent for spec-vs-diff or review-thread safety. When doing that:
+- document it in the caller
+- keep it outside this Codex contract
+- log it as `fallback-verify`, not `Codex verify`
 
 Callers should reference this section by name (`.claude/docs/codex-review.md → Prerequisite`) rather than restating the gate inline.
 
@@ -405,7 +410,7 @@ Codex returns `{threadId, content}`. For default one-call modes, only `content` 
 
 ## Error handling
 
-- **Tool not loaded** — skip cleanly with the message from the prerequisite check. Do not fall back to Claude-based review.
+- **Tool not loaded** — skip the Codex MCP call cleanly with the message from the prerequisite check. Do not call a Claude-based review "Codex"; if the caller defines a separate local verifier fallback, run that caller-owned fallback and tag overrides as `fallback-verify`.
 - **Codex returns empty `content`** — treat as "no findings". Do not retry; an empty result is meaningful.
 - **Codex returns malformed output** (missing the expected fields for the current mode, or freeform prose) — save the raw text under the invoking workspace's `workspace/tmp/` or a `[codex — unparsed]` section and let the user decide. Don't drop it silently.
 - **Timeout / MCP error** — surface the error, skip the codex pass for this run, continue with the rest of the parent skill.

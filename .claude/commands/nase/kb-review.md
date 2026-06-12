@@ -125,13 +125,14 @@ Follow `.claude/docs/kb-relationship-graph.md` for the full algorithm: explicit 
 
 ### Step 4: Surface Stale and Orphaned Content
 
-Run **`.claude/docs/kb-staleness.md` Steps B, C, D** to derive:
+Run **`.claude/docs/kb-staleness.md` Steps B, C, D, D2** to derive:
 
 - Stale entries (tier `🔴`) — content dated >30 days old that still describes ongoing work. Historical records are exempt.
 - Orphaned files — not referenced by `.domain-map.md`.
 - Empty/sparse files.
 - Domain map gaps (entries pointing at missing files).
 - Lesson promotion candidates — entries in `lessons.md` that clear the maturity threshold, routed to their target KB files.
+- Low-value accretion candidates from Step D2 — fold any durable fact into the current-state section it belongs to, then mark the git-recoverable heartbeat for deletion.
 
 Render the findings in the output sections below.
 
@@ -146,6 +147,9 @@ Render the findings in the output sections below.
 
 ### Empty/Sparse
 - `{file}`: only has headers, no content
+
+### Low-Value Accretion (compaction candidates)
+- `{file}`: {N} dated blocks of git-recoverable facts (commit counts, HEAD sha, "no new commits", "no action needed") — fold {durable fact if any} into current-state sections, delete the rest
 
 ### Lessons → KB Promotion Candidates
 - lessons.md "{tip}" → promote to `{target-kb-file}`
@@ -258,6 +262,7 @@ Based on Steps 2-4, propose concrete actions grouped by effort:
 - [ ] Merge `{file1}` and `{file2}` — overlapping scope, suggest single file
 - [ ] Promote {N} lessons from lessons.md → {target KB files}
 - [ ] Move section "{section}" from {file1} to {file2} (better fit)
+- [ ] Compact low-value accretion in `{file}` — fold durable facts into current-state, delete git-recoverable heartbeat blocks
 
 ### Cleanup (low priority)
 - [ ] Archive or populate empty file: {file}

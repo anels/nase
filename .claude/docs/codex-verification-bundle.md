@@ -3,8 +3,10 @@
 Shared bundle-generation algorithm for the Codex pre-push verification gate.
 Callers invoke Codex per `.claude/docs/codex-review.md`; this doc only owns the
 local markdown bundle that gives Codex enough diff context to verify the spec.
-Callers must still gate per `.claude/docs/codex-review.md → Prerequisite` and
-skip cleanly when the Codex MCP is unavailable.
+Callers must still gate per `.claude/docs/codex-review.md → Prerequisite`. When
+the Codex MCP is unavailable, skip cleanly past only the Codex MCP call; callers that
+define a separate local verifier fallback run that fallback outside this bundle
+contract.
 
 ## Helper
 

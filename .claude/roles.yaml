@@ -32,6 +32,17 @@ roles:
       - Debugging, test writing
       - Skill execution requiring multi-step judgment
 
+  verifier:
+    model: sonnet
+    tools: [Read, Grep, Glob, Bash]
+    description: Read-only reasoning pass for spec-vs-artifact or review-thread verification
+    prompt_prefix: "This is an independent read-only verification pass. Do not edit files."
+    use_when:
+      - Verifying a diff against a task spec
+      - Verifying review-thread replies and resolution safety
+      - Scoring a design artifact against explicit criteria
+      - Any judgment-heavy check that must be read-only
+
   architect:
     model: opus
     tools: ["*"]                       # unrestricted — architectural work may need anything
@@ -48,12 +59,13 @@ roles:
 #   default: worker
 #   Never use architect for something lookup can answer.
 #   For lookup dispatches: always include prompt_prefix in the agent prompt.
+#   When a workflow needs read-only judgment, prefer verifier over worker.
 #   When uncertain between lookup and worker: prefer worker (reasoning > speed).
 #   When uncertain between worker and architect: prefer worker unless the task
 #     involves security, architecture decisions, or an unfamiliar codebase.
 #
 # Tool whitelist enforcement:
 #   When spawning a subagent via Agent(), pass `tools=` matching the role's
-#   `tools:` list. lookup MUST NOT receive Edit/Write — it is a read-only role.
+#   `tools:` list. lookup and verifier MUST NOT receive Edit/Write — they are read-only roles.
 #   Borrowed from affaan-m/ECC agent frontmatter pattern: explicit tools array
 #   prevents role drift (lookup agent silently doing Write work).

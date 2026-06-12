@@ -41,7 +41,15 @@ The matching `after_fsd` hook runs in Phase 9.5.
 
 Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for `output:` language (default English if missing).
 
-Infer target repo from task keywords/domain/stack. Resolve path and load KB sections for build/run, architecture, constraints, modules/components; see `.claude/docs/repo-resolution.md`.
+**Effort-doc intake (design handoff):** before repo inference, scan `$ARGUMENTS` tokens for a slug matching `workspace/efforts/{slug}.md`. If found, read the effort doc and extract:
+- `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.
+- The latest `## Grill Session → ### Constraints for implementation` block (if any) → store as `design_constraints`. These are evidence-backed decisions — carry them into Phase 4 and every subagent prompt; do not re-litigate them silently.
+- `## Topology` (if present) → seed Phase 1.5 with it instead of rebuilding; Phase 3 finalization re-verifies the listed paths still exist in `{work_root}`.
+- Frontmatter `repo:` → store as `repo_hint_from_design`; use it as the target repo unless the user explicitly named a different one.
+
+If no slug matches, continue normally — not every fsd run comes from a design doc.
+
+Infer target repo from explicit user text first, then `repo_hint_from_design`, then task keywords/domain/stack. Resolve path and load KB sections for build/run, architecture, constraints, modules/components; see `.claude/docs/repo-resolution.md`.
 
 **Module-inventory extraction:** from the KB, capture existing modules, helpers, shared components, and naming conventions. If missing, set `module_inventory = needs-grep`; Phase 3 derives it from the actual `{work_root}`. Do not grep the pre-worktree checkout.
 
@@ -88,11 +96,15 @@ topology:
 
 If topology exists, Phase 4 edits only `affected_files`; add files by re-entering Phase 3 finalization. If skipped, rely on Phase 4 greps.
 
+**Early size signal:** if `affected_files` already exceeds ~15 files, say so now and name the natural split seams — cheaper to scope down before code intent locks in than at the Phase 5.5 diff measurement.
+
 ## Phase 2: Upfront Config — single batched AskUserQuestion, then execution
 
 Ask all 5 config decisions in one `AskUserQuestion` `questions` array, then continue until done or blocked.
 
-Store answers: `success_criteria` = Q0 answer, `execution_mode` = Q1 answer, `worktree` = (Q2 = "Yes — worktree"), `open_pr` = (Q3 = "Yes — draft PR"), `tdd_mode` = (Q4 = "Yes").
+**If `success_criteria_from_design` exists** (Phase 1 effort-doc intake): drop Q0 from the batched call, set `success_criteria` = the design doc's Success Criteria, and say one line: `Done-definition taken from workspace/efforts/{slug}.md Success Criteria.` Ask only Q1–Q4.
+
+Store answers: `success_criteria` = Q0 answer (or the design doc's criteria), `execution_mode` = Q1 answer, `worktree` = (Q2 = "Yes — worktree"), `open_pr` = (Q3 = "Yes — draft PR"), `tdd_mode` = (Q4 = "Yes").
 
 **Single batched call:**
 
@@ -226,7 +238,7 @@ If phase isolation falls back to Direct mode, continue to Phase 4 as Direct. If 
 
 ## Phase 4: Implement (TDD — Red → Green → Refactor)
 
-Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6. Do not re-run the preflight unless the implementation scope changed.
+Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present — implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**
@@ -234,6 +246,7 @@ Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent p
 - Final `module_inventory`; grep it before new helpers and require 3+ usages for new abstractions.
 - Final `topology` (if any); edit only `affected_files` unless you stop and report back.
 - Phase 3.6 `reuse_findings` and `pre_impl_grep_findings`; reuse patterns and preserve surfaced invariants.
+- `design_constraints` from Phase 1 (if present); each constraint is binding — report back instead of diverging.
 
 If Phase 3.5 wrote `workspace/tmp/fsd-research-{branch_slug}.md`, each Team prompt must tell agents to read it before coding.
 
@@ -274,7 +287,7 @@ For each behavior, do one full Red→Green cycle before starting the next:
 
 ## Phase 5: Build & Test Loop (max 5 iterations)
 
-Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence.
+Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff (skip it when tdd_mode = true — RED gate already covers it).
 On success: proceed to Phase 5.5.
 
 ---
@@ -346,13 +359,24 @@ Do not skip because the change seems small; invoke the skill and let it decide.
 | "This comment / TODO is obvious — Phase 6 doesn't need to touch it." | Code/comment drift is the #1 source of stale review-cycles. If the comment no longer matches the post-Phase-4 code, fix it now — the reviewer will catch it and you'll re-push anyway. |
 | "Simplifier didn't find anything — diff is already clean." | Verify by reading the simplifier's output, not by inferring from silence. If the run produced no diff, log `simplify: no changes` once and proceed. Skipping the invocation is not equivalent. |
 | "I already squashed once today, second prep-merge can reuse." | Per `feedback_prep-merge-upstream-check.md`: `git log origin/{default}..HEAD` first. Base may have shifted; refresh PR body if so. |
-| "I'm confident the change is small enough to skip Phase 6.5 Codex verify." | Confidence on novel code correlates poorly with correctness. If Codex MCP is loaded, run the gate — the cost is bounded, a wrong push isn't. |
+| "I'm confident the change is small enough to skip Phase 6.5 verify." | Confidence on novel code correlates poorly with correctness. If Codex MCP is loaded, run Codex; otherwise run the single-model fallback — the cost is bounded, a wrong push isn't. |
 
 ---
 
-## Phase 6.5: Codex Pre-Push Verification Gate
+## Phase 6.5: Pre-Push Verification Gate (Codex, with single-model fallback)
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly to Phase 7 if MCP is not loaded.
+Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is not loaded, skip cleanly past only the Codex invocation.
+
+Do NOT skip this gate: run the single-model fallback below instead. The verification step is mandatory; only the cross-model variant is optional.
+
+**Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
+- the original task spec from `$ARGUMENTS` verbatim (the CONTRACT)
+- the verification bundle path (or the merge-base diff) and `{work_root}` (the ARTIFACT)
+- the instruction to answer in the exact `VERDICT: PASS | FAIL | NEEDS-HUMAN` shape below
+
+Do NOT include your own assessment, implementation reasoning, or expected verdict. The subagent must judge spec-vs-diff independently, following the same principle as the `discuss-pr` doubt cycle: hand it the artifact and contract, not your conclusion.
+
+Parse its output with the same decision tree as Codex. Log `verify: single-model fallback (Codex unavailable)` and use tag `fallback-verify` instead of `codex-override` for overrides. A fallback PASS is weaker evidence than a cross-model PASS; note that in the Phase 10 report line.
 
 Build the verification bundle per `.claude/docs/codex-verification-bundle.md`:
 
@@ -451,6 +475,13 @@ Report the PR URL.
 Build a verification matrix so the reviewer knows what to run before promoting the draft PR.
 
 Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 because fsd is producing the plan. Phase 5 unit tests become the Unit `✅ done` row.
+
+**Execute before rendering:** a matrix fsd only writes is a promise; a matrix fsd partially ran is evidence. Before rendering:
+- Attempt every `required` row whose `command` runs locally inside `{work_root}`: local builds, env-var-switched `dotnet run`/`npm start` smoke checks, dry-run commands.
+- Attempt the 🔥 critical row above all when it can run locally.
+- Record outcomes as `✅ done` with the actual output as evidence.
+- Skip rows needing deployment, external environments, or credentials fsd doesn't hold. Mark those `not run by fsd` explicitly; never fabricate.
+- If the 🔥 critical row exists and could not be run locally, say so in the Phase 10 report's Critical line.
 
 Skill-specific outputs:
 
