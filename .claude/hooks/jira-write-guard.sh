@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
 # PreToolUse guard: token-gate Jira mutations.
 #
-# Each gated Jira tool call must be immediately preceded by a fresh single-shot
-# JSON token at workspace/.jira-write-token. The calling skill writes the token
-# after showing the exact payload to the user and receiving explicit approval.
-# The token binds the concrete tool_input via payload_sha256.
+# Each gated Jira tool call must be immediately preceded by a JSON token at
+# workspace/.jira-write-token, written by the calling skill after showing the
+# payload to the user and receiving explicit approval. Two token modes:
+#
+#   - single-shot (legacy): binds the exact tool name + canonical payload sha;
+#     consumed once (deleted after a single allowed call). TTL 300s.
+#   - batch: binds an approved issue-key set + an op-count cap + TTL; consumed
+#     up to max_ops times within the TTL. Use for an approved multi-ticket
+#     batch (e.g. cancel N incidents) so one approval covers all the
+#     transitions and comments without re-deriving a sha per call. TTL 900s.
+#
+# Batch mode trades the exact-payload binding for an issue allowlist plus a
+# hard op-count + TTL ceiling, so a runaway loop still cannot touch tickets
+# outside the approved set or exceed the approved op budget.
 set -euo pipefail
 
-TOKEN_TTL_SECONDS=300
+SINGLE_TOKEN_TTL_SECONDS=300
+BATCH_TOKEN_TTL_SECONDS=900
 
 block_without_log() {
   local reason="$1"
   {
     echo "BLOCKED by jira-write-guard: $reason."
     echo ""
-    echo "Jira mutation tools require a fresh single-shot JSON token at"
+    echo "Jira mutation tools require a fresh JSON token at"
     echo "workspace/.jira-write-token before execution."
     echo ""
     echo "Policy source: .claude/docs/external-mutation-policy.md"
@@ -54,18 +65,26 @@ block() {
   {
     echo "BLOCKED by jira-write-guard: $reason."
     echo ""
-    echo "This Jira mutation tool ($TOOL) requires a fresh single-shot JSON"
-    echo "token at workspace/.jira-write-token before it can execute. The"
-    echo "token must be written by the calling skill after an AskUserQuestion"
-    echo "has shown the exact payload and the user has approved it."
+    echo "This Jira mutation tool ($TOOL) requires a fresh JSON token at"
+    echo "workspace/.jira-write-token before it can execute. The token must be"
+    echo "written by the calling skill after an AskUserQuestion has shown the"
+    echo "payload(s) and the user has approved."
     echo ""
-    echo "Token shape:"
+    echo "Single-shot token (one mutation, exact payload):"
     echo "  {"
     echo "    \"tool_name\": \"$TOOL\","
     echo "    \"issue_key\": \"PROJ-123\","
     echo "    \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
     echo "    \"payload_summary\": \"short human-readable summary\","
     echo "    \"payload_sha256\": \"sha256 of jq -cS .tool_input\""
+    echo "  }"
+    echo ""
+    echo "Batch token (approved set, op-count cap, ${BATCH_TOKEN_TTL_SECONDS}s TTL):"
+    echo "  {"
+    echo "    \"approved_issues\": [\"PROJ-1\", \"PROJ-2\"],"
+    echo "    \"max_ops\": 6,"
+    echo "    \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo "    \"payload_summary\": \"cancel approved incidents\""
     echo "  }"
     echo ""
     echo "Policy source: .claude/docs/external-mutation-policy.md"
@@ -95,6 +114,12 @@ issue_in_csv() {
   esac
 }
 
+parse_epoch() {
+  date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null \
+    || date -u -d "$1" +%s 2>/dev/null \
+    || echo ""
+}
+
 if [ ! -f "$TOKEN" ]; then
   block "no jira-write-token present"
 fi
@@ -104,6 +129,98 @@ if ! printf '%s' "$TOKEN_CONTENT" | jq -e 'type == "object"' >/dev/null 2>&1; th
   block "invalid token JSON"
 fi
 
+# Issues named by the current payload (shared by both modes).
+CURRENT_ISSUES=$(printf '%s' "$INPUT" | jq -r '
+  [
+    .tool_input.issueIdOrKey,
+    .tool_input.issueKey,
+    .tool_input.key,
+    .tool_input.issue,
+    .tool_input.id,
+    .tool_input.inwardIssue,
+    .tool_input.outwardIssue,
+    .tool_input.inwardIssueKey,
+    .tool_input.outwardIssueKey,
+    .tool_input.fromIssueKey,
+    .tool_input.toIssueKey
+  ]
+  | map(select(. != null) | tostring)
+  | unique
+  | join(",")
+' 2>/dev/null || echo "")
+
+IS_BATCH=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
+  if (.approved_issues | type) == "array" and ((.approved_issues | length) > 0)
+  then "1" else "0" end' 2>/dev/null || echo "0")
+
+# ---------------------------------------------------------------------------
+# Batch mode: approved issue set + op-count cap + TTL. Consumed up to max_ops.
+# ---------------------------------------------------------------------------
+if [ "$IS_BATCH" = "1" ]; then
+  CREATED_AT=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.created_at // ""')
+  MAX_OPS=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.max_ops // ""')
+  TTL=$(printf '%s' "$TOKEN_CONTENT" | jq -r --argjson d "$BATCH_TOKEN_TTL_SECONDS" '.ttl_seconds // $d')
+  PAYLOAD_SUMMARY=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.payload_summary // ""')
+
+  [ -z "$CREATED_AT" ] && block "batch token missing created_at"
+  [[ "$MAX_OPS" =~ ^[0-9]+$ ]] || block "batch token max_ops must be a positive integer"
+  [ "$MAX_OPS" -gt 0 ] || block "batch token exhausted (max_ops=0)"
+  [[ "$TTL" =~ ^[0-9]+$ ]] || block "batch token ttl_seconds must be an integer"
+
+  # Optional tool allowlist. When present the current tool must match (exact
+  # name or suffix, to tolerate MCP namespace-prefix differences).
+  TOOLS_LEN=$(printf '%s' "$TOKEN_CONTENT" | jq -r '(.tools // []) | length')
+  if [ "$TOOLS_LEN" -gt 0 ]; then
+    TOOL_OK=$(printf '%s' "$TOKEN_CONTENT" | jq -r --arg t "$TOOL" '
+      if (.tools | map(select(. as $e | ($e == $t) or ($t | endswith($e)))) | length) > 0
+      then "1" else "0" end')
+    [ "$TOOL_OK" = "1" ] || block "batch token does not authorize tool $TOOL"
+  fi
+
+  CREATED_TS=$(parse_epoch "$CREATED_AT")
+  [ -z "$CREATED_TS" ] && block "batch token created_at is not parseable: $CREATED_AT"
+  NOW_TS=$(date +%s)
+  AGE=$((NOW_TS - CREATED_TS))
+  if [ "$AGE" -lt 0 ] || [ "$AGE" -gt "$TTL" ]; then
+    block "batch token is stale or from the future: age=${AGE}s ttl=${TTL}s"
+  fi
+
+  APPROVED_CSV=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
+    ([.approved_issues[]?, .issue_key, (.issue_keys[]? // empty)]
+     | map(select(. != null and . != "") | tostring) | unique | join(","))')
+  [ -z "$APPROVED_CSV" ] && block "batch token missing approved_issues"
+
+  if [ -z "$CURRENT_ISSUES" ]; then
+    block "batch token cannot authorize a call with no issue key (use a single-shot token for createJiraIssue)"
+  fi
+
+  while IFS= read -r current_issue; do
+    [ -z "$current_issue" ] && continue
+    issue_in_csv "$current_issue" "$APPROVED_CSV" \
+      || block "batch token issue mismatch: $current_issue not in approved set [$APPROVED_CSV]"
+  done < <(printf '%s\n' "$CURRENT_ISSUES" | tr ',' '\n')
+
+  REMAINING=$((MAX_OPS - 1))
+  if [ "$REMAINING" -le 0 ]; then
+    rm -f "$TOKEN"
+  else
+    TMP="$TOKEN.tmp.$$"
+    if printf '%s' "$TOKEN_CONTENT" | jq -c --argjson r "$REMAINING" '.max_ops = $r' > "$TMP" 2>/dev/null; then
+      mv "$TMP" "$TOKEN"
+    else
+      rm -f "$TMP"
+      block "could not decrement batch token max_ops"
+    fi
+  fi
+
+  printf '%s ALLOWED %s | batch | issue: %s | remaining: %s | summary: %s\n' \
+    "$TS" "$TOOL" "$CURRENT_ISSUES" "$REMAINING" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Single-shot mode (legacy): exact tool + payload-sha binding, consumed once.
+# ---------------------------------------------------------------------------
 EXPECTED_TOOL=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.tool_name // ""')
 CREATED_AT=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.created_at // ""')
 PAYLOAD_SUMMARY=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.payload_summary // ""')
@@ -139,35 +256,14 @@ CURRENT_PAYLOAD_SHA=$(printf '%s\n' "$CANONICAL_TOOL_INPUT" | sha256_hex)
 [ "$EXPECTED_PAYLOAD_SHA" = "$CURRENT_PAYLOAD_SHA" ] \
   || block "token payload mismatch: expected $EXPECTED_PAYLOAD_SHA, got $CURRENT_PAYLOAD_SHA"
 
-CREATED_TS=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$CREATED_AT" +%s 2>/dev/null \
-  || date -u -d "$CREATED_AT" +%s 2>/dev/null \
-  || echo "")
+CREATED_TS=$(parse_epoch "$CREATED_AT")
 [ -z "$CREATED_TS" ] && block "token created_at is not parseable: $CREATED_AT"
 
 NOW_TS=$(date +%s)
 AGE=$((NOW_TS - CREATED_TS))
-if [ "$AGE" -lt 0 ] || [ "$AGE" -gt "$TOKEN_TTL_SECONDS" ]; then
+if [ "$AGE" -lt 0 ] || [ "$AGE" -gt "$SINGLE_TOKEN_TTL_SECONDS" ]; then
   block "token is stale or from the future: age=${AGE}s"
 fi
-
-CURRENT_ISSUES=$(printf '%s' "$INPUT" | jq -r '
-  [
-    .tool_input.issueIdOrKey,
-    .tool_input.issueKey,
-    .tool_input.key,
-    .tool_input.issue,
-    .tool_input.id,
-    .tool_input.inwardIssue,
-    .tool_input.outwardIssue,
-    .tool_input.inwardIssueKey,
-    .tool_input.outwardIssueKey,
-    .tool_input.fromIssueKey,
-    .tool_input.toIssueKey
-  ]
-  | map(select(. != null) | tostring)
-  | unique
-  | join(",")
-' 2>/dev/null || echo "")
 
 APPROVED_ISSUES_CSV=${EXPECTED_ISSUES//$'\n'/,}
 

@@ -45,7 +45,7 @@ Hooks are registered in `.claude/settings.json`. Shell output and exit codes fee
 | `UserPromptSubmit` | User prompt submitted | `track-skill-prompt.sh` | Records slash command invocations that do not pass through `PostToolUse:Skill` |
 | `PreToolUse:Bash` | Before every Bash tool call | `block-dangerous-git.sh` | Rejects known destructive git patterns (see list below) before they execute |
 | `PreToolUse:slack_send_message` | Before direct Slack send | `slack-send-guard.sh` | Blocks direct Slack sends; use draft messages instead |
-| `PreToolUse:Jira mutations` | Before Jira writes | `jira-write-guard.sh` | Requires a fresh one-shot `workspace/.jira-write-token` |
+| `PreToolUse:Jira mutations` | Before Jira writes | `jira-write-guard.sh` | Requires a fresh `workspace/.jira-write-token` (single-shot payload-bound, or batch issue-set + op-cap + TTL) |
 | `PreToolUse:Confluence writes` | Before Confluence page writes | `confluence-size-guard.sh` | Blocks page bodies over 60 KB to avoid truncation/partial writes |
 | `PreCompact` | Before context compaction | `pre-compact-archive.sh` | Rotates `workspace/tasks/lessons.md` entries marked `> Promoted →` and older than 90 days into `lessons-archive.md` when the file exceeds 80 KB; moves `workspace/efforts/done/*.md` older than 60 days into `workspace/efforts/archive/<YYYY>/` |
 | `Stop` | Every session end | `stop-todos.sh`, `stop-backup.sh` | Surfaces pending todos from `workspace/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `workspace/` at `.local-paths`'s `backup-target`; applies retention cleanup; writes status to `workspace/logs/.backup-status` |

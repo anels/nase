@@ -147,6 +147,41 @@ jq -n --arg tool "$jira_link_tool" --arg created "$created" --arg payload_sha "$
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue-link missing endpoint blocked" .claude/hooks/jira-write-guard.sh "$jira_link" 2 "unapproved SRE-2"
 
+# --- batch token mode ---
+batch_created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+jira_transition2=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-2"}}')
+jira_comment_tool="mcp__plugin_atlassian_atlassian__addCommentToJiraIssue"
+jira_comment1=$(jq -cn --arg tool "$jira_comment_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1",commentBody:"x"}}')
+jira_transition9=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-9"}}')
+
+write_batch() {
+  jq -n --arg created "$1" --argjson ops "$2" \
+    '{approved_issues:["SRE-1","SRE-2"],max_ops:$ops,created_at:$created,payload_summary:"cancel batch"}' \
+    > "$TMP_ROOT/workspace/.jira-write-token"
+}
+
+write_batch "$batch_created" 3
+expect_rc "jira batch op1 transition SRE-1 allowed" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
+expect_rc "jira batch op2 comment SRE-1 allowed" .claude/hooks/jira-write-guard.sh "$jira_comment1" 0
+expect_rc "jira batch op3 transition SRE-2 allowed" .claude/hooks/jira-write-guard.sh "$jira_transition2" 0
+expect_rc "jira batch exhausted blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "no jira-write-token"
+
+write_batch "$batch_created" 3
+expect_rc "jira batch unapproved issue blocked" .claude/hooks/jira-write-guard.sh "$jira_transition9" 2 "not in approved set"
+
+old_created=$(date -u -v-20M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+write_batch "$old_created" 3
+expect_rc "jira batch stale blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "stale or from the future"
+
+jq -n --arg created "$batch_created" \
+  '{approved_issues:["SRE-1"],max_ops:2,created_at:$created,tools:["addCommentToJiraIssue"],payload_summary:"comments only"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira batch tool not allowed blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "does not authorize tool"
+jq -n --arg created "$batch_created" \
+  '{approved_issues:["SRE-1"],max_ops:2,created_at:$created,tools:["addCommentToJiraIssue"],payload_summary:"comments only"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira batch tool suffix-match allowed" .claude/hooks/jira-write-guard.sh "$jira_comment1" 0
+
 expect_missing_jq "slack missing jq blocked" .claude/hooks/slack-send-guard.sh "$slack_send"
 expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$jira_transition"
 expect_missing_jq "confluence missing jq blocked" .claude/hooks/confluence-size-guard.sh "$small_confluence"

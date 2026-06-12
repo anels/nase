@@ -63,6 +63,45 @@ by MCP server, so do not blindly copy the example value.
 If the guard cannot parse the hook JSON or its required `jq` dependency is
 missing, it blocks the mutation instead of guessing.
 
+#### Batch token (approved multi-ticket runs)
+
+When one `AskUserQuestion` approves a batch of mutations across several tickets
+(e.g. cancel N incidents, each needing a transition + a comment), a single-shot
+token per call is wasteful — every call re-derives a payload sha. Write one
+**batch token** instead, after the approval that showed the per-ticket plan:
+
+```json
+{
+  "approved_issues": ["SRE-1", "SRE-2"],
+  "max_ops": 6,
+  "created_at": "2026-06-12T15:40:00Z",
+  "payload_summary": "cancel approved incidents",
+  "tools": ["transitionJiraIssue", "addCommentToJiraIssue"],
+  "ttl_seconds": 900
+}
+```
+
+The hook authorizes any gated Jira mutation whose target issue is in
+`approved_issues`, up to `max_ops` calls, within the TTL (default **900s**;
+`ttl_seconds` overrides). It decrements `max_ops` on each allowed call and
+deletes the token when the budget is exhausted or the TTL passes. `tools` is an
+optional allowlist (exact or suffix match, to tolerate MCP namespace prefixes);
+omit it to allow all gated Jira tools. A non-empty `approved_issues` array is
+what selects batch mode.
+
+Batch mode trades the exact-payload sha binding for an **issue allowlist + op
+cap + TTL**: a runaway loop still cannot touch a ticket outside the approved set
+or exceed the approved op budget. Use it only for the concrete batch the user
+just approved; for a single irreversible mutation, prefer the single-shot token.
+A failed validation (unapproved issue, disallowed tool, stale TTL) deletes the
+token, forcing re-approval. `createJiraIssue` (no target key) still requires a
+single-shot token.
+
+Size the op budget to cover the planned calls (e.g. 4 tickets × [transition +
+comment + close transition] = 12). The token authorizes mutation *count*, not
+exact text — show the per-ticket disposition in the `AskUserQuestion` so the
+user approves the substance, not just a number.
+
 ---
 
 ## What this policy is NOT

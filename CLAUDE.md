@@ -19,7 +19,7 @@ Guidance for Claude Code when working in this repository.
 - Keep memory human-readable. Durable knowledge goes to Markdown/JSONL under `workspace/`; avoid opaque summaries that a human cannot inspect, diff, or delete.
 - Slice context before reading broadly. Use repo KB, domain maps, `gh`, `rg`, `ast-grep`, focused diffs, and workspace scan scripts before loading large logs or whole directories.
 - Require evidence for technical claims. PR findings, architecture notes, and audit conclusions need source paths, diffs, tests, logs, or command output; drop candidates that cannot be verified.
-- External writes stay gated: Slack drafts, Jira one-shot tokens after approval, Confluence size guards, and GitHub review posting only on explicit user instruction.
+- External writes stay gated: Slack drafts, Jira write tokens after approval (single-shot or batch), Confluence size guards, and GitHub review posting only on explicit user instruction.
 - New commands and skills should reuse shared docs/scripts first. Add a new abstraction only when it removes real repeated workflow complexity and include a local validation path.
 
 ---
