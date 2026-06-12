@@ -61,6 +61,21 @@ git -C {worktree_path} rebase origin/{default_branch}
 
 If `git log` on the test path is empty in that window, the failure is real for this PR — proceed with normal diff-level diagnosis.
 
+## Step 2.6: Test-Presence Soft Gate (after all gates pass)
+
+Diff the working tree against the branch base (the consumer skill defines the base: merge-base with the default branch for new work, `origin/{pr_branch}` for review fixes). If the diff changes production code but contains no added or modified test files, print one line:
+
+```
+Tests gate: production code changed, no test files in diff — add tests or record a justification.
+```
+
+Acceptable justifications (record in the commit body or PR body, not just chat):
+- Covered by existing tests — name the exact test file(s) and why they exercise the new behavior.
+- Non-testable surface — config, docs, generated files, infra manifests.
+- Repo has no test infrastructure for this layer — state which layer.
+
+This gate is advisory — never block on it. Docs/comments/fixture-only diffs skip it silently. When the consumer skill runs strict TDD, the RED gate already enforces this harder; skip the soft gate there.
+
 ## Step 3: Escalate After 5 Failures
 
 If still failing after 5 iterations: stop, print the last build/test output in full, and ask the user for guidance. Do not commit broken code.

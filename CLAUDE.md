@@ -8,7 +8,7 @@ Guidance for Claude Code when working in this repository.
 
 **What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere (see `workspace/context.md`).
 
-**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. Codex MCP is optional for read-only second-opinion gates; skip that gate cleanly when unavailable.
+**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. Codex MCP is optional for read-only second-opinion gates; when unavailable, skip the Codex call cleanly — fsd/address-comments verification gates then run their single-model fallback instead of dropping the check.
 
 ---
 
@@ -45,7 +45,7 @@ Guidance for Claude Code when working in this repository.
 
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
-- Commit sequence: `/nase:simplify` → `/nase:improve-commit-message` → `git push`.
+- Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
 - For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` and link checks skip if the tools are missing; CI still runs them).
 
 ### Logging & External Services
@@ -58,8 +58,8 @@ See [README.md — Available commands](README.md#available-commands). Core loop:
 
 ### Model Routing (subagents)
 Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
-Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`architect` model/tool routing.
-When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist — `lookup` is read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
+Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`verifier`/`architect` model/tool routing.
+When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist — `lookup` and `verifier` are read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
 
 ### Bash / Path Rules
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, remove it with `git -C {repo} worktree remove {path} --force`.
@@ -101,14 +101,10 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 
 ## Style Learning Loop
 
-When the user (a) rewrites a Slack/PR/external-doc draft I produced, (b) gives concrete edit instructions ("change X to Y", "drop Z", "下次别…", "too AI"), or (c) corrects tone post-hoc:
-
-1. Follow `.claude/docs/style-delta-capture.md`.
-2. Address the user's edit, then log a pending `[STYLE-DELTA]` line to `workspace/logs/YYYY-MM-DD.md` if the correction implies a generalizable style rule.
-3. Do not update `workspace/communication-style.md` directly. `/nase:wrap-up` Step 4e batches pending deltas, shows the consolidated diff, and writes only after approval.
-4. Continue the task; do not interrupt for confirmation unless the style-delta protocol asks for the inline high-confidence gate.
-
-Scope: Slack drafts, PR descriptions/inline review comments, external docs/announcements. Skip code changes, code comments, and internal KB writes (those follow `.claude/docs/kb-template.md`). The `style-edit-detect.sh` hook surfaces a reminder when it spots an edit signal — treat the reminder as a nudge to log `[STYLE-DELTA]`, not a license to write the style doc.
+When the user corrects wording/tone on an external draft I produced (Slack, PR description/review comment, external doc), follow `.claude/docs/style-delta-capture.md`:
+- Address the edit, log a pending `[STYLE-DELTA]` line, and never write `workspace/communication-style.md` directly.
+- `/nase:wrap-up` Step 4e batches deltas and gates the write. Triggers, scope, log format, and the inline high-confidence gate all live in that doc.
+- A `[style-edit-detect]` hook reminder is a nudge to log the delta, not a license to write the style doc.
 
 ## Code Review
 

@@ -144,7 +144,7 @@ Runs on the effort doc updated by the Codebase Grill Pass.
 
 ### 4a. Score the design
 
-Evaluate every Quality Criterion from the base skill internally. For each FAIL or WEAK, record the specific gap.
+Score via the fresh-context subagent defined in the base skill's Phase 4b (read-only `verifier`; gets the draft + criteria table + cited references only, never your reasoning). For each FAIL or WEAK, record the specific gap.
 
 Also check: has any codebase or KB data gathered in Steps 1–3 revealed assumptions in the design that don't hold?
 

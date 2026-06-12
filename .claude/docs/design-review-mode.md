@@ -70,6 +70,7 @@ Score every criterion from the Quality Criteria table (in `/nase:design`):
 | Scope clarity | |
 | Risk coverage | |
 | KB alignment | |
+| Elegance | |
 
 Also check for **staleness**: has the codebase or KB changed in ways that invalidate assumptions in the design?
 

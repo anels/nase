@@ -187,6 +187,27 @@ Store the parsed values; include them in Step 6's journal output. If `note=no-se
 
 **If condition NOT met:** set `style-delta=skipped-no-deltas`.
 
+### Step 4f: Review-Finding Calibration (conditional, read-only on GitHub)
+
+**Condition:** `workspace/logs/*.md` from the last 7 days contain `review`-tagged entries referencing `{repo}#{number}`.
+
+**If condition met:**
+1. Collect unique `{owner/repo}#{number}` pairs from those entries. Drop any PR already present in `workspace/stats/review-findings.jsonl`.
+2. For each remaining PR, check state once: `gh pr view {number} -R {owner}/{repo} --json state,mergedAt`. Only process PRs that are now `MERGED` or `CLOSED` — open PRs stay queued for a later wrap-up.
+3. For each processed PR, fetch review threads (`python3 .claude/scripts/pr-github-helper.py review-threads "{pr_url}"`) and keep only threads whose first comment was authored by the user (`gh api user --jq .login`, once). Classify each:
+   - `accepted` — thread resolved (author fixed or acknowledged)
+   - `pushed-back` — open or resolved with an author reply that disagrees and no follow-up change
+   - `ignored` — open with no author reply
+4. Append one JSONL line per PR to `workspace/stats/review-findings.jsonl` (append-only exception; narrow write):
+   ```json
+   {"date":"{YYYY-MM-DD}","repo":"{owner/repo}","pr":{number},"threads":N,"accepted":N,"pushed_back":N,"ignored":N}
+   ```
+5. If the cumulative file covers ≥10 PRs, print one line: `Review calibration: {accepted}/{threads} findings landed ({pct}%) across {N} PRs.` If `pushed_back` shows a repeated pattern (same category disagreed with 2+ times), surface it as a candidate for Step 2 learn context.
+
+This is the calibration loop for `/nase:discuss-pr` confidence scores — model-assigned `[HIGH]`/`[CRIT]` tiers are hypotheses until reviewers' acceptance data confirms them. GitHub access here is read-only; no replies, reactions, or resolves.
+
+**If condition NOT met:** skip silently.
+
 ### Step 5: Journal Entry (always runs)
 
 Generate today's journal entry from the data already gathered in Step 0:

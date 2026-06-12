@@ -171,7 +171,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 - `/nase:design` handles complex tasks: KB context, 2–3 approaches, tradeoffs, tracked effort doc. Skip it for simple fixes.
 - `/nase:fsd` handles code → test → fix → commit → push → draft PR. For large features use **Direct with Phase isolation**; for hard TDD use **Yes** at the TDD prompt.
-- Optional Codex gates run where configured and skip cleanly otherwise.
+- Optional Codex second-opinion gates run where configured and skip their Codex call cleanly otherwise; `/nase:fsd` and `/nase:address-comments` still run their local read-only verifier fallback for pre-push and review-thread safety.
 - Reviewer discovery uses KB → git history → CODEOWNERS, then stages Slack DM drafts.
 - Review feedback is handled interactively: obvious fixes applied, ambiguous comments discussed one by one.
 

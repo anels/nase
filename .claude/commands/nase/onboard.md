@@ -242,6 +242,16 @@ Apply `.claude/docs/workspace-write-guard.md`:
 - Refresh: enrich existing file — update current-state sections, add new decisions, update `<!-- Last updated -->` date, and update `## Knowledge Hygiene`. Do not wipe valid content.
 - Current-state sections may be rewritten from repo evidence. Historical notes are preserved with `Correction` / `Superseded by` markers when stale.
 
+#### Refresh Output Contract (refresh runs only)
+
+A refresh reconciles the current-state template sections in place. It is **not** an activity log of what changed this run — a dated "what I observed" journal is how a KB silts up with facts that decay before the next session. Concretely:
+
+- **No dated refresh journal.** Do not append `### YYYY-MM-DD — Refresh` blocks enumerating observations. Update the fixed `## Knowledge Hygiene` summary fields in place (`Last hygiene scan`, `Last deep scan`, counts). Everything else lands in its current-state template section.
+- **Notability + git-recoverability gate.** Before persisting any observation, ask: can a human recover this with one git command at use-time? If yes — current HEAD sha, commit counts, "no new commits since X", ownership commit-count drift, dependency bumps already in the lockfile — do not write it. `git log` / `git shortlog` re-derives it for free and the snapshot is stale within days. Persist a fact only when all three hold: (a) it survives to the next session, (b) it costs more to re-derive than to store, (c) it feeds a downstream decision (architecture, brittle boundary, contract, PR gate, or ownership routing). This is the `kb-template.md → Writing Conventions` notability bar plus a recoverability test.
+- **Ownership lives in the table, not in prose.** Update the `## Ownership Map` table in place (overwrite from the Step 3g git analysis). Never record ownership as dated drift notes — commit-count fluctuations are not notable.
+- **No-change silence.** If a refresh finds nothing that clears the gate, update only the applicable `## Knowledge Hygiene` summary date/count fields. "No new source commits since {date}" is never a KB entry.
+- **Collapse merged PR fix-lists.** A merged bug-fix PR earns at most a one-line pointer, and only when it changed a constraint already documented in the KB; otherwise skip it — `git show <merge-sha>` recovers the detail.
+
 ### 4.5. Azure Pipeline KB Section (if ADO pipelines found)
 
 Skip entirely if no Azure Pipeline YAML files were found in Step 3d.

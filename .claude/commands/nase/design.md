@@ -138,7 +138,7 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 **Approach:** {1-2 sentences}
 **Pros:** {concrete advantages}
 **Cons:** {concrete risks or costs}
-**Fits KB patterns?** {yes/no + why}
+**Fits KB patterns?** {yes/no + cite the specific KB entry or file:line that backs the claim; if you cannot cite one, write `unverified` — never assert alignment from memory}
 **Principle alignment:** {which principles this honors; which it trades off}
 **Elegance:** {is the shape coherent and natural, or is it clever/awkward?}
 ```
@@ -213,9 +213,11 @@ For **initiatives**: include a decomposition section listing sub-efforts with de
 
 Run an internal quality gate before writing the effort doc.
 
+**Scoring is done by a fresh-context subagent, not the main thread.** Scoring your own draft in the same context that wrote it is self-approval — the same blind spots that produced a gap will score past it. Spawn one read-only subagent per iteration (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob). Give it ONLY: the draft design text, the Quality Criteria table, and the KB/file references the design cites (so it can spot-check Grounding claims). Do NOT include your design reasoning, prior iteration scores, or which option was chosen over what. It returns per-criterion PASS/WEAK/FAIL plus the specific gap for each non-PASS. The main thread owns revisions.
+
 **For each iteration:**
 
-1. **Score** the draft design against every row in the Quality Criteria table (see below). For each criterion, assign: PASS, WEAK, or FAIL.
+1. **Score** the draft design via the fresh-context subagent against every row in the Quality Criteria table (see below). For each criterion: PASS, WEAK, or FAIL.
 
 2. **If any FAIL or 2+ WEAK**: identify the specific gaps and revise the design in-place. Common fixes:
    - Specificity FAIL → add concrete numbers, file paths, line counts

@@ -64,6 +64,31 @@ For each entry in `workspace/tasks/lessons.md`:
    - `ops` → `workspace/kb/ops/<env>.md`
    - `project` → `workspace/kb/projects/<repo>.md`
 
+## Step D2 — Low-value accretion candidates
+
+Project KB refreshes should reconcile current-state sections, not append dated
+heartbeats. Scan project KBs for dated blocks or bullets made only of
+git-recoverable, non-notable facts:
+
+- `### YYYY-MM-DD — Refresh` sections that enumerate what the scan observed.
+- "No new commits since X", "HEAD remains {sha}", "unchanged", or "no action
+  needed" status notes.
+- Commit-count or ownership-count drift that `git log` / `git shortlog`
+  re-derives at use-time.
+- Dependency bumps already visible in manifests or lockfiles.
+
+This is distinct from stale content:
+
+- **Stale** = once-true current-state content that now appears outdated.
+- **Accretion** = never-notable snapshot content that should not have been
+  persisted.
+
+Do not flag genuine historical records such as incidents, architecture
+decisions, release milestones, or human decisions dated to their event. For
+each accretion candidate, report the file, heading or line, why the fact is
+git-recoverable, any durable fact that should be folded into a current-state
+section, and the recommended delete/compact action.
+
 ## Step E — Temp and outdated artifact scan
 
 Scan `workspace/` for non-KB content that accumulated during daily work:
@@ -79,6 +104,7 @@ The caller (skill) collects:
 - A per-file table with `(path, topics, entries, last_active, source, tier)`.
 - An orphans list, an empties list, a domain-map-gap list.
 - A lesson promotion candidates list with proposed target paths.
+- A low-value accretion candidates list with fold/delete recommendations.
 - A temp/outdated artifacts list grouped by safe-to-delete vs review-first.
 
 The caller decides what to do with these — write to a report file, prompt for action, or both. This doc only defines *what* "stale" means; the *what next* is the skill's job.
