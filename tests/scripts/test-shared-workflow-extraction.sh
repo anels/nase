@@ -55,7 +55,14 @@ assert_not_contains "fsd no inline codex diff algorithm" .claude/commands/nase/f
 assert_contains "codex bundle doc names script" .claude/docs/codex-verification-bundle.md 'codex-verify-bundle\.py'
 
 assert_contains "design uses effort lifecycle doc" .claude/commands/nase/design.md 'effort-lifecycle\.md'
+assert_contains "design has PR economy default" .claude/commands/nase/design.md 'Default to one PR'
+assert_contains "design records target PR count" .claude/commands/nase/design.md 'Target PR count'
+assert_contains "design gates multi-PR splits" .claude/commands/nase/design.md 'Split into multiple PRs only when'
+assert_contains "design quality checks reviewability" .claude/commands/nase/design.md 'Reviewability'
+assert_contains "auto design preserves PR plan" .claude/docs/design-auto-mode.md 'Implementation / PR Plan'
 assert_contains "fsd uses effort lifecycle doc" .claude/commands/nase/fsd.md 'effort-lifecycle\.md'
+assert_contains "fsd consumes design PR plan" .claude/commands/nase/fsd.md 'design_pr_plan'
+assert_contains "fsd preserves one-PR default" .claude/commands/nase/fsd.md 'Default to the design PR plan'
 assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
 assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'
 

@@ -17,6 +17,7 @@
 #   D12. /nase:today treats tech-digest as a proactive action instead of optional
 #   D13. workspace/tmp artifact paths embed raw branch names that may contain slashes
 #   D14. generated workspace wrapper descriptions exceed the session-start metadata cap
+#   D15. critical KB-consuming workflows contain an explicit KB lookup marker
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -487,6 +488,52 @@ if [[ -n "$d14_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': generated wrapper descriptions are capped\n'
+fi
+
+# ---------- D15: critical workflows preserve KB lookup markers -------------
+section "D15: critical KB workflows preserve lookup markers"
+d15_hits=$(python3 - <<'PY'
+from pathlib import Path
+
+markers = (
+    "repo-resolution.md",
+    "kb-domain-resolve.sh",
+    "nase-context-kb-researcher",
+    "workspace/kb/.domain-map.md",
+    "mentions:<path>",
+)
+targets = [
+    ".claude/commands/nase/design.md",
+    ".claude/commands/nase/fsd.md",
+    ".claude/commands/nase/discuss-pr.md",
+    ".claude/commands/nase/address-comments.md",
+    ".claude/commands/nase/request-review.md",
+    ".claude/commands/nase/tech-debt-audit.md",
+    ".claude/commands/nase/today.md",
+    "workspace/skills/investigate-sre-jira.md",
+    "workspace/skills/handle-support-question.md",
+    "workspace/skills/deploy-alpha.md",
+    "workspace/skills/security-pr-review.md",
+]
+
+hits = []
+for filename in targets:
+    path = Path(filename)
+    if not path.exists():
+        continue
+    text = path.read_text(encoding="utf-8")
+    if not any(marker in text for marker in markers):
+        hits.append(f"  {path}: missing one of {', '.join(markers)}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d15_hits" ]]; then
+  red "FAIL"; printf ': critical KB-consuming workflows need explicit lookup markers:\n'
+  printf '%s\n' "$d15_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': critical KB workflows keep explicit lookup markers\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

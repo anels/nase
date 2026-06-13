@@ -38,6 +38,7 @@ Read the plan content (effort doc body or raw text). Extract every branch where 
 - Ambiguous wording in design body ("we could", "either X or Y", "TBD", "later") → each is a branch.
 - Missing constraints — invariants the plan asserts without specifying (error mode, retry semantics, idempotency, ordering, concurrency, schema migration, rollout, observability, ownership).
 - Architectural choices the plan glosses over — interface shape, seam location, data path.
+- Review packaging ambiguity — proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, or implementation phases being treated as PRs without justification.
 
 Output internally: a list `branches: [{topic, why-it-matters}]`. Cap at 15 top-level branches; if more candidates exist, prioritize by load-bearingness (security, data-loss risk, irreversibility, cross-team coordination) and surface the rest in `## Open after grill`. The 15-cap protects the 25-iteration budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
 

@@ -41,6 +41,7 @@ It returns title/body/base/head/changed-file/signals only. The main thread merge
 ## Step 3 — Resolve code owners
 
 Use this priority order — stop as soon as you have confident owners. Always reach the KB before going to GitHub.
+Resolve each repo and its KB path via `.claude/docs/repo-resolution.md` before reading ownership signals; do not assume `workspace/kb/projects/<repo-name>.md` exists until resolution succeeds.
 
 When the changed-file list spans multiple areas, dispatch `nase-reviewer-owner-scanner` per repo or per PR after Step 2.
 It may read KB ownership, CODEOWNERS, and git history, but it must not resolve Slack users or stage drafts.

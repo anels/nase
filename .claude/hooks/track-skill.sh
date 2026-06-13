@@ -8,6 +8,8 @@ NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
 [ -z "$NASE_ROOT" ] && exit 0
 STATS_DIR="$NASE_ROOT/workspace/stats"
 JSONL="$STATS_DIR/skill-usage.jsonl"
+HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 
 INPUT=$(cat)
 # Single jq pass: emit "<skill>\t<status>\t<duration_ms>". status derivation —
@@ -37,6 +39,13 @@ SKILL_NAME="${SKILL#nase:}"
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 mkdir -p "$STATS_DIR"
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$LOGGER" activate \
+    --root "$NASE_ROOT" \
+    --skill "$SKILL_NAME" \
+    --source skill-hook >/dev/null 2>&1 || true
+fi
 
 # Dedup: skip if same skill + same second already recorded.
 # Bash string match avoids a second jq fork on the hot path; JSONL is

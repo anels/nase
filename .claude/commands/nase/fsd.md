@@ -44,6 +44,7 @@ Research first; minimize questions. Read `workspace/context.md`, then `workspace
 **Effort-doc intake (design handoff):** before repo inference, scan `$ARGUMENTS` tokens for a slug matching `workspace/efforts/{slug}.md`. If found, read the effort doc and extract:
 - `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.
 - The latest `## Grill Session → ### Constraints for implementation` block (if any) → store as `design_constraints`. These are evidence-backed decisions — carry them into Phase 4 and every subagent prompt; do not re-litigate them silently.
+- `### Implementation / PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases.
 - `## Topology` (if present) → seed Phase 1.5 with it instead of rebuilding; Phase 3 finalization re-verifies the listed paths still exist in `{work_root}`.
 - Frontmatter `repo:` → store as `repo_hint_from_design`; use it as the target repo unless the user explicitly named a different one.
 
@@ -173,6 +174,8 @@ Set `{work_root}` = `{worktree_path}` if worktree = Yes, else `{repo}`.
 
 **Finalize topology (if `topology = needs-work-root`):** grep/glob inside `{work_root}` only, ≤25 lines. If this came from `/nase:design`, stage and append it to `workspace/efforts/{slug}.md` under `## Topology` using the workspace write guard; otherwise keep it in conversation context for Phase 4.
 
+**KB mentions preflight:** once touched paths are known from topology, run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` for each expected touched source/config path (cap at 10; skip generated files unless they are the primary edit target). Store hits as `kb_path_constraints`; if no hits, write `none found`. Carry this into Phase 4 prompts and the implementation constraints.
+
 ---
 
 ## Phase 3.5: Research Gate (unfamiliar APIs/libraries only)
@@ -239,6 +242,7 @@ If phase isolation falls back to Direct mode, continue to Phase 4 as Direct. If 
 ## Phase 4: Implement (TDD — Red → Green → Refactor)
 
 Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present — implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
+If `design_pr_plan` exists, preserve it unless the diff-size hard gate, repo boundary, release boundary, or a reviewer-owner boundary clearly forces a split. Implementation phases are not PR boundaries by themselves.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**
@@ -247,6 +251,7 @@ Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent p
 - Final `topology` (if any); edit only `affected_files` unless you stop and report back.
 - Phase 3.6 `reuse_findings` and `pre_impl_grep_findings`; reuse patterns and preserve surfaced invariants.
 - `design_constraints` from Phase 1 (if present); each constraint is binding — report back instead of diverging.
+- `design_pr_plan` from Phase 1 (if present); implement toward the target PR count and report before expanding into extra branches/PRs.
 
 If Phase 3.5 wrote `workspace/tmp/fsd-research-{branch_slug}.md`, each Team prompt must tell agents to read it before coding.
 
@@ -328,9 +333,9 @@ Reference: Google eng-practices change-sizing — review quality degrades sharpl
 | Bucket | Action |
 |--------|--------|
 | ≤ 100 lines | sweet spot — proceed to Phase 6 silently |
-| 101-250 lines | advisory: print one-line: `Diff is {N} lines — past the ~100-line sweet spot. Split into 2 PRs if a natural seam exists; otherwise continue.` Continue without asking. |
-| 251-500 lines | caution: print `Diff is {N} lines — review quality drops sharply past 250 lines. Consider splitting by topology cluster.` Render `git diff --stat`. Continue without asking. |
-| 501-1500 lines | strong caution: print `Diff is {N} lines — past the 500-line single-PR guidance from Google eng-practices.` Continue without asking, but **mark `large-diff` for Phase 10 daily log automatically.** |
+| 101-250 lines | advisory: print one-line: `Diff is {N} lines — past the ~100-line sweet spot; continuing with the design PR plan unless a real split boundary exists.` Continue without asking. |
+| 251-500 lines | caution: print `Diff is {N} lines — review quality drops sharply past 250 lines. Continue with the design PR plan; add a review guide rather than splitting unless a split criterion is met.` Render `git diff --stat`. Continue without asking. |
+| 501-1500 lines | strong caution: print `Diff is {N} lines — past the 500-line single-PR guidance from Google eng-practices. Keeping one PR is acceptable only when the design PR plan is single-PR and the diff is one coherent vertical slice.` Continue without asking, but **mark `large-diff` for Phase 10 daily log automatically.** |
 | > 1500 lines | **pause** — present `git diff --stat` and ask via `AskUserQuestion`: |
 
 ```
@@ -342,7 +347,7 @@ options:
   - label: "Show me the file list"    , description: "Render the per-file breakdown before deciding"
 ```
 
-On "Split": stop and suggest split from topology clusters or `git diff --stat`. On "Proceed": add `large-diff` tag to Phase 10 daily log.
+On "Split": stop and suggest the minimum PR count from the design PR plan, topology clusters, and `git diff --stat`. On "Proceed": add `large-diff` tag to Phase 10 daily log.
 
 ---
 

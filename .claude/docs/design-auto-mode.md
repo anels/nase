@@ -74,6 +74,8 @@ Run Phases 2–5 from the base skill with these adaptations:
 
 **Phase 2c** — instead of `AskUserQuestion`: run the Research Ladder. If still unknowable after all 5 sources, add to `human_input_queue` and use the most KB-aligned option as a default assumption. Log: "Auto-assumption: {X} — based on {source}. Will appear in Human Input Required."
 
+**Phase 2e / Implementation / PR Plan** — keep the base skill's PR Packaging Analysis. Auto mode must still write `### Implementation / PR Plan` with `Target PR count: 1` unless a documented split criterion is met. If more than one PR is proposed, run the Research Ladder against the split boundary and include why one coherent PR is worse for review or merge safety.
+
 **Phase 3, Step 5** — instead of `AskUserQuestion`: auto-select the recommended option (first in the list). Log internally: "Auto-selected: Option {N} — {rationale}." If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
 
 **Phase 5c** — skip. Do not create a Jira ticket in auto mode.

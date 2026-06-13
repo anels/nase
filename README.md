@@ -287,6 +287,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 | `/nase:estimate-eta <task>` | Effort estimate |
 | `/nase:stats [N\|Nd\|week\|month\|all\|YYYY-MM-DD to YYYY-MM-DD]` | Workspace usage statistics with GitHub-style heatmap, tiered skill usage, and summary counters printed inline |
 | `/nase:skill-usage [--window N] [--top N]` | Skill invocation frequency × recency from `workspace/stats/skill-usage.jsonl`; flags deprecation candidates (0 uses in `N` days, default 60) → `workspace/stats/skill-usage-YYYY-MM-DD.md` |
+| `/nase:kb-usage [--window N\|all] [--top N] [--verbose]` | Read-only KB telemetry report from `workspace/stats/kb-usage.jsonl`: files used, skills using KB, unused mapped KB files, top files/skills → `workspace/stats/kb-usage-YYYY-MM-DD.md` |
 
 ### Security & maintenance
 
@@ -309,7 +310,7 @@ Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destr
 
 External-write hooks block direct Slack sends, require a fresh prompted Jira write token, and stop oversized Confluence page writes before they can truncate. Use Slack drafts, explicit Jira confirmation, or a `workspace/tmp/` Confluence patch when those guards fire.
 
-Other hooks: `SessionStart` creates today's log and reports backup status; `UserPromptSubmit` nudges `[STYLE-DELTA]` capture for style corrections and records slash commands; `Stop` backs up `workspace/`; `PostToolUse:Skill` logs `/nase:*`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts.
+Other hooks: `SessionStart` creates today's log and reports backup status; `UserPromptSubmit` nudges `[STYLE-DELTA]` capture for style corrections and records slash commands; `Stop` backs up `workspace/`; `PostToolUse:Skill` logs `/nase:*`; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts.
 
 Full table with behavior details: [`docs/architecture.md` — Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
 

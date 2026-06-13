@@ -110,7 +110,8 @@ for test_file in \
   tests/hooks/test-session-start.sh \
   tests/hooks/test-stop-backup-safety.sh \
   tests/hooks/test-post-edit-shellcheck.sh \
-  tests/hooks/test-pre-edit-write-fact-force.sh
+  tests/hooks/test-pre-edit-write-fact-force.sh \
+  tests/hooks/test-track-kb-read.sh
 do
   run_gate bash "$test_file"
 done
@@ -126,7 +127,9 @@ for test_file in \
   tests/scripts/test-date-resolve.sh \
   tests/scripts/test-kb-gap-scan.sh \
   tests/scripts/test-help-summary.sh \
+  tests/scripts/test-kb-domain-resolve.sh \
   tests/scripts/test-kb-hygiene-scan.sh \
+  tests/scripts/test-kb-usage-report.sh \
   tests/scripts/test-kb-search.sh \
   tests/scripts/test-today-stats.sh \
   tests/scripts/test-tool-availability.sh \
