@@ -1,6 +1,6 @@
 ---
 name: nase:address-comments
-description: "Fix unresolved PR review comments — makes code changes, pushes, then resolves threads. Does not wait on or check PR pipeline gates; if CI fails afterward, run another round. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
+description: "Deep-dive unresolved PR review comments with per-thread dossiers, then fix or reply, push when code changed, and resolve approved threads. Does not wait on or check PR pipeline gates; if CI fails afterward, run another round. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
 pattern: pipeline
 ---
 
@@ -79,47 +79,83 @@ Capture both thread `id` (GraphQL resolve) and `databaseId` (REST reply); they a
 
 If there are zero unresolved threads: report "No unresolved comments found" and stop.
 
-## Phase 3: Critically Evaluate & Present Plan
+## Phase 3: Build Dossiers, Evaluate, & Present Plan
 
-**Step 3a — Load context before evaluating:**
+Follow `.claude/docs/pr-review-verification.md` and `.claude/docs/ai-code-verification-debt.md` before classifying any thread. Every unresolved thread gets a bounded dossier; high-risk comments get deeper evidence, but low-risk comments still need a short evidence chain.
 
-For each thread, read full comment chain plus surrounding code from PR head: `git -C {repo_path} show {pr_head_ref}:{path}`. Cross-reference KB/Confluence/past decisions before classifying.
+**Step 3a — Build one dossier per unresolved thread before classification:**
 
-**Step 3b — Resolve unclear threads first:**
+For each thread, collect:
 
-Ask about ambiguous/design threads first using full comment chain; collect answers before final plan.
+- Full comment chain, including author login, `id`, `databaseId`, path, line, and timestamps.
+- Referenced file from PR head: `git -C {repo_path} show {pr_head_ref}:{path}`.
+- Base-branch version when the claim depends on diff scope: `git -C {repo_path} show origin/{baseRefName}:{path}`.
+- PR diff hunk for the file and nearby changed context.
+- KB / repo / Confluence / past-decision constraints that match the file, module, or reviewer premise; if none are found, write `none found`.
+- Caller/dependency impact via `rg`, `git grep`, or language-aware search for referenced symbols, config keys, routes, schema fields, or public contracts.
+- Related test/scanner evidence, or the exact missing verification signal.
+- Explicit AI provenance per `.claude/docs/ai-code-verification-debt.md → Explicit AI Provenance`; record `none-found` instead of inferring from style.
 
-**Step 3c — Evaluate and classify remaining threads:**
+Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; the bullets above are the concrete evidence sources for its `Evidence checked` block.
 
-Evaluate each suggestion:
+**Step 3b — Assign risk before deciding action:**
 
-0. **Verify first**: apply `.claude/docs/pr-review-verification.md` §3 (File-vs-description). If the reviewer's prose does not match the file at the referenced line, decline the suggestion regardless of other factors.
-0a. **Conditional premise verification**: for suggestions phrased "if X, then change Y", "match the existing pattern A", or "unify on existing behavior", verify X or trace why pattern A exists **before** classifying. If the premise is wrong (other-tool angle, environment difference, unseen workstation hook) or the cited pattern is itself buggy, classify as `decline` and reply with the missed evidence. Cheap premise checks avoid accept-then-revert loops.
-1. **Correctness**: Does the reviewer's suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
-2. **Context**: Does the reviewer have full context? Sometimes a suggestion makes sense locally but conflicts with constraints elsewhere (e.g., API contracts, performance requirements, framework limitations).
-3. **Substance vs. style**: Is this a meaningful improvement to correctness, readability, or maintainability? Or is it a cosmetic/stylistic preference that doesn't materially improve the code?
-4. **Risk**: Could accepting this change introduce a regression, break an invariant, or conflict with the broader design?
+Use `.claude/docs/ai-code-verification-debt.md → Risk Tiers` as the source of truth. Required labels are `P0 security/data-loss`, `P1 correctness/runtime`, `P2 architecture/maintainability`, and `P3 style/nit`; apply that doc's evidence-depth and AI-provenance escalation rules.
 
-**Classify each thread:**
+**Step 3c — Evaluate and classify only after dossier evidence exists:**
+
+Apply these gates in order:
+
+0. **Dossier completeness gate**: if code, diff/base, KB/repo, caller impact, and verification evidence are not all checked or explicitly marked missing, classification is blocked.
+1. **File-vs-description**: apply `.claude/docs/pr-review-verification.md` §3. If the reviewer's prose does not match the file at the referenced line, decline the suggestion regardless of other factors.
+2. **Conditional premise verification**: for suggestions phrased "if X, then change Y", "match the existing pattern A", or "unify on existing behavior", verify X or trace why pattern A exists before classifying. If the premise is wrong or the cited pattern is itself buggy, classify as `decline` and reply with the missed evidence.
+3. **Correctness**: Does the suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
+4. **Context**: Does the suggestion conflict with API contracts, performance constraints, framework behavior, KB rules, or cross-repo consumers?
+5. **Substance vs. style**: Does it meaningfully improve correctness, clarity, testability, or maintainability? Or is it preference-only churn?
+6. **Regression risk**: Could accepting introduce a new invariant break, test gap, or rollout risk?
+
+**Classify each thread after the gates:**
 
 | Category | When to use | Action |
 |----------|-------------|--------|
 | **accept** | Suggestion fixes a real issue, improves correctness, or meaningfully improves clarity/maintainability | Modify the code |
 | **decline** | Current code is correct and the suggestion is stylistic, based on incomplete context, or would introduce risk | Reply explaining why the current approach is intentional |
 | **reply-only** | Question, discussion point, or acknowledgment needed — no code involved | Write a reply |
+| **ask-user** | Business intent, product tradeoff, or hidden repo context is required to decide safely | Ask the exact missing question before Phase 4 |
 
-Accept only when the change measurably improves correctness/clarity. If current code is equally valid, decline with concrete KB/architecture context when available.
+Accept only when the change measurably improves correctness/clarity. If current code is equally valid, decline with concrete evidence from the dossier. Declines must prove the reviewer premise is false, already addressed, out of PR scope, or lower-value than the risk it introduces.
 
 **Probe for a middle ground before committing to accept-vs-decline.** Before classifying, check whether a scoped third option (partial accept, a narrower fix, or a follow-up issue for out-of-scope asks) better serves the reviewer's intent.
 
-**Step 3d — Present the complete plan:**
+**Step 3d — Pre-confirmation second opinion for risky or uncertain threads:**
+
+Before Phase 4, run an independent read-only verification pass for any thread with `P0`, `P1`, `ask-user`, or uncertainty in the dossier.
+
+- If Codex MCP is loaded, gate per `.claude/docs/codex-review.md → Prerequisite` and use `Mode: comment-dossier`. Pass the review-thread dossier, supporting evidence, and missing-evidence notes; do not pass your intended classification.
+- If Codex MCP is unavailable but a fresh-context read-only verifier subagent is available, use the same artifact/contract packet and tag the result `fallback-verify`.
+- If neither is available, keep the uncertainty in the dossier and ask the user before executing.
+
+Verifier output is review input, not authority. Reconcile it against the dossier before changing the dossier/action map.
+
+**Step 3e — Resolve unclear threads before Phase 4:**
+
+Ask about any `ask-user` threads using the full dossier. Collect answers, update the dossier, and recompute the dossier/action map before the final plan.
+
+**Step 3f — Present the complete plan:**
 
 ```
 Found {N} unresolved review threads:
 
-  1. ✅ [{path}:{line}] {first_comment_summary} → accept: {what_you_plan_to_do}
-  2. ↩️ [{path}:{line}] {first_comment_summary} → decline: {why current code is correct/better}
-  3. 💬 [{path}:{line}] {first_comment_summary} → reply-only: {draft_reply_summary}
+  1. [{risk}] [{path}:{line}] {premise} -> accept
+     evidence: {diff/base/head + KB/caller/test summary}
+     action: {what_you_plan_to_do}
+     verification: {post-change check}
+  2. [{risk}] [{path}:{line}] {premise} -> decline
+     evidence: {why the premise is false / already fixed / out of scope / risky}
+     reply: {draft_reply_summary}
+  3. [{risk}] [{path}:{line}] {premise} -> reply-only
+     evidence: {why no code change is needed}
+     reply: {draft_reply_summary}
   ...
 ```
 
@@ -137,7 +173,7 @@ options:
     description: "Let me adjust some items"
 ```
 
-If user changes classifications, recompute the final per-thread category map explicitly; Phase 9 uses only this map.
+If user changes classifications, recompute the final per-thread dossier/action map explicitly; Phase 9 uses only this map.
 
 Then use `AskUserQuestion` to ask for execution mode:
 
@@ -240,19 +276,20 @@ Do NOT skip this gate: replying to and resolving someone's review threads is an 
 
 **Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
 - the unresolved review threads from Phase 2 (full comment chains)
-- the final post-Phase-4 category map and drafted replies from Phase 6
+- the final post-Phase-4 dossier/action map and drafted replies from Phase 6
 - the same diff payload described for the Codex prompt below
 
 Ask it to judge independently, per thread:
 - does the diff/reply actually address what the reviewer asked?
 - is any decline reply factually wrong?
+- does any reply contradict the dossier evidence or omit a required verification note?
 
 Do NOT include your own classification reasoning or expected verdict. It must answer in the same `VERDICT:` shape below; apply the same decision tree. Log `thread-resolution verify: single-model fallback (Codex unavailable)`; overrides use tag `fallback-verify`.
 
 Invoke the Codex MCP with the `comment-resolution` mode contract from `.claude/docs/codex-review.md`:
 
 - `cwd` = `{worktree_path}`
-- `prompt` = unresolved review threads from Phase 2, the final post-Phase-4 category map, drafted replies from Phase 6, and the implementation diff:
+- `prompt` = unresolved review threads from Phase 2, the final post-Phase-4 dossier/action map, drafted replies from Phase 6, and the implementation diff:
   - If code changed: `git -C {worktree_path} diff origin/{pr_branch}` (working tree diff before commit)
   - Also include `git -C {worktree_path} ls-files --others --exclude-standard` and the full content of any task-created untracked files
   - If no code changed: say `No code diff; reply-only / decline verification only`
@@ -289,8 +326,8 @@ This gate checks reviewer intent, not just tests.
 ## Phase 8: Commit & Push
 
 If there are no code changes after Phase 6:
-- If the final post-Phase-4 category map has any `accept` threads, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
-- If the final map has only `reply-only` / `decline` threads, skip commit and push. Set `no_commit=true`, report `No code changes; proceeding to review replies/resolution only.`, skip Phase 8b, and continue to Phase 9.
+- If the final post-Phase-4 dossier/action map has any `accept` threads, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
+- If the final dossier/action map has only `reply-only` / `decline` threads, skip commit and push. Set `no_commit=true`, report `No code changes; proceeding to review replies/resolution only.`, skip Phase 8b, and continue to Phase 9.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
 Deviation: in "Confirm before push" mode, show the staged diff (`git diff --cached --stat` + key hunks) and the commit message before pushing, then use `AskUserQuestion`:
@@ -363,7 +400,7 @@ For each thread, compose the reply body based on its category:
 Before making any GitHub reply or resolve API call, show the concrete per-thread payload:
 
 - Thread id / comment id
-- Category from the final post-Phase-4 map
+- Category from the final post-Phase-4 dossier/action map
 - Reply body
 - Whether it will be resolved (`accept`, `reply-only`) or left open (`decline`)
 
@@ -395,7 +432,7 @@ gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
 
 Process `accept` and `reply-only` threads using this pattern (reply + resolve). For `decline` threads: **reply only, do NOT resolve** — the reviewer may want to respond or push back. Resolving a declined thread shuts down the conversation prematurely.
 
-**Category source-of-truth**: use the post-Phase-4 category map — NOT the initial Phase 3c classification. If a thread was reclassified during Phase 4 user override (e.g., decline → accept), it goes into the resolve set here. Confirm by reading the final map once before iterating.
+**Category source-of-truth**: use the post-Phase-4 dossier/action map — NOT the initial Phase 3c classification. If a thread was reclassified during Phase 4 user override (e.g., decline → accept), it goes into the resolve set here. Confirm by reading the final dossier/action map once before iterating.
 
 ## Phase 9b: Optional Reviewer Ping (Human Reviewers Only)
 

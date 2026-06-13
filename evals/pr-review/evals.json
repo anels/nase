@@ -80,6 +80,101 @@
       ]
     },
     {
+      "id": "address-comments-dossier-evidence",
+      "skill": "nase:address-comments",
+      "title": "Deep-dive dossier before classification",
+      "prompt": "/nase:address-comments https://github.com/example/service/pull/128",
+      "expected_output": "The skill shows per-thread dossiers with premise, risk, evidence checked, action, and verification before asking for confirmation.",
+      "assertions": [
+        {
+          "name": "has required dossier fields in order",
+          "type": "ordered_regex",
+          "patterns": [
+            "(?i)Thread:",
+            "(?i)Premise:",
+            "(?i)Risk:",
+            "(?i)Evidence checked:",
+            "(?i)Decision:",
+            "(?i)Action:",
+            "(?i)Verification:"
+          ]
+        },
+        {
+          "name": "mentions diff/base/head evidence",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(PR diff/base/HEAD|base.*HEAD|diff.*base)"
+        },
+        {
+          "name": "mentions KB or repo rule evidence",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(KB/repo rule|repo rule|KB.*none found)"
+        },
+        {
+          "name": "mentions caller or dependency impact",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(caller/dependency impact|caller impact|dependency impact)"
+        },
+        {
+          "name": "does not mutate before confirmation",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(pushed|resolved thread|posted reply|gh api repos/.*/comments)"
+        }
+      ]
+    },
+    {
+      "id": "address-comments-false-premise-decline",
+      "skill": "nase:address-comments",
+      "title": "False reviewer premise is declined with evidence",
+      "prompt": "/nase:address-comments https://github.com/example/service/pull/129",
+      "expected_output": "When a reviewer premise does not match the file or repo evidence, the skill declines with concrete evidence instead of accepting the suggested patch.",
+      "assertions": [
+        {
+          "name": "declines the thread",
+          "type": "must_contain_regex",
+          "pattern": "(?i)\\bdecline\\b"
+        },
+        {
+          "name": "names premise verification",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(premise|file-vs-description|does not match|misread)"
+        },
+        {
+          "name": "cites concrete evidence",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(evidence|file:line|[^\\s]+:\\d+|HEAD|base)"
+        },
+        {
+          "name": "does not use blanket out-of-scope wording",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(all declined as out of scope|scope creep, closing|not relevant, resolving)"
+        }
+      ]
+    },
+    {
+      "id": "address-comments-high-risk-verifier",
+      "skill": "nase:address-comments",
+      "title": "High-risk or uncertain comments get verifier pass",
+      "prompt": "/nase:address-comments https://github.com/example/service/pull/130",
+      "expected_output": "P0/P1 or uncertain review threads are sent through a second-opinion verifier or surfaced to the user with the missing evidence before execution.",
+      "assertions": [
+        {
+          "name": "uses risk tier",
+          "type": "must_contain_regex",
+          "pattern": "(?i)P[01].*(security|data-loss|correctness|runtime)"
+        },
+        {
+          "name": "mentions second opinion or fallback verifier",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(second-opinion|Codex|fallback-verify|verifier)"
+        },
+        {
+          "name": "does not silently accept uncertainty",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(unclear but accepting|probably fine, accepting|accepting without evidence)"
+        }
+      ]
+    },
+    {
       "id": "request-review-draft-style",
       "skill": "nase:request-review",
       "title": "Concise review-request draft",
@@ -129,6 +224,59 @@
           "name": "does not claim merge completed",
           "type": "must_not_contain_regex",
           "pattern": "(?i)(merged successfully|merge completed|deleted branch)"
+        }
+      ]
+    },
+    {
+      "id": "tech-debt-ai-verification-section",
+      "skill": "nase:tech-debt-audit",
+      "title": "AI verification debt section",
+      "prompt": "/nase:tech-debt-audit example-service",
+      "expected_output": "The saved audit includes an AI Verification Debt section with explicit provenance, verification gaps, risk, and next checks.",
+      "assertions": [
+        {
+          "name": "has AI verification debt section",
+          "type": "must_contain_regex",
+          "pattern": "(?i)AI Verification Debt"
+        },
+        {
+          "name": "tracks provenance and verification gap",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(ai_provenance|Explicit AI provenance)[\\s\\S]*(verification_gap|Missing verification)"
+        },
+        {
+          "name": "tracks recommended next check",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(recommended_next_check|Recommended repayment order|next check)"
+        },
+        {
+          "name": "does not infer AI authorship from style",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(looks AI|AI-looking|style suggests AI|probably AI-authored|seems generated)"
+        }
+      ]
+    },
+    {
+      "id": "tech-debt-no-ai-provenance",
+      "skill": "nase:tech-debt-audit",
+      "title": "No AI provenance means none-found",
+      "prompt": "/nase:tech-debt-audit example-service --scope src/payments",
+      "expected_output": "When no explicit AI artifact is found, the audit records none-found and still reports ordinary verification gaps without labeling them AI-authored.",
+      "assertions": [
+        {
+          "name": "uses none-found provenance",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(ai_provenance:\\s*none-found|Explicit AI provenance found:\\s*no|none-found)"
+        },
+        {
+          "name": "can still report verification gaps",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(missing-tests|missing-scanner|missing-runtime-proof|Missing verification|verification gap)"
+        },
+        {
+          "name": "does not label code as AI-sourced",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(AI-authored because|generated-looking|likely AI code)"
         }
       ]
     }

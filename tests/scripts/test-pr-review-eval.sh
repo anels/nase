@@ -37,6 +37,8 @@ list_out="$TMPDIR_TEST/list.txt"
 "$PYTHON_BIN" "$SCRIPT" list "$EVAL_SET" > "$list_out"
 assert_cmd "eval list includes discuss-pr case" grep -q "discuss-pr-problem-first" "$list_out"
 assert_cmd "eval list includes request-review case" grep -q "request-review-draft-style" "$list_out"
+assert_cmd "eval list includes address-comments dossier case" grep -q "address-comments-dossier-evidence" "$list_out"
+assert_cmd "eval list includes tech-debt AI verification case" grep -q "tech-debt-ai-verification-section" "$list_out"
 
 cat > "$TMPDIR_TEST/discuss-ok.txt" <<'TXT'
 Review frame
@@ -73,6 +75,36 @@ Slack draft is staged only after confirmation.
 TXT
 "$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case request-review-draft-style --output "$TMPDIR_TEST/request-ok.txt" >/dev/null
 pass "request-review draft output scores ok"
+
+cat > "$TMPDIR_TEST/address-dossier-ok.txt" <<'TXT'
+Thread: src/auth.ts:42 comment 1001
+Premise: reviewer says the tenant guard is missing.
+Risk: P1 correctness/runtime because the route can return cross-tenant data.
+Evidence checked:
+- comment chain: reviewer asked for the tenant guard
+- PR diff/base/HEAD: base had tenantId check, HEAD removed it in this PR
+- KB/repo rule: tenant isolation required for auth handlers
+- caller/dependency impact: caller impact includes src/routes/report.ts:88
+- tests/scanners: missing test for cross-tenant access
+Decision: accept
+Action: restore tenant guard and add test.
+Verification: npm test -- auth
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case address-comments-dossier-evidence --output "$TMPDIR_TEST/address-dossier-ok.txt" >/dev/null
+pass "address-comments dossier output scores ok"
+
+cat > "$TMPDIR_TEST/tech-debt-ai-ok.txt" <<'TXT'
+AI Verification Debt
+Explicit AI provenance found: yes - Co-Authored-By: Claude in commit abc123
+ai_provenance: explicit
+verification_gap: missing-tests
+risk: P1 correctness/runtime
+Missing verification: no runtime regression test covers src/importer.ts:77
+recommended_next_check: npm test -- importer
+Recommended repayment order: P1 x high confidence x S effort x 20 days
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case tech-debt-ai-verification-section --output "$TMPDIR_TEST/tech-debt-ai-ok.txt" >/dev/null
+pass "tech-debt AI verification output scores ok"
 
 if [[ "$failures" -eq 0 ]]; then
   printf '\npr-review-eval tests passed.\n'
