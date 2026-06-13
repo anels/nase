@@ -151,7 +151,6 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `ms-learn-grounding.md` | Read-only verification of Azure / .NET / Microsoft SDK claims via the `ms-learn` MCP server. Used by `onboard` Step 3j; conditional on a Microsoft-stack trigger. |
 | `lessons-format.md` | Canonical format for `workspace/tasks/lessons.md` entries (header, body, signal-to-noise rules) |
 | `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
-| `pr-gate-remediation.md` | Mechanical PR gate failure classification and remediation recipes used by `address-comments` |
 | `pr-input-guard.md` | Input validation for skills that take a PR URL |
 | `pr-review-verification.md` | Seven-section verification checklist for PR review skills (AI-reviewer audit, cross-ref, diff-vs-HEAD, bot citation triage) |
 | `reference.md` | This file — workspace layout, KB structure, architecture notes |
@@ -177,7 +176,6 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `kb-gap-scan.sh` | Scan daily logs and lessons for KB-gap signals (uncertainty, doc lookups, SME teachings). Used by `kb-gap-detect`. |
 | `kb-hygiene-scan.py` | Scan project KB files for stale timestamps, unsafe stale claims, broken repo-source references, and compaction candidates. Used by `onboard`. |
 | `codex-verify-bundle.py` | Generate the markdown bundle for the Codex pre-push verification gate. Used by `fsd`. |
-| `pr-gate-remediation.py` | Classify failed PR gate names into shared remediation recipes. Used by `address-comments`. |
 | `pr-github-helper.py` | Parse GitHub PR refs, centralize read-only `gh` metadata/thread command shapes, and compute PR diff-size gates. Used by PR/review skills. |
 | `pr-review-eval.py` | Validate and score offline PR/review skill eval outputs from `evals/pr-review/evals.json`. |
 | `today-stats.py` | Emit a single date's session, token, and skill-usage counts as `key=value` lines. Used by `wrap-up` Step 4d. |

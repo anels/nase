@@ -40,16 +40,14 @@ assert_not_contains() {
   assert_cmd "$desc" bash -c '! grep -qE "$2" "$1"' _ "$file" "$pattern"
 }
 
-assert_cmd "pr gate remediation doc exists" test -f .claude/docs/pr-gate-remediation.md
 assert_cmd "codex verification bundle doc exists" test -f .claude/docs/codex-verification-bundle.md
 assert_cmd "effort lifecycle doc exists" test -f .claude/docs/effort-lifecycle.md
-assert_cmd "pr gate remediation script exists" test -f .claude/scripts/pr-gate-remediation.py
 assert_cmd "codex verify bundle script exists" test -f .claude/scripts/codex-verify-bundle.py
 
-assert_contains "address-comments uses PR gate shared doc" .claude/commands/nase/address-comments.md 'pr-gate-remediation\.md'
-assert_not_contains "address-comments no inline PR gate recipe table" .claude/commands/nase/address-comments.md '^\| `Commit Lint`'
-assert_contains "PR gate doc owns Commit Lint recipe" .claude/docs/pr-gate-remediation.md 'Commit Lint'
-assert_contains "PR gate script classifies commitlint" .claude/scripts/pr-gate-remediation.py 'commitlint'
+assert_contains "address-comments skips PR gates" .claude/commands/nase/address-comments.md 'PR Gates .* Skip'
+assert_not_contains "address-comments does not run gh pr checks" .claude/commands/nase/address-comments.md 'gh pr checks'
+assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/commands/nase/address-comments.md 'pr-gate-remediation'
+assert_not_contains "address-comments does not claim PR gates green" .claude/commands/nase/address-comments.md 'PR gates: all green'
 
 assert_contains "fsd uses codex bundle shared doc" .claude/commands/nase/fsd.md 'codex-verification-bundle\.md'
 assert_contains "fsd uses codex bundle script" .claude/commands/nase/fsd.md 'codex-verify-bundle\.py'
@@ -60,9 +58,6 @@ assert_contains "design uses effort lifecycle doc" .claude/commands/nase/design.
 assert_contains "fsd uses effort lifecycle doc" .claude/commands/nase/fsd.md 'effort-lifecycle\.md'
 assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
 assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'
-
-python3 .claude/scripts/pr-gate-remediation.py classify --name 'Commit Lint' > "$TMPROOT/pr-gate.json"
-assert_contains "pr gate script emits commitlint recipe" "$TMPROOT/pr-gate.json" '"recipe": "commitlint"'
 
 tmprepo=$(mktemp -d "$TMPROOT/codex-bundle-repo.XXXXXX")
 (

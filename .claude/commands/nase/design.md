@@ -111,6 +111,7 @@ For each gap the KB didn't cover, **look it up** rather than asking:
 - Success criteria → infer from the problem statement + existing patterns
 - Constraints → read repo CLAUDE.md, CI config, existing architecture
 - Dependencies → grep the codebase, check package files
+- **External authority** → if an approach depends on a validator script, runner pipeline, or schema generator, fetch that source and grep the exact decision points before Phase 3. Do not freeze a design — or leave a Human Input branch — on a guess when the authoritative behavior is readable.
 
 ### 2c. Only Ask When Genuinely Blocked
 

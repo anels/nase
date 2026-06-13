@@ -288,6 +288,8 @@ For each behavior, do one full Red→Green cycle before starting the next:
 ## Phase 5: Build & Test Loop (max 5 iterations)
 
 Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff (skip it when tdd_mode = true — RED gate already covers it).
+
+**Dependency-bump consumer fixes:** when fixing a consumer-side break from a breaking dependency bump, build the full solution, including `*Tests.csproj`, and run affected suites. CI stops at the first failing project, so a single-project or Release-only build can hide test-project Moq `Setup`/`Verify`, typed `Callback<>`, and ctor-arity breaks. Compile-clean on the main project is not enough.
 On success: proceed to Phase 5.5.
 
 ---
