@@ -1,13 +1,13 @@
 ---
 name: nase:address-comments
-description: "Fix unresolved PR review comments — makes code changes, pushes, checks currently failed PR gates once, fixes mechanical failures only, then resolves threads. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
+description: "Fix unresolved PR review comments — makes code changes, pushes, then resolves threads. Does not wait on or check PR pipeline gates; if CI fails afterward, run another round. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
 pattern: pipeline
 ---
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
 Follows `.claude/docs/external-mutation-policy.md`: code push, `gh pr edit`, replies, thread resolution, and Slack DMs each have their own gate.
-Follows `.claude/docs/workspace-write-guard.md` for KB backfills, todo updates, and other durable workspace writes.
+Follows `.claude/docs/workspace-write-guard.md` for KB/lesson updates and other durable workspace writes.
 
 ---
 
@@ -50,8 +50,6 @@ fi
 If this fails, do not update `.local-paths` automatically; ask for the correct path and rerun Phase 1.
 
 **Module-inventory extraction:** capture KB `## Modules` / `## Components`. If absent, set `module_inventory = needs-grep`; derive it in Phase 5 from the PR worktree, not the pre-worktree checkout.
-
-**PR Gates extraction:** read the KB's `## PR Gates` section (template in `.claude/docs/kb-template.md`). Cache the per-gate fix recipes for Phase 8.7. If the section is absent or empty, set `pr_gates_kb_missing=true`; Phase 8.7 offers a backfill.
 
 ## Phase 2: Fetch Latest & Unresolved Review Threads
 
@@ -111,6 +109,8 @@ Evaluate each suggestion:
 | **reply-only** | Question, discussion point, or acknowledgment needed — no code involved | Write a reply |
 
 Accept only when the change measurably improves correctness/clarity. If current code is equally valid, decline with concrete KB/architecture context when available.
+
+**Probe for a middle ground before committing to accept-vs-decline.** Before classifying, check whether a scoped third option (partial accept, a narrower fix, or a follow-up issue for out-of-scope asks) better serves the reviewer's intent.
 
 **Step 3d — Present the complete plan:**
 
@@ -341,74 +341,9 @@ NASE_PR_BODY
 
 If the description already follows the template, skip this phase.
 
-## Phase 8.7: Current PR Gate Check
+## Phase 8.7: PR Gates — Skip
 
-Skip entirely if `no_commit=true` AND Phase 8b made no PR body change — without a new commit or body edit, CI won't re-run, so there is no new gate state to inspect.
-
-After push (+ optional body update), read the PR gate state once. Do not wait or poll. If a gate is already failed at the time of the read and has a mechanical, documented fix, apply that fix. If checks are pending, queued, canceled, skipped unexpectedly, or unknown, report the current state and proceed to Phase 9 without claiming gates are green.
-
-This phase does not grant a blanket external-write approval. Reading checks and failed-run logs is automatic. Any `gh pr edit`, new commit, or extra push must go through the same concrete gate as the phase that owns that mutation: Phase 8b for PR body/title edits, Phase 8 for code commits/pushes, and `.claude/docs/external-mutation-policy.md → GitHub auth account guard` immediately before each `gh` mutation.
-
-**Step 8.7a — Read current checks once.**
-
-```bash
-checks_read_failed=false
-checks_err=$(mktemp)
-status_json=$(gh pr checks {pr_number} --repo {owner}/{repo} --json bucket,state,name,workflow,link 2>"$checks_err")
-checks_rc=$?
-if [ "$checks_rc" -ne 0 ] && [ "$checks_rc" -ne 8 ]; then
-  echo "Unable to read PR checks; skipping PR gate check rather than treating checks as green." >&2
-  cat "$checks_err" >&2
-  checks_read_failed=true
-fi
-rm -f "$checks_err"
-if [ "${checks_read_failed:-false}" != true ] && [ -z "$status_json" ]; then
-  echo "Unable to read PR checks: gh returned no JSON. Skipping PR gate check." >&2
-  checks_read_failed=true
-fi
-```
-
-If `checks_read_failed=true`: report that PR gate status is unknown, log `PR gates: unknown (check read failed)`, skip the remaining Phase 8.7 steps, and proceed to Phase 9 without claiming gates are green.
-
-**Step 8.7b — Identify failures.**
-
-```bash
-failed=$(printf '%s' "$status_json" | jq -r '.[] | select(.bucket == "fail") | [.name, (.workflow // ""), (.link // "")] | @tsv')
-non_green=$(printf '%s' "$status_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | [.name, .bucket, (.workflow // ""), (.link // "")] | @tsv')
-```
-
-Zero failures and zero `non_green` rows → log `PR gates: all green` to the daily log and skip to Phase 9. If `failed` is empty but `non_green` is not empty (for example, pending or canceled checks), report those rows as non-mechanical gate states and proceed to Phase 9 without claiming gates are green.
-
-If failures exist alongside pending checks, fix only the currently failed rows with known mechanical recipes. Report the pending rows, but do not wait for them.
-
-**Step 8.7c — Classify and apply fixes (max 2 fix iterations).**
-
-Follow `.claude/docs/pr-gate-remediation.md` for the current PR-gate sweep:
-use the KB's `## PR Gates` recipe when present, otherwise classify the failed
-check with `python3 .claude/scripts/pr-gate-remediation.py classify --name "$check_name"`
-and apply the shared fallback recipe. Keep the same mutation ownership rules:
-PR body/title edits reuse Phase 8b, code changes re-enter Phase 8, and unknown
-gates ask the user with a 3-line failed-log summary.
-
-**Step 8.7d — KB backfill prompt.**
-
-If `pr_gates_kb_missing=true`, after Step 8.7c settles, summarize the gates observed this run (name + workflow path) and ask:
-
-```
-question: "KB has no `## PR Gates` section for this repo. Backfill from observed gates now?"
-header: "KB Backfill"
-options:
-  - label: "Yes — write minimal section"
-    description: "Append a `## PR Gates` table to the KB file using this run's gate names + workflow paths"
-  - label: "No — run /nase:onboard later"
-    description: "Skip backfill; record a [KB-TODO] in workspace/tasks/todo.md so /nase:today surfaces it"
-```
-
-On **yes**: enumerate `.github/workflows/*.{yml,yaml}` in `{worktree_path}` for `pull_request`-triggered workflows, also run `gh api repos/{owner}/{repo}/branches/{baseRefName}/protection --jq '((.required_status_checks.contexts // []) + ((.required_status_checks.checks // []) | map(.context))) | .[]'` for the branch-protection required list, then stage the section under `workspace/tmp/`, diff it, and write it into `workspace/kb/projects/{domain}.md` using `.claude/docs/kb-template.md → ## PR Gates` as the shape. Update the file's `<!-- Last updated -->` marker. This is a workspace write — no external mutation gate needed, but the final mtime/hash drift check still applies.
-
-On **no**: stage and append `- [ ] Backfill PR Gates section in workspace/kb/projects/{domain}.md (next /nase:onboard --force)` to `workspace/tasks/todo.md` under `## Scheduled Maintenance`, using the same final mtime/hash drift check.
-
-Either way, log one line to the daily log (tag: `address-comments`): `PR gates: {observed} observed, {N} failed, {M} fixed, {K} remaining; KB backfill: {yes/no/already-present}`.
+Do not read, wait on, or poll PR pipeline gates. After the review-comment fix lands, proceed straight to Phase 9. Do not claim gates are green or CI passed; you have not checked. If CI fails after this push, it surfaces on the PR like any other failure; the user can run another `/nase:address-comments` round or fix it directly.
 
 ## Phase 9: Reply & Resolve Comments
 
@@ -544,24 +479,27 @@ PR comments addressed ✓
 Append to daily log following `.claude/docs/daily-log-format.md` (tag: `address-comments`) **before** prompting (ensures the log lands regardless of the user's next choice).
 Log: `{repo_name}#{pr_number} — {N} resolved ({M} accepted, {K} declined, {J} replies)`
 
-## Phase 12: Offer Prep-Merge Handoff
+## Phase 12: Offer Next-Step Handoff
 
-Skip this phase if any of: (a) all threads were `decline` (PR still has open conversations the reviewer may push back on), (b) the PR is the user's own and `total_resolved == total_threads` and `Build/test: passed` — natural handoff to prep-merge; otherwise default to prompting so the user decides.
+Skip this phase if all threads were `decline` (PR still has open conversations the reviewer may push back on). Otherwise prompt so the user can choose the next workflow without retyping the PR URL.
 
-Reason for the prompt: address-comments and prep-merge are the standard back-to-back sequence (fix → resolve → squash → force-push). Auto-running prep-merge is unsafe (it rewrites history) — the user must consent each time. Skipping the prompt forces the user to retype the PR URL.
+Reason for the prompt: after comments are addressed, the common next steps are prep-merge (squash/finalize) or request-review (find reviewers and stage Slack DM drafts). Do not auto-run either: prep-merge rewrites history, and request-review stages human pings. The user must choose each time.
 
 ```
-question: "Run /nase:prep-merge on this PR now? {pr_url}"
-header: "Prep Merge"
+question: "What should I do next for this PR? {pr_url}"
+header: "Next Step"
 options:
-  - label: "Yes — squash + force-push"
-    description: "Hand off to /nase:prep-merge {pr_url} immediately"
-  - label: "No — I'll handle it"
-    description: "Stop here; run prep-merge later when ready"
+  - label: "Prep merge"
+    description: "Invoke /nase:prep-merge {pr_url} to squash/finalize the PR"
+  - label: "Request review"
+    description: "Invoke /nase:request-review {pr_url} to find reviewers and stage Slack DM drafts"
+  - label: "Stop here"
+    description: "Do nothing else; leave follow-up for later"
 ```
 
-If "Yes": invoke `/nase:prep-merge {pr_url}`.
-If "No": stop.
+If "Prep merge": invoke `/nase:prep-merge {pr_url}`.
+If "Request review": invoke `/nase:request-review {pr_url}`.
+If "Stop here": stop.
 
 ---
 

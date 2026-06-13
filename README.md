@@ -183,7 +183,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 /nase:fsd <task>               # implement → test → commit → push → draft PR
 /nase:request-review <PR-URL>  # find right reviewers, stage Slack DM drafts
   ⏳ wait for feedback
-/nase:address-comments <PR-URL> # discuss or auto-fix each comment → push → current failed gate check
+/nase:address-comments <PR-URL> # discuss or auto-fix each comment → push → resolve threads
   ⏳ iterate until approved
 /nase:prep-merge <PR-URL>      # rebase, squash, clean up, un-draft
   merge ✓
@@ -276,7 +276,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 | `/nase:improve-commit-message` | Rewrite last commit message to conventional commits format |
 | `/nase:request-review <PR-URL(s)>` | Find reviewers (KB → git history → CODEOWNERS) and stage Slack DM drafts |
 | `/nase:discuss-pr <PR-URL>` | KB-driven PR review discussion in chat; reads & engages existing review comments (+1/reply/discuss), drafts inline comments for manual posting, triggers KB update on confirmed findings |
-| `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push, check current PR gates once, fix mechanical failures only, resolve, and capture learnings to KB |
+| `/nase:address-comments <PR-URL>` | Auto-fix or discuss unresolved PR comments 1-by-1, then push, resolve threads, and capture learnings to KB. Does not wait on or check PR gates; if CI fails afterward, run another round. |
 | `/nase:prep-merge <PR-URL>` | After multiple review iterations, commit history gets messy and PR title/description drift from the final state — rebase on the target branch, squash commits, verify comments resolved, rewrite PR title/description to match what was actually delivered, then optionally un-draft and request review |
 
 ### Reporting
