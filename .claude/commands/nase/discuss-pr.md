@@ -96,6 +96,8 @@ If the PR body does not explain the problem, infer carefully from the title, com
 
 For each core touched file, read key dependencies/callers needed to judge design intent. Separate core behavioral files from tests, generated files, formatting-only changes, and incidental wiring. Cross-reference KB and relevant Confluence docs.
 
+For each core touched file, run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` before scoring risk. Store hits as `kb_path_constraints` in the review frame; if no hits, write `none found`. Feed any hits into the constraints and evidence used by the risk map and findings.
+
 Use available CLI tools to reduce context load:
 - Use `rg` / `fd` for caller/dependency lookups and adjacent-pattern discovery before reading files wholesale.
 - Use `difft --display json` for syntax-aware summaries when a code diff is large, noisy, or mostly moved code; feed only the compact structural summary into the review.

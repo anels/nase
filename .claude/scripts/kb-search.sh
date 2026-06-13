@@ -20,6 +20,16 @@
 #   bash .claude/scripts/kb-search.sh "timeout" mentions:src/checkout/
 
 set -uo pipefail
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+log_kb_search_result() {
+  local file_path="$1"
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 "$SCRIPT_DIR/kb-usage-log.py" record \
+    --file "$file_path" \
+    --access search-result \
+    --source kb-search >/dev/null 2>&1 || true
+}
 
 # ── parse args ────────────────────────────────────────────────────────────────
 QUERY_TERMS=()
@@ -141,6 +151,7 @@ TMPDIR_SEARCH=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_SEARCH"; rm -f "$KB_FILES_TMP"' EXIT
 
 RESULTS_FILE="$TMPDIR_SEARCH/results.txt"
+TOP_RESULTS_FILE="$TMPDIR_SEARCH/top-results.txt"
 FUZZY=false
 
 # Detect stat dialect once. On Linux, `stat -f` means filesystem-info mode and
@@ -290,8 +301,14 @@ else
 fi
 echo ""
 
-# Sort: by score desc, then freshness desc, then file asc; take top 10
-sort -t$'\t' -k1,1rn -k2,2r -k3,3 "$RESULTS_FILE" | head -10 | while IFS=$'\t' read -r score fresh_date kb_file entry; do
+# Sort: by score desc, then freshness desc, then file asc; take top 10.
+sort -t$'\t' -k1,1rn -k2,2r -k3,3 "$RESULTS_FILE" | head -10 > "$TOP_RESULTS_FILE"
+
+cut -f3 "$TOP_RESULTS_FILE" | sort -u | while IFS= read -r kb_file; do
+  [ -n "$kb_file" ] && log_kb_search_result "$kb_file"
+done
+
+while IFS=$'\t' read -r score fresh_date kb_file entry; do
   if [ "$SHOW_SCORE" -eq 1 ]; then
     echo "**Score:** $score"
   fi
@@ -310,4 +327,4 @@ sort -t$'\t' -k1,1rn -k2,2r -k3,3 "$RESULTS_FILE" | head -10 | while IFS=$'\t' r
   echo ""
   echo "---"
   echo ""
-done
+done < "$TOP_RESULTS_FILE"

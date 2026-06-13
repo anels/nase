@@ -115,6 +115,7 @@ requirements = [
     ("PreToolUse", "slack-send-guard.sh", "slack_send_message"),
     ("PreToolUse", "jira-write-guard.sh", "JiraIssue"),
     ("PreToolUse", "confluence-size-guard.sh", "ConfluencePage"),
+    ("PostToolUse", "track-kb-read.sh", "Read"),
     ("PostToolUse", "track-skill.sh", "Skill"),
     ("PostToolUse", "post-edit-shellcheck.sh", "Edit|Write"),
 ]
@@ -154,5 +155,15 @@ printf '{"prompt":"what does /nase:today do?"}' \
 after_lines=$(wc -l < "$runtime_tmp/workspace/stats/skill-usage.jsonl" | tr -d ' ')
 [ "$before_lines" = "$after_lines" ]
 ok "slash command prompt tracking smoke check"
+
+mkdir -p "$runtime_tmp/workspace/kb/general"
+printf '# telemetry fixture\n' > "$runtime_tmp/workspace/kb/general/telemetry.md"
+printf '{"prompt":"/nase:today"}' \
+  | NASE_ROOT="$runtime_tmp" CLAUDE_SESSION_ID="validate-kb-usage" bash .claude/hooks/track-skill-prompt.sh
+printf '{"tool_input":{"file_path":"workspace/kb/general/telemetry.md"}}' \
+  | NASE_ROOT="$runtime_tmp" CLAUDE_SESSION_ID="validate-kb-usage" bash .claude/hooks/track-kb-read.sh
+grep -q '"skill":"today"' "$runtime_tmp/workspace/stats/kb-usage.jsonl"
+grep -q '"file":"workspace/kb/general/telemetry.md"' "$runtime_tmp/workspace/stats/kb-usage.jsonl"
+ok "KB read telemetry smoke check"
 
 echo "[validate] all checks passed"

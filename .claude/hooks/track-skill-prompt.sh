@@ -10,6 +10,8 @@ NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
 [ -z "$NASE_ROOT" ] && exit 0
 STATS_DIR="$NASE_ROOT/workspace/stats"
 JSONL="$STATS_DIR/skill-usage.jsonl"
+HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 
 INPUT=$(cat)
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null || echo "")
@@ -22,6 +24,14 @@ SKILL_NAME="${SKILL#/nase:}"
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 mkdir -p "$STATS_DIR"
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$LOGGER" activate \
+    --root "$NASE_ROOT" \
+    --skill "$SKILL_NAME" \
+    --source prompt >/dev/null 2>&1 || true
+fi
+
 if [ -f "$JSONL" ]; then
   LAST=$(tail -1 "$JSONL" 2>/dev/null || true)
   if [[ "$LAST" == *"\"skill\":\"$SKILL_NAME\""*"\"ts\":\"$TS\""* ]]; then

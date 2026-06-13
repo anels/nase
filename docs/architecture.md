@@ -49,6 +49,7 @@ Hooks are registered in `.claude/settings.json`. Shell output and exit codes fee
 | `PreToolUse:Confluence writes` | Before Confluence page writes | `confluence-size-guard.sh` | Blocks page bodies over 60 KB to avoid truncation/partial writes |
 | `PreCompact` | Before context compaction | `pre-compact-archive.sh` | Rotates `workspace/tasks/lessons.md` entries marked `> Promoted →` and older than 90 days into `lessons-archive.md` when the file exceeds 80 KB; moves `workspace/efforts/done/*.md` older than 60 days into `workspace/efforts/archive/<YYYY>/` |
 | `Stop` | Every session end | `stop-todos.sh`, `stop-backup.sh` | Surfaces pending todos from `workspace/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `workspace/` at `.local-paths`'s `backup-target`; applies retention cleanup; writes status to `workspace/logs/.backup-status` |
+| `PostToolUse:Read` | After every `Read` tool call | `track-kb-read.sh` | Appends KB file read events to `workspace/stats/kb-usage.jsonl`; only logs `workspace/kb/**/*.md` and `workspace/kb/**/*.sql`, excludes `.domain-map.md`, and uses session-local active skill context when available |
 | `PostToolUse:Skill` | After every `Skill` tool call | `track-skill.sh` | Appends `{"skill","ts","status"}` records to `workspace/stats/skill-usage.jsonl` (status derived from `tool_response.is_error`); same-second dedup |
 | `PostToolUse:Edit\|Write` | After editing/writing `.sh` files | `post-edit-shellcheck.sh` | Runs `shellcheck -S warning` on the edited file and returns exit 2 with diagnostics when shellcheck fails |
 | `PreToolUse:Edit\|Write\|MultiEdit` | Before editing/writing source files (non-blocking) | `pre-edit-write-fact-force.sh` | Inspired by ECC's [`gateguard-fact-force.js`](https://github.com/affaan-m/everything-claude-code/blob/main/scripts/hooks/gateguard-fact-force.js). On the first edit to a source file (`.py .ts .tsx .js .jsx .go .cs .rb .rs .java .sh .kt .swift .cpp .c .h`) per session, emits `hookSpecificOutput.additionalContext` demanding three concrete facts before the change is applied: callers, public-API impact, and the originating instruction. Skips `workspace/`, `docs/`, `tests/`, markdown/JSON/YAML, and brand-new files. Session state lives at `${TMPDIR}/nase-fact-force.${session}.state` with 30-minute inactivity expiry and a 500-entry cap. Disable per-run with `NASE_FACT_FORCE=0`. |
@@ -124,7 +125,9 @@ immediately before replacing or appending. This prevents stale KB/doc writes
 from overwriting edits made by another session.
 
 Append-only logs and JSONL stats are exceptions; they may append directly but
-must not rewrite existing entries.
+must not rewrite existing entries. KB usage events live in
+`workspace/stats/kb-usage.jsonl`; `.domain-map.md [last-loaded]` remains
+hygiene metadata, not authoritative usage telemetry.
 
 ## Runtime configuration
 
@@ -283,6 +286,8 @@ workspace/
     ops/
   stats/
     skill-usage.jsonl   append-only log of /nase:* invocations
+    kb-usage.jsonl      append-only log of which skills used which KB files
+    kb-usage-YYYY-MM-DD.md  generated /nase:kb-usage report
     report-YYYY-MM-DD.md
   logs/                 daily work logs + .backup-status
   journals/             end-of-day wrap-up files

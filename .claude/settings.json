@@ -119,6 +119,15 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-kb-read.sh\"'"
+          }
+        ]
+      },
+      {
         "matcher": "Skill",
         "hooks": [
           {

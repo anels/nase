@@ -31,6 +31,20 @@ Apply these six principles to every design. The **order matters** — it changes
 
 Before presenting options in Phase 3, explicitly state which ordering you're applying and why. Use the principles as a lens to evaluate each option — not just pros/cons, but *which principle each option honors or violates*. Treat elegance as a real design dimension: prefer the option that makes the system easier to understand and change, unless another principle clearly outweighs it.
 
+## Reviewability / PR Economy
+
+Default to one PR for one coherent behavior change. Decomposition is for thinking, implementation order, and risk control; it is not automatically a PR split.
+
+Split into multiple PRs only when at least one of these is true:
+
+- Different repos must change and cannot be reviewed or merged in one repo-local PR.
+- A compatibility, migration, or rollout boundary needs a separately mergeable checkpoint.
+- A mechanical/generated/rename-only change can be isolated from behavior so reviewers can ignore noise.
+- The expected diff is likely to cross `/nase:fsd`'s 1500-line hard review gate.
+- Distinct owner groups must review unrelated surfaces and a single PR would hide the load-bearing change.
+
+When a split is justified, minimize the count and name the dependency order. Do not produce one PR per layer, package, file type, or implementation phase by default. Prefer a single vertical-slice PR with a clear review guide over several small PRs that require reviewers to reconstruct intent across branches.
+
 ## Mode Detection
 
 Before Phase 1, scan `$ARGUMENTS` for mode flags. Strip the flag from `$ARGUMENTS` before downstream parsing. Check in this order — first match wins.
@@ -126,6 +140,10 @@ When you do ask, batch all uncertainties into a single question with multiple op
 
 If the design touches any AppInsights / Azure Functions telemetry surface — `ExcludedTypes`, `SamplingPercentage`, `AdaptiveSamplingTelemetryProcessor`, `host.json` telemetry settings, `TelemetryProcessor` pipeline additions/removals, `ApplicationInsightsServiceOptions` / `TelemetryConfiguration`, or anything that changes the volume in `customMetrics` / `requests` / `exceptions` — apply the pre-merge protocol in `workspace/kb/general/dotnet.md` → **AppInsights Sampling / `ExcludedTypes` Changes Affect Far More SRE Alerts Than the Docs Imply** (2026-05-18). Enumerate the affected alert families and surface them as a dedicated risk in Phase 4's "Risks & Mitigations".
 
+### 2e. PR Packaging Analysis
+
+Infer the review package before Phase 3. Start with `Target PR count: 1`. Raise the count only when the Reviewability / PR Economy split criteria above are met. If multiple PRs are required, record the smallest count, dependency order, and why a single PR would be harder to review or riskier to merge.
+
 ## Phase 3: Approach Exploration (all at once)
 
 Always present **2-3 options** — even for seemingly obvious problems. A second option sharpens the reasoning for the first. **Show everything in a single message** — no back-and-forth per option.
@@ -142,6 +160,7 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 **Fits KB patterns?** {yes/no + cite the specific KB entry or file:line that backs the claim; if you cannot cite one, write `unverified` — never assert alignment from memory}
 **Principle alignment:** {which principles this honors; which it trades off}
 **Elegance:** {is the shape coherent and natural, or is it clever/awkward?}
+**Review / PR shape:** {target PR count and review cost; default to one PR unless a split criterion is met}
 ```
 
 **Step 3 — Comparison table** (immediately after options, same message):
@@ -153,6 +172,7 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 | KB alignment | ✓ | ~ | ✗ |
 | Elegance | ✓ | ~ | ✗ |
 | YAGNI | ✓ | ~ | ✗ |
+| PR count / review cost | 1 / Low | 1 / Medium | 2 / High |
 | Risk | Low | Medium | High |
 ```
 
@@ -204,11 +224,17 @@ Present the **full design in a single message** — do not pause between section
 ### Risks & Mitigations
 - {Risk} → {Mitigation}
 
+### Implementation / PR Plan
+Target PR count: 1
+Review package: {single coherent PR by default; if more than one, justify each PR against the split criteria}
+Implementation order: {vertical slices or checkpoints; this can have multiple steps without becoming multiple PRs}
+Split trigger: {specific condition that would force a split during /nase:fsd, or "none expected"}
+
 ### Open Questions
 - {Anything unresolved — tracked for follow-up}
 ```
 
-For **initiatives**: include a decomposition section listing sub-efforts with dependency order.
+For **initiatives**: include a decomposition section listing sub-efforts with dependency order, then group them into the smallest review package. A sub-effort is not automatically a PR.
 
 ## Phase 4b: Self-Review Loop (max 3 iterations)
 
@@ -228,6 +254,7 @@ Run an internal quality gate before writing the effort doc.
    - Risk coverage FAIL → add missing mitigations
    - KB alignment FAIL → reconcile with documented constraints
    - Elegance FAIL → simplify the design shape, remove awkward glue, reduce moving parts, or choose the option that fits the existing model more naturally
+   - Reviewability FAIL → reduce PR count, add a review guide, or justify the split with a real merge/release/owner boundary
 
 3. **If all PASS or at most 1 WEAK**: exit the loop and proceed to Phase 5.
 
@@ -308,6 +335,7 @@ Used by Review Mode and as a self-check before writing the design doc in Phase 5
 | **Risk coverage** | Every identified risk has a mitigation; no hand-waving |
 | **KB alignment** | Design doesn't contradict documented architecture constraints without explicit justification |
 | **Elegance** | Design has a coherent shape: minimal moving parts, clear ownership boundaries, natural fit with existing patterns, and no clever workaround where a simpler model exists |
+| **Reviewability** | Default to one PR; any multi-PR plan cites the split criterion, dependency order, and why review is easier than one coherent PR |
 
 ## Notes
 

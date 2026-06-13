@@ -63,6 +63,8 @@ longtoken line 30
 EOF
 
 cd "$FIXTURE" || exit 1
+export NASE_ROOT="$FIXTURE"
+export CLAUDE_SESSION_ID="kb-search-test"
 
 pass=0
 fail=0
@@ -140,6 +142,13 @@ out=$(bash "$SCRIPT" "longtoken" "--full" 2>&1)
 rc=$?
 assert_exit "T7: --full preserves complete entry output" 0 "$rc"
 assert_contains "T7: full output includes tail" "$out" "longtoken line 30"
+
+ledger="$FIXTURE/workspace/stats/kb-usage.jsonl"
+ledger_body=$(cat "$ledger" 2>/dev/null || true)
+assert_contains "T8: search-result telemetry is appended" "$ledger_body" '"access":"search-result"'
+assert_contains "T8: telemetry records result file only" "$ledger_body" '"file":"workspace/kb/general/search.md"'
+assert_not_contains "T8: telemetry does not log raw query text" "$ledger_body" '"query"'
+assert_not_contains "T8: telemetry does not include searched term" "$ledger_body" 'longtoken'
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

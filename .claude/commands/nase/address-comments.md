@@ -92,6 +92,7 @@ For each thread, collect:
 - Base-branch version when the claim depends on diff scope: `git -C {repo_path} show origin/{baseRefName}:{path}`.
 - PR diff hunk for the file and nearby changed context.
 - KB / repo / Confluence / past-decision constraints that match the file, module, or reviewer premise; if none are found, write `none found`.
+- Run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` for each review-thread file and include hits in the KB/repo constraints; if no hits, write `none found`.
 - Caller/dependency impact via `rg`, `git grep`, or language-aware search for referenced symbols, config keys, routes, schema fields, or public contracts.
 - Related test/scanner evidence, or the exact missing verification signal.
 - Explicit AI provenance per `.claude/docs/ai-code-verification-debt.md → Explicit AI Provenance`; record `none-found` instead of inferring from style.

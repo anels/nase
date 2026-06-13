@@ -79,6 +79,10 @@ assert_contains "recap main thread owns writes" ".claude/commands/nase/recap.md"
 assert_contains "kb-review uses KB researcher" ".claude/commands/nase/kb-review.md" "nase-context-kb-researcher"
 assert_contains "kb-review main thread owns KB edits" ".claude/commands/nase/kb-review.md" "main thread owns KB edits and report writes"
 
+assert_contains "fsd searches KB mentions for touched paths" ".claude/commands/nase/fsd.md" "mentions:<path>"
+assert_contains "discuss-pr searches KB mentions for core changed files" ".claude/commands/nase/discuss-pr.md" "mentions:<path>"
+assert_contains "address-comments searches KB mentions for review-thread files" ".claude/commands/nase/address-comments.md" "mentions:<path>"
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nlocal parallel subagent tests passed.\n'
   exit 0
