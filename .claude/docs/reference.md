@@ -119,6 +119,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 
 | Doc | Purpose |
 |-----|---------|
+| `anti-rationalization.md` | Shared excuse → rebuttal catalog referenced by high-skip-risk gates in `fsd`, `address-comments`, and `prep-merge` |
 | `build-test-loop.md` | Build → test → fix loop used by `fsd`, `address-comments`, `prep-merge` |
 | `citation-validator.md` | Validate Jira, GitHub, Confluence, and source-file references before report-like skills mark saved artifacts as trusted |
 | `cli-tooling.md` | Optional CLI tool selection, availability probing, install mapping, and skill integration rules |

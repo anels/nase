@@ -87,6 +87,8 @@ Resolve these first (or use /nase:address-comments {pr_url}).
 
 **If all resolved (including post-2a):** proceed.
 
+If tempted to push past a remaining thread or force-push without checking branch state, see `.claude/docs/anti-rationalization.md → /nase:prep-merge`.
+
 ## Phase 3: Locate Repo
 
 Follow `.claude/docs/repo-resolution.md` Part 1 (Repo Resolution) to resolve the local path from the PR's `owner/repo`. If not found, ask the user.
