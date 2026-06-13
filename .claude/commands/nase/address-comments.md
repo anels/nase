@@ -165,6 +165,8 @@ Finalize `module_inventory`: keep KB version or derive 5-15 lines inside `{workt
 
 ## Phase 6: Execute Changes
 
+Before marking any thread resolved, check `.claude/docs/anti-rationalization.md → /nase:address-comments` — a reply is not a fix.
+
 ### For accept threads:
 
 Read referenced file/line range. Apply the planned minimal change using repo standards from KB/`CLAUDE.md`.

@@ -371,6 +371,8 @@ Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is no
 
 Do NOT skip this gate: run the single-model fallback below instead. The verification step is mandatory; only the cross-model variant is optional.
 
+If tempted to skip or self-approve, see `.claude/docs/anti-rationalization.md → /nase:fsd`.
+
 **Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
 - the original task spec from `$ARGUMENTS` verbatim (the CONTRACT)
 - the verification bundle path (or the merge-base diff) and `{work_root}` (the ARTIFACT)
