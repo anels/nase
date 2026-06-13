@@ -1,6 +1,6 @@
-# PR review verification patterns
+# PR Review Verification Patterns
 
-Five checks to run before trusting a claim during PR review. Used by `/nase:discuss-pr` (read-only review) and `/nase:address-comments` (write fixes).
+Checks to run before trusting a claim during PR review. Used by `/nase:discuss-pr` (read-only review) and `/nase:address-comments` (write fixes).
 
 Principle: **prose claims are hypotheses, not evidence**. Always diff-confirm against the file at HEAD before acting (resolve a thread, drop a finding, mark something fixed).
 
@@ -43,3 +43,11 @@ Examples of (b) — installed source vs. cited rule:
 - **Unused-using / CS8019** — enumerate types declared in the suspect namespace via `grep -hE "^(public|internal|abstract|sealed)( +(abstract|sealed|partial|static))*( +(class|interface|enum|struct|record))" -- 'path/to/ns-dir/*.cs'`, then `grep -nFwf type-list.txt {flagged-file}`. Any match → the using is needed; decline. Bonus signal: if `build-test` at PR head is already green, CS8019 cannot be triggering on that line; the bot is wrong by construction. Sanitized pattern: bot flagged a transformer's `using …Models` as unused; the file referenced `MetricResponseEntryDto` (defined in that namespace) at multiple lines. Accepting would have broken every call site.
 
 Common failure mode: the bot's *structural* concern is sometimes valid (lint cleanup needed, timeout handling needed) even when the *specific* citation is wrong. Treat citation verification as separate from the underlying concern.
+
+## 8. Comment dossier contract
+
+Before `/nase:address-comments` classifies any unresolved review thread, build the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`.
+
+That shared contract owns the required fields and explicit-only AI provenance rule. `/nase:address-comments` owns the concrete collection commands for comment chain, PR head/base/diff, KB/repo constraints, caller impact, and test/scanner evidence.
+
+Classification is blocked until the dossier exists. If evidence is missing and cannot be collected locally, classify as `ask-user` or draft a reply that names the missing business/intent context. Do not silently downgrade uncertain correctness/security comments to style or out-of-scope.

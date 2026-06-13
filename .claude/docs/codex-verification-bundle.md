@@ -33,6 +33,28 @@ The helper writes a markdown bundle containing:
 Do not inline generated/binary/build artifacts in the command prompt. Let the
 bundle list them or sample only non-generated text files.
 
+## Optional AI Verification Debt Context
+
+When the caller has explicit AI provenance or verification-debt risk, append a short
+caller-owned section to the Codex prompt beside the bundle path. Do not change the
+helper output just to guess AI authorship.
+
+Use this shape:
+
+```text
+AI Verification Debt Context:
+- ai_provenance: explicit | none-found
+- provenance_evidence: <commit trailer / PR text / bot login / session log, or none>
+- risk: P0 security/data-loss | P1 correctness/runtime | P2 architecture/maintainability | P3 style/nit
+- verification_gap: missing-tests | missing-scanner | missing-runtime-proof | missing-contract-doc | stale-review-thread | surviving-finding | none
+- test_coverage_evidence: <commands/results or missing>
+- scanner_status: <commands/results/skipped + reason>
+- unresolved_risk_notes: <specific uncertainty Codex should check, or none>
+```
+
+Only `explicit` provenance may be reported as AI-sourced. If no explicit signal exists,
+use `none-found` and ask Codex to verify the risk/test evidence, not authorship.
+
 ## Codex Prompt Inputs
 
 Pass these fields to the Codex MCP prompt:
@@ -40,6 +62,7 @@ Pass these fields to the Codex MCP prompt:
 - bundle absolute path
 - merge base
 - changed-file count and total changed lines from the bundle header
+- optional AI verification debt context, when supplied by the caller
 - instruction: `If this manifest is insufficient to verify the spec, return NEEDS-HUMAN with the exact missing files or diff hunks instead of guessing.`
 
 ## Result Handling

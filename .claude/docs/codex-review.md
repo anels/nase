@@ -2,7 +2,7 @@
 
 > Canonical contract for delegating a review / verify / adversary / mutual-grill pass to the Codex MCP (model resolved from runtime config / MCP default; `model_reasoning_effort` set per task) — independent second-model opinion.
 >
-> Reference-only doc. Cited from `/nase:discuss-pr` (review specialist), `/nase:fsd` Phase 6.5 (verify gate), `/nase:address-comments` Phase 7.5 (thread-resolution verifier), `/nase:tech-debt-audit` Step 7.5 (audit sanity pass), and `/nase:design --grill` Step 3.5 / 5.5 (mutual grill). Edit here, not in the caller skills.
+> Reference-only doc. Cited from `/nase:discuss-pr` (review specialist), `/nase:fsd` Phase 6.5 (verify gate), `/nase:address-comments` Phase 3d (comment dossier verifier) and Phase 7.5 (thread-resolution verifier), `/nase:tech-debt-audit` Step 7.5 (audit sanity pass), and `/nase:design --grill` Step 3.5 / 5.5 (mutual grill). Edit here, not in the caller skills.
 
 ## Why this contract exists
 
@@ -82,7 +82,7 @@ Rules:
 
 ## Modes
 
-Eight roles. Each mode has a fixed `developer-instructions` template (Codex's system-role channel) plus a per-call `prompt` (the user-role channel).
+Nine roles. Each mode has a fixed `developer-instructions` template (Codex's system-role channel) plus a per-call `prompt` (the user-role channel).
 
 ### Mode: `review` — second-opinion PR / diff reviewer
 
@@ -211,14 +211,59 @@ prompt:
   Verify.
 ```
 
+### Mode: `comment-dossier` — pre-action review-thread dossier verifier
+
+Used by `/nase:address-comments` before user confirmation for high-risk or uncertain unresolved review threads. Goal: independently check whether the dossier has enough evidence to classify the thread and whether the reviewer premise is supported, false, or still ambiguous.
+
+```
+developer-instructions:
+  You are a pre-action PR review-thread dossier verifier. Compare one unresolved review
+  thread, the dossier evidence, and the repository constraints. Do not assume the
+  primary agent's intended classification is correct.
+
+  Output format (exactly these sections, no others):
+    VERDICT: ACCEPT-SUPPORTED | DECLINE-SUPPORTED | REPLY-ONLY-SUPPORTED | NEEDS-HUMAN
+    EVIDENCE GAPS:
+      - {missing file/command/context, or "none"}
+    PREMISE RISKS:
+      - {why the reviewer premise may be wrong/incomplete, or "none"}
+    RECOMMENDED CLASSIFICATION:
+      - accept | decline | reply-only | ask-user
+    REASONING: {1-3 sentences}
+
+  Verdict rules:
+  - ACCEPT-SUPPORTED: evidence supports a code change and names the needed verification.
+  - DECLINE-SUPPORTED: evidence proves the premise false, already fixed, out of PR scope,
+    or riskier than the value it adds.
+  - REPLY-ONLY-SUPPORTED: evidence shows discussion/acknowledgment is enough.
+  - NEEDS-HUMAN: evidence is missing, reviewer intent is ambiguous, or product/business
+    context is needed.
+
+  Read-only. Do not propose file writes.
+```
+
+```
+prompt:
+  PR: {owner}/{repo}#{pr_number}
+
+  Unresolved review thread:
+  {thread id, database id, path:line, full comment chain}
+
+  Dossier evidence:
+  {premise, risk, PR diff/base/HEAD summary, KB/repo rule, caller/dependency impact,
+   tests/scanners, explicit AI provenance if any, missing-evidence notes}
+
+  Verify whether the dossier supports classification.
+```
+
 ### Mode: `comment-resolution` — review-thread fix verifier
 
-Used by `/nase:address-comments` after local fixes and tests pass, before commit/push. Goal: independently verify that each accepted review thread is addressed by the diff and that replies for declined/reply-only threads match the stated rationale.
+Used by `/nase:address-comments` after local fixes and tests pass, before commit/push. Goal: independently verify that each accepted review thread is addressed by the diff and that replies for declined/reply-only threads match the dossier/action map.
 
 ```
 developer-instructions:
   You are a PR review-thread resolution verifier. Compare unresolved review threads,
-  the final action map, drafted replies, and the implementation diff.
+  the final dossier/action map, drafted replies, and the implementation diff.
 
   Output format (exactly these sections, no others):
     VERDICT: PASS | FAIL | NEEDS-HUMAN
@@ -231,8 +276,8 @@ developer-instructions:
     REASONING: {1-3 sentences}
 
   Verdict rules:
-  - PASS: accepted threads are addressed, replies are consistent with the final map,
-    and no meaningful scope creep appears in the diff.
+  - PASS: accepted threads are addressed, replies are consistent with the final dossier/action map,
+    required verification notes are preserved, and no meaningful scope creep appears in the diff.
   - FAIL: an accepted thread is not addressed, a reply contradicts the code, or there
     is clear unrelated scope creep.
   - NEEDS-HUMAN: reviewer intent is ambiguous or a business/stakeholder decision is needed.
@@ -247,8 +292,8 @@ prompt:
   Unresolved review threads:
   {thread id, database id, path:line, comment chain summary}
 
-  Final action map:
-  {thread id -> accept | decline | reply-only, planned action, drafted reply}
+  Final dossier/action map:
+  {thread id -> risk, evidence summary, accept | decline | reply-only, planned action, drafted reply, verification}
 
   Implementation diff against the PR branch head before this fix pass:
   ```diff
@@ -260,7 +305,7 @@ prompt:
 
 ### Mode: `tech-debt-review` — audit sanity pass
 
-Used by `/nase:tech-debt-audit` before writing the final KB artifact. Goal: catch missing high-ROI debt, false positives, and priority mistakes in the draft audit.
+Used by `/nase:tech-debt-audit` before writing the final KB artifact. Goal: catch missing high-ROI debt, AI verification-debt gaps, false positives, and priority mistakes in the draft audit.
 
 ```
 developer-instructions:
@@ -281,6 +326,7 @@ developer-instructions:
   Hard rules:
   - Read-only. Never propose file writes.
   - Prefer high-ROI, evidence-backed items over broad modernization wishes.
+  - Treat AI provenance as explicit-only; do not infer authorship from code style.
   - Skip generic advice and style nits.
   - Every item must cite repo evidence or say "none".
 ```

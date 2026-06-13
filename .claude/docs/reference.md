@@ -119,6 +119,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 
 | Doc | Purpose |
 |-----|---------|
+| `ai-code-verification-debt.md` | Explicit-only AI provenance, risk tiers, review-comment dossier contract, and verification-debt scoring shared by review and audit skills |
 | `anti-rationalization.md` | Shared excuse → rebuttal catalog referenced by high-skip-risk gates in `fsd`, `address-comments`, and `prep-merge` |
 | `build-test-loop.md` | Build → test → fix loop used by `fsd`, `address-comments`, `prep-merge` |
 | `citation-validator.md` | Validate Jira, GitHub, Confluence, and source-file references before report-like skills mark saved artifacts as trusted |
@@ -129,7 +130,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `confluence-adf-pattern.md` | Confluence page update rules: full body requirement, `inlineCard` for Jira links, `hardBreak`, draft pages, content preservation |
 | `content-hash-cache.md` | SHA-based change detection to skip unchanged content while periodically re-analyzing stale cache entries (used by `onboard`, `tech-digest`) |
 | `codex-review.md` | Optional Codex MCP contract for read-only second-opinion review, verification, tech-debt, and mutual-grill passes |
-| `codex-verification-bundle.md` | Shared Codex pre-push verification bundle algorithm used by `fsd` |
+| `codex-verification-bundle.md` | Shared Codex pre-push verification bundle algorithm, with optional AI verification-debt context, used by `fsd` |
 | `cross-repo-validation.md` | Cross-repo outbound/inbound contract validation algorithm used by `onboard` Step 6 |
 | `daily-log-format.md` | Standardized log entry format and canonical skill tags |
 | `effort-lifecycle.md` | Shared lifecycle/status rules for `workspace/efforts/{slug}.md` and related todo entries, used by `design`, `fsd`, and `prep-merge` |
@@ -153,7 +154,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `lessons-format.md` | Canonical format for `workspace/tasks/lessons.md` entries (header, body, signal-to-noise rules) |
 | `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
 | `pr-input-guard.md` | Input validation for skills that take a PR URL |
-| `pr-review-verification.md` | Seven-section verification checklist for PR review skills (AI-reviewer audit, cross-ref, diff-vs-HEAD, bot citation triage) |
+| `pr-review-verification.md` | Verification checklist for PR review skills, including AI-reviewer audit, diff-vs-HEAD checks, bot citation triage, and comment dossiers |
 | `reference.md` | This file — workspace layout, KB structure, architecture notes |
 | `repo-resolution.md` | Resolve GitHub URLs / repo names to local paths via `.local-paths` |
 | `slack-draft-style.md` | Style checklist for Slack drafts: no greetings, bullets for tech content, English-only in public/non-CN DMs, `pls` over `please`; routes through `voice-profile-routing.md` and reads `workspace/communication-style.md` when needed |

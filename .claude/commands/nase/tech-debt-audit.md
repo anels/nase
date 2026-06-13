@@ -1,11 +1,11 @@
 ---
 name: nase:tech-debt-audit
-description: "Systematically audit a repository for tech debt, architecture health, best-practices compliance, and modernization opportunities — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file. Use when onboarding to a new repo, before a planning cycle, or when asked \"what tech debt do we have?\", \"architecture review\", \"are we following best practices\", or \"what can we modernize\"."
+description: "Systematically audit a repository for tech debt, architecture health, best-practices compliance, modernization opportunities, and AI verification debt — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file. Use when onboarding to a new repo, before a planning cycle, or when asked \"what tech debt do we have?\", \"architecture review\", \"are we following best practices\", \"AI verification debt\", or \"what can we modernize\"."
 pattern: pipeline
 sub-patterns: [fan-out]
 ---
 
-Systematically audit a repository for tech debt, architecture health, best-practices compliance, and modernization opportunities — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file.
+Systematically audit a repository for tech debt, architecture health, best-practices compliance, modernization opportunities, and AI verification debt — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file.
 
 **Input:** $ARGUMENTS — repo name or path (resolved via `.local-paths` and `workspace/kb/.domain-map.md`)
 
@@ -13,12 +13,13 @@ Systematically audit a repository for tech debt, architecture health, best-pract
 Follow `.claude/docs/confidential-marker.md` — do not convert people-sensitive daily-log context into named blockers or ownership claims.
 Follow `.claude/docs/citation-validator.md` — validate ticket, PR, and file citations in the saved audit before reporting it as final.
 Follow `.claude/docs/workspace-write-guard.md` for the saved tech-debt KB file and `.domain-map.md` registration.
+Follow `.claude/docs/ai-code-verification-debt.md` for AI provenance, risk tiers, and verification-debt scoring.
 
 ## Output
 
 Per `.claude/docs/skill-contract.md`. Chat format:
 - `Tech debt audit saved → workspace/kb/projects/tech-debt/{repo}-tech-debt.md`
-- `{N} findings ({S}/{R}/{A}/{M}/{Mod}/{P}/{DX} by category) · Top: {finding 1} · {finding 2} · {finding 3}`
+- `{N} findings ({S}/{R}/{A}/{M}/{Mod}/{P}/{DX}/{AI} by category) · Top: {finding 1} · {finding 2} · {finding 3}`
 
 ## Input Guard
 
@@ -46,6 +47,15 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - Silently skipped or not-run .NET tests: don't compare `dotnet test --list-tests` against attribute counts in source — parameterized tests expand into multiple cases and attributes are framework-specific. Instead, run `dotnet test --logger trx` and inspect the TRX results for discovered vs executed/skipped/not-run discrepancies. Keep framework guidance separate: MSTest `[TestMethod]`/`[DataRow]`, xUnit `[Fact]`/`[Theory]`, NUnit `[Test]`/`[TestCase]`. CI stays green but tests never run.
    - CI stale binary patterns: check install/download steps in pipeline YAML for existence-only guards (e.g. `if (Test-Path binary)` or `test -f binary`) instead of version guards (`binary --version`). Stale binaries persist on self-hosted agents between runs and cause silent version drift.
    - Pipeline inefficiencies (redundant stages, unpinned refs)
+   - AI verification debt: explicit AI provenance paired with missing tests, scanner evidence, runtime proof, contract docs, stale review threads, or surviving findings.
+
+2.25. **Explicit AI provenance pass** — follow `.claude/docs/ai-code-verification-debt.md → Explicit AI Provenance` as the source of truth. Do not infer AI authorship from style or code shape.
+
+   For each explicit-AI area, gather:
+   - Files/modules touched by the explicit AI artifact.
+   - Current HEAD survival: whether the issue, TODO, scanner finding, or missing test still exists.
+   - Age from the explicit artifact timestamp when available.
+   - Verification evidence already present: tests, scanner output, runtime check, contract/KB doc, review-thread resolution.
 
 2.5. **Optional scanner seed pass** — follow `.claude/docs/cli-tooling.md`. Probe with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`. These tools seed candidates only; they do not create findings without repo evidence.
 
@@ -55,6 +65,7 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - If Dockerfiles exist and `hadolint` is available, run `hadolint --format json --no-fail` and verify every Dockerfile finding against the source line and repo build constraints.
    - If GitHub Actions workflows exist and `actionlint` is available, run it and verify any workflow finding against the YAML source before adding CI debt.
    - If a scanner is missing or too noisy for the repo size, mark it skipped in the evidence snapshot, not as a finding.
+   - When scanner output touches explicit-AI files/modules, map confirmed findings to `Security`, `Reliability`, `Maintainability`, `Developer Experience`, or `AI Verification Debt` according to the actual risk. Scanner output alone is not AI debt; AI debt requires a verification gap or surviving finding.
 
 2.75. **Parallel audit fan-out** — use project subagents for independent candidate discovery, then fan in to the main thread for verification.
 
@@ -120,11 +131,14 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    - **Modernization** — outdated libraries, missed language features, infrastructure improvements
    - **Performance** — N+1 queries, missing caching, unoptimized pipelines
    - **Developer Experience** — CI speed, test reliability, onboarding friction
+   - **AI Verification Debt** — explicit-AI areas with missing verification, stale review threads, surviving scanner/test findings, or unproven runtime/security behavior
 
 7. **Score each finding** — for every item, assess:
    - **Severity** (1-5): how bad is this if left unfixed?
    - **Effort** (S/M/L/XL): how long to fix?
    - **ROI** (high/medium/low): severity relative to effort — high-severity + low-effort = high ROI
+
+   For every **AI Verification Debt** finding, include the scoring field block and repayment priority rule from `.claude/docs/ai-code-verification-debt.md → Verification-Debt Scoring`.
 
 7.5. **Codex audit sanity pass** — **Gate per `.claude/docs/codex-review.md → Prerequisite`**. Skip cleanly to Step 8 if the MCP isn't loaded; never use a Claude fallback.
 
@@ -158,10 +172,20 @@ When you need a comprehensive view of a repo's health — not just "what's messy
    ## Modernization Opportunities
    {Top upgrades/replacements with concrete benefits — libraries, language features, infra}
 
+   ## AI Verification Debt
+   Explicit AI provenance found: {yes/no}
+   High-risk AI-touched areas: {files/modules or "none found"}
+   Surviving debt: {security/runtime/code smell/test gap/stale TODO, or "none confirmed"}
+   Missing verification: {tests/scanners/runtime/manual checks not present}
+   Recommended repayment order: {severity x confidence x effort x age}
+
    ## High ROI (fix first)
    ### {Finding title}
    **Severity:** N/5 | **Effort:** S/M/L/XL | **ROI:** High/Medium/Low | **Category:** {category}
    {Description + specific file/line references}
+
+   For AI Verification Debt findings, include:
+   `ai_provenance`, `verification_gap`, `risk`, `owner_hint`, `age`, and `recommended_next_check`.
 
    ## Medium ROI
    ...
