@@ -67,6 +67,7 @@ assert "commits" in fields
 assert "createdAt" in fields
 assert "headRefOid" in fields
 assert "reviewDecision" in fields
+assert "isDraft" in fields
 assert data["review_threads"][0:3] == ["gh", "api", "graphql"]
 assert "pageInfo" in data["review_threads"][-1]
 PY

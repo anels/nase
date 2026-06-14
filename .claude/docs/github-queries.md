@@ -23,7 +23,7 @@ Use when you need commit history, review state, and branch info — typically fo
 
 ```bash
 gh pr view {pr_number} --repo {owner}/{repo} \
-  --json number,title,url,body,headRefOid,headRefName,baseRefName,commits,additions,deletions,changedFiles,files,state,reviewDecision
+  --json number,title,url,body,headRefOid,headRefName,baseRefName,commits,additions,deletions,changedFiles,files,state,reviewDecision,isDraft
 ```
 
 ### Light variant (discuss-pr, request-review)

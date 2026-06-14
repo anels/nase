@@ -30,7 +30,7 @@ python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant full > 
 
 The helper's **full** variant centralizes the field set from `.claude/docs/github-queries.md`.
 
-Capture: `headRefOid` (PR head SHA), `headRefName` (PR branch), `baseRefName` (target branch), `createdAt` (for Phase 4.7 adjacent same-file scan), commit list, changed files, current title/body, state, review decision.
+Capture: `headRefOid` (PR head SHA), `headRefName` (PR branch), `baseRefName` (target branch), `createdAt` (for Phase 4.7 adjacent same-file scan), commit list, changed files, current title/body, state, review decision, `isDraft` (for the Phase 10 draft-state branch).
 
 If `state` is not `OPEN`: report "PR is already {state}" and stop.
 
@@ -302,9 +302,14 @@ The PR title should match the commit subject line (the first line of the squash 
 
 ### 7a–7b: PR Template & Description
 
-Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors.
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft and format the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors.
 
-Follow `.claude/docs/pr-creation-pattern.md` for PR description formatting.
+**Strip leftover placeholders.** Before presenting the description, remove unfilled template placeholders and draft self-notes that should not survive into a merge-ready PR:
+- Placeholder issue keys and their reminder text — e.g. `[PROJ-0000](.../browse/PROJ-0000) draft placeholder; replace ...`, `JIRA-XXXX`, `TODO: add ticket`.
+- "replace before ready" / "fill in before merging" instruction lines authored for the draft stage.
+- Empty template bullets the author never filled.
+
+Delete the placeholder bullet and its trailing blank line, not just the link. If a placeholder Jira key looks like it was meant to hold a real ticket (not boilerplate), note it in the confirmation block so the user can supply the key instead of silently dropping it. Never invent a Jira key.
 
 Present the new title and description to the user for confirmation:
 
@@ -406,7 +411,9 @@ PR ready for merge ✓
 Append to daily log following `.claude/docs/daily-log-format.md` (tag: `prep-merge`) **before** prompting (ensures the log is written regardless of the user's next choice).
 Log: `{repo_name}#{pr_number} — squashed → 1 commit, force-pushed`
 
-Then use the `AskUserQuestion` tool:
+Then branch on the PR's draft state (`isDraft` from the Phase 1 metadata). Do not offer to un-draft a PR that is already non-draft, and do not tell the user to un-draft it — `gh pr ready` is a no-op there and the framing is misleading.
+
+**If the PR is a draft (`isDraft == true`):** use the `AskUserQuestion` tool:
 
 ```
 question: "Mark this PR ready and request review now? {pr_url}"
@@ -418,11 +425,26 @@ options:
     description: "Leave as draft; you decide when to promote"
 ```
 
-**If "Yes":** first un-draft the PR, then run `/nase:request-review {pr_url}`:
-```bash
-gh pr ready {pr_number} --repo {owner}/{repo}
+- **If "Yes":** first un-draft the PR, then run `/nase:request-review {pr_url}`:
+  ```bash
+  gh pr ready {pr_number} --repo {owner}/{repo}
+  ```
+- **If "No":** print `PR left as draft — un-draft and request review when you're ready.` and stop.
+
+**If the PR is already non-draft (`isDraft` is false/absent):** skip the un-draft framing entirely. Use the `AskUserQuestion` tool:
+
 ```
-**If "No":** print `PR is ready — un-draft and request review when you're ready.` and stop.
+question: "Request review now? {pr_url}"
+header: "Request Review"
+options:
+  - label: "Yes — ping reviewers"
+    description: "DM code owners via /nase:request-review"
+  - label: "No — I'll handle it"
+    description: "Leave the PR as-is; you decide when to request review"
+```
+
+- **If "Yes":** run `/nase:request-review {pr_url}` (no `gh pr ready` — the PR is already ready).
+- **If "No":** print `PR is ready for merge.` and stop.
 
 ---
 

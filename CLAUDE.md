@@ -85,6 +85,7 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 ### Reference Loading
 - Do not load docs/scripts inventories at session start. Read `.claude/docs/reference.md` only when you need workspace layout, shared-doc, script, KB, or architecture details.
 - Skills should reference shared docs instead of duplicating algorithms.
+- When changing a shared helper, command field set, or workflow phase, update the helper, consuming command, shared reference doc, and focused regression test together; `tests/check-shared-doc-refs.sh` catches missing paths, not semantic drift.
 
 ### Hooks / Commands / Skills Scope
 - Create hooks, commands, and skills under `.claude/`. Writing to `~/.claude/` requires explicit user approval.
