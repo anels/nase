@@ -12,6 +12,48 @@ cd "$ROOT" || exit 1
 failed=0
 section() { printf '\n=== %s ===\n' "$1"; }
 run_gate() { "$@" || failed=$((failed+1)); }
+run_test_files() {
+  local test_file
+  for test_file in "$@"; do
+    run_gate bash "$test_file"
+  done
+}
+
+HOOK_TESTS=(
+  tests/hooks/test-block-dangerous-git.sh
+  tests/hooks/test-external-write-guards.sh
+  tests/hooks/test-style-edit-detect.sh
+  tests/hooks/test-session-start.sh
+  tests/hooks/test-stop-backup-safety.sh
+  tests/hooks/test-post-edit-shellcheck.sh
+  tests/hooks/test-pre-edit-write-fact-force.sh
+  tests/hooks/test-track-kb-read.sh
+)
+
+SCRIPT_TESTS=(
+  tests/scripts/test-date-resolve.sh
+  tests/scripts/test-kb-gap-scan.sh
+  tests/scripts/test-help-summary.sh
+  tests/scripts/test-kb-domain-resolve.sh
+  tests/scripts/test-kb-hygiene-scan.sh
+  tests/scripts/test-kb-usage-report.sh
+  tests/scripts/test-kb-search.sh
+  tests/scripts/test-today-stats.sh
+  tests/scripts/test-tool-availability.sh
+  tests/scripts/test-local-parallel-subagents.sh
+  tests/scripts/test-tech-debt-subagents.sh
+  tests/scripts/test-cli-tooling-integration.sh
+  tests/scripts/test-github-actions-hardening.sh
+  tests/scripts/test-extensions-check.sh
+  tests/scripts/test-pr-github-helper.sh
+  tests/scripts/test-pr-review-eval.sh
+  tests/scripts/test-voice-profile-routing.sh
+  tests/scripts/test-local-sensitive-artifacts.sh
+  tests/scripts/test-shared-workflow-extraction.sh
+  tests/scripts/test-workspace-data-scan.sh
+  tests/scripts/test-workspace-write-guard.sh
+)
+
 SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || true)
 SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally; GitHub Actions still runs this gate.'
 ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || true)
@@ -103,18 +145,7 @@ done
 [[ "$doc_bash_fail" -eq 0 ]] || failed=$((failed+1))
 
 section "hook regression tests"
-for test_file in \
-  tests/hooks/test-block-dangerous-git.sh \
-  tests/hooks/test-external-write-guards.sh \
-  tests/hooks/test-style-edit-detect.sh \
-  tests/hooks/test-session-start.sh \
-  tests/hooks/test-stop-backup-safety.sh \
-  tests/hooks/test-post-edit-shellcheck.sh \
-  tests/hooks/test-pre-edit-write-fact-force.sh \
-  tests/hooks/test-track-kb-read.sh
-do
-  run_gate bash "$test_file"
-done
+run_test_files "${HOOK_TESTS[@]}"
 
 section "workspace validation"
 run_gate bash .claude/scripts/validate-workspace.sh
@@ -123,31 +154,7 @@ section "local sensitive artifact scan"
 run_gate bash tests/check-local-sensitive-artifacts.sh
 
 section "script regression tests"
-for test_file in \
-  tests/scripts/test-date-resolve.sh \
-  tests/scripts/test-kb-gap-scan.sh \
-  tests/scripts/test-help-summary.sh \
-  tests/scripts/test-kb-domain-resolve.sh \
-  tests/scripts/test-kb-hygiene-scan.sh \
-  tests/scripts/test-kb-usage-report.sh \
-  tests/scripts/test-kb-search.sh \
-  tests/scripts/test-today-stats.sh \
-  tests/scripts/test-tool-availability.sh \
-  tests/scripts/test-local-parallel-subagents.sh \
-  tests/scripts/test-tech-debt-subagents.sh \
-  tests/scripts/test-cli-tooling-integration.sh \
-  tests/scripts/test-github-actions-hardening.sh \
-  tests/scripts/test-extensions-check.sh \
-  tests/scripts/test-pr-github-helper.sh \
-  tests/scripts/test-pr-review-eval.sh \
-  tests/scripts/test-voice-profile-routing.sh \
-  tests/scripts/test-local-sensitive-artifacts.sh \
-  tests/scripts/test-shared-workflow-extraction.sh \
-  tests/scripts/test-workspace-data-scan.sh \
-  tests/scripts/test-workspace-write-guard.sh
-do
-  run_gate bash "$test_file"
-done
+run_test_files "${SCRIPT_TESTS[@]}"
 
 section "shared-doc reference integrity"
 run_gate bash tests/check-shared-doc-refs.sh
