@@ -218,7 +218,7 @@ Draw from:
 ```markdown
 ## Suggestions for Next Period
 
-- {e.g. "Unblock #5 IN-11620: ping Orchestrator team in Slack by Wed — it's been waiting 2 weeks"}
+- {e.g. "Unblock #5 PROJ-1234: ping the owning team in Slack by Wed — it's been waiting 2 weeks"}
 - {e.g. "Reserve 2h for #3 ADF CDC research — deferred 3 times, write even a rough draft"}
 - {e.g. "Add Snowflake task failure patterns to KB — came up twice with no runbook"}
 ```

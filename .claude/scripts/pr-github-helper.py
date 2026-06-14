@@ -43,6 +43,7 @@ FULL_FIELDS = (
     "files",
     "state",
     "reviewDecision",
+    "isDraft",
 )
 
 THREADS_QUERY = """
