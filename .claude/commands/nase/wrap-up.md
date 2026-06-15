@@ -157,7 +157,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
 
 ### Step 4d: Today's Stats (always runs)
 
-Invoke `.claude/scripts/today-stats.py` — single helper that reads the nase workspace name from `workspace/config.md` and emits both blocks (sessions+tokens, skill ranking) as key=value lines.
+Invoke `.claude/scripts/today-stats.py` — emits skill-usage ranking (from `workspace/stats/skill-usage.jsonl`) as key=value lines. Session/token accounting was removed: it read `~/.claude/usage-data/session-meta/`, which is not populated in every harness, so the numbers were unreliable — don't report tokens.
 
 ```bash
 python3 .claude/scripts/today-stats.py
@@ -165,19 +165,14 @@ python3 .claude/scripts/today-stats.py
 
 Expected output shape:
 ```
-sessions=<int>
-input_tokens=<int>
-output_tokens=<int>
-total_tokens=<int>
-note=no-session-meta-dir         # only when ~/.claude/usage-data/session-meta/ missing
 total_invocations=<int>
 unique_skills=<int>
 skill <name> <count>             # repeated, descending; absent when 0 invocations
 ```
 
-Pass `--date YYYY-MM-DD` to override today, `--root <path>` to query a different nase workspace. Script always exits 0; missing inputs degrade to zeros (with a `note=` line when the session-meta directory is absent).
+Pass `--date YYYY-MM-DD` to override today, `--root <path>` to query a different nase workspace. Script always exits 0; missing inputs degrade to zeros.
 
-Store the parsed values; include them in Step 6's journal output. If `note=no-session-meta-dir` is present, render token data as "unavailable" rather than zeros.
+Store the parsed values; include them in Step 6's journal output.
 
 ### Step 4e: Style Delta Consolidation (conditional)
 
@@ -231,7 +226,7 @@ Follow `.claude/docs/closing-block.md` for shape, name resolution, style palette
 
 **Scores-line requirement (instruction, not part of template):** the `**Scores:**` line is required whenever Step 1 (reflect) ran. `/nase:reflect` always produces three 1–5 dimensions (Accuracy / Efficiency / Quality) — capture them verbatim, do not omit. They are the user's day-rating signal and the source of `## calibration -- {YYYY-MM-DD}` entries in `lessons.md`. Include a one-line justification per dimension only if a score < 5.
 
-**Section omission (instruction, not part of template):** omit the `## Today's Stats` section if `~/.claude/usage-data/session-meta/` produced no data. Omit `## Lessons` / `## KB Updates` only via their respective skip notes — do not leave headers empty.
+**Section omission (instruction, not part of template):** omit the `## Today's Stats` section if Step 4d produced no skill invocations (`total_invocations=0`). Omit `## Lessons` / `## KB Updates` only via their respective skip notes — do not leave headers empty.
 
 1. Stage and write to `workspace/journals/{YYYY-MM-DD}.md`. If the file already exists, overwrite it with the latest content (re-running wrap-up produces a fresh result, not a duplicate append). For journal rewrites, follow the same helper sequence (`workspace-write-guard.py stage`, diff, then `apply`); use the append-only exception only for narrow log entries.
 
@@ -239,7 +234,6 @@ Follow `.claude/docs/closing-block.md` for shape, name resolution, style palette
 # Wrap-up — {YYYY-MM-DD}
 
 ## Today's Stats
-Sessions: {N} | Tokens: {input_tokens} in / {output_tokens} out ({total_tokens} total)
 Skills ({unique_skills} unique, {total_invocations} invocations): {skill1} ×{N}  {skill2} ×{N}  ...
 
 ## Reflection

@@ -19,7 +19,13 @@ cat > "$tmp/workspace/stats/skill-usage.jsonl" <<'JSONL'
 {"skill":"old","ts":"2026-05-31T23:59:59Z","status":"success"}
 JSONL
 
-out=$(python3 "$SCRIPT" --root "$tmp" --workspace __no_session_match__ --date 2026-06-01)
+out=$(python3 "$SCRIPT" --root "$tmp" --date 2026-06-01)
+compat_out=$(python3 "$SCRIPT" --root "$tmp" --workspace ignored --date 2026-06-01)
+
+if [ "$compat_out" != "$out" ]; then
+  printf 'FAIL: --workspace compatibility output changed\nOutput:\n%s\nCompat:\n%s\n' "$out" "$compat_out" >&2
+  exit 1
+fi
 
 assert_line() {
   local needle="$1"
