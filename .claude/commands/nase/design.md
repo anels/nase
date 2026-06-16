@@ -303,7 +303,7 @@ options:
   - label: "Yes"                , description: "Create ticket with design summary"
   - label: "No"                 , description: "Track in workspace only"
 ```
-If yes: use the project key from the repo's KB file (or ask the user). Issue type: Task or Story. Set summary to the effort title, description to the design summary, and add a note linking back to the effort doc path. Immediately before calling `createJiraIssue`, write a fresh one-shot token:
+If yes: use the project key from the repo's KB file (or ask the user). Issue type: Task or Story. Set summary to the effort title, description to the design summary, and add a note linking back to the effort doc path. Set `contentFormat: "markdown"` on the `createJiraIssue` call (per `.claude/docs/jira-write-pattern.md` — the ADF default breaks the token sha) and include it in the payload before hashing. Immediately before calling `createJiraIssue`, write a fresh one-shot token:
 ```json
 {
   "tool_name": "{actual createJiraIssue tool name}",

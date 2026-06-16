@@ -1,6 +1,6 @@
 ---
 name: nase:learn
-description: "Capture a tip, article URL, GitHub repo, or cross-project pattern as structured knowledge — researches related materials, writes to general KB, then offers concrete next actions when useful. Use for general programming insights, web-sourced patterns, or learnings that apply across repos. Example: 'async void is dangerous in C#' → /nase:learn. For repo-specific constraints tied to one codebase (API contracts, architectural decisions, naming rules), use /nase:kb-update instead. Triggers: 'remember this', 'save this tip', 'learn from this', article URL, topic keyword."
+description: "Deep-dive a tip, article URL, GitHub repo, or cross-project pattern into structured knowledge — researches related materials, distills the actionable/insightful signal, then classifies each takeaway against your existing KB (fills a gap / refreshes what you know / contradicts something you had wrong) before writing. Use for general programming insights, web-sourced patterns, or learnings that apply across repos. Example: 'async void is dangerous in C#' → /nase:learn. For repo-specific constraints tied to one codebase (API contracts, architectural decisions, naming rules), use /nase:kb-update instead. Triggers: 'remember this', 'save this tip', 'learn from this', 'deep dive on X', 'what should I know about X', article URL, topic keyword."
 pattern: expert-pool
 ---
 
@@ -52,8 +52,9 @@ Discard marketing content, unrelated domains, and obvious filler.
 - Why does it matter / what problem does it solve?
 - Is it directly applicable to our stack or workflow?
 - What are the tradeoffs or limitations?
+- **Signal bucket** — which one carries the value: `actionable` (changes how I code/work right now), `insightful` (changes my mental model of how something works), or `reference` (worth knowing, look up when needed). This drives ordering in Step 4 — actionable leads.
 
-Produce a list of 2-5 concrete knowledge items. These become the seed for Step 3.
+Produce a list of 2-5 concrete knowledge items. These become the seed for Step 3. Prefer depth over breadth: three takeaways that each clear the notability bar beat eight that restate the source.
 
 ### 3. Deep Research (secondary learning)
 
@@ -84,7 +85,7 @@ Once Exa is loaded:
 Note in Step 6's `**Research method:**` field which mode was used (`WebSearch` vs `Exa fast / deep / deep-reasoning`).
 
 **3b. Cross-reference with existing KB:**
-Read `workspace/kb/.domain-map.md` and check if any existing KB files already cover related topics. If so, read the relevant sections — the new knowledge may extend, contradict, or refine what's already there.
+Read `workspace/kb/.domain-map.md`, then read the relevant sections of any KB file that plausibly covers the topic. This is not optional skimming — you cannot classify a takeaway as new knowledge without first proving the KB doesn't already hold it. Pull the exact current wording of any overlapping entry so Step 3e can compare against it, not against your memory of what the KB "probably" says.
 
 </parallel>
 
@@ -102,6 +103,22 @@ From the search results, pick the 2-3 most valuable sources (prioritize: practic
 - [{title}]({url}) — {one-line why it's relevant}
 ```
 
+**3e. Classify each takeaway against the KB (KB Delta).**
+
+The point of cross-referencing is not to avoid duplicates — it's to know what this learning *does to your existing understanding*. For each takeaway from Steps 2-3, assign one verdict and cite the evidence (KB file + section, and what it currently says):
+
+| Verdict | When | What it means for you |
+|---------|------|------------------------|
+| 🆕 **NEW** | No KB file covers this | Fills a gap — knowledge you didn't have |
+| 🔄 **REFRESH** | KB covers it, but this adds nuance, a newer version, a confirming data point, or a missing edge case | Sharpens what you already knew |
+| ⚠️ **CONTRADICT** | KB states something this learning shows is wrong, outdated, or now suboptimal | Changes what you should do — the highest-value verdict, because acting on stale belief is worse than not knowing |
+| 💤 **KNOWN** | KB already fully covers this, no delta | No value — do not rewrite an entry to say the same thing |
+
+Rules that make the verdict trustworthy:
+- A NEW verdict requires that you actually read the candidate KB sections in 3b and found nothing — not that you didn't look.
+- A CONTRADICT verdict must quote the specific KB sentence it contradicts and state why the new evidence wins (newer source, production experience, primary doc, reproduced failure). A vague "this seems to update X" is a REFRESH, not a CONTRADICT.
+- KNOWN takeaways are dropped from the synthesis — they feed the notability check in Step 4.0.
+
 ### 4. Synthesize and Confirm
 
 **4.0. Notability bar check (abort gate).**
@@ -111,6 +128,7 @@ Before drafting, ask: does the extracted knowledge clear the notability bar (see
 **Clear** = at least one takeaway is one of: a decision with rationale, a gotcha discovered through failure, a cross-cutting flow spanning multiple files, a hidden constraint or invariant, or a subsystem/integration referenced by multiple places.
 
 **Fails the bar** = takeaways are exclusively any of:
+- Every takeaway came back 💤 KNOWN from Step 3e (KB already covers all of it)
 - Restating what code, README, or product docs already say in equivalent words
 - Pure speculation or inference without a concrete signal
 - Generic best-practice platitudes already covered in existing KB
@@ -136,6 +154,8 @@ If `--auto-accept` is active, the notability bar is necessary but not sufficient
 
 If any condition fails, write only the draft to `workspace/tmp/learn-draft-{slug}.md`, report the failed quality condition in one line, and stop without mutating durable KB files.
 
+**CONTRADICT in `--auto-accept` is never auto-applied.** Correcting an existing KB entry overturns something you already believed and must not happen unattended. When a takeaway is ⚠️ CONTRADICT under `--auto-accept`: auto-write the NEW/REFRESH takeaways as normal, but for the contradiction, write the proposed correction to `workspace/tmp/learn-draft-{slug}.md`, append a `[KB-CONTRADICT]` line to the daily log naming the stale KB entry, and leave the old entry untouched for the user to resolve interactively later. Do not silently overwrite.
+
 Combine the original extraction (Step 2) with the deep research (Step 3) into a unified knowledge summary using this structure (this is the **file content**, not chat output):
 
 ```
@@ -145,15 +165,22 @@ Combine the original extraction (Step 2) with the deep research (Step 3) into a 
 {What this is and why it matters — 2-3 sentences}
 
 ### Key Takeaways
-1. {takeaway with detail}
-2. {takeaway with detail}
+{Order by signal bucket from Step 2c — actionable first, then insightful, then reference. Tag each with its bucket and its Step 3e verdict so the value is legible at a glance.}
+1. [actionable · 🆕 NEW] {takeaway with detail}
+2. [insightful · 🔄 REFRESH] {takeaway with detail — name the KB file/section it refreshes}
 ...
+
+### KB Delta
+{The verdict table — what this learning does to your existing understanding. Omit 💤 KNOWN rows.}
+- ⚠️ **CONTRADICT** — `{kb-file → section}` currently says "{quoted stale claim}"; this learning shows {why it's wrong/outdated}, per {source}. → correct the old entry.
+- 🆕 **NEW** — no KB coverage for {sub-topic}. → new entry in `{target file}`.
+- 🔄 **REFRESH** — `{kb-file → section}` gains {the added nuance}.
 
 ### Tradeoffs & Limitations
 - {what to watch out for}
 
 ### Practical Application
-{How this applies to our stack/workflow — be specific}
+{How this applies to our stack/workflow — be specific. Lead with the actionable takeaways: what would I change in my next PR / review / design because of this?}
 
 ### Sources
 - {attributed list from Step 3d}
@@ -167,6 +194,7 @@ Combine the original extraction (Step 2) with the deep research (Step 3) into a 
    - `Draft saved → workspace/tmp/learn-draft-{slug}.md`
    - **Topic:** `{Topic Title}` — `{one-sentence Core Insight}`
    - **Takeaways:** `{N}` · **Sources:** `{N}`
+   - **KB Delta:** `{X new · Y refresh · Z contradict}` — if Z > 0, list each contradiction on its own line (`⚠️ {kb-file → section}: was "{stale}", now "{correct}"`) so it cannot be missed.
 
 If `--auto-accept` is active and Step 4.1 passed, skip the confirmation and proceed directly to Step 5 (auto-save) — no draft file needed in that path; write straight to KB.
 
@@ -191,6 +219,11 @@ Map each knowledge item to a KB domain. Read `workspace/kb/.domain-map.md` to ge
 If the knowledge spans multiple domains, write to each relevant KB file (the overlapping parts, not duplicates — each file gets domain-specific framing).
 
 ### 6. Write to KB
+
+Write behavior follows the Step 3e verdict for each takeaway:
+- 🆕 **NEW** / 🔄 **REFRESH** — append or merge into the target file (per-file rules below).
+- ⚠️ **CONTRADICT** (interactive run) — **do not write until the user confirms.** Invoke `AskUserQuestion` showing the stale claim, its KB location, the new claim, and the source. On confirm: edit the old entry in place — replace the wrong text and append `<!-- Superseded YYYY-MM-DD: was "{old claim}" — corrected per /nase:learn ({source}) -->` so the correction is auditable, not a silent overwrite. On decline: leave the entry, note the unresolved contradiction in the daily log. (Under `--auto-accept`, follow the Step 4.1 report-only path instead — never reach this prompt.)
+- 💤 **KNOWN** — write nothing.
 
 For each target KB file:
 - Apply `.claude/docs/workspace-write-guard.md`: stage the final target content to `workspace/tmp/`, diff it, and re-check target mtime/hash immediately before writing. In `--auto-accept`, skip the prompt only if Step 4.1 passed; never skip the final drift check.
