@@ -77,18 +77,22 @@ expect_rc "slack alternate namespace blocked" .claude/hooks/slack-send-guard.sh 
 expect_rc "slack draft allowed" .claude/hooks/slack-send-guard.sh "$slack_draft" 0
 expect_rc "slack malformed JSON blocked" .claude/hooks/slack-send-guard.sh "{" 2 "could not parse"
 
-small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short"}}')
+small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"adf"}}')
 large_body=$(printf '%*s' 60001 '' | tr ' ' x)
-large_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body}}')
-large_confluence_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__updateConfluencePage",tool_input:{body:$body}}')
+large_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
+large_confluence_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
 wide_body=$(printf '中%.0s' {1..20001})
-wide_confluence=$(jq -cn --arg body "$wide_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body}}')
-confluence_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluencePage","tool_input":{"pageId":"1"}}'
-expect_rc "confluence small body allowed" .claude/hooks/confluence-size-guard.sh "$small_confluence" 0
+wide_confluence=$(jq -cn --arg body "$wide_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
+markdown_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"markdown"}}')
+unset_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluencePage",tool_input:{body:"short"}}')
+confluence_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluencePage","tool_input":{"pageId":"1","contentFormat":"markdown"}}'
+expect_rc "confluence small adf body allowed" .claude/hooks/confluence-size-guard.sh "$small_confluence" 0
 expect_rc "confluence large body blocked" .claude/hooks/confluence-size-guard.sh "$large_confluence" 2 "confluence-size-guard"
 expect_rc "confluence alternate namespace blocked" .claude/hooks/confluence-size-guard.sh "$large_confluence_alt" 2 "confluence-size-guard"
 expect_rc "confluence UTF-8 byte limit blocked" .claude/hooks/confluence-size-guard.sh "$wide_confluence" 2 "bytes"
-expect_rc "confluence read allowed" .claude/hooks/confluence-size-guard.sh "$confluence_read" 0
+expect_rc "confluence markdown write blocked" .claude/hooks/confluence-size-guard.sh "$markdown_confluence" 2 'expected "adf"'
+expect_rc "confluence unset format write blocked" .claude/hooks/confluence-size-guard.sh "$unset_confluence" 2 'expected "adf"'
+expect_rc "confluence read (markdown) allowed" .claude/hooks/confluence-size-guard.sh "$confluence_read" 0
 expect_rc "confluence malformed JSON blocked" .claude/hooks/confluence-size-guard.sh "{" 2 "could not parse"
 
 jira_transition_tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
@@ -147,11 +151,19 @@ jq -n --arg tool "$jira_link_tool" --arg created "$created" --arg payload_sha "$
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue-link missing endpoint blocked" .claude/hooks/jira-write-guard.sh "$jira_link" 2 "unapproved SRE-2"
 
+jira_create_tool="mcp__plugin_atlassian_atlassian__createJiraIssue"
+jira_create=$(jq -cn --arg tool "$jira_create_tool" '{tool_name:$tool,tool_input:{projectKey:"SRE",summary:"new issue",description:"body",contentFormat:"markdown"}}')
+jira_create_sha=$(payload_sha "$jira_create")
+jq -n --arg tool "$jira_create_tool" --arg created "$created" --arg payload_sha "$jira_create_sha" \
+  '{tool_name:$tool,created_at:$created,payload_summary:"create issue",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira create markdown token allowed" .claude/hooks/jira-write-guard.sh "$jira_create" 0
+
 # --- batch token mode ---
 batch_created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 jira_transition2=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-2"}}')
 jira_comment_tool="mcp__plugin_atlassian_atlassian__addCommentToJiraIssue"
-jira_comment1=$(jq -cn --arg tool "$jira_comment_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1",commentBody:"x"}}')
+jira_comment1=$(jq -cn --arg tool "$jira_comment_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1",commentBody:"x",contentFormat:"markdown"}}')
 jira_transition9=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-9"}}')
 
 write_batch() {
@@ -181,6 +193,31 @@ jq -n --arg created "$batch_created" \
   '{approved_issues:["SRE-1"],max_ops:2,created_at:$created,tools:["addCommentToJiraIssue"],payload_summary:"comments only"}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira batch tool suffix-match allowed" .claude/hooks/jira-write-guard.sh "$jira_comment1" 0
+
+# --- format gate (runs after token-mode detection) ---
+jira_comment_adf=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__addCommentToJiraIssue",tool_input:{issueIdOrKey:"SRE-1",commentBody:"x",contentFormat:"adf"}}')
+jira_comment_unset=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__addCommentToJiraIssue",tool_input:{issueIdOrKey:"SRE-1",commentBody:"x"}}')
+jira_create_adf=$(jq -cn --arg tool "$jira_create_tool" '{tool_name:$tool,tool_input:{projectKey:"SRE",summary:"new issue",description:{type:"doc",content:[]},contentFormat:"adf"}}')
+echo '{}' > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira adf body under single-shot blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_adf" 2 "under a single-shot token"
+echo '{}' > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira unset format body blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_unset" 2 "<unset>"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 0 "jira format block consumes token" "token still exists"
+else
+  report 1 "jira format block consumes token"
+fi
+write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
+expect_rc "jira unset format under batch blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_unset" 2 "<unset>"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 0 "jira batch format block consumes token" "token still exists"
+else
+  report 1 "jira batch format block consumes token"
+fi
+write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
+expect_rc "jira create adf under batch blocked" .claude/hooks/jira-write-guard.sh "$jira_create_adf" 2 "createJiraIssue must use markdown"
+write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
+expect_rc "jira adf body under batch token allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_adf" 0
 
 expect_missing_jq "slack missing jq blocked" .claude/hooks/slack-send-guard.sh "$slack_send"
 expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$jira_transition"

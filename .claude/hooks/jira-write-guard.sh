@@ -33,6 +33,29 @@ block_without_log() {
   exit 2
 }
 
+block_format() {
+  local reason="$1"
+  {
+    echo "BLOCKED by jira-write-guard: $reason."
+    echo ""
+    echo "Jira body format rules (see .claude/docs/jira-write-pattern.md):"
+    echo "  - Plain text: contentFormat \"markdown\" with a single-shot sha token."
+    echo "  - Mentions / rich nodes: contentFormat \"adf\" — but ADF JSON can drift"
+    echo "    the single-shot payload sha, so it is allowed ONLY under"
+    echo "    a batch/issue-allowlist token (which binds the issue set + op cap,"
+    echo "    not the payload bytes). createJiraIssue cannot use a batch token, so"
+    echo "    create with markdown, then addComment/editJiraIssue in ADF."
+    echo "  - Unset contentFormat is rejected — the default path is ambiguous."
+  } >&2
+  if [ -n "${LOG:-}" ]; then
+    printf '%s BLOCKED %s (%s)\n' "${TS:-unknown-time}" "${TOOL:-unknown-tool}" "$reason" >> "$LOG"
+  fi
+  if [ -n "${TOKEN:-}" ] && [ -f "$TOKEN" ]; then
+    rm -f "$TOKEN"
+  fi
+  exit 2
+}
+
 command -v jq >/dev/null 2>&1 || block_without_log "jq is required to parse tool input"
 
 INPUT=$(cat)
@@ -152,6 +175,29 @@ CURRENT_ISSUES=$(printf '%s' "$INPUT" | jq -r '
 IS_BATCH=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
   if (.approved_issues | type) == "array" and ((.approved_issues | length) > 0)
   then "1" else "0" end' 2>/dev/null || echo "0")
+
+# Format gate (body tools only). markdown is the plain-text default and works
+# with a single-shot sha token. ADF is required for resolving @mentions and
+# smart cards, but its JSON can re-serialize and drift the single-shot payload
+# sha — so ADF is allowed ONLY under a batch token, which binds an
+# issue set + op cap instead of the payload bytes. An unset format is rejected.
+case "$TOOL" in
+  *__editJiraIssue|*__addCommentToJiraIssue|*__createJiraIssue)
+    CONTENT_FORMAT=$(printf '%s' "$INPUT" | jq -r '.tool_input.contentFormat // ""' 2>/dev/null || echo "")
+    case "$CONTENT_FORMAT" in
+      markdown) ;;
+      adf)
+        [[ "$TOOL" != *__createJiraIssue ]] \
+          || block_format "$TOOL sent contentFormat \"adf\"; createJiraIssue must use markdown because no issue key exists for a batch token"
+        [ "$IS_BATCH" = "1" ] \
+          || block_format "$TOOL sent contentFormat \"adf\" under a single-shot token"
+        ;;
+      *)
+        block_format "$TOOL sent contentFormat \"${CONTENT_FORMAT:-<unset>}\""
+        ;;
+    esac
+    ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Batch mode: approved issue set + op-count cap + TTL. Consumed up to max_ops.

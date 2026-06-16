@@ -4,6 +4,16 @@ Shared rules for reading and writing Confluence pages via Atlassian MCP. Referen
 
 ---
 
+## Always write with `contentFormat: "adf"`
+
+Every `createConfluencePage` / `updateConfluencePage` body must be sent as `contentFormat: "adf"`. The MCP enum also offers `markdown` and `html`, but ADF is the workspace standard because it is what round-trips `inlineCard` Jira links, panels, tables, and embedded screenshots without loss. Fetch the current page as ADF (`getConfluencePage`), modify in memory, and send ADF back.
+
+`.claude/hooks/confluence-size-guard.sh` enforces this — it blocks a page write whose `contentFormat` is unset, `markdown`, or `html`. If a page genuinely cannot be expressed as ADF, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
+
+This is the **opposite** of Jira, where bodies must be `markdown` (see `.claude/docs/jira-write-pattern.md`). The format gate is write-only — reading a page as `markdown` for human-readable internalization (e.g. `confluence-doc-internalize`) is unaffected.
+
+---
+
 ## Update vs Create
 
 - **Existing page**: use `updateConfluencePage` — always fetch the current page first, then send the full modified body back.
@@ -38,6 +48,26 @@ Multiple tickets in one cell — separate with `hardBreak`:
 {"type": "hardBreak"},
 {"type": "inlineCard", "attrs": {"url": "https://your-org.atlassian.net/browse/PROJ-222"}}
 ```
+
+---
+
+## GitHub & other external links
+
+`inlineCard` accepts any URL (`attrs.url`), so the same node works for GitHub PRs/issues, Bitbucket, Google Drive, etc. But a **smart card only renders for a viewer whose account is connected** to that service — GitHub in particular prompts each reader to "connect your account to preview links." Until then it falls back to a plain inline link. Jira, Confluence, and Bitbucket cards render natively (Atlassian-owned).
+
+So: use `inlineCard` for GitHub links and accept the graceful link fallback. Do not assume readers see a card. If a plain hyperlink is preferable, use a normal `link` mark instead.
+
+---
+
+## People mentions: `mention` node
+
+Never type `@name` as plain text — it does not resolve or notify. Use a `mention` node with the Atlassian account ID:
+
+```json
+{"type": "mention", "attrs": {"id": "<accountId>", "text": "@Display Name"}}
+```
+
+Only `type` and `attrs.id` are required. Resolve the account ID with `lookupJiraAccountId` / `atlassianUserInfo` (the ID is shared across Jira and Confluence) — never guess it. Confluence stores this as `<ac:link><ri:user account-id="…"/></ac:link>`; sending the ADF `mention` node lets the MCP do that conversion.
 
 ---
 

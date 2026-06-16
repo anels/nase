@@ -127,7 +127,8 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `closing-block.md` | TLDR + tint closing block for `today` / `wrap-up` outputs |
 | `confidential-marker.md` | `[CONFIDENTIAL]` routing tag rules so sensitive daily-log lines stay out of KB, recap, export, and report flows |
 | `commit-push-pattern.md` | Stage → secrets scan → commit → improve → push sequence |
-| `confluence-adf-pattern.md` | Confluence page update rules: full body requirement, `inlineCard` for Jira links, `hardBreak`, draft pages, content preservation |
+| `confluence-adf-pattern.md` | Confluence page update rules: `contentFormat:"adf"` enforced, full body requirement, `inlineCard` for Jira links, `hardBreak`, draft pages, content preservation |
+| `jira-write-pattern.md` | Jira write format rule: body tools must set `contentFormat` (`markdown` for plain text; ADF only under batch token for mentions/rich nodes); enforced by `jira-write-guard.sh` |
 | `content-hash-cache.md` | SHA-based change detection to skip unchanged content while periodically re-analyzing stale cache entries (used by `onboard`, `tech-digest`) |
 | `codex-review.md` | Optional Codex MCP contract for read-only second-opinion review, verification, tech-debt, and mutual-grill passes |
 | `codex-verification-bundle.md` | Shared Codex pre-push verification bundle algorithm, with optional AI verification-debt context, used by `fsd` |
