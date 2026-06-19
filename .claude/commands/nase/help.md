@@ -2,11 +2,12 @@
 name: nase:help
 description: Display a usage guide for this AI engineer workspace. Use when asked "what commands are available?", "how does nase work?", "help", "show commands", "what can you do?", "what skills do you have?", or for an overview of skills and hooks.
 pattern: utility
+category: Setup & health
 model: haiku
 effort: low
 ---
 
-Runs `.claude/scripts/help-summary.py` so README parsing, command capping, KB layout scanning, and workspace-skill listing stay deterministic. Default output is compact; pass `--verbose` for the full README sections.
+Runs `.claude/scripts/help-summary.py` so command catalog rendering, command capping, KB layout scanning, and workspace-skill listing stay deterministic. The command list comes from `.claude/commands/nase/*.md` frontmatter via `.claude/scripts/command_catalog.py`; README supplies intro and hook prose. Default output is compact; pass `--verbose` for the generated command table plus full hook section.
 
 ## Steps
 
@@ -29,8 +30,8 @@ Runs `.claude/scripts/help-summary.py` so README parsing, command capping, KB la
 ---
 
 ## Notes
-- Do not hardcode the command list — always read from README.md so help stays in sync
+- Do not hardcode the command list — always read it through `command_catalog.py` so help stays in sync with command frontmatter
 - Do not hardcode the KB layout — helper scans `workspace/kb/` so it reflects current structure
 - Keep default help to a screenful; `--verbose` preserves the old full-section behavior
-- If README.md is missing, fall back to listing `.claude/commands/nase/` filenames
+- If README.md is missing, the helper still renders commands from `.claude/commands/nase/` filenames
 - Follow .claude/docs/language-config.md for conversation vs output language.

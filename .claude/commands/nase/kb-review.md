@@ -2,6 +2,7 @@
 name: nase:kb-review
 description: "Review, organize, consolidate KB files — dedup, cross-ref, surface stale content, promote lessons. Use weekly/monthly as KB hygiene, when KB feels messy, or after several /nase:learn entries. Triggers: 'review KB', 'organize notes', 'clean up KB', 'what's in my KB', '整理笔记'."
 pattern: pipeline
+category: Knowledge base
 sub-patterns: [fan-out]
 ---
 
@@ -206,7 +207,7 @@ For `all` scope, treat the KB as the whole `workspace/` knowledge system, not on
 
 **3. Effort status taxonomy**
 
-- Active effort files under `workspace/efforts/*.md` must use one of: `in-progress`, `planned`, `ready`, `tracked`.
+- Active effort files under `workspace/efforts/*.md` must use one of: `planned`, `in-progress`, `merge-ready`, `ready`, `tracked`.
 - Done effort files under `workspace/efforts/done/*.md` must use one of: `completed`, `wontfix`.
 - Flag missing frontmatter, `status: closed`, `status: done`, and active efforts whose lifecycle shows everything completed but the status remains active.
 

@@ -2,6 +2,7 @@
 name: nase:onboard
 description: Onboard or refresh project repos in the workspace knowledge base. Without arguments, refreshes ALL already-onboarded repos from workspace/context.md. With a repo path or GitHub URL, onboards or refreshes that single repo. Run before EVERY work session. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "refresh all repos", "add repo", or "update knowledge base".
 pattern: pipeline
+category: Knowledge base
 sub-patterns: [fan-out]
 ---
 

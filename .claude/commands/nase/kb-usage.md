@@ -2,6 +2,7 @@
 name: nase:kb-usage
 description: "Read-only KB observability report: shows which skills used which KB files, top files/skills, access-source breakdown, and mapped KB files with no recent usage. Supports --window N|all, --top N, and --verbose."
 pattern: utility
+category: Reporting
 ---
 
 Generate a read-only KB usage telemetry report from `workspace/stats/kb-usage.jsonl`.

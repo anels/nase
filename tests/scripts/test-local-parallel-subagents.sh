@@ -45,8 +45,17 @@ assert_agent_contract() {
     assert_contains "${agent} has matching name" "$path" "name: ${agent}"
     assert_contains "${agent} is read-only" "$path" "tools: Read, Grep, Glob, Bash"
     assert_contains "${agent} runs in background" "$path" "background: true"
+    assert_contains "${agent} references output contract" "$path" ".claude/docs/subagent-output-contract.md"
+    assert_contains "${agent} returns Verdict" "$path" "Verdict:"
+    assert_contains "${agent} returns Facts" "$path" "Facts:"
+    assert_contains "${agent} returns Risks" "$path" "Risks:"
+    assert_contains "${agent} returns Recommended action" "$path" "Recommended action:"
+    assert_contains "${agent} returns Files checked" "$path" "Files checked:"
+    assert_contains "${agent} returns Blocked" "$path" "Blocked:"
   fi
 }
+
+assert_file "subagent output contract doc exists" ".claude/docs/subagent-output-contract.md"
 
 for agent in \
   nase-context-kb-researcher \

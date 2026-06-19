@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render compact or verbose `/nase:help` output from repo sources.
 
-The command list stays sourced from README.md, but the extraction/capping work is
-deterministic so Claude does not need to read and trim the full README in chat.
+The command list is sourced from `.claude/commands/nase/*.md` frontmatter via
+`command_catalog.py`. README.md supplies only the intro and hook prose.
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
+
+from command_catalog import load_catalog, render_help_compact, render_readme
 
 
 DEFAULT_COMMAND_LIMIT = 5
@@ -51,90 +53,6 @@ def extract_intro(text: str) -> str:
         if "Claude Code" in stripped or "workspace" in stripped:
             return stripped.replace("\n", " ")
     return "A personal AI engineering workspace for Claude Code."
-
-
-def split_markdown_row(line: str) -> list[str]:
-    line = line.strip()
-    if not line.startswith("|") or not line.endswith("|"):
-        return []
-    cells: list[str] = []
-    current: list[str] = []
-    escaped = False
-    in_code = False
-    for char in line[1:-1]:
-        if escaped:
-            current.append(char)
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-            continue
-        if char == "`":
-            in_code = not in_code
-            current.append(char)
-            continue
-        if char == "|" and not in_code:
-            cells.append("".join(current).strip())
-            current = []
-            continue
-        current.append(char)
-    cells.append("".join(current).strip())
-    return cells
-
-
-def strip_cell_markup(text: str) -> str:
-    text = re.sub(r"`([^`]+)`", r"`\1`", text)
-    text = text.replace("**", "")
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def truncate(text: str, limit: int) -> str:
-    if limit <= 0 or len(text) <= limit:
-        return text
-    truncated = text[: max(limit - 3, 1)].rstrip()
-    if truncated.count("`") % 2:
-        truncated = truncated[:-1].rstrip() if truncated.endswith("`") else f"{truncated}`"
-    return truncated + "..."
-
-
-def parse_command_groups(section: str) -> list[tuple[str, list[tuple[str, str]]]]:
-    groups: list[tuple[str, list[tuple[str, str]]]] = []
-    current_name = ""
-    current_rows: list[tuple[str, str]] = []
-    for raw_line in section.splitlines():
-        line = raw_line.strip()
-        if line.startswith("### "):
-            if current_name:
-                groups.append((current_name, current_rows))
-            current_name = line.removeprefix("### ").strip()
-            current_rows = []
-            continue
-        if not line.startswith("|") or "---" in line:
-            continue
-        cells = split_markdown_row(line)
-        if len(cells) < 2 or cells[0].lower() == "command":
-            continue
-        command = strip_cell_markup(cells[0])
-        purpose = strip_cell_markup(cells[1])
-        if command.startswith("`/nase:"):
-            current_rows.append((command, purpose))
-    if current_name:
-        groups.append((current_name, current_rows))
-    return groups
-
-
-def render_commands(groups: list[tuple[str, list[tuple[str, str]]]], limit: int, purpose_chars: int) -> str:
-    lines = ["## Commands"]
-    for group, rows in groups:
-        lines.append(f"### {group}")
-        shown = rows if limit <= 0 else rows[:limit]
-        for command, purpose in shown:
-            lines.append(f"- {command} - {truncate(purpose, purpose_chars)}")
-        remaining = len(rows) - len(shown)
-        if remaining > 0:
-            lines.append(f"- (+{remaining} more; run `/nase:help --verbose`)")
-        lines.append("")
-    return "\n".join(lines).rstrip()
 
 
 def count_md_files(path: Path) -> int:
@@ -188,17 +106,16 @@ def main() -> int:
     args = parse_args()
     root = Path(args.root).resolve()
     readme = root / "README.md"
-    if not readme.is_file():
-        command_files = sorted((root / ".claude" / "commands" / "nase").glob("*.md"))
-        print("## Commands")
-        for path in command_files:
-            print(f"- `/nase:{path.stem}`")
-        return 0
+    text = read_text(readme) if readme.is_file() else ""
 
-    text = read_text(readme)
-    intro = extract_intro(text)
-    available = extract_section(text, "Available commands")
+    intro = extract_intro(text) if text else "A personal AI engineering workspace for Claude Code."
     hooks = extract_section(text, "Hooks at a glance")
+
+    try:
+        commands = load_catalog(root)
+    except ValueError as exc:
+        print(exc)
+        return 1
 
     print("# nase help")
     print()
@@ -206,14 +123,13 @@ def main() -> int:
     print()
 
     if args.verbose:
-        if available:
-            print(available)
-            print()
+        print(render_readme(commands))
+        print()
         if hooks:
             print(hooks)
             print()
     else:
-        print(render_commands(parse_command_groups(available), max(args.command_limit, 0), max(args.purpose_chars, 0)))
+        print(render_help_compact(commands, max(args.command_limit, 0), max(args.purpose_chars, 0)))
         print()
         print("## Hooks")
         print("- Lifecycle hooks, safety guards, backup/logging, and validation helpers are wired in `.claude/settings.json`.")

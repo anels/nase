@@ -50,6 +50,8 @@ for path in sorted(pathlib.Path(".claude/commands/nase").rglob("*.md")):
     for required in ("name", "description"):
         if required not in fields:
             errors.append(f"{path}: missing frontmatter field: {required}")
+    if path.parent.name != "workspace" and "category" not in fields:
+        errors.append(f"{path}: missing frontmatter field: category")
 
 if errors:
     print("\n".join(errors), file=sys.stderr)
@@ -57,31 +59,46 @@ if errors:
 PY
 ok "command frontmatter has required fields"
 
-disk_tmp=$(mktemp)
-readme_tmp=$(mktemp)
 runtime_tmp=""
 
 cleanup() {
-  rm -f "$disk_tmp" "$readme_tmp"
   if [ -n "$runtime_tmp" ]; then
     rm -rf "$runtime_tmp"
   fi
 }
 trap cleanup EXIT
 
-find .claude/commands/nase -maxdepth 1 -type f -name '*.md' \
-  | sed 's#.*/##; s#\.md$##' \
-  | sort > "$disk_tmp"
+python3 .claude/scripts/command_catalog.py --root . --check-readme
+ok "README command catalog matches command frontmatter"
 
-grep -oE '/nase:[a-z-]+' README.md | sed 's|/nase:||' | sort -u > "$readme_tmp"
+python3 - <<'PY'
+from pathlib import Path
+import re
+import sys
 
-if ! cmp -s "$disk_tmp" "$readme_tmp"; then
-  echo "[validate] README command drift:" >&2
-  comm -23 "$disk_tmp" "$readme_tmp" | sed 's/^/  disk-only: /' >&2
-  comm -13 "$disk_tmp" "$readme_tmp" | sed 's/^/  readme-only: /' >&2
-  exit 1
-fi
-ok "README command list matches core command files"
+known = {path.stem for path in Path(".claude/commands/nase").glob("*.md")}
+errors = []
+
+paths = [Path("README.md"), Path("CLAUDE.md")]
+paths.extend(sorted(Path(".claude/commands/nase").glob("*.md")))
+paths.extend(sorted(Path(".claude/docs").glob("*.md")))
+
+for path in paths:
+    if not path.is_file():
+        continue
+    for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        for match in re.finditer(r"/nase:([a-z][a-z0-9-]*)(?::[a-z0-9-]+)?", line):
+            command = match.group(1)
+            if command == "workspace":
+                continue
+            if command not in known:
+                errors.append(f"{path}:{lineno}: unknown command reference /nase:{command}")
+
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    sys.exit(1)
+PY
+ok "documented /nase command references resolve"
 
 python3 - <<'PY'
 import json

@@ -2,6 +2,7 @@
 name: nase:fsd
 description: End-to-end task workflow from plan to merged-ready draft PR — writes and pushes code after upfront options are confirmed. For design-only planning without implementation, use /nase:design instead. Use whenever the user says "fsd", "full self-develop", "full self-drive", "just do it", "run it autonomously", "fire and forget", or hands off a feature/fix task end-to-end. Also trigger when someone gives a task and clearly expects completion after initial setup.
 pattern: pipeline
+category: Design & implementation
 sub-patterns: [supervisor]
 ---
 
@@ -11,6 +12,7 @@ Confirm execution options upfront (team mode, worktree, PR), then continue throu
 
 Follows `.claude/docs/external-mutation-policy.md`: batch upfront decisions, only create/edit PR when `open_pr=true`, and push via standard commit-push pattern.
 Follows `.claude/docs/workspace-write-guard.md` for effort-doc topology/lifecycle updates and any KB writes from research findings.
+Follows `.claude/docs/repo-task-flow.md` for shared repo resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns FSD planning, implementation, verification scope, and PR creation decisions below.
 
 ## Mode Quick-Reference
 

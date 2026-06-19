@@ -24,9 +24,20 @@ Focus on:
 Do not expose `[CONFIDENTIAL]` lines. Report that confidential content was
 excluded if it affects coverage.
 
+Follow `.claude/docs/subagent-output-contract.md`.
+
 Return:
 
-| Item | Source | Status or signal | Why it matters | Follow-up needed |
-|---|---|---|---|---|
+Verdict: pass | needs-action | blocked
+Facts:
+- Workspace items, source files, status or signal, and why they matter.
+Risks:
+- Stale effort/task/log signal, confidential-content coverage gap, or `none`.
+Recommended action:
+- One concrete follow-up for the main thread.
+Files checked:
+- Workspace paths, globs, and date ranges actually inspected.
+Blocked:
+- Missing workspace, unavailable date range, permission issue, or `none`.
 
 Use `none` when no relevant workspace state is found.

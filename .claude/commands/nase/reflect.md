@@ -2,6 +2,7 @@
 name: nase:reflect
 description: Run a structured post-task reflection to extract learnings and improve future performance. Use after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong. Also triggers on "reflect on this", "what went well", "post-mortem", "反思".
 pattern: pipeline
+category: Learning & reflection
 ---
 
 Fresh reflections capture more than end-of-day summaries. Also invoked by `/nase:wrap-up`.

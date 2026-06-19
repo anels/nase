@@ -2,12 +2,14 @@
 name: nase:address-comments
 description: "Deep-dive unresolved PR review comments with per-thread dossiers, then fix or reply, push when code changed, and resolve approved threads. Does not wait on or check PR pipeline gates; if CI fails afterward, run another round. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
 pattern: pipeline
+category: Git workflow
 ---
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
 Follows `.claude/docs/external-mutation-policy.md`: code push, `gh pr edit`, replies, thread resolution, and Slack DMs each have their own gate.
 Follows `.claude/docs/workspace-write-guard.md` for KB/lesson updates and other durable workspace writes.
+Follows `.claude/docs/repo-task-flow.md` for shared repo/PR resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns the review-thread dossier and comment-resolution logic below.
 
 ---
 
@@ -109,7 +111,7 @@ Apply these gates in order:
 
 0. **Dossier completeness gate**: if code, diff/base, KB/repo, caller impact, and verification evidence are not all checked or explicitly marked missing, classification is blocked.
 1. **File-vs-description**: apply `.claude/docs/pr-review-verification.md` §3. If the reviewer's prose does not match the file at the referenced line, decline the suggestion regardless of other factors.
-2. **Conditional premise verification**: for suggestions phrased "if X, then change Y", "match the existing pattern A", or "unify on existing behavior", verify X or trace why pattern A exists before classifying. If the premise is wrong or the cited pattern is itself buggy, classify as `decline` and reply with the missed evidence.
+2. **Conditional premise verification**: for suggestions phrased "if X, then change Y", "match the existing pattern A", or "unify on existing behavior", verify X or trace why pattern A exists before classifying. If the premise is wrong or the cited pattern is itself buggy, classify as `decline` and reply with the missed evidence. When the premise concerns a predicate/guard/disabled-state (e.g. "this gate is always true so the window never happens"), trace who *populates* that state at runtime — async effects, child components, fixtures — not just the static expression; a test that force-passes N× proves timing, not that the state window cannot exist. (Declines built on async-seeded state have cost a Codex resolution-gate FAIL on an outward reply.)
 3. **Correctness**: Does the suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
 4. **Context**: Does the suggestion conflict with API contracts, performance constraints, framework behavior, KB rules, or cross-repo consumers?
 5. **Substance vs. style**: Does it meaningfully improve correctness, clarity, testability, or maintainability? Or is it preference-only churn?

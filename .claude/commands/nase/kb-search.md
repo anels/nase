@@ -2,6 +2,7 @@
 name: nase:kb-search
 description: Search across all KB files for a topic, keyword, or pattern — read-only, never writes. To add new entries use /nase:kb-update (repo-specific) or /nase:learn (general patterns). Supports filtering by domain (general/projects/ops/cross-project), tag, date, and confidence. Use when you want to find what's documented about a specific topic, verify if something is already in the KB before adding, or discover related entries. Triggers on "search KB", "find in KB", "is X in the KB?", "搜索KB", "查找".
 pattern: utility
+category: Knowledge base
 ---
 
 Search the knowledge base for relevant entries — read-only, never writes.

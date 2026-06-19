@@ -2,6 +2,7 @@
 name: nase:design
 description: "KB-aware design — researches context, explores 2-3 approaches with tradeoffs, writes a tracked effort doc. Design only, no code (use /nase:fsd to implement). Supports `--grill` (stress-test), `--review` (re-evaluate), `--auto` (end-to-end design pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
 pattern: pipeline
+category: Design & implementation
 sub-patterns: [fan-out]
 ---
 

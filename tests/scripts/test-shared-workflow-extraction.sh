@@ -42,6 +42,7 @@ assert_not_contains() {
 
 assert_cmd "codex verification bundle doc exists" test -f .claude/docs/codex-verification-bundle.md
 assert_cmd "effort lifecycle doc exists" test -f .claude/docs/effort-lifecycle.md
+assert_cmd "repo task flow doc exists" test -f .claude/docs/repo-task-flow.md
 assert_cmd "codex verify bundle script exists" test -f .claude/scripts/codex-verify-bundle.py
 
 assert_contains "address-comments skips PR gates" .claude/commands/nase/address-comments.md 'PR Gates .* Skip'
@@ -51,8 +52,11 @@ assert_not_contains "address-comments does not claim PR gates green" .claude/com
 
 assert_contains "fsd uses codex bundle shared doc" .claude/commands/nase/fsd.md 'codex-verification-bundle\.md'
 assert_contains "fsd uses codex bundle script" .claude/commands/nase/fsd.md 'codex-verify-bundle\.py'
+assert_contains "fsd uses shared repo task flow" .claude/commands/nase/fsd.md 'repo-task-flow\.md'
 assert_not_contains "fsd no inline codex diff algorithm" .claude/commands/nase/fsd.md 'Include the full diff for changed files only when'
 assert_contains "codex bundle doc names script" .claude/docs/codex-verification-bundle.md 'codex-verify-bundle\.py'
+assert_contains "repo task flow covers repo resolution" .claude/docs/repo-task-flow.md 'repo/PR resolution'
+assert_contains "repo task flow covers mutation gates" .claude/docs/repo-task-flow.md 'GitHub mutation gates'
 
 assert_contains "design uses effort lifecycle doc" .claude/commands/nase/design.md 'effort-lifecycle\.md'
 assert_contains "design has PR economy default" .claude/commands/nase/design.md 'Default to one PR'
@@ -64,6 +68,8 @@ assert_contains "fsd uses effort lifecycle doc" .claude/commands/nase/fsd.md 'ef
 assert_contains "fsd consumes design PR plan" .claude/commands/nase/fsd.md 'design_pr_plan'
 assert_contains "fsd preserves one-PR default" .claude/commands/nase/fsd.md 'Default to the design PR plan'
 assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
+assert_contains "prep-merge uses shared repo task flow" .claude/commands/nase/prep-merge.md 'repo-task-flow\.md'
+assert_contains "address-comments uses shared repo task flow" .claude/commands/nase/address-comments.md 'repo-task-flow\.md'
 assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'
 
 tmprepo=$(mktemp -d "$TMPROOT/codex-bundle-repo.XXXXXX")

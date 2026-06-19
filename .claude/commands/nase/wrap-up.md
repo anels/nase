@@ -2,6 +2,7 @@
 name: nase:wrap-up
 description: Run at end of day to capture reflection, lessons, KB updates, and a journal entry in one pass. Use when the user says "wrap up", "end of day", "EOD", "done for today", "closing out", or wants to summarize today's work.
 pattern: pipeline
+category: Learning & reflection
 ---
 
 End-of-day pass: reflection → lessons → skill extraction → KB updates → style deltas → journal entry. Each step feeds the next; skipping early steps is fine — the conditional logic handles this automatically.
