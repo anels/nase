@@ -2,12 +2,14 @@
 name: nase:prep-merge
 description: Prepare a PR for merge — verify all comments resolved, squash commits, force-push, and update PR title/description. Use when given a PR URL and asked to prepare, clean up, squash, finalize, or get a PR merge-ready. Also triggers on "prep merge", "squash and push", "clean up PR", "ready to merge", "finalize PR", or any request to tidy a PR's commit history before merging.
 pattern: pipeline
+category: Git workflow
 ---
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
 Follows `.claude/docs/external-mutation-policy.md` — review-thread resolution, force-push, `gh pr edit`, and `gh pr ready` go through `AskUserQuestion` before the call.
 Follows `.claude/docs/workspace-write-guard.md` for effort lifecycle updates.
+Follows `.claude/docs/repo-task-flow.md` for shared repo/PR resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns prep-merge-specific rebase, squash, PR title/body cleanup, and ready-for-review logic below.
 
 ---
 

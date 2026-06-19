@@ -2,6 +2,7 @@
 name: nase:today
 description: Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items and optional concrete next actions from KB, logs, tasks, Jira, and Slack. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff".
 pattern: pipeline
+category: Learning & reflection
 sub-patterns: [fan-out]
 ---
 

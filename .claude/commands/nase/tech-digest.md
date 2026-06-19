@@ -2,6 +2,7 @@
 name: nase:tech-digest
 description: "Fetch and summarize latest tech news from configured sources, filtered to workspace topics, with source links, caching, actionable adoption notes, and concrete follow-up actions when useful. Supports --force, --dry-run, --since, --section, and --sources. Triggers: 'tech news', 'tech digest', 'what's new', 'morning digest', 'tech roundup', 'latest in AI', 'today's news', '今日科技', '科技新闻', '最新动态'."
 pattern: expert-pool
+category: Knowledge base
 ---
 
 Auto-skips if today's digest already exists unless `--force` is passed. Safe to invoke multiple times.

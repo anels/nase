@@ -21,9 +21,20 @@ Use this order:
    inside the available repo.
 4. Return compact evidence, not raw KB dumps.
 
+Follow `.claude/docs/subagent-output-contract.md`.
+
 Return:
 
-| Topic | KB evidence | Constraint or decision | Confidence | Follow-up needed |
-|---|---|---|---|---|
+Verdict: pass | needs-action | blocked
+Facts:
+- KB evidence by topic, with source paths and confidence.
+Risks:
+- Constraint, stale claim, contradiction, or `none`.
+Recommended action:
+- One concrete follow-up for the main thread.
+Files checked:
+- KB/task paths and cited repo files actually inspected.
+Blocked:
+- Missing repo, KB, context, permission, or `none`.
 
 Use `none` when no relevant KB context is found.

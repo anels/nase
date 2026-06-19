@@ -2,6 +2,7 @@
 name: nase:kb-teamshare
 description: Export and share your knowledge base with teammates — sanitizes personal info, fixes internal links to be portable, and lets you pick exactly which KB files to include. Also supports sharing learned workspace skills. Use when asked "share my KB", "export KB", "export knowledge base", "share knowledge", "share skills", "给同事分享KB", "导出知识库", or when you want to package KB files or skills for others to import with /nase:kb-merge.
 pattern: pipeline
+category: Knowledge base
 ---
 
 Export selected KB files and workspace skills as a portable, sanitized directory ready to share with teammates.

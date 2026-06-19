@@ -9,7 +9,9 @@ Read this file on demand when you need details about workspace layout, skills, K
 
 ```
 .claude/
-  commands/nase/     ← all /nase:* skills (one .md file per command)
+  commands/nase/     ← all /nase:* skills (one .md file per command);
+                       command names come from file paths, while frontmatter
+                       `category:` / `order:` / `description:` feed docs/help
   hooks/
     session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
                        surfaces backup warnings, suggests /nase:reflect when commits exist
@@ -80,6 +82,7 @@ workspace/                   ← entirely git-ignored; never committed
   stats/
     skill-usage.jsonl     ← append-only JSONL: {skill, ts} per /nase:* invocation (auto-written by hook)
     skill-usage-YYYY-MM-DD.md ← detailed skill usage report (written by /nase:skill-usage)
+    effort-status-YYYY-MM-DD.md ← active-effort inventory + drift report (written by /nase:efforts)
   logs/
     YYYY-MM-DD.md         ← daily work logs (auto-created by SessionStart hook)
     .backup-status        ← timestamped backup results (written by Stop hook)
@@ -171,9 +174,10 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 
 | Script | Purpose |
 |--------|---------|
+| `command_catalog.py` | Render and validate the `/nase:*` command catalog from `.claude/commands/nase/*.md` frontmatter. Command IDs come from file names; README/help grouping comes from `category:` and optional `order:`. |
 | `date-resolve.py` | Parse natural-language date specs (e.g. "last week", "30", "YYYY-MM-DD to YYYY-MM-DD") to a `START_DATE END_DATE` pair. Used by `recap`, `stats`. |
 | `extensions-check.sh` | Read `.claude/extensions.yml` and emit `OPTIONAL_HOOK`, `EXECUTE_COMMAND`, or `NO_HOOKS` for a named skill-chain event. Used by `fsd`. |
-| `help-summary.py` | Render compact or verbose `/nase:help` output from README.md and workspace directories. Used by `help`. |
+| `help-summary.py` | Render compact or verbose `/nase:help` output from the command catalog plus README intro/hooks and workspace directories. Used by `help`. |
 | `kb-domain-resolve.sh` | Resolve a repo name / domain key to its KB file path via `workspace/kb/.domain-map.md`. Used by `repo-resolution.md` callers. |
 | `kb-search.sh` | Full-text + metadata search across KB files. Supports `in:`, `tag:`, `since:`, `confidence:`, `mentions:`, capped previews, `--full`, and `--max-entry-lines`; weighted relevance (header 2×, body 1×); fuzzy fallback. Used by `kb-search`. |
 | `kb-gap-scan.sh` | Scan daily logs and lessons for KB-gap signals (uncertainty, doc lookups, SME teachings). Used by `kb-gap-detect`. |
@@ -192,7 +196,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 
 ## Skills — Full Reference
 
-See the [Available commands table in README.md](../../README.md#available-commands) for the full list of `/nase:*` commands with descriptions.
+See the [Available commands table in README.md](../../README.md#available-commands) for the generated list of `/nase:*` commands with descriptions. The source of truth is `.claude/commands/nase/*.md` frontmatter, validated by `python3 .claude/scripts/command_catalog.py --root . --check-readme`.
 
 ---
 

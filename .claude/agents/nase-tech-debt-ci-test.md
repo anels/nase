@@ -26,10 +26,20 @@ Focus on candidate tech debt only:
 Prefer `rg`, `git grep`, `git ls-files`, YAML-aware command output when available,
 and focused reads of CI files, package manifests, test configs, and scripts.
 
-Return only a compact candidate table:
+Follow `.claude/docs/subagent-output-contract.md`.
 
-| Candidate | Category | Evidence | Why debt | Severity hint | Effort hint | Verification needed |
-|---|---|---|---|---|---|---|
+Return only compact candidate findings:
 
-Every evidence cell must include concrete repo-relative file paths and line
-numbers when available. Use `none` if no credible candidates were found.
+Verdict: pass | needs-action | blocked
+Facts:
+- CI/test candidates with category, source paths/line numbers when available, why debt, severity hint, effort hint, and verification needed.
+Risks:
+- Severity + detail for each credible candidate, or `none`.
+Recommended action:
+- One concrete verification or remediation step for the main thread.
+Files checked:
+- CI files, manifests, scripts, configs, and read-only commands actually inspected.
+Blocked:
+- Missing repo, unreadable files, unavailable command, permission issue, or `none`.
+
+Use `none` if no credible candidates were found.

@@ -25,10 +25,20 @@ Focus on candidate tech debt only:
 Do not flag style nits. A candidate must represent repeated friction, risk, or
 maintenance cost, not a single preference.
 
-Return only a compact candidate table:
+Follow `.claude/docs/subagent-output-contract.md`.
 
-| Candidate | Category | Evidence | Why debt | Severity hint | Effort hint | Verification needed |
-|---|---|---|---|---|---|---|
+Return only compact candidate findings:
 
-Every evidence cell must include concrete repo-relative file paths and line
-numbers when available. Use `none` if no credible candidates were found.
+Verdict: pass | needs-action | blocked
+Facts:
+- Maintainability candidates with category, source paths/line numbers when available, why debt, severity hint, effort hint, and verification needed.
+Risks:
+- Severity + detail for each credible candidate, or `none`.
+Recommended action:
+- One concrete verification or remediation step for the main thread.
+Files checked:
+- Repo files, globs, and read-only commands actually inspected.
+Blocked:
+- Missing repo, unreadable files, unavailable command, permission issue, or `none`.
+
+Use `none` if no credible candidates were found.

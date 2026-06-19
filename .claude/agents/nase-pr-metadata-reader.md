@@ -15,11 +15,20 @@ reviews, resolve threads, or stage Slack drafts. Use existing repo helper script
 when available, especially `.claude/scripts/pr-github-helper.py`, and `gh` only
 for read-only `view`, `api`, `diff --stat`, or checks/status queries.
 
+Follow `.claude/docs/subagent-output-contract.md`.
+
 Return one compact block per PR:
 
-| PR | Title | Base | Head | Size | Changed files | Signals | Follow-up needed |
-|---|---|---|---|---|---|---|
+Verdict: pass | needs-action | blocked
+Facts:
+- PR title, base/head, size, changed-file summary, and source command/API used.
+Risks:
+- Cherry-pick hints, missing body sections, large diff, high-risk file types, failing checks, unresolved review-thread counts, or `none`.
+Recommended action:
+- One concrete follow-up for the main thread.
+Files checked:
+- PR URLs, `gh` commands, helper commands, and metadata endpoints inspected.
+Blocked:
+- Missing auth, repo, PR metadata, permission, or `none`.
 
-Signals can include cherry-pick hints, missing body sections, large diff,
-high-risk file types, failing checks, or unresolved review-thread counts.
-Use `none` when metadata cannot be fetched and include the command/error summary.
+Use `blocked` when metadata cannot be fetched and include the command/error summary.

@@ -22,9 +22,20 @@ Use this priority:
 Do not resolve Slack users. The main thread owns Slack lookup, recipient
 confirmation, and draft staging.
 
+Follow `.claude/docs/subagent-output-contract.md`.
+
 Return:
 
-| Candidate | GitHub handle | Reason | Evidence | Confidence | Exclusion notes |
-|---|---|---|---|---|---|
+Verdict: pass | needs-action | blocked
+Facts:
+- Reviewer candidates, GitHub handles when known, reason, evidence, and confidence.
+Risks:
+- Alumni/no-longer-on-team exclusions, weak ownership evidence, missing CODEOWNERS, or `none`.
+Recommended action:
+- One concrete reviewer-selection follow-up for the main thread.
+Files checked:
+- KB ownership notes, CODEOWNERS, git-history commands, and changed-file inputs inspected.
+Blocked:
+- Missing repo, PR files, KB ownership map, permission, or `none`.
 
 Use `none` when no credible owner candidates are found.

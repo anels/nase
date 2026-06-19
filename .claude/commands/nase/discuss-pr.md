@@ -2,6 +2,7 @@
 name: nase:discuss-pr
 description: "Read-only PR analysis — first identifies what problem the PR solves in larger repo/product context, then checks logic correctness, design quality, simpler implementation options, security, and testability before drafting inline comments without posting or changing code. Use when reviewing a PR for the first time, doing a self-review, or preparing comments. Triggers: 'analyze PR', 'self-review', 'prepare review comments', 'review PR #N', PR URL + 'review without posting'. For acting on existing reviewer feedback (fix code + push), use /nase:address-comments instead."
 pattern: fan-out
+category: Git workflow
 ---
 
 ## Language

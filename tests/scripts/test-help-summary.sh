@@ -5,6 +5,7 @@ set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 SCRIPT="$ROOT/.claude/scripts/help-summary.py"
+CATALOG="$ROOT/.claude/scripts/command_catalog.py"
 HELP_COMMAND="$ROOT/.claude/commands/nase/help.md"
 FIXTURE=$(mktemp -d)
 trap 'rm -rf "$FIXTURE"' EXIT
@@ -46,33 +47,39 @@ assert_even_backticks() {
   fi
 }
 
-mkdir -p "$FIXTURE/workspace/kb/general" "$FIXTURE/workspace/kb/projects" "$FIXTURE/workspace/tasks" "$FIXTURE/workspace/logs" "$FIXTURE/workspace/skills"
+mkdir -p "$FIXTURE/.claude/commands/nase" "$FIXTURE/workspace/kb/general" "$FIXTURE/workspace/kb/projects" "$FIXTURE/workspace/tasks" "$FIXTURE/workspace/logs" "$FIXTURE/workspace/skills"
 touch "$FIXTURE/workspace/kb/general/workflow.md"
 touch "$FIXTURE/workspace/kb/projects/repo.md"
 touch "$FIXTURE/workspace/tasks/lessons.md"
 touch "$FIXTURE/workspace/skills/alpha.md" "$FIXTURE/workspace/skills/beta.md"
 
+create_command() {
+  local name="$1" category="$2" order="$3" description="$4" frontmatter_name="${5:-nase:${1}}"
+  cat > "$FIXTURE/.claude/commands/nase/${name}.md" <<EOF
+---
+name: ${frontmatter_name}
+description: "${description}"
+pattern: utility
+category: ${category}
+order: ${order}
+---
+
+# ${name}
+EOF
+}
+
+create_command a "Setup & health" 1 "command a" "frontmatter:name-is-not-command"
+create_command b "Setup & health" 2 "command b has a deliberately long purpose"
+create_command c "Setup & health" 3 "command c"
+create_command d "Setup & health" 4 "command d"
+create_command e "Setup & health" 5 "command e"
+create_command f "Setup & health" 6 "command f"
+create_command g "Reporting" 1 "command g"
+
 cat > "$FIXTURE/README.md" <<'EOF'
 # fixture
 
 Fixture workspace intro paragraph.
-
-## Available commands
-
-### Setup
-| Command | Purpose |
-|---------|---------|
-| `/nase:a [x|y]` | command a |
-| `/nase:b` | command b has a deliberately long purpose |
-| `/nase:c` | command c |
-| `/nase:d` | command d |
-| `/nase:e` | command e |
-| `/nase:f` | command f |
-
-### Work
-| Command | Purpose |
-|---------|---------|
-| `/nase:g` | command g |
 
 ## Hooks at a glance
 
@@ -92,7 +99,8 @@ else
 fi
 
 assert_contains "compact shows intro" "$out" "Fixture workspace intro paragraph."
-assert_contains "compact preserves code-span pipe" "$out" "\`/nase:a [x|y]\` - command a"
+assert_contains "compact uses command filename" "$out" "\`/nase:a\` - command a"
+assert_not_contains "compact does not trust frontmatter name for command id" "$out" "frontmatter:name-is-not-command"
 assert_contains "compact caps command groups" "$out" "(+1 more; run \`/nase:help --verbose\`)"
 assert_not_contains "compact omits capped command detail" "$out" "\`/nase:f\` - command f"
 assert_contains "compact includes KB layout counts" "$out" "\`workspace/kb/general/\` - general KB, 1 md file(s)"
@@ -113,15 +121,42 @@ else
   printf 'FAIL  verbose exits 0 (got %s)\n%s\n' "$rc" "$out" >&2
 fi
 
-assert_contains "verbose includes full command section" "$out" "\`/nase:f\` | command f"
+assert_contains "verbose includes generated command section" "$out" "## Available commands"
+assert_contains "verbose includes full command section" "$out" "| \`/nase:f\` | command f |"
 assert_contains "verbose includes hooks section" "$out" "Full hook table text."
 assert_contains "verbose includes all workspace skills" "$out" "\`/nase:workspace:beta\`"
 
 command_doc=$(sed -n '1,40p' "$HELP_COMMAND")
 assert_contains "help command uses root-qualified helper" "$command_doc" 'python3 "$ROOT/.claude/scripts/help-summary.py"'
 
+catalog_json=$(python3 "$CATALOG" --root "$FIXTURE" --format json 2>&1)
+assert_contains "catalog emits filename-derived command id" "$catalog_json" '"/nase:a"'
+assert_contains "catalog emits category" "$catalog_json" '"category": "Setup & health"'
+
+create_command typo "Git workflows" 9 "invalid category fixture"
+bad_catalog=$(python3 "$CATALOG" --root "$FIXTURE" --format json 2>&1)
+rc=$?
+if [ "$rc" != 0 ]; then
+  pass=$((pass + 1))
+  printf 'PASS  catalog rejects unknown category\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  catalog rejects unknown category (got %s)\n%s\n' "$rc" "$bad_catalog" >&2
+fi
+assert_contains "catalog reports unknown category" "$bad_catalog" "unknown category: Git workflows"
+
 repo_out=$(python3 "$SCRIPT" --root "$ROOT" 2>&1)
 assert_even_backticks "repo compact help keeps code spans balanced" "$repo_out"
+
+catalog_check=$(python3 "$CATALOG" --root "$ROOT" --check-readme 2>&1)
+rc=$?
+if [ "$rc" = 0 ]; then
+  pass=$((pass + 1))
+  printf 'PASS  repo README command catalog has no drift\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  repo README command catalog has no drift (got %s)\n%s\n' "$rc" "$catalog_check" >&2
+fi
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

@@ -21,9 +21,20 @@ Collect only context needed for the caller's workflow:
 - Existing patterns near the requested area.
 - Gaps or ambiguity that the main thread should resolve.
 
+Follow `.claude/docs/subagent-output-contract.md`.
+
 Return:
 
-| Area | Evidence | Why it matters | Confidence | Follow-up needed |
-|---|---|---|---|---|
+Verdict: pass | needs-action | blocked
+Facts:
+- Repo structure, git state, build/test hints, local patterns, and source paths inspected.
+Risks:
+- Ambiguity, missing commands, dirty state, risky files, or `none`.
+Recommended action:
+- One concrete follow-up for the main thread.
+Files checked:
+- Repo files, commands, manifests, and docs actually inspected.
+Blocked:
+- Missing repo path, unavailable scope, permission issue, or `none`.
 
-Use `none` when the repo path or scope is not available.
+Use `blocked` when the repo path or scope is not available.

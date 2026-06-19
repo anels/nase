@@ -45,12 +45,20 @@ assert_agent_contract() {
     assert_contains "${agent} has matching name" "$path" "name: ${agent}"
     assert_contains "${agent} is read-only" "$path" "tools: Read, Grep, Glob, Bash"
     assert_contains "${agent} runs in background" "$path" "background: true"
+    assert_contains "${agent} references output contract" "$path" ".claude/docs/subagent-output-contract.md"
+    assert_contains "${agent} returns Verdict" "$path" "Verdict:"
+    assert_contains "${agent} returns Facts" "$path" "Facts:"
+    assert_contains "${agent} returns Risks" "$path" "Risks:"
+    assert_contains "${agent} returns Recommended action" "$path" "Recommended action:"
+    assert_contains "${agent} returns Files checked" "$path" "Files checked:"
+    assert_contains "${agent} returns Blocked" "$path" "Blocked:"
     assert_contains "tech-debt-audit references ${agent}" "$TECH_DEBT" "${agent}"
   fi
 }
 
 TECH_DEBT=".claude/commands/nase/tech-debt-audit.md"
 
+assert_file "subagent output contract doc exists" ".claude/docs/subagent-output-contract.md"
 assert_contains "tech-debt-audit declares fan-out sub-pattern" "$TECH_DEBT" "sub-patterns: [fan-out]"
 assert_contains "tech-debt-audit dispatches agents in one turn" "$TECH_DEBT" "Dispatch all selected audit agents in one message"
 assert_contains "tech-debt-audit keeps main-thread verification" "$TECH_DEBT" "The main thread owns verification, scoring, and KB writes"
