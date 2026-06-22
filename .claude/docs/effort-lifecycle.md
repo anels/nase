@@ -7,6 +7,35 @@ All full-file writes use `.claude/docs/workspace-write-guard.md` and
 `workspace-write-guard.py`. Auto-write modes only skip human confirmation; they
 never skip final drift checks.
 
+## Status Vocabulary
+
+Frontmatter `status:` for `workspace/efforts/{slug}.md`. This is the authoritative
+list; `/nase:kb-review` Step 4d validates against it.
+
+**Active** (file lives directly in `workspace/efforts/`):
+
+| status | meaning |
+|---|---|
+| `planned` | design approved, implementation not started |
+| `in-progress` | implementation underway (set by `/nase:fsd`) |
+| `needs-revision` | PR open but review/CI sent it back for changes |
+| `blocked` | progress halted on an external dependency |
+| `merge-ready` | review passed, awaiting human merge (set by `/nase:prep-merge`) |
+| `awaiting-deploy` | PR merged; awaiting deploy + post-deploy validation before close |
+| `tracked` | tracking-only effort someone else implements |
+| `ready` | reserved alias for `merge-ready`/`planned`-complete states |
+
+**Done** (file moved to `workspace/efforts/done/`):
+
+| status | meaning |
+|---|---|
+| `completed` | shipped and verified |
+| `wontfix` | closed without shipping |
+
+`awaiting-deploy` has no automatic setter — set it by hand (or via `/nase:today`)
+when the PR merges, paired with `- [x] Merged` in the Lifecycle block. The effort
+moves to `done/` + `completed` only after deploy validation passes.
+
 ## Design Creation
 
 Used by `/nase:design` Phase 5.

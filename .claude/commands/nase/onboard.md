@@ -34,13 +34,21 @@ Default chat output is a summary only. Write detailed scan, hygiene, and cross-v
 ## Mode Detection
 - Empty/blank → **Batch Refresh Mode**
 - Path or URL → **Single Repo Mode**
-- `--hygiene-report-only` → run hygiene scan and report findings; do not edit KB content
-- `--force` → bypass content-hash skip and run the full repo scan
 
 | Mode | When to use | What it does |
 |------|-------------|-------------|
 | **Batch Refresh** | No args; refresh all known repos | Reads context.md list, asks which to refresh, runs Single Repo per selection in parallel |
 | **Single Repo** | Path or URL provided | Full onboard/refresh for one repo — syncs branch, reads CLAUDE.md, updates KB |
+
+## Flags
+All flags are read from `$ARGUMENTS` and compose with either mode.
+
+| Flag | Effect | Applies in |
+|------|--------|------------|
+| `--force` | Bypass the Step 2.5 content-hash skip; always run the full repo scan | Step 2.5 |
+| `--hygiene-report-only` | Run the hygiene scan and report findings only; do not edit KB content | Step 2.25 |
+| `--skip-cross-validation` | Skip the Step 6 cross-repo drift pass | Step 6 |
+| `--verbose` | Also print the detailed scan / hygiene / cross-validation report inline instead of summary-only | Output Budget, Step 6 |
 
 ---
 
@@ -181,26 +189,6 @@ Output goes into the KB's `## PR Gates` section (template in `.claude/docs/kb-te
 
 **3f. Cross-Project Relationships** — HTTP clients calling other services, published API specs/protos/packages, shared infra (Helm charts, CI templates, base images), event-driven links (EventHub, Kafka, SQS topics), cross-reference with `workspace/kb/.domain-map.md`
 
-### 3h. Brittle Boundaries (top 3)
-
-Identify the **3 highest-risk boundaries** an AI agent should know about *before* touching code in this repo. A boundary is brittle when:
-- Cross-repo contract drift has happened or is plausible (auth-shape mismatch, route rename, schema breaking change)
-- Schema/partition semantics that are easy to misread (e.g. Looker `Message` vs `RawMessage`, Insights partition COALESCE, Avro evolution)
-- Trigger/event/queue plumbing where downstream is invisible from the code
-- Third-party / SDK call where the wire contract is owned by another team
-- Auth boundary where `[AllowAnonymous]` + `X-Api-Key` or similar bypasses the default policy
-
-**Signal sources (already gathered):**
-- Step 3b `Outbound Calls` table — drift candidates
-- Step 6c contract validation result (⚠️ rows = top candidates)
-- Repo `CLAUDE.md` `Critical Constraints` section
-- Recent incident / postmortem entries in `workspace/kb/ops/`
-- `git log --oneline -30 -- {dir}/` for hotspots referenced by 3+ recent PRs
-
-**Output:** fill the `## Brittle Boundaries` table in the KB (template in `.claude/docs/kb-template.md`). Three rows. Each row: boundary location, *why* it's brittle, last incident or drift reference, **touch protocol** (1-line "before you edit, do X").
-
-**Do not** include boundaries that are merely complex — only ones where misediting has real cross-cutting blast radius. If the repo genuinely has fewer than 3, write fewer rows; do not pad.
-
 ### 3g. Ownership Analysis
 
 Read team roster from `workspace/context.md`. For each top-level dir:
@@ -213,6 +201,26 @@ git -C {repo} log --no-merges --author="{name}" --format="%H" --since="6 months 
 git -C {repo} log --no-merges --author="{name}" --name-only --format="" --since="6 months ago" | grep '/' | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -10
 ```
 Synthesize: Primary Owner (most commits), Secondary (next), Dormant areas (no commits 6mo), New hire ramp (<10 commits total). Note conflicts with declared focus in `workspace/context.md`.
+
+### 3h. Brittle Boundaries (top 3)
+
+Identify the **3 highest-risk boundaries** an AI agent should know about *before* touching code in this repo. A boundary is brittle when:
+- Cross-repo contract drift has happened or is plausible (auth-shape mismatch, route rename, schema breaking change)
+- Schema/partition semantics that are easy to misread (e.g. Looker `Message` vs `RawMessage`, Insights partition COALESCE, Avro evolution)
+- Trigger/event/queue plumbing where downstream is invisible from the code
+- Third-party / SDK call where the wire contract is owned by another team
+- Auth boundary where `[AllowAnonymous]` + `X-Api-Key` or similar bypasses the default policy
+
+**Signal sources (available at this point in the run):**
+- Step 3b `Outbound Calls` table — drift candidates (gathered this run)
+- Prior cross-validation drift — this repo's existing `## Cross-Validation Notes` footer + last run's ⚠️ contract rows in the KB. (Step 6c runs *after* Step 3, so the current run's contract check is not yet available; this run's 6c will confirm/extend these boundaries.)
+- Repo `CLAUDE.md` `Critical Constraints` section
+- Recent incident / postmortem entries in `workspace/kb/ops/`
+- `git log --oneline -30 -- {dir}/` for hotspots referenced by 3+ recent PRs
+
+**Output:** fill the `## Brittle Boundaries` table in the KB (template in `.claude/docs/kb-template.md`). Three rows. Each row: boundary location, *why* it's brittle, last incident or drift reference, **touch protocol** (1-line "before you edit, do X").
+
+**Do not** include boundaries that are merely complex — only ones where misediting has real cross-cutting blast radius. If the repo genuinely has fewer than 3, write fewer rows; do not pad.
 
 ### 3i. Engineer Workbench Synthesis
 
@@ -326,9 +334,7 @@ Before logging success, run the source-file portion of `.claude/docs/citation-va
 - Open questions or gaps
 - Whether repo had a CLAUDE.md and if it needs updating
 
-</workflow>
-
-## Step 9: Schedule Next Batch Refresh
+### 9. Schedule Next Batch Refresh
 
 After completing a **batch refresh** (not single repo onboard), write the next recommended execution date to `workspace/tasks/todo.md` so `/nase:today` can surface it:
 
@@ -341,8 +347,9 @@ After completing a **batch refresh** (not single repo onboard), write the next r
 
 Skip this step for single-repo onboard — those are on-demand and don't need scheduling.
 
+</workflow>
+
 ## Notes
-- **Run before every session** — not just once
 - **CLAUDE.md first** — always read repo's CLAUDE.md before exploring code
 - **Enrich, don't overwrite** — preserve valid existing content on refresh
 - **Self-study first** — explore code before forming opinions

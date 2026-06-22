@@ -1,6 +1,6 @@
 ---
 name: nase:address-comments
-description: "Deep-dive unresolved PR review comments with per-thread dossiers, then fix or reply, push when code changed, and resolve approved threads. Does not wait on or check PR pipeline gates; if CI fails afterward, run another round. Use when you have reviewer feedback to act on (not for initial PR analysis). Triggers: 'address comments', 'fix review comments', 'handle PR feedback', 'resolve comments', 'respond to reviewer'. For read-only analysis before feedback exists, use /nase:discuss-pr instead."
+description: "Act on unresolved PR review comments with per-thread dossiers, code fixes or replies, push when code changed, and resolve approved threads. Use for address comments, fix review comments, handle PR feedback, resolve comments, or respond to reviewer. For first-pass read-only review, use /nase:discuss-pr."
 pattern: pipeline
 category: Git workflow
 ---

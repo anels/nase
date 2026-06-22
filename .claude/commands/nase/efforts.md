@@ -1,6 +1,6 @@
 ---
 name: nase:efforts
-description: "Effort inventory report — lists every active effort grouped by lifecycle stage, counts them by status, totals active vs done, and flags drift where a doc's status disagrees with its PR/Jira reality (e.g. still in-progress but the PR already merged). Use mid-sprint or anytime you want the full picture rather than the morning top-3 snapshot: 'list my efforts', 'how many efforts in progress', 'effort status', 'count efforts by status', 'which efforts are stalled', 'what am I working on across repos', '列一下所有 effort', '统计 effort 数量', '刷新 effort 状态'. Distinct from /nase:today (which surfaces only top-3-per-stage at kickoff AND owns moving completed efforts to done/) — this skill writes only its report/log and never mutates effort lifecycle, PR, Jira, or KB state; it reports drift and points you to /nase:today to apply it. For commit/session/PR activity counts use /nase:stats instead."
+description: "Report all active efforts by lifecycle stage and status, flag PR/Jira drift, and count active vs done. Use for list my efforts, effort status, stalled work, or what am I working on. Read-only; use /nase:today to move completed efforts and /nase:stats for activity counts."
 pattern: utility
 category: Reporting
 ---

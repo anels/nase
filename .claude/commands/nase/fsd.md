@@ -1,6 +1,6 @@
 ---
 name: nase:fsd
-description: End-to-end task workflow from plan to merged-ready draft PR — writes and pushes code after upfront options are confirmed. For design-only planning without implementation, use /nase:design instead. Use whenever the user says "fsd", "full self-develop", "full self-drive", "just do it", "run it autonomously", "fire and forget", or hands off a feature/fix task end-to-end. Also trigger when someone gives a task and clearly expects completion after initial setup.
+description: "End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design."
 pattern: pipeline
 category: Design & implementation
 sub-patterns: [supervisor]

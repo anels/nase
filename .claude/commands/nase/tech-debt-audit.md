@@ -1,6 +1,6 @@
 ---
 name: nase:tech-debt-audit
-description: "Systematically audit a repository for tech debt, architecture health, best-practices compliance, modernization opportunities, and AI verification debt — producing a structured inventory with severity/effort/ROI scoring written to a dedicated KB file. Use when onboarding to a new repo, before a planning cycle, or when asked \"what tech debt do we have?\", \"architecture review\", \"are we following best practices\", \"AI verification debt\", or \"what can we modernize\"."
+description: "Audit a repo for tech debt, architecture health, best-practice gaps, modernization options, and AI verification debt. Use during onboarding, before planning, or for what tech debt do we have, architecture review, best practices, AI verification debt, or modernization."
 pattern: pipeline
 category: Security & maintenance
 sub-patterns: [fan-out]
