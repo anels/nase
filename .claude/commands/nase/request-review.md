@@ -1,6 +1,6 @@
 ---
 name: nase:request-review
-description: Find the right people to review a PR and stage Slack DM drafts. Use when given one or more PR URLs and asked to notify reviewers, request approval, or ping code owners. Reads CODEOWNERS to match file owners, cross-references the project KB for additional context holders, generates a concise DM draft (approval request for simple PRs, review request for complex ones), groups cherry-pick PRs into a single draft per person, and confirms via AskUserQuestion before staging anything.
+description: "Find PR reviewers and stage Slack DM drafts. Use with one or more PR URLs when asked to notify reviewers, request approval, or ping code owners. Reads CODEOWNERS and KB context, groups cherry-pick PRs per reviewer, and confirms before staging messages."
 pattern: pipeline
 category: Git workflow
 sub-patterns: [fan-out]

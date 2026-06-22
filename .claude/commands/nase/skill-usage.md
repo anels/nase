@@ -1,6 +1,6 @@
 ---
 name: nase:skill-usage
-description: Surface skill invocation frequency and recency from `workspace/stats/skill-usage.jsonl`. Lists every `/nase:*` skill with total uses, 30/7-day windows, last-used date, and flags candidates for deprecation (0 uses in 60+ days). Cross-references against `.claude/commands/nase/*.md` + `workspace/skills/*.md` so newly added skills with no uses still appear. Use when asked "which skills do I use", "deprecate skills", "skill usage", "skill stats", "废 skill", "skill 使用率", or before pruning the skill catalog. Read-only — never writes to skill files. Output goes to `workspace/stats/skill-usage-{YYYY-MM-DD}.md` (full table) + 5-line chat summary.
+description: "Report /nase:* skill usage from workspace/stats/skill-usage.jsonl with total, 30/7-day windows, last-used date, and deprecation candidates. Use for which skills do I use, skill stats, or deprecate skills. Read-only; writes a stats report."
 pattern: utility
 category: Reporting
 model: haiku

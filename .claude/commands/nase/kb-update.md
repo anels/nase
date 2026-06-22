@@ -1,6 +1,6 @@
 ---
 name: nase:kb-update
-description: "Persist durable repo-specific knowledge — architecture, constraints, API contracts, naming conventions tied to one codebase. Example: 'the Insights repo requires OrderBy before Skip in EF queries' → /kb-update. For general or cross-project patterns, use /nase:learn instead. Triggers: 'update KB', 'add to knowledge base', 'document this pattern', '记录到KB'."
+description: "Persist durable repo-specific knowledge — architecture, constraints, API contracts, naming conventions tied to one codebase. Example: 'the Insights repo requires OrderBy before Skip in EF queries' → /kb-update. For general or cross-project patterns, use /nase:learn instead. Triggers: 'update KB', 'add to knowledge base', 'document this pattern'."
 pattern: pipeline
 category: Knowledge base
 ---

@@ -1,6 +1,6 @@
 ---
 name: nase:kb-gap-detect
-description: Scan recent daily logs and lessons for knowledge-gap signals (uncertainty, doc lookups, SME teachings, first-time encounters, post-error realizations), cluster by topic, cross-check against the KB, and propose KB additions for missing topics. Read-only by default — never writes KB without explicit approval. Complements `/nase:kb-review` (which finds stale/duplicate entries; this finds *missing* ones). Triggers — "knowledge gap", "find KB holes", "what should I document", "查漏补缺", "KB 缺失".
+description: "Scan daily logs and lessons for missing KB topics, cluster gaps, and propose additions. Use for knowledge gap, find KB holes, or what should I document. Read-only by default; complements /nase:kb-review, which finds stale or duplicate entries."
 pattern: pipeline
 category: Knowledge base
 ---

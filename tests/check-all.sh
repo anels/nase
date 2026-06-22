@@ -82,6 +82,7 @@ SCRIPT_TESTS=(
   tests/scripts/test-shared-workflow-extraction.sh
   tests/scripts/test-workspace-data-scan.sh
   tests/scripts/test-workspace-write-guard.sh
+  workspace/skills/scripts/test-lesson-skill-optimizer.sh
 )
 
 FAST_SCRIPT_TESTS=(
@@ -135,6 +136,16 @@ run_gate() {
 run_test_files() {
   local test_file
   for test_file in "$@"; do
+    if [[ ! -f "$test_file" ]]; then
+      case "$test_file" in
+        workspace/skills/scripts/*)
+          printf '[skip] optional workspace skill test missing: %s\n' "$test_file"
+          continue
+          ;;
+      esac
+      run_gate "$(basename "$test_file")" test -f "$test_file"
+      continue
+    fi
     run_gate "$(basename "$test_file")" bash "$test_file"
   done
 }
@@ -162,7 +173,7 @@ EOF
 run_bash_syntax() {
   section "bash syntax"
   local f
-  for f in .claude/hooks/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh tests/scripts/*.sh; do
+  for f in .claude/hooks/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh tests/scripts/*.sh workspace/skills/scripts/*.sh; do
     [[ -f "$f" ]] || continue
     run_gate "bash -n $f" bash -n "$f"
   done
@@ -170,7 +181,12 @@ run_bash_syntax() {
 
 run_python_syntax() {
   section "python syntax"
-  run_gate "compile .claude/scripts/*.py" python3 -m py_compile .claude/scripts/*.py
+  local py_files=(.claude/scripts/*.py)
+  local f
+  for f in workspace/skills/scripts/*.py; do
+    [[ -f "$f" ]] && py_files+=("$f")
+  done
+  run_gate "compile .claude/scripts/*.py workspace/skills/scripts/*.py" python3 -m py_compile "${py_files[@]}"
 }
 
 run_json() {
@@ -358,7 +374,7 @@ run_changed_extras() {
   if printf '%s\n' "$changed" | grep -qE '^(\.claude/hooks/|tests/hooks/)'; then
     run_hook_tests
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/|tests/scripts/|tests/check-all\.sh)'; then
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/|tests/scripts/|workspace/skills/scripts/|tests/check-all\.sh)'; then
     run_script_tests
   fi
   if printf '%s\n' "$changed" | grep -qE '^\.claude/commands/nase/[^/]+\.md$'; then
@@ -375,7 +391,7 @@ run_changed_extras() {
   section "changed test files"
   while IFS= read -r test_file; do
     case "$test_file" in
-      tests/hooks/test-*.sh|tests/scripts/test-*.sh)
+      tests/hooks/test-*.sh|tests/scripts/test-*.sh|workspace/skills/scripts/test-*.sh)
         [[ -f "$test_file" ]] && run_gate "$test_file" bash "$test_file"
         ;;
     esac

@@ -18,6 +18,8 @@
 #   D13. workspace/tmp artifact paths embed raw branch names that may contain slashes
 #   D14. generated workspace wrapper descriptions exceed the session-start metadata cap
 #   D15. critical KB-consuming workflows contain an explicit KB lookup marker
+#   D16. workspace skill source descriptions exceed the wrapper metadata cap
+#   D17. command frontmatter descriptions contain CJK trigger terms
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -534,6 +536,124 @@ if [[ -n "$d15_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': critical KB workflows keep explicit lookup markers\n'
+fi
+
+# ---------- D16: workspace skill source descriptions fit wrapper cap -------
+section "D16: workspace skill source descriptions fit wrapper cap"
+d16_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+
+def unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        return value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1]
+    return value
+
+
+def description_from_frontmatter(text: str) -> str:
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        return ""
+
+    lines = match.group(1).splitlines()
+    desc_lines: list[str] = []
+    capture_block = False
+    for raw in lines:
+        if capture_block:
+            if re.match(r"^[A-Za-z0-9_-]+:\s*", raw):
+                break
+            desc_lines.append(raw.strip())
+            continue
+
+        if raw.startswith("description:"):
+            value = raw.split(":", 1)[1].strip()
+            if value in {"|", ">", "|-", ">-", "|+", ">+"}:
+                capture_block = True
+                continue
+            desc_lines = [unquote(value)]
+            break
+
+    return re.sub(r"\s+", " ", " ".join(line for line in desc_lines if line)).strip()
+
+
+hits = []
+for path in sorted(Path("workspace/skills").glob("*.md")):
+    desc = description_from_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+    if len(desc) > 240:
+        hits.append(f"  {path}: description length {len(desc)} > 240")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d16_hits" ]]; then
+  red "FAIL"; printf ': workspace skill source descriptions should fit the generated wrapper cap:\n'
+  printf '%s\n' "$d16_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': workspace skill source descriptions fit wrapper cap\n'
+fi
+
+# ---------- D17: command descriptions stay ASCII for routing ---------------
+section "D17: command descriptions avoid CJK trigger terms"
+d17_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+
+def unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        return value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1]
+    return value
+
+
+def description_from_frontmatter(text: str) -> str:
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        return ""
+
+    lines = match.group(1).splitlines()
+    desc_lines: list[str] = []
+    capture_block = False
+    for raw in lines:
+        if capture_block:
+            if re.match(r"^[A-Za-z0-9_-]+:\s*", raw):
+                break
+            desc_lines.append(raw.strip())
+            continue
+
+        if raw.startswith("description:"):
+            value = raw.split(":", 1)[1].strip()
+            if value in {"|", ">", "|-", ">-", "|+", ">+"}:
+                capture_block = True
+                continue
+            desc_lines = [unquote(value)]
+            break
+
+    return re.sub(r"\s+", " ", " ".join(line for line in desc_lines if line)).strip()
+
+
+hits = []
+for path in sorted(Path(".claude/commands/nase").glob("*.md")):
+    desc = description_from_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+    if re.search(r"[\u3040-\u30ff\u3400-\u9fff]", desc):
+        hits.append(f"  {path}: description contains CJK text")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d17_hits" ]]; then
+  red "FAIL"; printf ': command frontmatter descriptions should stay ASCII-only routing metadata:\n'
+  printf '%s\n' "$d17_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': command descriptions avoid CJK trigger terms\n'
 fi
 
 # ---------- Result ---------------------------------------------------------
