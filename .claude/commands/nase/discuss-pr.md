@@ -167,9 +167,9 @@ Risk map rows:
 | Pipeline/data | ETL, SQL, EventHub/Queue/Timer, LookerML, Avro/Parquet | low/med/high | Pipeline gates |
 
 Selection rule:
-- Always cover `Problem fit`, `Logic correctness`, and `Testability` in the main review pass.
+- Always cover `Problem fit`, `Logic correctness`, and `Testability` in the main review pass — these plus `Security` (whenever its signals fire) are the always-on hard gate; every other lens is change-scoped.
 - Spawn a specialist only when its risk row is `med` or `high`, or the user explicitly requested that focus.
-- Skip `Security`, `Git history`, `Code comments`, and `Pipeline gates` when their trigger signals are absent.
+- Skip `Security`, `Git history`, `Code comments`, and `Pipeline gates` when their trigger signals are absent — match the lens to the change class (e.g. a backend-only PR skips any UI/design lens).
 - Run Codex second-opinion only for high-risk PRs, security-sensitive PRs, large diffs, unfamiliar core areas, or explicit user request.
 - Show the selected specialist list in the final output so omissions are auditable.
 
