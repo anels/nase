@@ -15,7 +15,6 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
   docs/                shared algorithm docs referenced by skills
   scripts/             utility scripts (date resolution, KB search, stats)
   skills/              local Claude Code skills (git-ignored)
-  extensions.yml       optional skill-chain hook config
   roles.yaml           subagent model routing
   settings.json        hook registrations
   settings.local.json  local settings overrides (git-ignored)
@@ -249,7 +248,6 @@ nase/
       workspace/        generated /nase:workspace:* wrappers (git-ignored)
     hooks/              hook scripts (called by settings.json)
     skills/             local Claude Code skills (git-ignored)
-    extensions.yml      optional skill-chain hook config
     roles.yaml          subagent model routing
     docs/               shared algorithm docs
     scripts/            utility scripts

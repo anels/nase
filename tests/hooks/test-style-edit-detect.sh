@@ -31,7 +31,7 @@ run_case() {
       .hookSpecificOutput.hookEventName == "UserPromptSubmit"
       and (.hookSpecificOutput.additionalContext | contains("style-edit-detect"))
       and (.hookSpecificOutput.additionalContext | contains("[STYLE-DELTA]"))
-      and (.hookSpecificOutput.additionalContext | contains("Do not update workspace/communication-style.md directly"))
+      and (.hookSpecificOutput.additionalContext | contains("communication-style.md directly"))
     ' >/dev/null 2>&1 <<<"$out"; then
       printf 'PASS  %-38s match\n' "$name"
       pass=$((pass+1))

@@ -25,7 +25,7 @@ if [[ "$PROMPT" =~ $EDIT_REGEX ]] && [[ "$PROMPT" =~ $CTX_REGEX ]]; then
   jq -cn --arg date "$TODAY" '{
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
-      additionalContext: ("[style-edit-detect] Style edit signal detected on a draft (Slack/PR/external-doc/announcement). Follow .claude/docs/style-delta-capture.md: after addressing the user'\''s edit, append a pending [STYLE-DELTA] line to workspace/logs/" + $date + ".md with surface/before/after/rule/confidence. For a high-confidence single-rule correction, ask the Tier B mini-gate; otherwise leave it for /nase:wrap-up Step 4e. Do not update workspace/communication-style.md directly.")
+      additionalContext: ("[style-edit-detect] Draft style correction. Address it, then append pending [STYLE-DELTA] to workspace/logs/" + $date + ".md per .claude/docs/style-delta-capture.md. Do not edit workspace/communication-style.md directly.")
     }
   }'
 fi

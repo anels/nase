@@ -8,6 +8,7 @@ import json
 import re
 import subprocess
 import sys
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
@@ -225,11 +226,358 @@ def run_gh(args: list[str]) -> str:
     return completed.stdout
 
 
+def run_git(repo: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=check,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
 def load_json(path: str) -> Any:
     if path == "-":
         return json.load(sys.stdin)
     with Path(path).open(encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def parse_json_documents(raw: str) -> list[Any]:
+    decoder = json.JSONDecoder()
+    docs: list[Any] = []
+    idx = 0
+    while idx < len(raw):
+        while idx < len(raw) and raw[idx].isspace():
+            idx += 1
+        if idx >= len(raw):
+            break
+        doc, idx = decoder.raw_decode(raw, idx)
+        docs.append(doc)
+    return docs
+
+
+def flatten_json_items(raw: str) -> list[Any]:
+    items: list[Any] = []
+    for doc in parse_json_documents(raw):
+        if isinstance(doc, list):
+            items.extend(doc)
+        elif isinstance(doc, dict):
+            items.append(doc)
+    return items
+
+
+def trunc(value: Any, limit: int) -> str:
+    text = "" if value is None else str(value)
+    text = re.sub(r"\s+", " ", text).strip()
+    if limit > 0 and len(text) > limit:
+        return text[: max(0, limit - 3)].rstrip() + "..."
+    return text
+
+
+def comments_connection_nodes(thread: dict[str, Any]) -> list[dict[str, Any]]:
+    comments = thread.get("comments") or {}
+    return list(comments.get("nodes") or [])
+
+
+def login_from(value: dict[str, Any], *paths: str) -> str | None:
+    for path in paths:
+        cur: Any = value
+        for part in path.split("."):
+            if not isinstance(cur, dict):
+                cur = None
+                break
+            cur = cur.get(part)
+        if cur:
+            return str(cur)
+    return None
+
+
+def first_value(value: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        item = value.get(key)
+        if item:
+            return item
+    return None
+
+
+def summarize_comment(value: dict[str, Any], max_body_chars: int) -> dict[str, Any]:
+    return {
+        "id": value.get("id"),
+        "databaseId": value.get("databaseId"),
+        "author": login_from(value, "author.login", "user.login"),
+        "createdAt": first_value(value, "createdAt", "created_at", "submitted_at"),
+        "path": value.get("path"),
+        "line": first_value(value, "line", "original_line", "originalLine"),
+        "inReplyToId": value.get("in_reply_to_id"),
+        "body": trunc(value.get("body"), max_body_chars),
+    }
+
+
+def summarize_review(value: dict[str, Any], max_body_chars: int) -> dict[str, Any]:
+    return {
+        "id": value.get("id"),
+        "state": value.get("state"),
+        "author": login_from(value, "author.login", "user.login"),
+        "submittedAt": first_value(value, "submittedAt", "submitted_at"),
+        "body": trunc(value.get("body"), max_body_chars),
+    }
+
+
+def summarize_thread(thread: dict[str, Any], max_body_chars: int) -> dict[str, Any]:
+    comments = comments_connection_nodes(thread)
+    first = comments[0] if comments else {}
+    last = comments[-1] if comments else {}
+    return {
+        "id": thread.get("id"),
+        "isResolved": bool(thread.get("isResolved")),
+        "path": thread.get("path"),
+        "line": first_value(thread, "line", "originalLine"),
+        "startLine": first_value(thread, "startLine", "originalStartLine"),
+        "diffSide": thread.get("diffSide"),
+        "subjectType": thread.get("subjectType"),
+        "commentCount": len(comments),
+        "firstComment": summarize_comment(first, max_body_chars) if first else None,
+        "lastComment": summarize_comment(last, max_body_chars) if last else None,
+    }
+
+
+def changed_file_paths(metadata: dict[str, Any]) -> list[str]:
+    files = metadata.get("files") or []
+    paths: list[str] = []
+    if isinstance(files, list):
+        for item in files:
+            if isinstance(item, dict):
+                path = item.get("path") or item.get("filename")
+            else:
+                path = str(item)
+            if path:
+                paths.append(str(path))
+    return paths
+
+
+def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, Any]]:
+    if max_paths <= 0:
+        return []
+    root = Path(__file__).resolve().parents[2]
+    script = root / ".claude" / "scripts" / "kb-search.sh"
+    if not script.is_file():
+        return []
+    mentions: list[dict[str, Any]] = []
+    for path in paths[:max_paths]:
+        result = subprocess.run(
+            ["bash", str(script), f"mentions:{path}", "--max-entry-lines", "8"],
+            cwd=root,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        text = result.stdout.strip()
+        if result.returncode == 0 and text:
+            mentions.append({"path": path, "hits": trunc(text, 1200)})
+    return mentions
+
+
+def line_excerpt(text: str, line_no: int | None, context_lines: int) -> dict[str, Any]:
+    lines = text.splitlines()
+    if not lines:
+        return {"available": True, "start": 0, "end": 0, "content": ""}
+    if not line_no or line_no < 1:
+        line_no = 1
+    start = max(1, line_no - context_lines)
+    end = min(len(lines), line_no + context_lines)
+    content = "\n".join(f"{idx}: {lines[idx - 1]}" for idx in range(start, end + 1))
+    return {"available": True, "start": start, "end": end, "content": content}
+
+
+def file_at_ref(repo: Path, ref: str, path: str) -> tuple[bool, str]:
+    result = run_git(repo, "show", f"{ref}:{path}")
+    return result.returncode == 0, result.stdout
+
+
+def diff_for_file(repo: Path, base_ref: str, head_ref: str, path: str) -> str:
+    result = run_git(repo, "diff", "--no-ext-diff", f"{base_ref}..{head_ref}", "--", path)
+    return result.stdout if result.returncode == 0 else ""
+
+
+def thread_dossier(
+    repo: Path,
+    base_ref: str,
+    head_ref: str,
+    thread: dict[str, Any],
+    context_lines: int,
+    max_body_chars: int,
+) -> dict[str, Any]:
+    path = str(thread.get("path") or "")
+    line_no = first_value(thread, "line", "originalLine")
+    try:
+        line_int = int(line_no) if line_no else None
+    except (TypeError, ValueError):
+        line_int = None
+
+    head_ok, head_text = file_at_ref(repo, head_ref, path) if path else (False, "")
+    base_ok, base_text = file_at_ref(repo, base_ref, path) if path else (False, "")
+    diff = diff_for_file(repo, base_ref, head_ref, path) if path else ""
+
+    return {
+        **summarize_thread(thread, max_body_chars),
+        "comments": [summarize_comment(item, max_body_chars) for item in comments_connection_nodes(thread)],
+        "headRef": head_ref,
+        "baseRef": base_ref,
+        "headExcerpt": line_excerpt(head_text, line_int, context_lines) if head_ok else {"available": False},
+        "baseExcerpt": line_excerpt(base_text, line_int, context_lines) if base_ok else {"available": False},
+        "diffAvailable": bool(diff.strip()),
+        "kbMentions": kb_mentions_for_paths([path], 1) if path else [],
+    }
+
+
+def review_context(pr: dict[str, Any], max_body_chars: int, max_kb_paths: int) -> dict[str, Any]:
+    metadata = json.loads(run_gh(gh_metadata_args(pr, "light")))
+    paths = changed_file_paths(metadata)
+    comments = flatten_json_items(run_gh(gh_review_comments_args(pr)))
+    reviews = flatten_json_items(run_gh(gh_reviews_args(pr)))
+    diff_stat = run_gh(["gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"], "--stat"])
+    return {
+        "pr": pr,
+        "metadata": metadata,
+        "sizeGate": size_gate(metadata, 1500, 1500),
+        "changedFiles": paths,
+        "diffStat": diff_stat.strip(),
+        "reviewComments": [summarize_comment(item, max_body_chars) for item in comments],
+        "reviews": [summarize_review(item, max_body_chars) for item in reviews],
+        "kbMentions": kb_mentions_for_paths(paths, max_kb_paths),
+    }
+
+
+def comment_dossiers(
+    pr: dict[str, Any],
+    local_repo: Path,
+    unresolved_only: bool,
+    context_lines: int,
+    max_body_chars: int,
+) -> dict[str, Any]:
+    response = unresolved_threads_from_response(fetch_review_threads(pr), unresolved_only)
+    base_ref = f"origin/{response['baseRefName']}"
+    head_ref = f"origin/{response['headRefName']}"
+    return {
+        "pr": pr,
+        "baseRefName": response["baseRefName"],
+        "headRefName": response["headRefName"],
+        "headRepository": response["headRepository"],
+        "threads": [
+            thread_dossier(local_repo, base_ref, head_ref, thread, context_lines, max_body_chars)
+            for thread in response["threads"]
+        ],
+    }
+
+
+BOT_LOGINS = {
+    "copilot-pull-request-reviewer[bot]",
+    "copilot-pull-request-reviewer",
+    "github-actions[bot]",
+    "codex-bot",
+    "claude",
+    "claude[bot]",
+}
+
+
+def is_bot_login(login: str | None) -> bool:
+    if not login:
+        return False
+    lowered = login.lower()
+    return lowered in BOT_LOGINS or lowered.endswith("[bot]") or lowered.endswith("-bot")
+
+
+def bot_decline_candidates(threads: list[dict[str, Any]], max_body_chars: int) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for thread in threads:
+        if thread.get("isResolved"):
+            continue
+        comments = comments_connection_nodes(thread)
+        if len(comments) < 2:
+            continue
+        first_author = login_from(comments[0], "author.login", "user.login")
+        last_author = login_from(comments[-1], "author.login", "user.login")
+        if is_bot_login(first_author) and not is_bot_login(last_author):
+            candidates.append(summarize_thread(thread, max_body_chars))
+    return candidates
+
+
+def read_abort_state(
+    state_dir: Path,
+    pr: dict[str, Any],
+    current_branch_sha: str | None = None,
+    current_base_sha: str | None = None,
+) -> dict[str, Any]:
+    path = state_dir / f"prep-merge-{pr['owner']}-{pr['repo']}-{pr['number']}-abort.json"
+    if not path.is_file():
+        return {"path": str(path), "exists": False}
+    try:
+        content = json.loads(path.read_text(encoding="utf-8"))
+        branch_matches = content.get("branch_sha") == current_branch_sha
+        base_matches = content.get("base_sha") == current_base_sha
+        return {
+            "path": str(path),
+            "exists": True,
+            "content": content,
+            "matchesCurrent": bool(branch_matches and base_matches),
+        }
+    except (OSError, JSONDecodeError) as exc:
+        return {"path": str(path), "exists": True, "error": str(exc)}
+
+
+def adjacent_same_file_overlap(repo: Path, base_branch: str, pr_branch: str, opened_at: str | None) -> dict[str, Any]:
+    if not opened_at:
+        return {"scanRan": False, "reason": "PR opened time unavailable", "files": []}
+    file_result = run_git(repo, "diff", f"origin/{base_branch}..origin/{pr_branch}", "--name-only")
+    if file_result.returncode != 0:
+        return {"scanRan": False, "reason": file_result.stderr.strip(), "files": []}
+
+    overlaps: list[dict[str, Any]] = []
+    for path in [line for line in file_result.stdout.splitlines() if line.strip()]:
+        log = run_git(repo, "log", f"origin/{base_branch}", f"--since={opened_at}", "--oneline", "--", path)
+        if log.returncode == 0 and log.stdout.strip():
+            overlaps.append({"path": path, "commits": log.stdout.splitlines()})
+    return {"scanRan": True, "files": overlaps}
+
+
+def prep_state(pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_chars: int) -> dict[str, Any]:
+    metadata = json.loads(run_gh(gh_metadata_args(pr, "full")))
+    response = unresolved_threads_from_response(fetch_review_threads(pr), unresolved_only=False)
+    threads = response["threads"]
+    unresolved = [thread for thread in threads if not thread.get("isResolved")]
+    remote_ref = f"origin/{metadata.get('headRefName')}"
+    remote_head = run_git(local_repo, "rev-parse", remote_ref)
+    remote_sha = remote_head.stdout.strip() if remote_head.returncode == 0 else None
+    base_head = run_git(local_repo, "rev-parse", f"origin/{metadata.get('baseRefName')}")
+    base_sha = base_head.stdout.strip() if base_head.returncode == 0 else None
+
+    return {
+        "pr": pr,
+        "metadata": metadata,
+        "baseRefName": response.get("baseRefName"),
+        "headRefName": response.get("headRefName"),
+        "headRepository": response.get("headRepository"),
+        "remoteHead": {
+            "ref": remote_ref,
+            "sha": remote_sha,
+            "matchesMetadata": bool(remote_sha and remote_sha == metadata.get("headRefOid")),
+            "error": remote_head.stderr.strip() if remote_head.returncode else None,
+        },
+        "reviewThreads": {
+            "total": len(threads),
+            "unresolved": [summarize_thread(thread, max_body_chars) for thread in unresolved],
+            "botDeclineCandidates": bot_decline_candidates(threads, max_body_chars),
+        },
+        "priorAbort": read_abort_state(state_dir, pr, remote_sha, base_sha),
+        "adjacentSameFileOverlap": adjacent_same_file_overlap(
+            local_repo,
+            str(metadata.get("baseRefName") or response.get("baseRefName") or ""),
+            str(metadata.get("headRefName") or response.get("headRefName") or ""),
+            metadata.get("createdAt"),
+        ),
+    }
 
 
 def size_gate(metadata: dict[str, Any], warn_threshold: int, stat_threshold: int) -> dict[str, Any]:
@@ -373,6 +721,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     gate.add_argument("--warn-threshold", type=int, default=1500)
     gate.add_argument("--stat-threshold", type=int, default=1500)
 
+    review = sub.add_parser("review-context", help="Fetch compact read-only context for PR review")
+    review.add_argument("ref")
+    review.add_argument("--repo", help="owner/repo, required for number-only refs")
+    review.add_argument("--max-body-chars", type=int, default=400)
+    review.add_argument("--max-kb-paths", type=int, default=10)
+
+    dossiers = sub.add_parser("comment-dossiers", help="Build compact unresolved review-thread dossiers")
+    dossiers.add_argument("ref")
+    dossiers.add_argument("--repo", help="owner/repo, required for number-only refs")
+    dossiers.add_argument("--local-repo", required=True)
+    dossiers.add_argument("--unresolved-only", action="store_true")
+    dossiers.add_argument("--context-lines", type=int, default=4)
+    dossiers.add_argument("--max-body-chars", type=int, default=400)
+
+    prep = sub.add_parser("prep-state", help="Fetch compact state for prep-merge")
+    prep.add_argument("ref")
+    prep.add_argument("--repo", help="owner/repo, required for number-only refs")
+    prep.add_argument("--local-repo", required=True)
+    prep.add_argument("--state-dir", default="workspace/tmp")
+    prep.add_argument("--max-body-chars", type=int, default=300)
+
     return parser.parse_args(argv)
 
 
@@ -392,6 +761,23 @@ def main(argv: list[str]) -> int:
             sys.stdout.write(run_gh(gh_metadata_args(pr, args.variant)))
         elif args.command == "review-threads":
             emit_json(unresolved_threads_from_response(fetch_review_threads(pr), args.unresolved_only))
+        elif args.command == "review-context":
+            emit_json(review_context(pr, args.max_body_chars, args.max_kb_paths))
+        elif args.command == "comment-dossiers":
+            emit_json(
+                comment_dossiers(
+                    pr,
+                    Path(args.local_repo).resolve(),
+                    args.unresolved_only,
+                    args.context_lines,
+                    args.max_body_chars,
+                )
+            )
+        elif args.command == "prep-state":
+            state_dir = Path(args.state_dir)
+            if not state_dir.is_absolute():
+                state_dir = Path.cwd() / state_dir
+            emit_json(prep_state(pr, Path(args.local_repo).resolve(), state_dir, args.max_body_chars))
         return 0
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)

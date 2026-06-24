@@ -8,6 +8,8 @@ sub-patterns: [fan-out]
 
 **Input:** $ARGUMENTS
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
+
 ## Step 0 — Language preflight (MUST run first, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. If `workspace/config.md` is missing, default English and note it once at the top of the output.

@@ -12,6 +12,10 @@ Guidance for Claude Code when working in this repository.
 
 ---
 
+# Compact instructions
+
+When compacting, preserve active repo/path/branch, current task/plan, changed files, verification run, and failing output. Drop raw logs, full diffs, broad search dumps, and superseded reasoning.
+
 ## Architecture Stance
 
 - Treat this repo as a Claude Code workspace kit, not a product repo: commands, hooks, shared docs, tests, and `workspace/` state are the product surface.

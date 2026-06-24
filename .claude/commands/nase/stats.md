@@ -49,26 +49,7 @@ Fallback if python3 unavailable: compute manually. `END_DATE` is always today.
 
 Follow `.claude/docs/cli-tooling.md` for optional large-data aggregation. Probe with `python3 .claude/scripts/tool-availability.py --group data --group usage --format json`. Missing data tools must not block stats.
 
-Check if `workspace/scripts/stats-collect.sh` exists. If it does, run it:
-
-```bash
-bash workspace/scripts/stats-collect.sh "<start>" "<end>"
-```
-
-This script prints the path to a temp directory on stdout. Capture it and clean up after use:
-
-```bash
-TMPDIR_STATS=$(bash workspace/scripts/stats-collect.sh "<start>" "<end>")
-trap 'rm -rf "$TMPDIR_STATS"' EXIT
-```
-
-It collects:
-- Per-day stats (sessions, commits, PRs) → `$TMPDIR_STATS/daily.csv`
-- Aggregate metrics → `$TMPDIR_STATS/env.sh`
-- Skill usage rankings
-
-<!-- Consider extracting to workspace/scripts/stats-collect.sh if this grows -->
-**If the script does NOT exist**, collect data inline:
+Collect data inline:
 1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)` and register cleanup: `trap 'rm -rf "$TMPDIR_STATS"' EXIT` (ensures cleanup even if the skill errors mid-execution)
 2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (for each `{repo_path}` in `.local-paths`: `git -C {repo_path} log --since="{date}T00:00" --until="{date}T23:59" --oneline 2>/dev/null | wc -l` — sum across all repos), and PRs (grep for PR URLs in the log).
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).

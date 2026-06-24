@@ -3,6 +3,11 @@
   "worktree": {
     "baseRef": "fresh"
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null || pwd); python3 \"$WORKSPACE/.claude/scripts/statusline-context.py\"'",
+    "padding": 1
+  },
   "hooks": {
     "SessionStart": [
       {

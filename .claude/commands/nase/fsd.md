@@ -29,16 +29,6 @@ Follows `.claude/docs/repo-task-flow.md` for shared repo resolution, fetch + bra
 
 If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and stop.
 
-## Phase 0.5: Extension Hooks — before_fsd
-
-Run `bash .claude/scripts/extensions-check.sh before_fsd` and read the output.
-- Lines starting `EXECUTE_COMMAND:` are mandatory — invoke the named slash command (without arguments unless the description specifies) and wait for it to finish before continuing.
-- Lines starting `OPTIONAL_HOOK:` are advisory — surface them in the upfront options block so the user can opt in or skip per run.
-- A single `NO_HOOKS` line means continue normally.
-- Hook source: `.claude/extensions.yml`; schema borrowed from spec-kit. New hooks land there without editing this skill.
-
-The matching `after_fsd` hook runs in Phase 9.5.
-
 ## Phase 1: Infer Context (do the homework before asking anything)
 
 Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for `output:` language (default English if missing).
@@ -54,15 +44,14 @@ If no slug matches, continue normally — not every fsd run comes from a design 
 
 Infer target repo from explicit user text first, then `repo_hint_from_design`, then task keywords/domain/stack. Resolve path and load KB sections for build/run, architecture, constraints, modules/components; see `.claude/docs/repo-resolution.md`.
 
-**Module-inventory extraction:** from the KB, capture existing modules, helpers, shared components, and naming conventions. If missing, set `module_inventory = needs-grep`; Phase 3 derives it from the actual `{work_root}`. Do not grep the pre-worktree checkout.
+Then fetch latest and collect deterministic preflight context:
 
-Then fetch latest and check the repo's git state:
 ```bash
 git -C {repo} fetch origin
-git -C {repo} symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || git -C {repo} remote show origin 2>/dev/null | sed -n '/HEAD branch/s/.*: //p'
-git -C {repo} status --short
-git -C {repo} branch --show-current
+python3 .claude/scripts/fsd-preflight.py --repo "{repo}" --task "$ARGUMENTS" --kb-file "{kb_file}" --json > "$TMPDIR/fsd-preflight.json"
 ```
+
+Use `repo`, `moduleInventory`, `kbMentionCandidates`, and `toolAvailability` from `$TMPDIR/fsd-preflight.json`. The helper output is bounded and deterministic; do not repeat the git-status/default-branch/tool-availability probes by hand unless it failed.
 
 **If repo cannot be inferred with confidence**, use AskUserQuestion immediately:
 ```
@@ -70,7 +59,7 @@ question: "Which repo should I work in? (I couldn't determine it from the task d
 header: "Target Repo"
 options: one option per repo in context.md, plus "Other — I'll type the path"
 ```
-After the answer, resume Phase 1 for that repo (path, KB, `module_inventory`, fetch, default branch, git state), then proceed to Phase 1.5.
+After the answer, resume Phase 1 for that repo (path, KB, `fsd-preflight`), then proceed to Phase 1.5.
 
 ## Phase 1.5: Topology Map (before any code intent is locked in)
 
@@ -172,11 +161,11 @@ Derive `{branch_slug}` only for local artifact paths: replace `/` and other char
 
 Set `{work_root}` = `{worktree_path}` if worktree = Yes, else `{repo}`.
 
-**Finalize `module_inventory`:** keep KB snippet, or derive 5-15 lines inside `{work_root}` from top-level `src/` plus helper/service/util/client files. Carry into subagent prompts.
+**Finalize `module_inventory`:** keep `moduleInventory` from `$TMPDIR/fsd-preflight.json`; grep inside `{work_root}` only if the helper found too little for this task. Carry into subagent prompts.
 
 **Finalize topology (if `topology = needs-work-root`):** grep/glob inside `{work_root}` only, ≤25 lines. If this came from `/nase:design`, stage and append it to `workspace/efforts/{slug}.md` under `## Topology` using the workspace write guard; otherwise keep it in conversation context for Phase 4.
 
-**KB mentions preflight:** once touched paths are known from topology, run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` for each expected touched source/config path (cap at 10; skip generated files unless they are the primary edit target). Store hits as `kb_path_constraints`; if no hits, write `none found`. Carry this into Phase 4 prompts and the implementation constraints.
+**KB mentions preflight:** start with `kbMentionCandidates` from `$TMPDIR/fsd-preflight.json`. Once touched paths are known from topology, run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` only for the expected touched source/config paths (cap at 10; skip generated files unless they are the primary edit target). Store hits as `kb_path_constraints`; if no hits, write `none found`. Carry this into Phase 4 prompts and the implementation constraints.
 
 ---
 
@@ -546,12 +535,6 @@ Remove the worktree (safe since the branch is already pushed):
 git -C {repo} worktree remove {worktree_path} --force
 ```
 Confirm: "Worktree removed."
-
----
-
-## Phase 9.5: Extension Hooks — after_fsd
-
-Run `bash .claude/scripts/extensions-check.sh after_fsd` and handle its output using the Phase 0.5 rules.
 
 ---
 

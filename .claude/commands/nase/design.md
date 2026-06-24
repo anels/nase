@@ -10,6 +10,8 @@ Turn ideas into a concrete, tracked design plan through KB-aware research.
 Follows `.claude/docs/external-mutation-policy.md` — optional Jira issue creation goes through `AskUserQuestion` plus the Jira write-token backstop.
 Follows `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-lifecycle.md` for `workspace/efforts/` and `workspace/tasks/` writes. Use `python3 .claude/scripts/workspace-write-guard.py stage` for Phase 5 full-file writes. Phase 5 is an approved auto-write path, so it skips the prompt but not staging, diff/preview, or final mtime/hash drift checks.
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
+
 ## Design Principles Framework
 
 Apply these six principles to every design. The **order matters** — it changes which tradeoffs you prioritize first:

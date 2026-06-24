@@ -14,6 +14,8 @@ A focused kickoff prevents drift. The goal is to pick 1–3 things and start —
 
 Follows `.claude/docs/workspace-write-guard.md` for status-sync edits to `workspace/tasks/` and `workspace/efforts/`.
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
+
 ## Steps
 
 <workflow>

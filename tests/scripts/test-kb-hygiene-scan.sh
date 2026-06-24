@@ -33,7 +33,7 @@ assert_not_contains() {
   fi
 }
 
-mkdir -p "$FIXTURE/repo/.github/workflows" "$FIXTURE/repo/.pipelines" "$FIXTURE/repo/src/alpha" "$FIXTURE/repo/src/beta" "$FIXTURE/repo/api" "$FIXTURE/repo/db" "$FIXTURE/workspace/kb/projects"
+mkdir -p "$FIXTURE/repo/.github/workflows" "$FIXTURE/repo/.pipelines" "$FIXTURE/repo/src/alpha" "$FIXTURE/repo/src/beta" "$FIXTURE/repo/api" "$FIXTURE/repo/db" "$FIXTURE/workspace/kb/projects" "$FIXTURE/workspace/kb/general"
 
 cat > "$FIXTURE/repo/src/Service.cs" <<'EOF'
 namespace Fixture;
@@ -105,6 +105,40 @@ cat > "$FIXTURE/workspace/kb/projects/fixture.md" <<'EOF'
 - Correction 2026-04-03: third correction.
 EOF
 
+cat > "$FIXTURE/workspace/kb/.domain-map.md" <<'EOF'
+# Domain Map
+
+## General
+- duplicate-a → workspace/kb/general/duplicate-a.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
+- duplicate-b → workspace/kb/general/duplicate-b.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
+- sparse → workspace/kb/general/sparse.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
+- missing → workspace/kb/general/missing.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
+EOF
+
+cat > "$FIXTURE/workspace/kb/general/duplicate-a.md" <<'EOF'
+# Duplicate A
+
+### 2026-05-01 — Same Thing
+- first note
+EOF
+
+cat > "$FIXTURE/workspace/kb/general/duplicate-b.md" <<'EOF'
+# Duplicate B
+
+### 2026-05-01 — Same Thing
+- second note
+EOF
+
+cat > "$FIXTURE/workspace/kb/general/orphan.md" <<'EOF'
+# Orphan
+
+- not mapped
+EOF
+
+cat > "$FIXTURE/workspace/kb/general/sparse.md" <<'EOF'
+# Sparse
+EOF
+
 out=$(python3 "$SCRIPT" \
   --repo-root "$FIXTURE/repo" \
   --kb-file "$FIXTURE/workspace/kb/projects/fixture.md" \
@@ -151,6 +185,17 @@ if [ "$json_rc" = 0 ] && printf '%s' "$json_out" | python3 -c 'import json,sys; 
 else
   fail=$((fail + 1))
   printf 'FAIL  json output is parseable and classified\n%s\n' "$json_out" >&2
+fi
+
+workspace_json=$(python3 "$SCRIPT" --workspace-scan --root "$FIXTURE" --json 2>&1)
+workspace_rc=$?
+
+if [ "$workspace_rc" = 0 ] && printf '%s' "$workspace_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); cats={i["category"] for i in data["issues"]}; assert "duplicate_dated_heading" in cats; assert "domain_map_missing_target" in cats; assert "domain_map_orphan" in cats; assert "sparse_file" in cats; assert data["summary"]["total"] >= 4'; then
+  pass=$((pass + 1))
+  printf 'PASS  workspace scan detects duplicate/missing/orphan/sparse issues\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  workspace scan detects duplicate/missing/orphan/sparse issues\n%s\n' "$workspace_json" >&2
 fi
 
 total=$((pass + fail))

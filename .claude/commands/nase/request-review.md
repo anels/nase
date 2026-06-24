@@ -10,6 +10,8 @@ sub-patterns: [fan-out]
 
 Find the right reviewers for one or more PRs and stage Slack DM drafts.
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
+
 Follows `.claude/docs/external-mutation-policy.md` — all Slack messages go through `slack_send_message_draft` (never `_send`). This skill only stages Slack drafts; it does not assign reviewers on GitHub. The Slack DM is the request; the reviewer accepts (or declines) by reading the PR. Skipping the GitHub assignment avoids a second mutation that the recipient has to re-acknowledge in their queue.
 
 ## Step 0 — Language preflight (MUST run first, non-negotiable)
