@@ -83,20 +83,7 @@ fi
 # Record the file as warned.
 echo "$FILE_PATH" >> "$STATE_FILE"
 
-context=$(cat <<EOF
-[fact-force] First edit to $FILE_PATH this session. Before applying, in your
-next response include three facts so the change is grounded, not reflexive:
-
-  1. Callers — name 2-3 files / functions that import or call into this file.
-     If you have not grep'd yet, do so now ("grep -rn '<symbol>' <repo>").
-  2. Public-API impact — does this change the file's exported surface
-     (signatures, return shapes, exception kinds, side effects)? Yes/No + 1 line.
-  3. Origin — quote the user instruction (or upstream task description) that
-     authorizes this edit. If you cannot quote it, pause and ask.
-
-Inspired by ECC gateguard-fact-force. Disable with NASE_FACT_FORCE=0.
-EOF
-)
+context="[fact-force] First edit to $FILE_PATH. Before editing, state: callers/importers checked; public API impact yes/no; exact user/task instruction authorizing the edit. Disable with NASE_FACT_FORCE=0."
 
 jq -n --arg ctx "$context" \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}'

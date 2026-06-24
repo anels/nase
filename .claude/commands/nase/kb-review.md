@@ -11,6 +11,8 @@ Review and organize the knowledge base — deduplicate, cross-reference, consoli
 **Input:** $ARGUMENTS
 (Optional scope: `projects`, `general`, `ops`, `lessons`, or `all`. Default: `all`. Optional flag: `--verbose` — also dump all sections inline.)
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
+
 Follows `.claude/docs/workspace-write-guard.md` for quick fixes, consolidation, lesson promotion, todo archival, and domain-map repairs.
 
 ## Output Discipline

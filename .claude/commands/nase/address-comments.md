@@ -64,10 +64,10 @@ git -C {repo_path} fetch origin
 Use the shared helper for the full unresolved-thread GraphQL query:
 
 ```bash
-python3 .claude/scripts/pr-github-helper.py review-threads "$PR_URL" --unresolved-only > "$TMPDIR/pr-review-threads.json"
+python3 .claude/scripts/pr-github-helper.py comment-dossiers "$PR_URL" --local-repo "{repo_path}" --unresolved-only > "$TMPDIR/pr-comment-dossiers.json"
 ```
 
-Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, and unresolved threads from that JSON. If the helper or `gh` fails, stop with the raw error; do not fall back to an ad hoc query unless you also update `.claude/scripts/pr-github-helper.py` and its tests.
+Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, and unresolved thread dossiers from that JSON. If the helper or `gh` fails, stop with the raw error; do not fall back to an ad hoc query unless you also update `.claude/scripts/pr-github-helper.py` and its tests.
 
 **Same-repo guard:** `headRepository.nameWithOwner` must match `{owner}/{repo}` case-insensitively. If null or different, stop; this command does not handle forks or second repos.
 
@@ -87,19 +87,15 @@ Follow `.claude/docs/pr-review-verification.md` and `.claude/docs/ai-code-verifi
 
 **Step 3a — Build one dossier per unresolved thread before classification:**
 
-For each thread, collect:
+Use `threads[]` from `$TMPDIR/pr-comment-dossiers.json` as the baseline dossier: comment chain, `id`/`databaseId`, path/line, head/base excerpts, diff availability, and KB mentions are already bounded there. The helper uses the same `mentions:<path>` lookup shape as the older manual pass.
 
-- Full comment chain, including author login, `id`, `databaseId`, path, line, and timestamps.
-- Referenced file from PR head: `git -C {repo_path} show {pr_head_ref}:{path}`.
-- Base-branch version when the claim depends on diff scope: `git -C {repo_path} show origin/{baseRefName}:{path}`.
-- PR diff hunk for the file and nearby changed context.
-- KB / repo / Confluence / past-decision constraints that match the file, module, or reviewer premise; if none are found, write `none found`.
-- Run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` for each review-thread file and include hits in the KB/repo constraints; if no hits, write `none found`.
+For each thread, add only the evidence the helper cannot know:
+
 - Caller/dependency impact via `rg`, `git grep`, or language-aware search for referenced symbols, config keys, routes, schema fields, or public contracts.
 - Related test/scanner evidence, or the exact missing verification signal.
 - Explicit AI provenance per `.claude/docs/ai-code-verification-debt.md → Explicit AI Provenance`; record `none-found` instead of inferring from style.
 
-Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; the bullets above are the concrete evidence sources for its `Evidence checked` block.
+Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; do not re-fetch full files or full diffs unless the bounded excerpt is insufficient for a specific thread.
 
 **Step 3b — Assign risk before deciding action:**
 

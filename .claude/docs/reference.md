@@ -35,14 +35,13 @@ Read this file on demand when you need details about workspace layout, skills, K
                        looks up repo in workspace/tmp/.typecheck-commands, runs quick
                        type-check (e.g. dotnet build --no-restore). 30s timeout.
                        Disabled by default — enable via /update-config.
-  extensions.yml     ← optional before/after skill-chain hook config
   settings.json      ← hook registrations (SessionStart + Stop + UserPromptSubmit + PreToolUse + PostToolUse + WorktreeRemove)
 .local-paths         ← machine-specific paths: backup-target + repo local paths (key=/path format)
                        lives at workspace root (NOT inside workspace/); managed by /nase:init
 workspace/               ← entirely git-ignored; never committed
   config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy> / ## Language (conversation + output)  (managed by /nase:init)
   journals/          ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
-  scripts/           ← utility scripts (e.g. deploy-uptime-kuma.ps1, stats-collect.sh)
+  scripts/           ← optional local utility scripts
 ```
 
 ---
@@ -176,7 +175,6 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 |--------|---------|
 | `command_catalog.py` | Render and validate the `/nase:*` command catalog from `.claude/commands/nase/*.md` frontmatter. Command IDs come from file names; README/help grouping comes from `category:` and optional `order:`. |
 | `date-resolve.py` | Parse natural-language date specs (e.g. "last week", "30", "YYYY-MM-DD to YYYY-MM-DD") to a `START_DATE END_DATE` pair. Used by `recap`, `stats`. |
-| `extensions-check.sh` | Read `.claude/extensions.yml` and emit `OPTIONAL_HOOK`, `EXECUTE_COMMAND`, or `NO_HOOKS` for a named skill-chain event. Used by `fsd`. |
 | `help-summary.py` | Render compact or verbose `/nase:help` output from the command catalog plus README intro/hooks and workspace directories. Used by `help`. |
 | `kb-domain-resolve.sh` | Resolve a repo name / domain key to its KB file path via `workspace/kb/.domain-map.md`. Used by `repo-resolution.md` callers. |
 | `kb-search.sh` | Full-text + metadata search across KB files. Supports `in:`, `tag:`, `since:`, `confidence:`, `mentions:`, capped previews, `--full`, and `--max-entry-lines`; weighted relevance (header 2×, body 1×); fuzzy fallback. Used by `kb-search`. |

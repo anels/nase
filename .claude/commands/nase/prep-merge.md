@@ -21,40 +21,47 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`.
 
-## Phase 1: Fetch PR Metadata
+## Phase 1: Parse PR, Locate Repo, Fetch
 
-Parse the PR reference and fetch metadata with the shared helper:
+Parse the PR reference with the shared helper:
 
 ```bash
 python3 .claude/scripts/pr-github-helper.py parse "$PR_URL_OR_ARGUMENTS"
-python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant full > "$TMPDIR/pr-metadata.json"
 ```
 
-The helper's **full** variant centralizes the field set from `.claude/docs/github-queries.md`.
-
-Capture: `headRefOid` (PR head SHA), `headRefName` (PR branch), `baseRefName` (target branch), `createdAt` (for Phase 4.7 adjacent same-file scan), commit list, changed files, current title/body, state, review decision, `isDraft` (for the Phase 10 draft-state branch).
-
-If `state` is not `OPEN`: report "PR is already {state}" and stop.
-
-## Phase 2: Verify All Comments Resolved
-
-Use the shared helper for the full review-thread GraphQL query:
+Follow `.claude/docs/repo-resolution.md` Part 1 (Repo Resolution) to resolve the local path from the PR's `owner/repo`. If not found, ask the user.
 
 ```bash
-python3 .claude/scripts/pr-github-helper.py review-threads "$PR_URL" > "$TMPDIR/pr-review-threads.json"
+git -C {repo_path} fetch origin
 ```
 
-The helper preserves `author.login` on the first AND last comment for the bot-decline check in 2a.
+## Phase 2: Fetch Prep State
 
-Filter threads where `isResolved == false`.
+Fetch compact metadata, thread summary, branch state, prior-abort state, and adjacent same-file overlap in one helper call:
 
-### 2a. Auto-resolve bot-declined threads
+```bash
+python3 .claude/scripts/pr-github-helper.py prep-state "$PR_URL" --local-repo "{repo_path}" > "$TMPDIR/pr-prep-state.json"
+```
 
-Auto-resolve a thread when ALL of: ≥2 comments, first author is a bot, last author is non-bot (the decline reply from a prior `/nase:address-comments` run — already HEAD-verified per `.claude/docs/pr-review-verification.md`). Bots don't re-engage; full thread history + daily log preserve the audit trail.
+Use `metadata`, `remoteHead`, `reviewThreads`, `priorAbort`, and `adjacentSameFileOverlap` from that JSON.
 
-Bot author logins: `copilot-pull-request-reviewer[bot]`, `copilot-pull-request-reviewer`, `github-actions[bot]`, `codex-bot`, `claude`, `claude[bot]` (extend as new bots appear).
+If `metadata.state` is not `OPEN`: report "PR is already {state}" and stop.
 
-Before resolving, list the matched thread IDs, bot author, last commenter, and one-line summary, then use `AskUserQuestion` as the immediate GitHub mutation gate:
+**Same-repo guard:** `headRepository.nameWithOwner` must match `{owner}/{repo}` case-insensitively. If null or different, stop; this command does not handle forks or second repos.
+
+Set `pr_branch = metadata.headRefName` and `base_branch = metadata.baseRefName`.
+
+If `remoteHead.matchesMetadata` is false, warn: "Branch has new commits since PR metadata was fetched — re-fetch metadata before continuing." and stop.
+
+## Phase 3: Verify All Comments Resolved
+
+Use `reviewThreads.unresolved` and `reviewThreads.botDeclineCandidates` from `$TMPDIR/pr-prep-state.json`.
+
+### 3a. Auto-resolve bot-declined threads
+
+Auto-resolve a thread when it appears in `botDeclineCandidates`: first author is a bot, last author is non-bot, and the thread is still unresolved. Bots don't re-engage; full thread history + daily log preserve the audit trail.
+
+Before resolving, list the matched thread IDs, bot author, last commenter, and one-line summary from the helper output, then use `AskUserQuestion` as the immediate GitHub mutation gate:
 
 ```
 question: "Auto-resolve these bot-declined review threads?"
@@ -63,10 +70,10 @@ options:
   - label: "Resolve bot threads"
     description: "Resolve only the listed bot-authored threads whose latest reply is a human decline"
   - label: "Skip auto-resolve"
-    description: "Leave them unresolved; Phase 2b will block prep-merge"
+    description: "Leave them unresolved; Phase 3b will block prep-merge"
 ```
 
-If the user chooses "Skip auto-resolve", do not run the GraphQL mutation; continue to Phase 2b with those threads still unresolved.
+If the user chooses "Skip auto-resolve", do not run the GraphQL mutation; continue to Phase 3b with those threads still unresolved.
 
 Resolve all matches in **one batched GraphQL mutation** using aliases — see Shape B (batched aliased) in `.claude/docs/github-queries.md → Resolve Review Threads`.
 
@@ -74,9 +81,11 @@ Apply the shared throttle rule from the same doc (chunk by 30, `sleep 4` between
 
 Daily-log one line per resolved thread (tag: `prep-merge`): `{repo}#{pr} — auto-resolved bot decline thread {id} ({bot_author})`.
 
-### 2b. Block on remaining unresolved threads
+After resolving bot threads, rerun Phase 2's `prep-state` helper and refresh `$TMPDIR/pr-prep-state.json`.
 
-After 2a, re-filter `isResolved == false`. If any remain (i.e. human-authored or non-declined bot threads):
+### 3b. Block on remaining unresolved threads
+
+If `reviewThreads.unresolved` is non-empty (i.e. human-authored or non-declined bot threads):
 
 ```
 Cannot prep merge — {N} unresolved review thread(s):
@@ -87,98 +96,19 @@ Cannot prep merge — {N} unresolved review thread(s):
 Resolve these first (or use /nase:address-comments {pr_url}).
 ```
 
-**If all resolved (including post-2a):** proceed.
+**If all resolved (including post-3a):** proceed.
 
 If tempted to push past a remaining thread or force-push without checking branch state, see `.claude/docs/anti-rationalization.md → /nase:prep-merge`.
 
-## Phase 3: Locate Repo
+## Phase 4: Pre-Rebase Guards
 
-Follow `.claude/docs/repo-resolution.md` Part 1 (Repo Resolution) to resolve the local path from the PR's `owner/repo`. If not found, ask the user.
+If `priorAbort.matchesCurrent` is true, refuse the retry. Report the timestamp and conflict files from `priorAbort.content`; resolving locally first is cheaper than replaying the same deterministic rebase conflict.
 
-## Phase 4: Fetch & Verify Branch State
+Check `adjacentSameFileOverlap` from `$TMPDIR/pr-prep-state.json`:
 
-```bash
-git -C {repo_path} fetch origin
-```
-
-Check that the remote HEAD matches the PR metadata — this guards against someone else having pushed to the branch after the metadata was fetched:
-
-```bash
-# Get remote HEAD for the PR branch
-REMOTE_SHA=$(git -C {repo_path} rev-parse origin/{pr_branch})
-```
-
-Compare `REMOTE_SHA` against `headRefOid` from the PR metadata fetched in Phase 1. If they differ, warn: "Branch has new commits since PR metadata was fetched — re-fetch metadata before continuing." and stop.
-
-## Phase 4.6: Prior-Abort Signature Check
-
-Refuse a re-run when nothing has changed since a prior aborted prep-merge — `git rebase` will deterministically replay the same conflict (sanitized pattern: two attempts ~50min apart hit the identical conflict file against the same base commit).
-
-State file path: `workspace/tmp/prep-merge-{owner}-{repo}-{pr_number}-abort.json`. Phase 5.5 writes it on conflict abort; Phase 8 deletes it on push success.
-
-```bash
-STATE_FILE="workspace/tmp/prep-merge-{owner}-{repo}-{pr_number}-abort.json"
-if [ -f "$STATE_FILE" ]; then
-  PRIOR_BRANCH_SHA=$(jq -r .branch_sha "$STATE_FILE")
-  PRIOR_BASE_SHA=$(jq -r .base_sha "$STATE_FILE")
-  CUR_BRANCH_SHA=$(git -C {repo_path} rev-parse origin/{pr_branch})
-  CUR_BASE_SHA=$(git -C {repo_path} rev-parse origin/{base_branch})
-  if [ "$PRIOR_BRANCH_SHA" = "$CUR_BRANCH_SHA" ] && [ "$PRIOR_BASE_SHA" = "$CUR_BASE_SHA" ]; then
-    PRIOR_TS=$(jq -r .timestamp "$STATE_FILE")
-    PRIOR_FILES=$(jq -r '.conflict_files | join(", ")' "$STATE_FILE")
-    echo "Refusing retry — same branch + base SHAs as aborted prep-merge at $PRIOR_TS."
-    echo "Same conflict will recur on: $PRIOR_FILES"
-    echo "Resolve in your main checkout first, or delete $STATE_FILE to force retry."
-    exit 1
-  fi
-fi
-```
-
-If state file is absent, missing fields, or SHAs differ: continue to Phase 4.7.
-
-## Phase 4.7: Adjacent Same-File PR Scan
-
-Reason: long-lived PRs (open >24h) often share high-traffic security/hardening files with sibling PRs that landed during the same sprint. Detecting overlap before Phase 5.5 avoids a predictable rebase abort and lets the user choose whether to resolve locally first.
-
-Enumerate files in this PR's diff against the base branch, then check whether any of them were touched on the base branch since the PR opened:
-
-```bash
-# Files in this PR
-PR_FILES=$(git -C {repo_path} diff origin/{base_branch}..origin/{pr_branch} --name-only)
-
-# Commits on base branch since PR opened that touched any of those files
-PR_OPENED_AT=$(jq -r .createdAt "$TMPDIR/pr-metadata.json" 2>/dev/null || echo "")
-overlap_found=0
-scan_ran=0
-if [ -n "$PR_OPENED_AT" ] && [ "$PR_OPENED_AT" != "null" ]; then
-  scan_ran=1
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    overlap=$(git -C {repo_path} log origin/{base_branch} --since="$PR_OPENED_AT" --oneline -- "$f")
-    if [ -n "$overlap" ]; then
-      if [ "$overlap_found" -eq 0 ]; then
-        echo "Base-branch commits since PR opened that touched PR files:"
-      fi
-      overlap_found=1
-      echo "── $f"
-      printf '%s\n' "$overlap" | sed 's/^/    /'
-    fi
-  done <<EOF
-$PR_FILES
-EOF
-else
-  echo "PR opened time unavailable; skip adjacent same-file scan."
-fi
-if [ "$scan_ran" -eq 1 ] && [ "$overlap_found" -eq 0 ]; then
-  echo "No base-branch commits touched PR files since the PR opened."
-fi
-```
-
-If the output says `No base-branch commits touched PR files since the PR opened.`: proceed to Phase 5.
-
-If the output says `PR opened time unavailable; skip adjacent same-file scan.`: proceed to Phase 5 and note that this optional preflight could not run.
-
-If the output lists one or more `── {file}` sections, present the list of (file, base-branch commits, linked PRs if discoverable via commit-message PR refs) and ask via `AskUserQuestion`:
+- If `scanRan` is false: proceed to Phase 5 and note the reason.
+- If `files` is empty: proceed to Phase 5.
+- If `files` contains entries: present the list of file + base-branch commits and ask via `AskUserQuestion`:
 
 ```
 question: "Base branch advanced on {N} file(s) in this PR since it opened. Proceeding into rebase risks a conflict abort mid-flow."
@@ -211,7 +141,7 @@ git -C {worktree_path} fetch --all
 git -C {worktree_path} rebase origin/{base_branch}
 ```
 
-If the rebase fails due to conflicts, stop immediately — do not proceed with squash or force-push. Capture the conflict file list (`git -C {worktree_path} diff --name-only --diff-filter=U`), run `git -C {worktree_path} rebase --abort` to restore the branch to its pre-rebase state, then write the abort state file for Phase 4.6 of the next run:
+If the rebase fails due to conflicts, stop immediately — do not proceed with squash or force-push. Capture the conflict file list (`git -C {worktree_path} diff --name-only --diff-filter=U`), run `git -C {worktree_path} rebase --abort` to restore the branch to its pre-rebase state, then write the abort state file for Phase 4 of the next run:
 
 ```bash
 mkdir -p workspace/tmp
@@ -357,7 +287,7 @@ git -C {worktree_path} commit -m "{squash_commit_message}"
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md` (which handles `/nase:improve-commit-message` automatically).
 Deviation: use `--force-with-lease` instead of normal push. If force-push fails, report the error and stop — someone pushed new commits and the user needs to reconcile.
 
-On push success, clear the Phase 4.6 abort signature:
+On push success, clear the Phase 4 abort signature:
 ```bash
 rm -f "workspace/tmp/prep-merge-{owner}-{repo}-{pr_number}-abort.json"
 ```
@@ -413,7 +343,7 @@ PR ready for merge ✓
 Append to daily log following `.claude/docs/daily-log-format.md` (tag: `prep-merge`) **before** prompting (ensures the log is written regardless of the user's next choice).
 Log: `{repo_name}#{pr_number} — squashed → 1 commit, force-pushed`
 
-Then branch on the PR's draft state (`isDraft` from the Phase 1 metadata). Do not offer to un-draft a PR that is already non-draft, and do not tell the user to un-draft it — `gh pr ready` is a no-op there and the framing is misleading.
+Then branch on the PR's draft state (`metadata.isDraft` from the Phase 2 prep-state). Do not offer to un-draft a PR that is already non-draft, and do not tell the user to un-draft it — `gh pr ready` is a no-op there and the framing is misleading.
 
 **If the PR is a draft (`isDraft == true`):** use the `AskUserQuestion` tool:
 

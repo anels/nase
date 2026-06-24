@@ -71,11 +71,11 @@ SCRIPT_TESTS=(
   tests/scripts/test-today-stats.sh
   tests/scripts/test-tool-availability.sh
   tests/scripts/test-local-parallel-subagents.sh
-  tests/scripts/test-tech-debt-subagents.sh
   tests/scripts/test-cli-tooling-integration.sh
   tests/scripts/test-github-actions-hardening.sh
-  tests/scripts/test-extensions-check.sh
   tests/scripts/test-pr-github-helper.sh
+  tests/scripts/test-statusline-context.sh
+  tests/scripts/test-fsd-preflight.sh
   tests/scripts/test-pr-review-eval.sh
   tests/scripts/test-voice-profile-routing.sh
   tests/scripts/test-local-sensitive-artifacts.sh
@@ -88,10 +88,11 @@ SCRIPT_TESTS=(
 FAST_SCRIPT_TESTS=(
   tests/scripts/test-help-summary.sh
   tests/scripts/test-local-parallel-subagents.sh
-  tests/scripts/test-tech-debt-subagents.sh
   tests/scripts/test-cli-tooling-integration.sh
   tests/scripts/test-github-actions-hardening.sh
   tests/scripts/test-pr-github-helper.sh
+  tests/scripts/test-statusline-context.sh
+  tests/scripts/test-fsd-preflight.sh
   tests/scripts/test-pr-review-eval.sh
   tests/scripts/test-voice-profile-routing.sh
   tests/scripts/test-shared-workflow-extraction.sh

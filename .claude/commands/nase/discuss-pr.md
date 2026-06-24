@@ -26,6 +26,8 @@ Default question order:
 
 Keep findings anchored to the PR's intent. Drop unrelated pre-existing issues. Treat "more elegant" as actionable only when the alternative is concretely simpler, safer, easier to test, or a better fit with existing patterns.
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. Prefer compact script output before spawning agents.
+
 ## Phase 0 — Input Guard
 
 Follow the PR input guard in `.claude/docs/pr-input-guard.md`. If `$ARGUMENTS` is empty, ask the user for the PR URL instead of printing usage.
@@ -54,32 +56,22 @@ python3 .claude/scripts/tool-availability.py --group baseline --group ci --group
 
 Follow `.claude/docs/cli-tooling.md`. Missing optional tools never fail this read-only review; record the fallback only when it changes confidence or verification coverage.
 
-## Step 2 — Fetch PR metadata and existing comments
+## Step 2 — Fetch compact PR context
 
-Fetch PR metadata using the helper's **light** variant, which centralizes the field set from `.claude/docs/github-queries.md`:
+Use the shared helper to collect the first-pass GitHub context and KB path mentions:
 
 ```bash
-python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant light > "$TMPDIR/pr-metadata.json"
-python3 .claude/scripts/pr-github-helper.py size-gate --metadata "$TMPDIR/pr-metadata.json" > "$TMPDIR/pr-size-gate.json"
+python3 .claude/scripts/pr-github-helper.py review-context "$PR_URL" --max-body-chars 600 --max-kb-paths 10 > "$TMPDIR/pr-review-context.json"
 ```
 
-Use `total_lines` and `diff_mode` from the size gate before fetching the diff:
+Use `pr`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `reviewComments`, `reviews`, and `kbMentions` from that JSON. The helper intentionally truncates bodies/excerpts and never emits a full diff.
 
-- If `diff_mode` is `stat` (default once the PR exceeds 1500 changed lines): run `gh pr diff {pr_number} --repo {owner}/{repo} --stat`; do not fetch the full diff. Read only the top changed files needed for each finding.
+Use `sizeGate.total_lines` and `sizeGate.diff_mode` before fetching the diff:
+
+- If `diff_mode` is `stat`: rely on `diffStat`; do not fetch the full diff. Read only the top changed files needed for each finding.
 - Otherwise fetch the full diff.
 
-Also run in parallel:
-
-```
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" --paginate
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/reviews" --paginate
-```
-
-Save: title, body, head SHA, changed file list, full diff or diff stat, existing inline comments (with `id`, `path`, `line`, `body`, `user.login`, `in_reply_to_id`), existing reviews (with `id`, `state`, `body`, `user.login`).
-
-**PR size gate:** if `review_warning` is true, warn: "This PR is {N} lines — single-pass review reliability drops significantly. Consider splitting by concern before deep review." User decides whether to proceed.
-
-Group comments into threads: top-level comment + all replies sharing the same `in_reply_to_id`.
+**PR size gate:** if `sizeGate.review_warning` is true, warn: "This PR is {N} lines — single-pass review reliability drops significantly. Consider splitting by concern before deep review." User decides whether to proceed.
 
 ## Step 2.5 — Collect context
 

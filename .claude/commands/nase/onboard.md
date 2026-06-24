@@ -17,6 +17,8 @@ Follow `.claude/docs/workspace-write-guard.md` for staged KB/workspace writes an
 Follow `.claude/docs/workspace-runtime-config.md` before using org/project/page/model/tool values that can drift.
 Follow `.claude/docs/cli-tooling.md` for optional local inventory tools. Probe with `python3 .claude/scripts/tool-availability.py --group baseline --group repo --group ci --format json`; never write this machine-local availability into the repo KB.
 
+Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
+
 ## Fixed Run Flow
 
 Every run produces an engineer-facing workbench:

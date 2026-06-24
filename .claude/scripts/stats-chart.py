@@ -8,7 +8,7 @@ Picks bucket granularity from the date range:
 Usage:
     stats-chart.py --daily-csv PATH --start YYYY-MM-DD --end YYYY-MM-DD
 
-The daily.csv is the format produced by workspace/scripts/stats-collect.sh:
+The daily.csv input format is:
     date,sessions,commits,prs
 
 Prints the chart to stdout. Used by /nase:stats.

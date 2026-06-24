@@ -124,6 +124,8 @@ STALE_RE = re.compile(
 CORRECTION_RE = re.compile(r"(Correction\s+20[0-9]{2}-[0-9]{2}-[0-9]{2}:|Superseded by:)", re.I)
 LAST_UPDATED_RE = re.compile(r"Last updated:\s*(20[0-9]{2}-[0-9]{2}-[0-9]{2})", re.I)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+DATED_HEADING_RE = re.compile(r"^###\s+(20[0-9]{2}-[0-9]{2}-[0-9]{2})\s+[—-]\s+(.+?)\s*$")
+DOMAIN_MAP_TARGET_RE = re.compile(r"^\s*-\s+.+?→\s+([^ \t\[]+)")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 WORKSPACE_REF_PREFIXES = (
     "workspace/",
@@ -185,8 +187,10 @@ class RepoIndex:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scan a project KB for hygiene issues.")
-    parser.add_argument("--repo-root", required=True, help="Repo root used to validate source refs.")
-    parser.add_argument("--kb-file", required=True, help="Project KB file to scan.")
+    parser.add_argument("--repo-root", help="Repo root used to validate source refs.")
+    parser.add_argument("--kb-file", help="Project KB file to scan.")
+    parser.add_argument("--workspace-scan", action="store_true", help="Scan workspace/kb structure.")
+    parser.add_argument("--root", default=".", help="Workspace root for --workspace-scan.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     parser.add_argument("--today", help="Override current date as YYYY-MM-DD for tests.")
     parser.add_argument("--stale-days", type=int, default=30, help="Age threshold for Last updated warnings.")
@@ -197,6 +201,11 @@ def parse_args() -> argparse.Namespace:
         help="Corrections/supersessions per section before compaction is suggested.",
     )
     return parser.parse_args()
+
+
+def require_file_mode_args(args: argparse.Namespace) -> None:
+    if not args.repo_root or not args.kb_file:
+        raise SystemExit("--repo-root and --kb-file are required unless --workspace-scan is used")
 
 
 def normalize_heading(title: str) -> str:
@@ -232,6 +241,122 @@ def issue(
     if suggestions:
         data["suggestions"] = suggestions
     return data
+
+
+def workspace_issue(category: str, message: str, path: pathlib.Path, **extra: Any) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "category": category,
+        "action": "needs_human",
+        "message": message,
+        "path": path.as_posix(),
+    }
+    data.update(extra)
+    return data
+
+
+def kb_markdown_files(root: pathlib.Path) -> list[pathlib.Path]:
+    kb_root = root / "workspace" / "kb"
+    if not kb_root.is_dir():
+        return []
+    return sorted(path for path in kb_root.rglob("*.md") if path.name != ".domain-map.md")
+
+
+def normalize_dated_heading_title(title: str) -> str:
+    return re.sub(r"\s+", " ", title.strip().lower())
+
+
+def domain_map_targets(root: pathlib.Path) -> set[str]:
+    domain_map = root / "workspace" / "kb" / ".domain-map.md"
+    if not domain_map.is_file():
+        return set()
+    targets: set[str] = set()
+    for line in domain_map.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = DOMAIN_MAP_TARGET_RE.match(line)
+        if match:
+            targets.add(match.group(1).strip().removeprefix("./"))
+    return targets
+
+
+def content_line_count(path: pathlib.Path) -> int:
+    count = 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("<!--"):
+            continue
+        count += 1
+    return count
+
+
+def workspace_scan(root: pathlib.Path) -> dict[str, Any]:
+    root = root.resolve()
+    files = kb_markdown_files(root)
+    issues: list[dict[str, Any]] = []
+    dated_headings: dict[tuple[str, str], list[tuple[str, int]]] = defaultdict(list)
+
+    for file_path in files:
+        rel = file_path.relative_to(root).as_posix()
+        for idx, line in enumerate(file_path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            match = DATED_HEADING_RE.match(line)
+            if match:
+                key = (match.group(1), normalize_dated_heading_title(match.group(2)))
+                dated_headings[key].append((rel, idx))
+        if content_line_count(file_path) <= 2:
+            issues.append(
+                workspace_issue(
+                    "sparse_file",
+                    "KB file has two or fewer non-heading content lines.",
+                    pathlib.Path(rel),
+                )
+            )
+
+    for (date_value, title), hits in sorted(dated_headings.items()):
+        if len(hits) <= 1:
+            continue
+        first_path = pathlib.Path(hits[0][0])
+        issues.append(
+            workspace_issue(
+                "duplicate_dated_heading",
+                f"Duplicate dated heading: {date_value} — {title}",
+                first_path,
+                hits=[{"path": path, "line": line} for path, line in hits],
+            )
+        )
+
+    targets = domain_map_targets(root)
+    for target in sorted(targets):
+        if not (root / target).is_file():
+            issues.append(
+                workspace_issue(
+                    "domain_map_missing_target",
+                    "Domain map target does not exist.",
+                    pathlib.Path(target),
+                )
+            )
+
+    mapped = {path for path in targets if path.startswith("workspace/kb/")}
+    for file_path in files:
+        rel = file_path.relative_to(root).as_posix()
+        if rel not in mapped:
+            issues.append(
+                workspace_issue(
+                    "domain_map_orphan",
+                    "KB markdown file is not referenced by workspace/kb/.domain-map.md.",
+                    pathlib.Path(rel),
+                )
+            )
+
+    category_counts = Counter(item["category"] for item in issues)
+    return {
+        "root": str(root),
+        "summary": {
+            "total": len(issues),
+            "duplicate_dated_headings": category_counts["duplicate_dated_heading"],
+            "domain_map_missing_targets": category_counts["domain_map_missing_target"],
+            "domain_map_orphans": category_counts["domain_map_orphan"],
+            "sparse_files": category_counts["sparse_file"],
+        },
+        "issues": sorted(issues, key=lambda item: (item["category"], item["path"])),
+    }
 
 
 def section_text(stack: list[tuple[int, str, int]]) -> str:
@@ -452,6 +577,24 @@ def scan(args: argparse.Namespace) -> dict[str, Any]:
 
 def print_text(result: dict[str, Any]) -> None:
     summary = result["summary"]
+    if "kb_file" not in result:
+        print(f"KB workspace scan: {result['root']}")
+        print(
+            "Summary: "
+            f"total={summary['total']} "
+            f"duplicate-dated-headings={summary['duplicate_dated_headings']} "
+            f"domain-map-missing-targets={summary['domain_map_missing_targets']} "
+            f"domain-map-orphans={summary['domain_map_orphans']} "
+            f"sparse-files={summary['sparse_files']}"
+        )
+        if not result["issues"]:
+            print("No workspace hygiene issues found.")
+            return
+        for item in result["issues"]:
+            label = item["action"].upper()
+            print(f"[{label}] {item['path']} {item['category']}: {item['message']}")
+        return
+
     print(f"KB hygiene scan: {result['kb_file']}")
     print(
         "Summary: "
@@ -474,7 +617,11 @@ def print_text(result: dict[str, Any]) -> None:
 
 def main() -> int:
     args = parse_args()
-    result = scan(args)
+    if args.workspace_scan:
+        result = workspace_scan(pathlib.Path(args.root))
+    else:
+        require_file_mode_args(args)
+        result = scan(args)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
