@@ -141,9 +141,11 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `skill-authoring-contract.md` | Behavior rules for skill authors: language preflight, external mutation, ADO CLI doctrine, bash hygiene, anti-overlap, subagent context. Read before adding a new skill. Enforced by `tests/check-skill-doctrine.sh`. |
 | `style-delta-capture.md` | Capture user corrections to drafted Slack/PR/external-doc text as `[STYLE-DELTA]` log lines and consolidate them into approved `communication-style.md` edits during `wrap-up` |
 | `voice-profile-routing.md` | Surface-specific routing layer for Ruilin's communication profile; callers use a capsule first, then read `workspace/communication-style.md` for high-stakes or ambiguous drafts |
-| `design-auto-mode.md` | Algorithm for `--auto` end-to-end design mode of `/nase:design` |
-| `design-grill-mode.md` | Algorithm for `--grill` stress-test mode of `/nase:design` |
+| `design-auto-mode.md` | Algorithm for the default (no-flag) / `--auto` end-to-end design mode of `/nase:design`; asks deferred human-input questions in one batch at the end |
+| `design-grill-mode.md` | Algorithm for `--grill` multi-persona (architect/PM/eng/SRE/security) stress-test mode of `/nase:design` |
 | `design-review-mode.md` | Algorithm for `--review` re-evaluation mode of `/nase:design` |
+| `design-research.md` | Shared research + plan-gate + implementation-readiness reference for `/nase:design`: external source ladder, bug-repro / root-cause / prod-data / test-gap gates, decision matrix, junior-implementable spec rules |
+| `design-principles.md` | Canonical principle set (First Principles / YAGNI / KISS / SOLID / DRY) + the 4 dynamic orderings by scenario; referenced by `design`, `fsd` Phase 3.6, and `simplify` |
 | `fsd-phase-decomposition.md` | Full "Direct with Phase isolation" algorithm for `fsd` Phase 3.7 — complexity precheck, state file format, subagent prompt template, TDD gate block |
 | `fsd-pre-impl-greps.md` | Pre-implementation grep checks for `fsd` Phase 3 (lint config, similar functions, test patterns) |
 | `github-queries.md` | Shared GraphQL queries for PR data (reviews, comments, checks) |

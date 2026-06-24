@@ -78,7 +78,7 @@ Look for concrete smells only:
 - Dead code: unused exports, unreachable branches, stale flags, debug leftovers, dead variables, redundant comments.
 - Duplication: repeated logic, copy-paste branches, duplicate conditionals, repeated parsing or normalization.
 - Needless abstraction: pass-through wrappers, speculative indirection, single-use helper layers, clever one-liners that obscure intent.
-  - **Reuse-first ladder test** (after comprehending the existing flow): for each added construct, find the first rung that justifies it — (1) needs to exist? (YAGNI) (2) already in codebase? (3) in stdlib? (4) native platform feature? (5) already-installed dependency? (6) one-liner? (7) only then a new minimal implementation. If a construct is covered by rungs 1–6, cut it. Never cut trust-boundary validation, security, or accessibility regardless of rung.
+  - **Reuse-first ladder test** (operationalizes DRY + YAGNI from `.claude/docs/design-principles.md`; apply after comprehending the existing flow): for each added construct, find the first rung that justifies it — (1) needs to exist? (YAGNI) (2) already in codebase? (3) in stdlib? (4) native platform feature? (5) already-installed dependency? (6) one-liner? (7) only then a new minimal implementation. If a construct is covered by rungs 1–6, cut it. Never cut trust-boundary validation, security, or accessibility regardless of rung.
 - Control-flow noise: deeply nested logic, nested ternaries, avoidable branching, broad catches that hide intent.
 - Boundary leaks: wrong-layer imports, hidden coupling, misplaced responsibilities, unexpected side effects.
 - Weak tests: broad assertions, missing edge cases around changed behavior, cleanup without a practical verification path.

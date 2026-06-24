@@ -1,6 +1,6 @@
 ---
 name: nase:design
-description: "KB-aware design — researches context, explores 2-3 approaches with tradeoffs, writes a tracked effort doc. Design only, no code (use /nase:fsd to implement). Supports `--grill` (stress-test), `--review` (re-evaluate), `--auto` (end-to-end design pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
+description: "KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the end. Supports `--interactive` (turn-by-turn flow), `--grill` (multi-persona stress-test), `--review` (re-evaluate), `--auto` (explicit auto pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
 pattern: pipeline
 category: Design & implementation
 sub-patterns: [fan-out]
@@ -14,25 +14,9 @@ Fan-out threshold: stay main-thread unless the request spans multiple repos, mor
 
 ## Design Principles Framework
 
-Apply these six principles to every design. The **order matters** — it changes which tradeoffs you prioritize first:
+Apply the principle set and dynamic ordering in `.claude/docs/design-principles.md` — classify the design (kickoff / incremental / small utility / complex component) and lead with the matching order. At design time, **also treat Elegance as a real dimension**: weave it in right after KISS, preferring the option with a coherent shape (fewer moving parts, clear boundaries, natural fit with existing patterns) unless another principle clearly outweighs it.
 
-| Principle | What it means in practice |
-|-----------|--------------------------|
-| **First Principles** | Strip back to core requirements. What is the actual problem? What assumptions can be challenged? |
-| **YAGNI** | Only design for what is needed now. No speculative extensibility. |
-| **KISS** | Prefer the simpler design. Complexity is a liability — justify it. |
-| **Elegance** | Prefer designs with a coherent shape: fewer moving parts, clear boundaries, natural fit with existing patterns, and no cleverness for its own sake. |
-| **SOLID** | When modeling components/modules: single responsibility, open/closed, dependency inversion. |
-| **DRY** | Identify reusable patterns; don't reinvent what the KB or codebase already has. |
-
-**Dynamic ordering by context** — lead with the principle that matters most for the current design:
-
-- **Architecture / Project Kickoff**: First Principles → YAGNI → KISS → Elegance → SOLID → DRY
-- **New Feature / Incremental**: YAGNI → KISS → Elegance → SOLID → DRY → First Principles
-- **Small Function / Utility**: KISS → Elegance → DRY → YAGNI → SOLID → First Principles
-- **Complex Component / OO Modeling**: First Principles → SOLID → Elegance → YAGNI → KISS → DRY
-
-Before presenting options in Phase 3, explicitly state which ordering you're applying and why. Use the principles as a lens to evaluate each option — not just pros/cons, but *which principle each option honors or violates*. Treat elegance as a real design dimension: prefer the option that makes the system easier to understand and change, unless another principle clearly outweighs it.
+Before presenting options in Phase 3, explicitly state which ordering you're applying and why. Use the principles as a lens to evaluate each option — not just pros/cons, but *which principle each option honors or violates*.
 
 ## Reviewability / PR Economy
 
@@ -52,10 +36,13 @@ When a split is justified, minimize the count and name the dependency order. Do 
 
 Before Phase 1, scan `$ARGUMENTS` for mode flags. Strip the flag from `$ARGUMENTS` before downstream parsing. Check in this order — first match wins.
 
-- `--auto` present → enter **Auto Mode**: end-to-end design-review-grill loop without interactive prompts. Skip all phases below and follow `.claude/docs/design-auto-mode.md`.
-- `--grill` present → enter **Grill Mode**: stress-test an existing plan via one-question-at-a-time interview. Skip all phases below and follow `.claude/docs/design-grill-mode.md`.
+- `--grill` present → enter **Grill Mode**: multi-persona stress-test of an existing plan, one question at a time. Skip all phases below and follow `.claude/docs/design-grill-mode.md`.
 - `--review` present → enter **Review Mode** (next section).
-- Otherwise: auto-detect Review Mode if the slug already exists in `workspace/efforts/`. If not, run normal design flow (Phase 1 onward).
+- `--interactive` present → run the **turn-by-turn interactive flow** (Phase 1 onward below): present context, options, and design with the user in the loop. This is the legacy default, now opt-in.
+- `--auto` present → enter **Auto Mode** explicitly (same as the no-flag default).
+- **Otherwise (no flag) — the default:** if the slug already exists in `workspace/efforts/`, enter **Review Mode**. If not, enter **Auto Mode**: run the end-to-end research-grill-review pipeline without turn-by-turn prompts, then ask any genuinely-unanswerable questions in a single `AskUserQuestion` batch at the very end before writing/updating the report. Follow `.claude/docs/design-auto-mode.md`.
+
+**Why auto is the default:** the research and grill passes resolve most questions from evidence, so turn-by-turn prompting mostly interrupts the user for things the codebase already answers. Auto front-loads the work and saves the user's attention for the few decisions only they can make — asked together, at the end. Reach for `--interactive` when the user explicitly wants to steer each step.
 
 ## Review Mode
 
@@ -74,6 +61,10 @@ Follow `.claude/docs/language-config.md` — use conversation language for inter
 ## Hard Gate
 
 Do NOT write any code or take any implementation action. This skill produces a design doc, not code. Implementation is a separate step (e.g., `/nase:fsd`).
+
+## Phases 1–5 (interactive flow)
+
+Phases 1–5 below define the turn-by-turn flow used by `--interactive`. Auto Mode (the default) runs the same phases without prompting and adapts them per `.claude/docs/design-auto-mode.md`; Grill and Review modes skip them entirely.
 
 ## Phase 1: Context Gathering (parallel, before asking anything)
 
@@ -106,7 +97,9 @@ project in (...) AND (summary ~ "{keywords}" OR description ~ "{keywords}") ORDE
 ```
 Note any existing tickets, their status, and assignees.
 
-After gathering: synthesize a 3-5 sentence context brief showing what you already know. Present it to the user: "Here's what I found in the KB and codebase before we dive in..."
+**1f. External research** (scale to scope) — for any feature/initiative/exploration, or any approach leaning on an external library/framework/SDK/API/platform behavior, look outward per `.claude/docs/design-research.md → Part A`: official docs (via `context7` / `ms-learn` MCPs or `WebSearch`+`WebFetch`), dependency source + changelog at the pinned version, issue trackers, then Q&A/blogs. Every external claim cites a URL or `path:line`; apply the comprehension gate and debias pass before relying on a finding. Skip for well-understood quick-fixes.
+
+After gathering: synthesize a 3-5 sentence context brief showing what you already know. Present it to the user: "Here's what I found in the KB, codebase, and external docs before we dive in..."
 
 ## Phase 2: Autonomous Scope & Constraint Analysis
 
@@ -143,7 +136,15 @@ When you do ask, batch all uncertainties into a single question with multiple op
 
 If the design touches any AppInsights / Azure Functions telemetry surface — `ExcludedTypes`, `SamplingPercentage`, `AdaptiveSamplingTelemetryProcessor`, `host.json` telemetry settings, `TelemetryProcessor` pipeline additions/removals, `ApplicationInsightsServiceOptions` / `TelemetryConfiguration`, or anything that changes the volume in `customMetrics` / `requests` / `exceptions` — apply the pre-merge protocol in `workspace/kb/general/dotnet.md` → **AppInsights Sampling / `ExcludedTypes` Changes Affect Far More SRE Alerts Than the Docs Imply** (2026-05-18). Enumerate the affected alert families and surface them as a dedicated risk in Phase 4's "Risks & Mitigations".
 
-### 2e. PR Packaging Analysis
+### 2e. Plan-phase gates
+
+Before committing to an approach, run the gates that fit the work per `.claude/docs/design-research.md → Part B`. Each is "prove it, or explicitly flag that you couldn't" — skipping silently is the failure mode:
+
+- **Bug-shaped work** → **repro gate** (B1: reliable reproduction / failing test / MRE before designing a fix) and **root-cause gate** (B2: 5 Whys / Fishbone / Fault Tree to the originating cause, not the symptom). Record both in the design's Context.
+- **Any assumption about scale / usage / traffic / current behavior** → **prod-data validation gate** (B3): validate against telemetry/logs, or flag the assumption as a Risk / `[NEEDS CLARIFICATION]`.
+- **Any code change** → **unit-test-gap analysis** (B4): map existing coverage of the area, name the gaps the change exposes; the implementation plan assigns tests against them.
+
+### 2f. PR Packaging Analysis
 
 Infer the review package before Phase 3. Start with `Target PR count: 1`. Raise the count only when the Reviewability / PR Economy split criteria above are met. If multiple PRs are required, record the smallest count, dependency order, and why a single PR would be harder to review or riskier to merge.
 
@@ -179,7 +180,7 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 | Risk | Low | Medium | High |
 ```
 
-Columns: Complexity, KB alignment, Elegance, key principle scores, Risk. Adapt columns to what actually differs.
+Columns: Complexity, KB alignment, Elegance, key principle scores, Risk. Adapt columns to what actually differs. For non-trivial or architecture-level choices, upgrade this to a **weighted decision matrix** per `.claude/docs/design-research.md → Part B5` (weight the criteria, score, run a sensitivity check on the weights, and spike any risky unknown rather than deciding on paper).
 
 **Step 4 — Recommend + Challenge** (same message). Share your recommendation with clear reasoning, including why the leading option is or is not elegant. Then explicitly challenge it:
 
@@ -206,6 +207,8 @@ For **quick fixes**: still present 2 options, but keep them brief (one line each
 
 Present the **full design in a single message** — do not pause between sections for feedback. The self-review loop (Phase 4b) handles quality assurance before the user sees it.
 
+The design must be **junior-implementable**: a competent junior engineer (or `/nase:fsd`) can execute it with zero remaining design decisions. Apply `.claude/docs/design-research.md → Part C` for the rules behind each section, and **tier the depth to scope (C7)** — a quick-fix gets a 3-line design, not the full template.
+
 ### Design Structure
 
 ```markdown
@@ -213,31 +216,46 @@ Present the **full design in a single message** — do not pause between section
 
 ### Context
 {Why this effort exists — problem statement, user need, or opportunity}
+{Bug-shaped work: repro (or failure to repro) + root cause from Phase 2e gates}
+
+### Goals
+- {What this design must achieve}
+
+### Non-Goals
+- {Reasonable things explicitly cut from scope — NOT negations of goals (C1). The most-omitted, highest-leverage scoping tool.}
 
 ### Scope
 {What's in and what's out — explicit boundaries}
 
 ### Design
-{Architecture, components, data flow — reference KB patterns where applicable}
+{Architecture, components, data flow — reference KB patterns where applicable.}
+{Concrete artifacts (C2): exact file paths, function/method signatures with types, data models, API contracts (endpoint/method/request/response/status/errors), pseudocode for non-obvious logic. Numbers not adjectives — every threshold/default/limit as a value. Use MUST/SHOULD/MAY (RFC 2119, C5) to mark binding vs advisory.}
 
 ### Success Criteria
-1. {Measurable criterion}
-2. {Measurable criterion}
+{Given-When-Then, one assertion per behavior (C4). Each Then asserts an observable, binary outcome.}
+1. Given {precondition}, When {action}, Then {observable outcome}
+2. ...
 
 ### Risks & Mitigations
 - {Risk} → {Mitigation}
 
-### Implementation / PR Plan
+### Implementation Plan
+{Vertical-slice steps as a dependency graph (C6). For each step: files touched, tests it needs (level by risk + pyramid), and its definition of done.}
+- [ ] **Step 1** — {goal}. Files: {paths}. Tests: {what}. Done when: {verifiable condition}.
+- [ ] **Step 2** — {goal}. Files: {paths}. Tests: {what}. Done when: {verifiable condition}.
+Dependencies: {which steps are sequential (A before B) vs parallel (no edge)}. Critical path: {longest dependent chain}.
+
+### PR Plan
 Target PR count: 1
 Review package: {single coherent PR by default; if more than one, justify each PR against the split criteria}
-Implementation order: {vertical slices or checkpoints; this can have multiple steps without becoming multiple PRs}
 Split trigger: {specific condition that would force a split during /nase:fsd, or "none expected"}
 
 ### Open Questions
 - {Anything unresolved — tracked for follow-up}
+- {Inline ambiguities use [NEEDS CLARIFICATION: …] markers (C3); implementation is gated on zero markers remaining}
 ```
 
-For **initiatives**: include a decomposition section listing sub-efforts with dependency order, then group them into the smallest review package. A sub-effort is not automatically a PR.
+For **initiatives**: include a decomposition section listing sub-efforts with dependency order, then group them into the smallest review package. Each sub-effort carries its own concreteness, acceptance criteria, and step plan. A sub-effort is not automatically a PR.
 
 ## Phase 4b: Self-Review Loop (max 3 iterations)
 
@@ -247,7 +265,7 @@ Run an internal quality gate before writing the effort doc.
 
 **For each iteration:**
 
-1. **Score** the draft design via the fresh-context subagent against every row in the Quality Criteria table (see below). For each criterion: PASS, WEAK, or FAIL.
+1. **Score** the draft design via the fresh-context subagent against every row in the Quality Criteria table (see below). For each criterion: PASS, WEAK, or FAIL. Have the subagent read the design through the **persona lenses** in `.claude/docs/design-grill-mode.md → Persona Lenses` (architect / PM / senior-eng / SRE / security) — a gap one persona catches that the criteria table misses still counts as a WEAK/FAIL with the persona named.
 
 2. **If any FAIL or 2+ WEAK**: identify the specific gaps and revise the design in-place. Common fixes:
    - Specificity FAIL → add concrete numbers, file paths, line counts
@@ -258,6 +276,9 @@ Run an internal quality gate before writing the effort doc.
    - KB alignment FAIL → reconcile with documented constraints
    - Elegance FAIL → simplify the design shape, remove awkward glue, reduce moving parts, or choose the option that fits the existing model more naturally
    - Reviewability FAIL → reduce PR count, add a review guide, or justify the split with a real merge/release/owner boundary
+   - Implementation readiness FAIL → add concrete file paths/signatures/data models, per-step tests + done-conditions, and resolve or mark `[NEEDS CLARIFICATION]`
+   - Research grounding FAIL → add the doc URL / source / issue and pin the version, or mark the claim `unverified`
+   - Repro & root cause FAIL → add the repro (or document why it won't reproduce) and trace the fix to the originating cause
 
 3. **If all PASS or at most 1 WEAK**: exit the loop and proceed to Phase 5.
 
@@ -339,6 +360,9 @@ Used by Review Mode and as a self-check before writing the design doc in Phase 5
 | **KB alignment** | Design doesn't contradict documented architecture constraints without explicit justification |
 | **Elegance** | Design has a coherent shape: minimal moving parts, clear ownership boundaries, natural fit with existing patterns, and no clever workaround where a simpler model exists |
 | **Reviewability** | Default to one PR; any multi-PR plan cites the split criterion, dependency order, and why review is easier than one coherent PR |
+| **Implementation readiness** | A junior could execute with zero design decisions: exact file paths, signatures, data models, API contracts where applicable; step plan with per-step tests + done-condition; zero unresolved `[NEEDS CLARIFICATION]` markers |
+| **Research grounding** | External claims about library/SDK/platform behavior cite a doc URL, dependency source, or issue — not memory; versions pinned |
+| **Repro & root cause** (bug-shaped only) | A reproduction (or documented failure to reproduce) exists, and the fix targets the originating cause, not the symptom |
 
 ## Notes
 

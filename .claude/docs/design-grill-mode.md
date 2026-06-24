@@ -40,7 +40,53 @@ Read the plan content (effort doc body or raw text). Extract every branch where 
 - Architectural choices the plan glosses over — interface shape, seam location, data path.
 - Review packaging ambiguity — proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, or implementation phases being treated as PRs without justification.
 
-Output internally: a list `branches: [{topic, why-it-matters}]`. Cap at 15 top-level branches; if more candidates exist, prioritize by load-bearingness (security, data-loss risk, irreversibility, cross-team coordination) and surface the rest in `## Open after grill`. The 15-cap protects the 25-iteration budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
+Output internally: a list `branches: [{topic, why-it-matters, persona}]`. Cap at 15 top-level branches; if more candidates exist, prioritize by load-bearingness (security, data-loss risk, irreversibility, cross-team coordination) and surface the rest in `## Open after grill`. The 15-cap protects the 25-iteration budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
+
+## Step 3.4: Persona Lenses (multi-perspective grill)
+
+Run the plan past five reviewer personas — each catches a different failure class, and a design that survives all five is far harder to break than one grilled from a single angle. Walk the lenses, generate the sharpest 1–3 questions per persona that the plan does not already answer, and fold them into `branches` (tag each with its `persona`, respect the 15-cap, drop overflow into `## Open after grill`). A question a persona answers from the codebase/KB is resolved in Step 4 like any other branch — only genuine forks reach the user.
+
+Lead with whichever personas matter most for this design (a CLI util needs little PM/SRE; a tenant-facing service needs all five). End with a **pre-mortem**: assume it's six months out and this design caused an incident — what was the cause? Treat each answer as a branch.
+
+**ARCHITECT** — scalability, coupling, boundaries, tech debt
+- Where are the system boundaries, and which interfaces are load-bearing — what breaks if one moves?
+- Blast radius of coupling: if component X changes, how many others must change with it?
+- Which competing quality attribute did this sacrifice (modifiability vs performance vs availability), and was that explicit?
+- Does this belong in this service/codebase, or is it a library/platform concern leaking in?
+- What's the 10× failure point — which dimension (data, traffic, fan-out) saturates first?
+- What tech debt does this create, and what's the documented paydown trigger?
+
+**PRODUCT MANAGER** — user value, scope, requirements, edge cases, metrics
+- What user problem does this solve, and how do we know it's prioritized over what we're not building?
+- What's explicitly out of scope — is the omission a recorded decision or a silent gap?
+- Which non-happy-path users does this degrade for, and is that acceptable?
+- What's the success metric, and what threshold would tell us this was the wrong bet?
+- What's the cost of being wrong, and how reversible is the decision?
+
+**SENIOR / STAFF ENGINEER** — correctness, maintainability, testability, ops
+- What's the simplest thing that works — where are we solving a hypothetical future problem?
+- Walk the concurrency / ordering / partial-failure cases; which can corrupt state?
+- Will the tests actually fail when this breaks, or are they asserting the mock?
+- Six months out, what will a new engineer misread — does the code explain *why*, not *what*?
+- What's the rollback story if this ships and is wrong?
+- Which invariant, if violated, makes the whole thing unsound — and where is it enforced?
+
+**SRE / OPERABILITY** — reliability, observability, rollout
+- How does this degrade under dependency failure or overload vs failing hard?
+- Can on-call diagnose a 2am incident from the signals this emits, or is it a black box?
+- Redundancy / horizontal-scaling story — has failure recovery been tested, not just assumed?
+- What new alert does this introduce, and what's its expected false-positive rate?
+- Deploy + rollback mechanism, and the blast radius of a bad rollout?
+
+**SECURITY** — STRIDE
+- *Spoofing:* how is every actor across each trust boundary authenticated — where can identity be forged?
+- *Tampering:* where can data be modified in transit or at rest without detection?
+- *Repudiation:* if a privileged action is disputed, what audit trail proves who did it?
+- *Information Disclosure:* impact if an attacker reads this store / payload — is it tenant-isolated?
+- *Denial of Service:* cheapest request that consumes the most work — where's the rate limit?
+- *Elevation of Privilege:* where could an unprivileged user reach privileged paths; is least-privilege enforced at each hop?
+
+When recording resolutions (Step 6), keep the `persona` tag and a **severity** — `blocking` (real correctness/security/data risk), `suggestion`, or `nit` — so downstream skills can triage. Don't over-escalate: `blocking` needs concrete evidence the design is broken, not a stylistic preference.
 
 ## Step 3.5: Codex Mutual Grill Round 1 (cross-model questions)
 
@@ -109,7 +155,7 @@ Rules:
 ### 4d. Record + drill down
 
 After each answer:
-1. Append to internal buffer `grill_resolutions: [{topic, question, answer, rationale}]` (Step 6 does the single write).
+1. Append to internal buffer `grill_resolutions: [{persona, severity, topic, question, answer, rationale}]` (Step 6 does the single write; `persona`/`severity` default to `—`/`suggestion` for non-persona branches).
 2. If the answer implies a follow-up decision, push that as the next branch.
 
 ## Step 5: Termination
@@ -178,10 +224,10 @@ Block format:
 
 ### Resolutions
 
-| # | Topic | Question | Decision | Rationale |
-|---|-------|----------|----------|-----------|
-| 1 | {topic} | {question} | {answer} | {1-sentence why} |
-| 2 | ... | ... | ... | ... |
+| # | Persona | Sev | Topic | Question | Decision | Rationale |
+|---|---------|-----|-------|----------|----------|-----------|
+| 1 | {architect/pm/eng/sre/security/—} | {blocking/suggestion/nit} | {topic} | {question} | {answer} | {1-sentence why} |
+| 2 | ... | ... | ... | ... | ... | ... |
 
 ### Constraints for implementation
 

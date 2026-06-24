@@ -1,18 +1,18 @@
-# Auto Mode (`/nase:design --auto`)
+# Auto Mode (`/nase:design` default, or explicit `--auto`)
 
-End-to-end design-grill-review loop. From requirement to effort doc without interactive prompts. Every open question is researched against the codebase and KB; questions that cannot be answered from available evidence are queued into `## Human Input Required` in the effort doc for the user to fill in after.
+End-to-end research-grill-review loop. From requirement to effort doc without turn-by-turn prompts. Every open question is researched against the codebase, KB, and external docs; questions that still cannot be answered from evidence are collected and asked in **one `AskUserQuestion` batch at the very end** (Step 4.5), before the final report is written. Anything the user defers there stays in `## Human Input Required` in the effort doc.
 
 ## Activation
 
-`$ARGUMENTS` contains `--auto` (anywhere). Strip `--auto` before downstream parsing. `--grill` and `--review` are sub-routines inside this algorithm — if they appear alongside `--auto`, `--auto` wins.
+This is the **default** mode when `/nase:design` runs with no flag and the slug does not already exist in `workspace/efforts/` (an existing slug routes to Review Mode). It also runs on explicit `--auto` when no higher-priority flag is present. Base mode detection routes `--grill` / `--review` to Grill/Review Mode before Auto Mode. Strip `--auto` before downstream parsing. Use `--interactive` to opt out into the turn-by-turn flow.
 
 ## Hard Gate
 
 Same as base skill: no code, no implementation, no FSD. Only the effort doc is produced.
 
-## No-Ask Contract
+## No-Ask Contract (mid-pipeline)
 
-**Never use `AskUserQuestion` in auto mode.** For every decision point, execute the Research Ladder first. Only after the ladder is exhausted does a question become unknowable.
+**Never use `AskUserQuestion` mid-pipeline.** For every decision point, execute the Research Ladder first. Collect anything still unknowable into `human_input_queue` and keep going — do not stop to ask. The **one** place auto mode talks to the user is **Step 4.5**, which batches the whole queue into `AskUserQuestion` at the end, after research and grill have shrunk it to only what genuinely needs a human. Only after the ladder is exhausted does a question reach that batch.
 
 | Branch type | Resolution strategy |
 |-------------|---------------------|
@@ -20,9 +20,9 @@ Same as base skill: no code, no implementation, no FSD. Only the effort doc is p
 | config-answerable | Read domain KB file, repo `CLAUDE.md`, Confluence runbooks |
 | jira-answerable | Execute `searchJiraIssuesUsingJql`; prior decisions are often in comments |
 | effort-answerable | Execute `grep -r` across `workspace/efforts/*.md` |
-| unknowable | Add to `human_input_queue` only after all four sources above come back empty |
+| unknowable | Add to `human_input_queue` only after all applicable research sources above come back empty |
 
-"Unknowable" means: requires a business/stakeholder decision, involves external team ownership with no documented precedent, or has zero signal across all four research sources. **Exhaust every source before marking unknowable.** A single empty grep is not exhaustion.
+"Unknowable" means: requires a business/stakeholder decision, involves external team ownership with no documented precedent, or has zero signal across all applicable research sources. **Exhaust every source before marking unknowable.** A single empty grep is not exhaustion.
 
 ## Execute, Don't Narrate
 
@@ -39,8 +39,9 @@ Run this sequence before giving up on any question:
 3. **CLAUDE.md** — read the repo's coding standards for relevant constraints.
 4. **Jira** — execute `searchJiraIssuesUsingJql` for related tickets using keyword fragments from the question. Read comments on the top 2-3 hits.
 5. **Effort docs** — execute `grep -r` across `workspace/efforts/*.md` for related design decisions.
+6. **External docs** — when the question is about an external library/SDK/API/platform behavior, run the source ladder in `.claude/docs/design-research.md → Part A`: official docs (`context7`/`ms-learn` MCP or `WebSearch`+`WebFetch`), dependency source/changelog at the pinned version, then issue trackers. Cite the URL/source; apply the comprehension gate.
 
-After all 5: if still no signal, classify as unknowable. When forced to choose between equally valid options with no signal, apply the Design Principles ordering from the base skill and pick the option that best satisfies the leading principle. Log the auto-selection reasoning.
+After all 6: if still no signal, classify as unknowable. When forced to choose between equally valid options with no signal, apply the Design Principles ordering from the base skill and pick the option that best satisfies the leading principle. Log the auto-selection reasoning.
 
 ---
 
@@ -64,6 +65,10 @@ git -C {repo} log --oneline --diff-filter=M --name-only -- {relevant-paths} | he
 project in (...) AND issuetype in (Epic, Story) AND (summary ~ "{keywords}") AND status != Done ORDER BY updated DESC
 ```
 
+**1i. External research** — run `.claude/docs/design-research.md → Part A` for any external-dependency-leaning approach: official docs, dependency source/changelog (pinned version), issue trackers, Q&A, blogs. Ground every external claim with a URL/source; run the debias pass before locking a direction.
+
+**1j. Plan-phase gates** — run the applicable gates from `.claude/docs/design-research.md → Part B`: bug-repro + root-cause (bug-shaped work), prod-data validation (scale/usage assumptions), unit-test-gap analysis (any code change). Resolve from evidence where possible; queue genuine unknowns.
+
 After gathering: synthesize context internally. No user interaction — proceed directly to Step 2.
 
 ---
@@ -72,9 +77,9 @@ After gathering: synthesize context internally. No user interaction — proceed 
 
 Run Phases 2–5 from the base skill with these adaptations:
 
-**Phase 2c** — instead of `AskUserQuestion`: run the Research Ladder. If still unknowable after all 5 sources, add to `human_input_queue` and use the most KB-aligned option as a default assumption. Log: "Auto-assumption: {X} — based on {source}. Will appear in Human Input Required."
+**Phase 2c** — instead of `AskUserQuestion`: run the Research Ladder. If still unknowable after the full ladder, add to `human_input_queue` and use the most KB-aligned option as a default assumption. Log: "Auto-assumption: {X} — based on {source}. Queued for Step 4.5 human input."
 
-**Phase 2e / Implementation / PR Plan** — keep the base skill's PR Packaging Analysis. Auto mode must still write `### Implementation / PR Plan` with `Target PR count: 1` unless a documented split criterion is met. If more than one PR is proposed, run the Research Ladder against the split boundary and include why one coherent PR is worse for review or merge safety.
+**Phase 2e gates / 2f PR Packaging** — run the base skill's Phase 2e plan-phase gates and Phase 2f PR Packaging Analysis. Auto mode must still write the junior-implementable `### Implementation Plan` (per-step files/tests/done + dependency graph, base skill Phase 4 / `design-research.md` Part C) and `### PR Plan` with `Target PR count: 1` unless a documented split criterion is met. If more than one PR is proposed, run the Research Ladder against the split boundary and include why one coherent PR is worse for review or merge safety.
 
 **Phase 3, Step 5** — instead of `AskUserQuestion`: auto-select the recommended option (first in the list). Log internally: "Auto-selected: Option {N} — {rationale}." If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
 
@@ -96,6 +101,7 @@ Gather every item that needs investigation:
 - All items in `## Open Questions` in the effort doc
 - Any ambiguous wording spotted during Phase 4b ("we could", "either X or Y", "TBD", "later")
 - Missing invariants the design asserts without specifying: error modes, retry semantics, idempotency, ordering, concurrency, rollout, observability
+- **Persona-lens questions** — walk the design through the five lenses + pre-mortem in `.claude/docs/design-grill-mode.md → Persona Lenses` (architect / PM / senior-eng / SRE / security) and add the sharpest unanswered questions, tagged with their persona
 
 Cap at 15 branches. Prioritize by load-bearingness: security, data-loss risk, irreversibility, cross-team coordination first.
 
@@ -134,7 +140,7 @@ design_section: "{Which section this affects}"
 After working through all branches:
 - Apply all resolutions to the relevant design sections in-place
 - Remove resolved items from `## Open Questions` and note what resolved each one (e.g., "Resolved via `src/api/routes.ts:42` — existing pattern uses pagination")
-- Items moved to `human_input_queue` stay in `## Open Questions` with the note: "→ Queued for Human Input Required"
+- Items moved to `human_input_queue` stay in `## Open Questions` with the note: "→ Queued for Step 4.5 human input"
 
 Proceed to Step 4.
 
@@ -156,30 +162,48 @@ All criteria PASS or ≤1 WEAK → verdict: **APPROVED**. Exit loop → Step 5.
 
 ### 4c. Resolve remaining issues
 
-For each FAIL/WEAK criterion, for each specific gap: run the Research Ladder (5 sources), fix in-place. If Research Ladder exhausted and still unknowable → add to `human_input_queue`.
+For each FAIL/WEAK criterion, for each specific gap: run the Research Ladder, fix in-place. If the ladder is exhausted and the issue is still unknowable → add to `human_input_queue`.
 
 ### 4d. Re-score and iterate
 
 Re-evaluate Quality Criteria. If APPROVED: exit loop. If not APPROVED and iterations < 3: increment and repeat from 4a.
 
-After 3 iterations: exit with status `max-iterations`. Remaining issues go to Human Input Required.
+After 3 iterations: exit with status `max-iterations`. Remaining issues go to `human_input_queue` for Step 4.5; anything deferred there becomes Human Input Required.
 
 ---
+
+## Step 4.5: Resolve Human Input (the one interactive batch)
+
+This is the single point where auto mode talks to the user. By now research + grill + review have shrunk `human_input_queue` to only what genuinely needs a human — business/stakeholder calls, decisions with no codebase/KB/Jira/external signal. Ask them all here, together, before the final write.
+
+**If `human_input_queue` is empty: skip this step entirely** — write the doc and report with no prompt. The best auto run asks nothing.
+
+**If non-empty:**
+
+1. Convert each queued item into an `AskUserQuestion` entry:
+   - `question` — the concrete, specific question (not "clarify scope" but "Should the export endpoint support CSV only, or also Excel?").
+   - `header` — ≤12-char tag.
+   - `options` — **first option = the default assumption the design already applied, suffixed " (Recommended)"**, its `description` quoting *why* (the evidence/principle behind the auto-choice). Then the real alternative(s), each `description` stating the trade-off. The harness adds "Other" as the free-form escape.
+2. **Batch** — group related entries into the fewest `AskUserQuestion` calls the harness supports. If the queue is large, order by load-bearingness (security / data-loss / irreversibility / cross-team first) so the most consequential are asked first.
+3. After each answer: apply the decision to the relevant design sections, and record it in a `### Resolved Decisions` block (columns: `#`, `Question`, `Decision`, `Applied to`) for the audit trail.
+4. Anything the user skips or answers with "Other → defer" stays in `human_input_queue` for the `## Human Input Required` section (Step 5b). Everything answered is removed from the queue.
+
+This replaces the old "queue everything to the doc and tell the user to run `--review`" behavior: the user gets asked once, at the end, and the written doc already reflects their answers.
 
 ## Step 5: Write Final Effort Doc
 
 ### 5a. Apply all revisions
 
-Finalize the effort doc with all in-place changes from Steps 3–4. Write (or overwrite) `workspace/efforts/{slug}.md`.
+Finalize the effort doc with all in-place changes from Steps 3–4.5. Write (or overwrite) `workspace/efforts/{slug}.md`.
 
 ### 5b. Append `## Human Input Required`
 
-Append only if `human_input_queue` is non-empty. Place AFTER `## Open Questions` and BEFORE `## Lifecycle`.
+Append only if `human_input_queue` is still non-empty **after Step 4.5** — i.e. the user deferred these at the end-of-run prompt (skipped, or "Other → defer"). Most questions should be resolved by then; this section is the leftover. Place AFTER `## Open Questions` and BEFORE `## Lifecycle`.
 
 ```markdown
 ## Human Input Required
 
-These questions cannot be resolved from the codebase, KB, or Jira context. Provide your answers below, then run `/nase:design --review {slug}` before starting implementation.
+You deferred these at the end-of-run prompt. Provide answers below, then run `/nase:design --review {slug}` before starting implementation.
 
 | # | Question | Why it needs you | What was tried | Default assumption used | Affects |
 |---|----------|-----------------|----------------|------------------------|---------|
@@ -191,7 +215,7 @@ Each row must be a concrete, actionable question — not "clarify scope" but "Sh
 ### 5c. Update lifecycle
 
 ```markdown
-- [x] Auto-design completed — {YYYY-MM-DD} ({N} review iterations, {M} questions auto-resolved, {K} need human input)
+- [x] Auto-design completed — {YYYY-MM-DD} ({N} review iterations, {M} auto-resolved, {A} answered at end-of-run prompt, {K} deferred)
 ```
 
 ### 5d. Update todo.md
@@ -209,14 +233,14 @@ Report to user (conversation language). Include:
 
 - Effort doc path
 - Final verdict: APPROVED or max-iterations-reached
-- Stats: {N} review rounds, {M} branches grilled ({X} resolved, {K} need human input)
-- If `## Human Input Required` is non-empty:
-  > **{K} questions await your input** — listed in `## Human Input Required` in the effort doc. Run `/nase:design --review {slug}` and the review-mode skill will walk you through each one via `AskUserQuestion` (one question per turn, with the design's default highlighted as Recommended). See `design-review-mode.md` Step 1b for the interactive resolution flow.
-- If APPROVED with no `## Human Input Required` entries:
+- Stats: {N} review rounds, {M} branches grilled ({X} resolved from evidence), {A} questions answered at the end-of-run prompt, {K} deferred
+- If the user deferred questions (`## Human Input Required` non-empty):
+  > **{K} questions still open** — you deferred these at the prompt; they're in `## Human Input Required`. Run `/nase:design --review {slug}` to resolve them before implementing.
+- If APPROVED with nothing deferred:
   > Design approved with no open questions. Run `/nase:fsd {slug}` when ready to implement.
 
 Daily log entry (per `.claude/docs/daily-log-format.md`):
-`auto-design {slug} — grill: {M} branches ({X} resolved, {K} queued), {N} review rounds → {verdict}`
+`auto-design {slug} — grill: {M} branches ({X} resolved), {A} asked/{K} deferred, {N} review rounds → {verdict}`
 
 ---
 
@@ -225,5 +249,5 @@ Daily log entry (per `.claude/docs/daily-log-format.md`):
 - **Step 3 is unconditional** — the Codebase Grill Pass runs every time, regardless of whether the initial design looks complete. This is intentional: it surfaces hidden constraints before review, not after.
 - **Execute before concluding** — if the Research Ladder says "check the codebase," that means calling Grep/Read/Glob, not reasoning about what might be there.
 - **Auto-assumptions are conservative** — when forced to pick, prefer the simpler, more reversible option and flag it for review.
-- **If `--auto` + `--review`** — run review only (skip Steps 1–3), apply no-ask contract throughout, produce updated effort doc with Human Input Required section.
+- **If `--auto` + `--review`** — this should not reach Auto Mode; base mode detection routes to Review Mode first.
 - **Hard Gate still applies** — no code edits, no FSD invocation, no PRs. Only the effort doc is written.
