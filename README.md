@@ -169,7 +169,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 ### Implement a feature or fix
 
-- `/nase:design` handles complex tasks: KB context, 2–3 approaches, tradeoffs, tracked effort doc. Skip it for simple fixes.
+- `/nase:design` handles complex tasks: KB + external-doc research, 2–3 approaches, tradeoffs, a tracked junior-implementable effort doc. By default it runs an end-to-end auto pass (research → multi-persona grill → review) and asks any genuine human-input questions in one batch at the end; use `--interactive` to steer it turn by turn. Skip it for simple fixes.
 - `/nase:fsd` handles code → test → fix → commit → push → draft PR. For large features use **Direct with Phase isolation**; for hard TDD use **Yes** at the TDD prompt.
 - Optional Codex second-opinion gates run where configured and skip their Codex call cleanly otherwise; `/nase:fsd` and `/nase:address-comments` still run their local read-only verifier fallback for pre-push and review-thread safety.
 - Reviewer discovery uses KB → git history → CODEOWNERS, then stages Slack DM drafts.
@@ -177,9 +177,10 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 ```
 /nase:onboard <repo>          # load repo context into KB
-/nase:design <task>            # (complex tasks) explore approaches → effort doc
-  review and iterate             # discuss tradeoffs, refine until approved
-  /nase:design --grill <slug>    # (optional) stress-test the plan one question at a time
+/nase:design <task>            # (complex tasks) default auto pass → junior-implementable effort doc
+  answer end-of-run questions     # auto asks only what evidence couldn't resolve, batched at the end
+  /nase:design --interactive <task>  # (optional) steer the design turn by turn instead
+  /nase:design --grill <slug>    # (optional) multi-persona stress-test of the plan
 /nase:fsd <task>               # implement → test → commit → push → draft PR
 /nase:request-review <PR-URL>  # find right reviewers, stage Slack DM drafts
   ⏳ wait for feedback
@@ -267,7 +268,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:design` | KB-aware design — researches context, explores 2-3 approaches with tradeoffs, writes a tracked effort doc. Design only, no code (use /nase:fsd to implement). Supports `--grill` (stress-test), `--review` (re-evaluate), `--auto` (end-to-end design pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'. |
+| `/nase:design` | KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the end. Supports `--interactive` (turn-by-turn flow), `--grill` (multi-persona stress-test), `--review` (re-evaluate), `--auto` (explicit auto pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'. |
 | `/nase:fsd` | End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design. |
 
 ### Git workflow

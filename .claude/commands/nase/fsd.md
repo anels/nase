@@ -36,7 +36,8 @@ Research first; minimize questions. Read `workspace/context.md`, then `workspace
 **Effort-doc intake (design handoff):** before repo inference, scan `$ARGUMENTS` tokens for a slug matching `workspace/efforts/{slug}.md`. If found, read the effort doc and extract:
 - `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.
 - The latest `## Grill Session → ### Constraints for implementation` block (if any) → store as `design_constraints`. These are evidence-backed decisions — carry them into Phase 4 and every subagent prompt; do not re-litigate them silently.
-- `### Implementation / PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases.
+- `### Implementation Plan` → store as `design_impl_plan` (per-step files/tests/done + dependency graph). Seed Phase 3.7 decomposition from these steps instead of re-deriving them; the design already marked which steps are parallel vs sequential.
+- `### PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases.
 - `## Topology` (if present) → seed Phase 1.5 with it instead of rebuilding; Phase 3 finalization re-verifies the listed paths still exist in `{work_root}`.
 - Frontmatter `repo:` → store as `repo_hint_from_design`; use it as the target repo unless the user explicitly named a different one.
 
@@ -199,16 +200,16 @@ Direct / phase-isolated: keep findings in context. Team: also write the same blo
 
 Read repo `CLAUDE.md` and relevant KB architecture before coding.
 
-**Classify task type and pick your lead principles:**
+**Classify task type and pick your principle ordering** per `.claude/docs/design-principles.md` (canonical framework + the 4 dynamic orderings):
 
-| Context | Examples | Lead with |
-|---------|----------|-----------|
-| Architecture / requirements analysis | system redesign, new service, cross-cutting concern | First Principles → SOLID |
-| New feature / incremental development | adding an endpoint, extending a handler, new config option | YAGNI → KISS |
-| Small function / utility | helper, formatter, parser, extension method | KISS → DRY |
-| Complex business component / OOP modelling | domain entity, stateful service, multi-class hierarchy | First Principles → SOLID → DRY |
+| Context | Examples | Ordering |
+|---------|----------|----------|
+| Architecture / requirements analysis | system redesign, new service, cross-cutting concern | First Principles → YAGNI → KISS → SOLID → DRY |
+| New feature / incremental development | adding an endpoint, extending a handler, new config option | YAGNI → KISS → SOLID → DRY → First Principles |
+| Small function / utility | helper, formatter, parser, extension method | KISS → DRY → YAGNI → SOLID → First Principles |
+| Complex business component / OOP modelling | domain entity, stateful service, multi-class hierarchy | First Principles → SOLID → YAGNI → KISS → DRY |
 
-Store `task_type` and `principle_order`; use them as the design lens.
+Store `task_type` and the full `principle_order`. Apply the **lead** principle during Green (implement only what it requires) and walk the **full order** during Refactor — see Phase 4.
 
 **Complexity self-check:** if a senior engineer would call it overcomplicated, simplify first. Signals: single-implementor abstraction, single-value config, impossible-error handling, >3 indirection layers.
 
@@ -234,6 +235,8 @@ If phase isolation falls back to Direct mode, continue to Phase 4 as Direct. If 
 
 Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present — implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
 If `design_pr_plan` exists, preserve it unless the diff-size hard gate, repo boundary, release boundary, or a reviewer-owner boundary clearly forces a split. Implementation phases are not PR boundaries by themselves.
+
+**Comments — write sparingly.** Default to none (`CLAUDE.md → Code Quality`; `workspace/kb/general/clean-code.md`). Add a comment only when the logic is genuinely non-obvious, and then explain the *why* (the invariant, the bug a workaround references) — never restate what the code already says. Comments that narrate the obvious are AI-slop the Phase 5.75 review will flag.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**
@@ -342,9 +345,42 @@ On "Split": stop and suggest the minimum PR count from the design PR plan, topol
 
 ---
 
+## Phase 5.75: Pre-Commit Self-Review Loop (fresh-context, until clean)
+
+Before simplifying or committing, the diff gets a real review — not a glance. The point is to catch correctness and maintainability defects while they're cheap, on the actual diff, before `/nase:simplify` reshapes it and before the cross-model spec check in Phase 6.5. AI-written diffs carry materially more defects than they appear to (`workspace/kb/general/llm.md` — "confidently incomplete"), so this pass is mandatory, not optional.
+
+**Reviewer is fresh-context, never the implementing context.** Scoring your own diff in the context that wrote it is self-approval — the blind spot that produced a bug scores right past it (`CLAUDE.md → Code Review`; `feedback_ai-code-comprehension-gate.md`). Spawn a read-only subagent (role `verifier` per `.claude/roles.yaml`, tools Read/Grep/Glob/Bash — no Edit/Write). Give it only: the task spec from `$ARGUMENTS` (the contract), the merge-base diff, and `{work_root}`. Do not hand it your reasoning or a verdict.
+
+### Severity rubric
+
+Reuse the existing ladder (`workspace/kb/general/clean-code.md` severity ladder; `CLAUDE.md → Code Review`) — don't invent a parallel scheme. Map to gate tiers:
+
+| Tier | = ladder | What counts | Gate? |
+|------|----------|-------------|-------|
+| **P0** | blocking | correctness bug, security / tenant-isolation / secret leak, data loss, broken behavior, diff contradicts the spec | **must fix before commit** |
+| **P1** | blocking/suggestion | real maintainability or UX defect, a fixed bug with no regression test (Beyoncé rule), code you cannot restate in your own words (comprehension gap), premature abstraction that should be cut | **must fix before commit** |
+| **P2** | nit/suggestion | style, naming, polish | record as follow-up; do **not** gate |
+
+Don't over-escalate (`CLAUDE.md`): `P0` needs concrete evidence the code is broken or exploitable, not a preference.
+
+### Scope discipline (so the loop converges)
+
+Review the **diff**, not the whole repo. Before acting on any finding, grep whether the pattern is **pre-existing** (`workspace/kb/general/workflow.md` § pre-existing-pattern check) — if this change didn't introduce it, log it as a follow-up and move on; do not fix it here (`CLAUDE.md` "while we're at it" rejection). This keeps the loop from ballooning into a debt cleanup.
+
+### Loop
+
+1. Reviewer returns findings, each tagged P0/P1/P2 with file:line + the concrete problem.
+2. Fix **every P0 and P1** in `{work_root}` (respecting scope discipline). P2s become Phase 10 follow-up notes.
+3. **Re-spawn a fresh reviewer** on the updated diff. Confirm each prior fix actually landed at HEAD (`feedback_verify-claimed-fix-vs-head.md` — a claimed fix is a hypothesis until diff-confirmed) and that no new P0/P1 appeared.
+4. Repeat until a pass returns zero P0/P1, or **3 iterations**. If iteration 3 still has open P0/P1: stop, do **not** commit, present the remaining findings via `AskUserQuestion` (Fix more / Override with reason / Cancel). An honest stop beats pushing a known-broken diff.
+
+Log one line: `self-review: {N} iters, {X} P0/P1 fixed, {Y} P2 deferred`.
+
+This is correctness/quality review; Phase 6.5 (Codex) is the independent cross-model spec-vs-diff check. They're complementary — keep both.
+
 ## Phase 6: Simplify
 
-Run `/nase:simplify` on changed files; it uses `code-simplifier` when installed and self-reviews otherwise. Apply improvements before commit.
+Run `/nase:simplify` on changed files (after the self-review loop is clean); it uses `code-simplifier` when installed and self-reviews otherwise. Apply improvements before commit.
 
 Do not skip because the change seems small; invoke the skill and let it decide.
 
