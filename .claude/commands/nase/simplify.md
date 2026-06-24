@@ -78,6 +78,7 @@ Look for concrete smells only:
 - Dead code: unused exports, unreachable branches, stale flags, debug leftovers, dead variables, redundant comments.
 - Duplication: repeated logic, copy-paste branches, duplicate conditionals, repeated parsing or normalization.
 - Needless abstraction: pass-through wrappers, speculative indirection, single-use helper layers, clever one-liners that obscure intent.
+  - **Reuse-first ladder test** (after comprehending the existing flow): for each added construct, find the first rung that justifies it — (1) needs to exist? (YAGNI) (2) already in codebase? (3) in stdlib? (4) native platform feature? (5) already-installed dependency? (6) one-liner? (7) only then a new minimal implementation. If a construct is covered by rungs 1–6, cut it. Never cut trust-boundary validation, security, or accessibility regardless of rung.
 - Control-flow noise: deeply nested logic, nested ternaries, avoidable branching, broad catches that hide intent.
 - Boundary leaks: wrong-layer imports, hidden coupling, misplaced responsibilities, unexpected side effects.
 - Weak tests: broad assertions, missing edge cases around changed behavior, cleanup without a practical verification path.
@@ -115,7 +116,7 @@ Launch the `code-simplifier:code-simplifier` subagent via the Agent tool. Pass:
   - Preserve behavior exactly. Do not change features, outputs, public APIs, persistence formats, permissions, side effects, ordering, timing, or error semantics.
   - Keep scope to `$FILES`; do not expand to the rest of the repo.
   - Prefer deletion over addition.
-  - Reuse local utilities and patterns before introducing any abstraction. Do not add dependencies.
+  - Reuse local utilities and patterns before introducing any abstraction. Do not add dependencies. For each added construct apply the reuse-first ladder (codebase → stdlib → platform → installed dep → one-liner → only then new code); cut anything an earlier rung already covers. Never cut trust-boundary validation, security, or accessibility.
   - Run one smell-focused pass at a time: delete dead code first, consolidate duplication second, improve names/control flow/error handling third, reinforce tests last only when needed.
   - Keep useful abstractions. Do not inline code merely because it is shorter if the abstraction carries meaning or isolates change.
   - Replace nested ternaries and dense one-liners with explicit conditionals when that improves readability.

@@ -24,13 +24,14 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Skill files w
 
 Review the conversation history (or focus on $ARGUMENTS if provided). The richest sources of patterns are:
 
+- **Human-intervention gaps (highest signal)** — anywhere the user had to step in to unblock you. The struggle is what exposes a genuine knowledge gap the fresh model lacked; name explicitly what the gap was and what closed it, and seed the skill from that — not from re-deriving what the model already does well.
 - **User corrections** — when the user redirected your approach, that delta between "what you tried" and "what worked" is often a reusable insight
 - **Multi-step tool sequences** — if you chained 3+ tool calls to achieve something, that sequence might be worth templating
 - **Repeated workflows** — the same shape of work appearing across different parts of the session
 - **Debugging breakthroughs** — diagnostic techniques that cracked a non-obvious problem
 - **"I wish I had a command for this" moments** — friction points that slowed the work down
 
-List 1-3 candidates with one-line descriptions.
+List 1-3 candidates with one-line descriptions. Prioritize the intervention-gap candidates — they are usually the strongest evidence for Step 2's "non-obvious" check.
 
 ### 2. Apply the quality bar + confidence scoring
 
@@ -67,7 +68,7 @@ Check existing skills for staleness:
 1. Read all `workspace/skills/*.md` files
 2. For each file with `confidence:` and `extracted:` frontmatter:
    - Calculate age in days since `extracted:` date
-   - Apply decay: `effective_confidence = confidence - (age_days / 5)` (loses ~6 points per month)
+   - Apply decay, offset by demonstrated successes: `effective_confidence = confidence - (age_days / 5) + (successes × 8)` (decay loses ~6 pts/month; each proven success buys back ~8 — patterns that keep helping resist aging, unused ones decay normally). `successes:` defaults to 0 if absent.
    - If effective_confidence < 40: flag as **stale** — candidate for pruning
    - If effective_confidence 40-59: flag as **aging** — candidate for re-validation
 3. If any stale/aging skills found, report them before proposing new extractions:
@@ -119,6 +120,7 @@ For each approved skill, stage the raw skill file and wrapper under `workspace/t
 ---
 confidence: {score from Step 2, 0-100}
 extracted: {YYYY-MM-DD}
+successes: 0
 ---
 
 {One-sentence description — what this skill does and when to reach for it.}
@@ -139,7 +141,7 @@ extracted: {YYYY-MM-DD}
 - {important constraints, gotchas, or things that look like they'd work but don't}
 ```
 
-The `confidence:` and `extracted:` frontmatter enables Step 2.5's decay mechanism in future runs.
+The `confidence:`, `extracted:`, and `successes:` frontmatter enable Step 2.5's decay/graduation mechanism in future runs. When a session confirms a previously-extracted skill demonstrably helped — it was invoked and produced the right outcome — increment its `successes:` counter by 1 so a proven pattern earns back confidence instead of decaying like an unused one.
 
 Writing guidelines:
 - First line: plain sentence, no heading — this is what future sessions scan to decide relevance

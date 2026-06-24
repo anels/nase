@@ -185,7 +185,7 @@ Run all scan groups in parallel:
 
 Output goes into the KB's `## PR Gates` section (template in `.claude/docs/kb-template.md`). Group rows by required → advisory → visible so the merge-blocking gates are top-of-table.
 
-**3e. Code Standards** — linters/formatters (`.editorconfig`, `.eslintrc`, `.prettierrc`, `stylecop.json`, `Directory.Build.props`, `.golangci.yaml`), code analysis (`sonar-project.properties`, `codecov.yml`), git hooks (`.husky`, `.pre-commit-config.yaml`), naming conventions, dependency management (lockfile strategy, renovate/dependabot)
+**3e. Code Standards** — linters/formatters (`.editorconfig`, `.eslintrc`, `.prettierrc`, `stylecop.json`, `Directory.Build.props`, `.golangci.yaml`), code analysis (`sonar-project.properties`, `codecov.yml`), git hooks (`.husky`, `.pre-commit-config.yaml`), naming conventions, dependency management (lockfile strategy, renovate/dependabot). If the repo's `CLAUDE.md` carries bulky domain-specific rules that only apply to part of the tree, recommend splitting them into `.claude/rules/<domain>.md` with a `paths:` frontmatter glob so they lazy-load only when matching files are touched (keeps the always-on instruction budget lean).
 
 **3f. Cross-Project Relationships** — HTTP clients calling other services, published API specs/protos/packages, shared infra (Helm charts, CI templates, base images), event-driven links (EventHub, Kafka, SQS topics), cross-reference with `workspace/kb/.domain-map.md`
 
