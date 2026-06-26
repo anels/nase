@@ -70,6 +70,7 @@ SCRIPT_TESTS=(
   tests/scripts/test-kb-search.sh
   tests/scripts/test-today-stats.sh
   tests/scripts/test-tool-availability.sh
+  tests/scripts/test-roles-schema.sh
   tests/scripts/test-local-parallel-subagents.sh
   tests/scripts/test-cli-tooling-integration.sh
   tests/scripts/test-github-actions-hardening.sh

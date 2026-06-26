@@ -157,11 +157,13 @@ Risk map rows:
 | Review history | recurring comments, same files recently reverted, old decisions | low/med/high | Git history |
 | Comments/docs | comments changed or code contradicts existing comments | low/med/high | Code comments |
 | Pipeline/data | ETL, SQL, EventHub/Queue/Timer, LookerML, Avro/Parquet | low/med/high | Pipeline gates |
+| AI-slop self-review | self-authored PR; no-op/churn-only diff, filler description, leaked assistant phrasing, agent-report voice | low/med | AI-slop self-check |
 
 Selection rule:
 - Always cover `Problem fit`, `Logic correctness`, and `Testability` in the main review pass — these plus `Security` (whenever its signals fire) are the always-on hard gate; every other lens is change-scoped.
 - Spawn a specialist only when its risk row is `med` or `high`, or the user explicitly requested that focus.
 - Skip `Security`, `Git history`, `Code comments`, and `Pipeline gates` when their trigger signals are absent — match the lens to the change class (e.g. a backend-only PR skips any UI/design lens).
+- Run `AI-slop self-check` **only when the PR author login is one of the user's own GitHub accounts** (`work_gh_account` / `personal_gh_account` from `workspace/config.md`). Never run it on a teammate's PR — judging whether someone else's contribution "looks AI-generated" is low-value and adversarial. It is a self-nudge, not a reviewer verdict.
 - Run Codex second-opinion only for high-risk PRs, security-sensitive PRs, large diffs, unfamiliar core areas, or explicit user request.
 - Show the selected specialist list in the final output so omissions are auditable.
 
@@ -178,6 +180,7 @@ Selection rule:
 | **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
 | **Code comments** | Violations of guidance in inline comments, stale or contradicted comments |
 | **Pipeline gates** (conditional) | Three Meta-style gates for pipeline changes — see below |
+| **AI-slop self-check** (conditional, self-authored only) | Heuristic self-nudge that the PR reads like unedited AI output — see below |
 | **Codex second-opinion** (conditional) | Cross-model pass via Codex MCP — see below |
 
 **Pipeline gates agent** — spawn only when pipeline-touch detected:
@@ -187,6 +190,16 @@ Selection rule:
 3. **Resource utilization** — does the change increase compute / IO / cost vs legacy? Look for: new full scans, removed pushdown filters, larger shuffle, additional materialization, more aggressive retry. Flag candidates and ask author for evidence (warehouse credit estimate, DBU diff, query profile).
 
 Output exactly the three gates plus per-gate verdict: ✅ evidenced / ⚠️ unclear / 🔧 missing. If any gate is 🔧 missing for a production pipeline, score as `[HIGH]` (≥80) at minimum.
+
+**AI-slop self-check** — spawn only on a self-authored PR (gate above). Adapted from SlopGuard's static heuristics, scoped to *your own* output so you fix it before reviewers see it. Scan the diff + PR description for:
+
+- **No-op / churn-only** — whitespace, reorder-only, comment-only, or generated-file churn with no behavior change masquerading as a real change.
+- **Filler description** — content-free praise ("comprehensive solution", "robust implementation"), restating the diff in prose, or a body that never states the actual problem.
+- **Leaked assistant phrasing** — "Here's the…", "I've implemented…", "Let me…", "Note that…", emoji-section headers, or other unedited-LLM tells in code comments, the PR body, or commit messages.
+- **Agent-report voice** — narrating what was done as a transcript ("First I…, then I…") instead of describing the change.
+- **Comment slop** — comments restating the code line they sit above, or `// TODO`/placeholder left by generation. (Cross-check `Code comments` lens; do not double-count.)
+
+This lens is **advisory only**: cap every finding at `[MED]`, render in the Step 6 findings tier tagged `self-review`, and never draft an inline comment from it. Skip any signal already raised by another pillar — scope creep is Pillar 3, premature abstraction is Design/elegance. If nothing fires, say so in one line. The point is a pre-reviewer cleanup pass (`/nase:simplify` territory), not a severity gate.
 
 **Codex second-opinion agent** — conditional per the risk-map selection rule above. Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly if MCP is not loaded:
 
@@ -297,6 +310,8 @@ Skill-specific outputs:
 - Render the resulting matrix + critical-layer + caveat + plan-status as the **Verification block** in Step 6 (right after the summary line, before the scorecard).
 - If §4 reports "no plan at all" for any non-trivial change: emit a `[MED]` finding under Testability tagged `Verification gap`, with the full matrix pasted into the inline-comment draft so the author can lift it into the PR body verbatim.
 - Strictness ceiling: `[MED]`. Always informational — never block-before-merge. Reviewers decide whether to gate.
+
+**Rewrite-of-correctness-critical-impl flag (differential-oracle gate):** when the PR *replaces* an existing correctness-critical implementation (parser, query translator, serializer, EF-query builder, aggregation/pricing fn, protocol codec) — especially AI-authored or a port across languages — new unit tests are not a sufficient bar. Ask: "where is the differential oracle?" If the legacy impl still exists and the PR does not diff new-vs-old over a generated/replayed corpus (and, for high-traffic read paths, run shadow-mode with a zero-divergence gate before cutover), emit a `[MED]` Testability finding tagged `Verification gap (no differential oracle)`. Source: `workspace/kb/general/llm.md §2026-06-24 — Differential-oracle harness`. Strictness ceiling stays `[MED]`, informational.
 
 ## Step 5.7 — Doubt cycle (adversarial fresh-context pass on findings)
 

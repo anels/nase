@@ -15,7 +15,7 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
   docs/                shared algorithm docs referenced by skills
   scripts/             utility scripts (date resolution, KB search, stats)
   skills/              local Claude Code skills (git-ignored)
-  roles.yaml           subagent model routing
+  roles.yaml           subagent model + effort routing
   settings.json        hook registrations
   settings.local.json  local settings overrides (git-ignored)
 docs/                  architecture and reference docs
@@ -169,13 +169,14 @@ Use them when a repeated workflow needs isolated, read-only candidate gathering 
 
 `.claude/roles.yaml` defines lightweight local role names for workflow prompts that do not need a persisted subagent file:
 
-| Role | Model | When to use |
-|------|-------|-------------|
-| `lookup` | `haiku` | Data gathering, grep/glob, scans. Includes prompt prefix "This is a simple lookup — keep reasoning minimal." |
-| `worker` | `sonnet` | Code changes, KB updates, debugging, reviews. Default. |
-| `architect` | `opus` | Unfamiliar codebases, security, architecture, design. |
+| Role | Model | Effort | When to use |
+|------|-------|--------|-------------|
+| `lookup` | `haiku` | `low` | Data gathering, grep/glob, scans. Includes prompt prefix "This is a simple lookup — keep reasoning minimal." |
+| `worker` | `sonnet` | `medium` | Code changes, KB updates, debugging, reviews. Default. |
+| `verifier` | `sonnet` | `medium` | Read-only spec-vs-artifact checks and review-thread verification. |
+| `architect` | `opus` | `high` | Unfamiliar codebases, security, architecture, design. |
 
-Default to `worker`; do not use `architect` for `lookup` work.
+Default to `worker`; do not use `architect` for `lookup` work. Each role also carries an `effort:` tier; size it to the task via the Effort scaling rule in `roles.yaml` (drop one tier for trivial/mechanical sub-steps, raise one for complex/ambiguous work — model and effort move independently). Automated effort/model downgrade requires a quality eval gate first.
 
 ---
 
@@ -248,7 +249,7 @@ nase/
       workspace/        generated /nase:workspace:* wrappers (git-ignored)
     hooks/              hook scripts (called by settings.json)
     skills/             local Claude Code skills (git-ignored)
-    roles.yaml          subagent model routing
+    roles.yaml          subagent model + effort routing
     docs/               shared algorithm docs
     scripts/            utility scripts
     settings.json       hook registrations

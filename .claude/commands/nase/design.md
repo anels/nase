@@ -1,6 +1,6 @@
 ---
 name: nase:design
-description: "KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the end. Supports `--interactive` (turn-by-turn flow), `--grill` (multi-persona stress-test), `--review` (re-evaluate), `--auto` (explicit auto pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
+description: "KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc with a built-in ETA estimate. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the end. Supports `--interactive` (turn-by-turn flow), `--grill` (multi-persona stress-test), `--review` (re-evaluate), `--auto` (explicit auto pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
 pattern: pipeline
 category: Design & implementation
 sub-patterns: [fan-out]
@@ -209,6 +209,8 @@ Present the **full design in a single message** — do not pause between section
 
 The design must be **junior-implementable**: a competent junior engineer (or `/nase:fsd`) can execute it with zero remaining design decisions. Apply `.claude/docs/design-research.md → Part C` for the rules behind each section, and **tier the depth to scope (C7)** — a quick-fix gets a 3-line design, not the full template.
 
+**Always include the `### ETA Estimate`** — derive it from the Implementation Plan steps using `.claude/docs/eta-estimation.md`; the step breakdown already done its work, so the estimate is mostly assigning time per step and rolling up the confidence range. Tier the depth to scope like everything else: a quick-fix gets a single realistic line, a feature/initiative gets the per-step table and the optimistic/realistic/pessimistic range. Don't write the calibration log line here (that's `/nase:estimate-eta`'s job) — the estimate lives in the effort doc.
+
 ### Design Structure
 
 ```markdown
@@ -245,6 +247,16 @@ The design must be **junior-implementable**: a competent junior engineer (or `/n
 - [ ] **Step 2** — {goal}. Files: {paths}. Tests: {what}. Done when: {verifiable condition}.
 Dependencies: {which steps are sequential (A before B) vs parallel (no edge)}. Critical path: {longest dependent chain}.
 
+### ETA Estimate
+Derived from the Implementation Plan steps above per `.claude/docs/eta-estimation.md`. Estimate each step, then roll up to a confidence range.
+
+| Step / subtask | Estimate | Notes |
+|---|---|---|
+| {step} | Xh | {what drives it} |
+
+- **Optimistic:** X — **Realistic:** X — **Pessimistic:** X
+- **Estimate risks:** {the unknowns that widen the spread; cross-reference Risks & Mitigations}
+
 ### PR Plan
 Target PR count: 1
 Review package: {single coherent PR by default; if more than one, justify each PR against the split criteria}
@@ -279,6 +291,7 @@ Run an internal quality gate before writing the effort doc.
    - Implementation readiness FAIL → add concrete file paths/signatures/data models, per-step tests + done-conditions, and resolve or mark `[NEEDS CLARIFICATION]`
    - Research grounding FAIL → add the doc URL / source / issue and pin the version, or mark the claim `unverified`
    - Repro & root cause FAIL → add the repro (or document why it won't reproduce) and trace the fix to the originating cause
+   - ETA grounded FAIL → add the `### ETA Estimate`, tie each line to a plan step, and give a realistic number (range for feature+, single line for quick-fix)
 
 3. **If all PASS or at most 1 WEAK**: exit the loop and proceed to Phase 5.
 
@@ -363,6 +376,7 @@ Used by Review Mode and as a self-check before writing the design doc in Phase 5
 | **Implementation readiness** | A junior could execute with zero design decisions: exact file paths, signatures, data models, API contracts where applicable; step plan with per-step tests + done-condition; zero unresolved `[NEEDS CLARIFICATION]` markers |
 | **Research grounding** | External claims about library/SDK/platform behavior cite a doc URL, dependency source, or issue — not memory; versions pinned |
 | **Repro & root cause** (bug-shaped only) | A reproduction (or documented failure to reproduce) exists, and the fix targets the originating cause, not the symptom |
+| **ETA grounded** | An `### ETA Estimate` exists, ties to the Implementation Plan steps (not a free-floating guess), and gives a realistic number — a confidence range for feature+ scope, a single line for quick-fixes |
 
 ## Notes
 

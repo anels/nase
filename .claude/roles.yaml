@@ -8,10 +8,15 @@
 #
 # Usage in main conversation:
 #   Agent(model="haiku", prompt="This is a simple lookup — keep reasoning minimal. ...")
+#
+# Each role also declares an `effort:` tier (low|medium|high) — the reasoning
+# budget to pass with the model. Apply the Effort scaling rule below to size
+# effort to the actual task, not just the role.
 
 roles:
   lookup:
     model: haiku
+    effort: low
     tools: [Read, Grep, Glob, Bash]   # Bash for readonly probes (git log, ls, gh api); no Edit/Write
     description: Fast data gathering, simple lookups, grep/glob scans
     prompt_prefix: "This is a simple lookup — keep reasoning minimal."
@@ -23,6 +28,7 @@ roles:
 
   worker:
     model: sonnet
+    effort: medium
     tools: [Read, Edit, Write, Grep, Glob, Bash, WebFetch, WebSearch]
     description: Standard implementation, review, debugging
     prompt_prefix: null
@@ -34,6 +40,7 @@ roles:
 
   verifier:
     model: sonnet
+    effort: medium
     tools: [Read, Grep, Glob, Bash]
     description: Read-only reasoning pass for spec-vs-artifact or review-thread verification
     prompt_prefix: "This is an independent read-only verification pass. Do not edit files."
@@ -45,6 +52,7 @@ roles:
 
   architect:
     model: opus
+    effort: high
     tools: ["*"]                       # unrestricted — architectural work may need anything
     description: Deep analysis, architecture, security, unfamiliar codebases
     prompt_prefix: null
@@ -63,6 +71,18 @@ roles:
 #   When uncertain between lookup and worker: prefer worker (reasoning > speed).
 #   When uncertain between worker and architect: prefer worker unless the task
 #     involves security, architecture decisions, or an unfamiliar codebase.
+#
+# Effort scaling (size reasoning to the task, not just the role):
+#   Start from the role's `effort:`, then adjust by one tier on the low|medium|high
+#   ladder before spawning. Do NOT change the model — effort and model move
+#   independently (a haiku lookup can stay low; an opus design can drop to medium
+#   for a mechanical sub-step).
+#     - trivial / mechanical / answer-is-in-the-output  → drop one tier (floor: low)
+#     - complex / ambiguous / multi-constraint / first attempt at a hard problem
+#                                                       → raise one tier (cap: high)
+#   Manual-only: this is a judgment the dispatcher applies per spawn. Never wire
+#   an automated effort/model downgrade without a quality eval gate proving the
+#   routing is correct (a cheaper misroute is silently wrong).
 #
 # Tool whitelist enforcement:
 #   When spawning a subagent via Agent(), pass `tools=` matching the role's
