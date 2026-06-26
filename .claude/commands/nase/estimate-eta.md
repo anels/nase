@@ -15,10 +15,7 @@ If $ARGUMENTS is empty or blank:
 - Stop immediately — do not proceed.
 
 ## Estimation Principles
-- Estimates improve with familiarity — explore the codebase before committing to numbers
-- Unknowns dominate: one unclear dependency can triple the timeline
-- Compare against similar past tasks in `workspace/tasks/lessons.md` — pattern-matching beats guessing
-- The pessimistic estimate is usually the realistic one
+Apply the principles and confidence-range format in `.claude/docs/eta-estimation.md`.
 
 ## Steps
 

@@ -59,6 +59,8 @@ Produce a list of 2-5 concrete knowledge items. These become the seed for Step 3
 
 ### 3. Deep Research (secondary learning)
 
+**3.0. URL-already-cited pre-check (URL inputs only).** Before any web research, grep the KB for the bare input URL: `grep -rnF -- "<url>" workspace/kb/`. If an existing entry already cites it as a source, the learn is guaranteed-KNOWN — skip 3a/3b entirely and jump to the Step 4.0 skip path (output the notability-skip message, reason "already-cited KB source"). This is a deterministic short-circuit, distinct from the post-research KB Delta (3e) and notability bar (4.0): the most common wasted-research case is re-learning a canonical primer the KB was already built from.
+
 **Skip this entire step** if the input was **Empty** (auto-reflect mode) AND the learnings were derived from the current session rather than an external URL or keyword. Session-derived patterns already have full context — running WebSearch against them adds cost with minimal gain. Proceed directly to Step 4.
 
 This is the step that turns a single source into real understanding. The goal: find how the community discusses, critiques, and applies this knowledge — not just parrot the original source.
