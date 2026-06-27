@@ -1,6 +1,8 @@
 ---
 name: nase:simplify
 description: Simplify recently-modified code and remove AI-shaped slop while preserving behavior. Part of the standard commit sequence before /nase:improve-commit-message. Use when asked to "simplify", "clean up code", "refactor for clarity", "tidy up", "deslop", "anti-slop", or before any commit. Also invoked by /nase:fsd Phase 6.
+argument-hint: "[diff scope]"
+when_to_use: "Simplify recently-modified code and remove AI-shaped slop while preserving behavior. Part of the standard commit sequence before /nase:improve-commit-message. Use when asked to \"simplify\", \"clean up code\", \"refactor for clarity\", \"tidy up\", \"deslop\", \"anti-slop\", or before any commit. Also invoked by /nase:fsd Phase 6."
 pattern: producer-reviewer
 category: Git workflow
 ---

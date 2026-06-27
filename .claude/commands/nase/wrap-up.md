@@ -1,6 +1,8 @@
 ---
 name: nase:wrap-up
 description: Run at end of day to capture reflection, lessons, KB updates, and a journal entry in one pass. Use when the user says "wrap up", "end of day", "EOD", "done for today", "closing out", or wants to summarize today's work.
+argument-hint: "[day summary]"
+when_to_use: "Run at end of day to capture reflection, lessons, KB updates, and a journal entry in one pass. Use when the user says \"wrap up\", \"end of day\", \"EOD\", \"done for today\", \"closing out\", or wants to summarize today's work."
 pattern: pipeline
 category: Learning & reflection
 ---

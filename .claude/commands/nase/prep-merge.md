@@ -1,6 +1,8 @@
 ---
 name: nase:prep-merge
 description: Prepare a PR for merge — verify all comments resolved, squash commits, force-push, and update PR title/description. Use when given a PR URL and asked to prepare, clean up, squash, finalize, or get a PR merge-ready. Also triggers on "prep merge", "squash and push", "clean up PR", "ready to merge", "finalize PR", or any request to tidy a PR's commit history before merging.
+argument-hint: "<pr-url-or-number>"
+when_to_use: "Prepare a PR for merge — verify all comments resolved, squash commits, force-push, and update PR title/description. Use when given a PR URL and asked to prepare, clean up, squash, finalize, or get a PR merge-ready. Also triggers on \"prep merge\", \"squash and push\", \"clean up PR\", \"ready to merge\", \"finalize PR\", or any request to tidy a PR's commit..."
 pattern: pipeline
 category: Git workflow
 ---

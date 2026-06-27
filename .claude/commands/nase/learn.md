@@ -1,6 +1,8 @@
 ---
 name: nase:learn
 description: "Deep-dive a tip, URL, repo, or cross-project pattern into structured KB knowledge. Use for remember this, save this tip, learn from this, deep dive on X, article URL, or general programming insights. For one-repo constraints, API contracts, or naming rules, use /nase:kb-update."
+argument-hint: "<tip/url/repo/topic>"
+when_to_use: "Deep-dive a tip, URL, repo, or cross-project pattern into structured KB knowledge. Use for remember this, save this tip, learn from this, deep dive on X, article URL, or general programming insights. For one-repo constraints, API contracts, or naming rules, use /nase:kb-update."
 pattern: expert-pool
 category: Learning & reflection
 ---

@@ -1,6 +1,8 @@
 ---
 name: nase:fsd
 description: "End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design."
+argument-hint: "<task description or effort doc>"
+when_to_use: "End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design."
 pattern: pipeline
 category: Design & implementation
 sub-patterns: [supervisor]
@@ -52,7 +54,7 @@ git -C {repo} fetch origin
 python3 .claude/scripts/fsd-preflight.py --repo "{repo}" --task "$ARGUMENTS" --kb-file "{kb_file}" --json > "$TMPDIR/fsd-preflight.json"
 ```
 
-Use `repo`, `moduleInventory`, `kbMentionCandidates`, and `toolAvailability` from `$TMPDIR/fsd-preflight.json`. The helper output is bounded and deterministic; do not repeat the git-status/default-branch/tool-availability probes by hand unless it failed.
+Use `repo`, `moduleInventory`, `kbMentionCandidates`, `toolAvailability`, and `claudeRunSkills` from `$TMPDIR/fsd-preflight.json`. The helper output is bounded and deterministic; do not repeat the git-status/default-branch/tool-availability/run-skill probes by hand unless it failed.
 
 **If repo cannot be inferred with confidence**, use AskUserQuestion immediately:
 ```
@@ -288,6 +290,8 @@ For each behavior, do one full Red→Green cycle before starting the next:
 
 Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff (skip it when tdd_mode = true — RED gate already covers it).
 
+If `claudeRunSkills.recipes` from preflight is non-empty and this task changes runtime behavior, prefer Claude Code `/verify` as the first behavioral smoke check after local build/test gates. Use the matching `/run` recipe context surfaced by preflight; record `/verify` output as evidence. If no recipe exists, or the change is docs/config-only, keep the existing local gate flow and note that `/verify` was not applicable.
+
 **Dependency-bump consumer fixes:** when fixing a consumer-side break from a breaking dependency bump, build the full solution, including `*Tests.csproj`, and run affected suites. CI stops at the first failing project, so a single-project or Release-only build can hide test-project Moq `Setup`/`Verify`, typed `Callback<>`, and ctor-arity breaks. Compile-clean on the main project is not enough.
 On success: proceed to Phase 5.5.
 
@@ -514,6 +518,7 @@ Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 becaus
 
 **Execute before rendering:** a matrix fsd only writes is a promise; a matrix fsd partially ran is evidence. Before rendering:
 - Attempt every `required` row whose `command` runs locally inside `{work_root}`: local builds, env-var-switched `dotnet run`/`npm start` smoke checks, dry-run commands.
+- When `claudeRunSkills.recipes` exists and the change affects runtime behavior, include `/verify` as a required behavioral row and run it before manual smoke rows that duplicate the same coverage.
 - Attempt the 🔥 critical row above all when it can run locally.
 - Record outcomes as `✅ done` with the actual output as evidence.
 - Skip rows needing deployment, external environments, or credentials fsd doesn't hold. Mark those `not run by fsd` explicitly; never fabricate.

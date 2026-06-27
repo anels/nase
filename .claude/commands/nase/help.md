@@ -1,6 +1,8 @@
 ---
 name: nase:help
 description: Display a usage guide for this AI engineer workspace. Use when asked "what commands are available?", "how does nase work?", "help", "show commands", "what can you do?", "what skills do you have?", or for an overview of skills and hooks.
+argument-hint: "[--verbose]"
+when_to_use: "Display a usage guide for this AI engineer workspace. Use when asked \"what commands are available?\", \"how does nase work?\", \"help\", \"show commands\", \"what can you do?\", \"what skills do you have?\", or for an overview of skills and hooks."
 pattern: utility
 category: Setup & health
 model: haiku

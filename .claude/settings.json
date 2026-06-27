@@ -37,6 +37,16 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=StopFailure bash \"$WORKSPACE/.claude/hooks/track-session-failure.sh\"'"
+          }
+        ]
+      }
+    ],
     "WorktreeRemove": [
       {
         "hooks": [
@@ -71,6 +81,17 @@
           {
             "type": "command",
             "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/style-edit-detect.sh\"'"
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "nase:*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=UserPromptExpansion bash \"$WORKSPACE/.claude/hooks/track-skill-prompt.sh\"'"
           }
         ]
       }
@@ -147,6 +168,26 @@
           {
             "type": "command",
             "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/post-edit-shellcheck.sh\"'"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=PostToolUseFailure bash \"$WORKSPACE/.claude/hooks/track-tool-failure.sh\"'"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=SubagentStop bash \"$WORKSPACE/.claude/hooks/track-subagent.sh\"'"
           }
         ]
       }

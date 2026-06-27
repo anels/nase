@@ -57,7 +57,7 @@ if [ -f "$JSONL" ]; then
   fi
   if tail -50 "$JSONL" 2>/dev/null | jq -e --arg s "$SKILL_NAME" --arg t "$TS" '
     ($t | fromdateiso8601) as $now
-    | select(.skill == $s and .source == "prompt" and (.ts | type == "string"))
+    | select(.skill == $s and ((.source == "prompt") or (.source == "prompt-expansion")) and (.ts | type == "string"))
     | (.ts | fromdateiso8601? // 0) as $event
     | select($event > 0 and ($now - $event) >= 0 and ($now - $event) <= 60)
   ' >/dev/null 2>&1; then

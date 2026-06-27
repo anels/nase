@@ -124,9 +124,11 @@ requirements = [
     ("SessionStart", "session-start.sh", None),
     ("Stop", "stop-backup.sh", None),
     ("Stop", "stop-todos.sh", None),
+    ("StopFailure", "track-session-failure.sh", None),
     ("PreCompact", "pre-compact-archive.sh", None),
     ("WorktreeRemove", "worktree-log.sh", None),
     ("UserPromptSubmit", "track-skill-prompt.sh", None),
+    ("UserPromptExpansion", "track-skill-prompt.sh", "nase:"),
     ("UserPromptSubmit", "style-edit-detect.sh", None),
     ("PreToolUse", "block-dangerous-git.sh", "Bash"),
     ("PreToolUse", "slack-send-guard.sh", "slack_send_message"),
@@ -135,6 +137,8 @@ requirements = [
     ("PostToolUse", "track-kb-read.sh", "Read"),
     ("PostToolUse", "track-skill.sh", "Skill"),
     ("PostToolUse", "post-edit-shellcheck.sh", "Edit|Write"),
+    ("PostToolUseFailure", "track-tool-failure.sh", None),
+    ("SubagentStop", "track-subagent.sh", None),
 ]
 
 for event, script, matcher in requirements:
@@ -171,6 +175,9 @@ printf '{"prompt":"what does /nase:today do?"}' \
   | NASE_ROOT="$runtime_tmp" bash .claude/hooks/track-skill-prompt.sh
 after_lines=$(wc -l < "$runtime_tmp/workspace/stats/skill-usage.jsonl" | tr -d ' ')
 [ "$before_lines" = "$after_lines" ]
+printf '{"command_name":"nase:stats"}' \
+  | NASE_ROOT="$runtime_tmp" HOOK_EVENT_NAME=UserPromptExpansion bash .claude/hooks/track-skill-prompt.sh
+grep -q '"skill":"stats".*"source":"prompt-expansion"' "$runtime_tmp/workspace/stats/skill-usage.jsonl"
 ok "slash command prompt tracking smoke check"
 
 mkdir -p "$runtime_tmp/workspace/kb/general"

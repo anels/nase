@@ -1,6 +1,8 @@
 ---
 name: nase:extract-skills
 description: Analyze the current session and extract reusable problem-solving patterns as new nase skills. Run at the end of any session where you solved a non-trivial problem or found a useful technique. Also triggers on "extract pattern", "save technique", "capture workflow".
+argument-hint: "[session notes or topic]"
+when_to_use: "Analyze the current session and extract reusable problem-solving patterns as new nase skills. Run at the end of any session where you solved a non-trivial problem or found a useful technique. Also triggers on \"extract pattern\", \"save technique\", \"capture workflow\"."
 pattern: pipeline
 category: Learning & reflection
 ---
