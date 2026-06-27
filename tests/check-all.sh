@@ -53,6 +53,7 @@ HOOK_TESTS=(
   tests/hooks/test-block-dangerous-git.sh
   tests/hooks/test-external-write-guards.sh
   tests/hooks/test-style-edit-detect.sh
+  tests/hooks/test-claude-native-hooks.sh
   tests/hooks/test-session-start.sh
   tests/hooks/test-stop-backup-safety.sh
   tests/hooks/test-post-edit-shellcheck.sh

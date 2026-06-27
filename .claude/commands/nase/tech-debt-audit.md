@@ -1,6 +1,8 @@
 ---
 name: nase:tech-debt-audit
 description: "Audit a repo for tech debt, architecture health, best-practice gaps, modernization options, and AI verification debt. Use during onboarding, before planning, or for what tech debt do we have, architecture review, best practices, AI verification debt, or modernization."
+argument-hint: "<repo-path>"
+when_to_use: "Audit a repo for tech debt, architecture health, best-practice gaps, modernization options, and AI verification debt. Use during onboarding, before planning, or for what tech debt do we have, architecture review, best practices, AI verification debt, or modernization."
 pattern: pipeline
 category: Security & maintenance
 ---

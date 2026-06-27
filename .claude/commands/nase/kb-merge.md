@@ -1,6 +1,8 @@
 ---
 name: nase:kb-merge
 description: Import and merge a teammate's shared knowledge base into your own workspace KB — intelligently merges overlapping files, shows a diff preview before writing, and updates the domain map. Use when asked "import KB", "merge KB", "import knowledge base", "merge shared KB", or after receiving a KB export from /nase:kb-teamshare.
+argument-hint: "<source-kb-path>"
+when_to_use: "Import and merge a teammate's shared knowledge base into your own workspace KB — intelligently merges overlapping files, shows a diff preview before writing, and updates the domain map. Use when asked \"import KB\", \"merge KB\", \"import knowledge base\", \"merge shared KB\", or after receiving a KB export from /nase:kb-teamshare."
 pattern: pipeline
 category: Knowledge base
 ---

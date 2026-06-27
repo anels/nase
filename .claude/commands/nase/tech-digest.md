@@ -1,6 +1,8 @@
 ---
 name: nase:tech-digest
 description: "Fetch and summarize latest tech news from configured sources, filtered to workspace topics, with source links, caching, actionable adoption notes, and concrete follow-up actions when useful. Supports --force, --dry-run, --since, --section, and --sources. Triggers: 'tech news', 'tech digest', 'what's new', 'morning digest', 'tech roundup', 'latest in AI', 'today's news'."
+argument-hint: "[--refresh]"
+when_to_use: "Fetch and summarize latest tech news from configured sources, filtered to workspace topics, with source links, caching, actionable adoption notes, and concrete follow-up actions when useful. Supports --force, --dry-run, --since, --section, and --sources. Triggers: 'tech news', 'tech digest', 'what's new', 'morning digest', 'tech roundup', 'latest in..."
 pattern: expert-pool
 category: Knowledge base
 ---

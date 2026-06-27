@@ -24,7 +24,7 @@ assert_cmd() {
 }
 
 repo="$FIXTURE/repo"
-mkdir -p "$repo/src" "$FIXTURE/workspace/kb/projects"
+mkdir -p "$repo/src" "$repo/.claude/skills/run-api" "$FIXTURE/workspace/kb/projects"
 
 (
   cd "$repo" || exit 1
@@ -45,6 +45,13 @@ EOF
   cat > src/Helper.cs <<'EOF'
 namespace Fixture;
 public static class Helper {}
+EOF
+  cat > .claude/skills/run-api/SKILL.md <<'EOF'
+---
+description: "Run the fixture API locally."
+---
+
+Start the API.
 EOF
   git add .
   git commit -q -m "fixture"
@@ -76,6 +83,13 @@ assert any(item == "dir:src" for item in data["moduleInventory"])
 assert any("Service" in item or "Helper" in item for item in data["moduleInventory"])
 assert data["kbMentionCandidates"]
 assert isinstance(data["toolAvailability"], list)
+assert data["claudeRunSkills"]["recipes"] == [
+    {
+        "name": "run-api",
+        "path": ".claude/skills/run-api/SKILL.md",
+        "description": "Run the fixture API locally.",
+    }
+]
 PY
 
 total=$((pass + fail))

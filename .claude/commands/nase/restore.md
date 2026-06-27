@@ -1,6 +1,8 @@
 ---
 name: nase:restore
 description: Restore workspace/ from a zip backup. Use after a machine migration, accidental deletion, when workspace/ is out of sync with the backup, or when asked to "sync workspace/", "recover workspace", "restore from backup", or "pull backup".
+argument-hint: "[backup path]"
+when_to_use: "Restore workspace/ from a zip backup. Use after a machine migration, accidental deletion, when workspace/ is out of sync with the backup, or when asked to \"sync workspace/\", \"recover workspace\", \"restore from backup\", or \"pull backup\"."
 pattern: pipeline
 category: Backup & restore
 ---

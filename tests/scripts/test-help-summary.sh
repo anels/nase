@@ -132,6 +132,8 @@ assert_contains "help command uses root-qualified helper" "$command_doc" 'python
 catalog_json=$(python3 "$CATALOG" --root "$FIXTURE" --format json 2>&1)
 assert_contains "catalog emits filename-derived command id" "$catalog_json" '"/nase:a"'
 assert_contains "catalog emits category" "$catalog_json" '"category": "Setup & health"'
+assert_contains "catalog emits Claude-native argument-hint key" "$catalog_json" '"argument-hint":'
+assert_contains "catalog keeps compatible argument_hint key" "$catalog_json" '"argument_hint":'
 
 create_command typo "Git workflows" 9 "invalid category fixture"
 bad_catalog=$(python3 "$CATALOG" --root "$FIXTURE" --format json 2>&1)

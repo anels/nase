@@ -1,6 +1,8 @@
 ---
 name: nase:doctor
 description: "Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint. Triggers: 'doctor', 'check workspace', 'diagnose nase', 'verify config', 'health check', 'workspace doctor', 'is nase healthy'."
+argument-hint: "[--deep]"
+when_to_use: "Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint. Triggers: 'doctor', 'check workspace', 'diagnose nase', 'verify config', 'health check', 'workspace doctor', 'is nase healthy'."
 pattern: utility
 category: Setup & health
 ---
@@ -31,6 +33,9 @@ git rev-parse --show-toplevel
 - Check `.claude/hooks/stop-todos.sh` exists
 - Check `.claude/hooks/track-skill.sh` exists
 - Check `.claude/hooks/track-skill-prompt.sh` exists
+- Check `.claude/hooks/track-tool-failure.sh` exists
+- Check `.claude/hooks/track-subagent.sh` exists
+- Check `.claude/hooks/track-session-failure.sh` exists
 - Check `.claude/hooks/worktree-log.sh` exists
 - Check `.claude/hooks/block-dangerous-git.sh` exists
 - Check `.claude/hooks/slack-send-guard.sh` exists
@@ -39,7 +44,7 @@ git rev-parse --show-toplevel
 - Check `.claude/hooks/pre-compact-archive.sh` exists
 - Check `.claude/hooks/style-edit-detect.sh` exists
 - Check `.claude/hooks/post-edit-shellcheck.sh` exists
-- Run `bash -n` on each required hook: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, `track-skill-prompt.sh`, `worktree-log.sh`, `block-dangerous-git.sh`, `slack-send-guard.sh`, `jira-write-guard.sh`, `confluence-size-guard.sh`, `pre-compact-archive.sh`, `style-edit-detect.sh`, `post-edit-shellcheck.sh`
+- Run `bash -n` on each required hook: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, `track-skill-prompt.sh`, `track-tool-failure.sh`, `track-subagent.sh`, `track-session-failure.sh`, `worktree-log.sh`, `block-dangerous-git.sh`, `slack-send-guard.sh`, `jira-write-guard.sh`, `confluence-size-guard.sh`, `pre-compact-archive.sh`, `style-edit-detect.sh`, `post-edit-shellcheck.sh`
 - If `.claude/hooks/edit-typecheck.sh` exists, run `bash -n` on it too, but treat it as optional/local
 - Pass: all files exist and pass syntax check
 - Fail: missing or syntax error (report which)
@@ -59,8 +64,12 @@ python3 -m json.tool .claude/settings.json > /dev/null 2>&1 || python -m json.to
 - Check PreToolUse hook command contains `confluence-size-guard.sh` for Confluence page writes
 - Check PostToolUse hook command contains `track-skill.sh`
 - Check PostToolUse hook command contains `post-edit-shellcheck.sh` for `Edit|Write`
+- Check PostToolUseFailure hook command contains `track-tool-failure.sh`
+- Check SubagentStop hook command contains `track-subagent.sh`
+- Check StopFailure hook command contains `track-session-failure.sh`
 - Check PreCompact hook command contains `pre-compact-archive.sh`
 - Check UserPromptSubmit hook command contains `track-skill-prompt.sh`
+- Check UserPromptExpansion hook command contains `track-skill-prompt.sh` for `nase:*`
 - Check UserPromptSubmit hook command contains `style-edit-detect.sh`
 - Check WorktreeCreate does not wire `worktree-log.sh` (Claude Code expects WorktreeCreate hooks to create the worktree and print the path)
 - Check WorktreeRemove hook command contains `worktree-log.sh`

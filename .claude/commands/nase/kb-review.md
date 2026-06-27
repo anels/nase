@@ -1,6 +1,8 @@
 ---
 name: nase:kb-review
 description: "Review, organize, consolidate KB files — dedup, cross-ref, surface stale content, promote lessons. Use weekly/monthly as KB hygiene, when KB feels messy, or after several /nase:learn entries. Triggers: 'review KB', 'organize notes', 'clean up KB', 'what's in my KB'."
+argument-hint: "[domain/path]"
+when_to_use: "Review, organize, consolidate KB files — dedup, cross-ref, surface stale content, promote lessons. Use weekly/monthly as KB hygiene, when KB feels messy, or after several /nase:learn entries. Triggers: 'review KB', 'organize notes', 'clean up KB', 'what's in my KB'."
 pattern: pipeline
 category: Knowledge base
 sub-patterns: [fan-out]

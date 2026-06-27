@@ -1,6 +1,8 @@
 ---
 name: nase:efforts
 description: "Report all active efforts by lifecycle stage and status, flag PR/Jira drift, and count active vs done. Use for list my efforts, effort status, stalled work, or what am I working on. Read-only; use /nase:today to move completed efforts and /nase:stats for activity counts."
+argument-hint: "[--active|--done|--all]"
+when_to_use: "Report all active efforts by lifecycle stage and status, flag PR/Jira drift, and count active vs done. Use for list my efforts, effort status, stalled work, or what am I working on. Read-only; use /nase:today to move completed efforts and /nase:stats for activity counts."
 pattern: utility
 category: Reporting
 ---

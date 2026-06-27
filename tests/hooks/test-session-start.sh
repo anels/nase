@@ -102,6 +102,7 @@ The full skill body still lives here.
 SKILL
 
 mkdir -p "$repo/.claude/commands/nase/workspace"
+mkdir -p "$repo/.claude/skills/playwright-cli" "$repo/.claude/skills/nase-workspace-orphan"
 cat > "$repo/.claude/commands/nase/workspace/long-desc.md" <<'WRAPPER'
 ---
 name: nase:workspace:long-desc
@@ -113,6 +114,23 @@ Read `workspace/skills/long-desc.md` and follow every step exactly as written.
 $ARGUMENTS
 WRAPPER
 touch -t 299901010000 "$repo/.claude/commands/nase/workspace/long-desc.md"
+cat > "$repo/.claude/skills/playwright-cli/SKILL.md" <<'SKILL'
+---
+description: Hand-written local skill.
+---
+
+Keep me.
+SKILL
+cat > "$repo/.claude/skills/nase-workspace-orphan/SKILL.md" <<'SKILL'
+---
+description: Old generated skill.
+user-invocable: false
+---
+
+<!-- NASE-GENERATED-WORKSPACE-SKILL; source: workspace/skills/orphan.md -->
+
+Delete me.
+SKILL
 
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 rc=$?
@@ -137,6 +155,38 @@ if [ -f "$wrapper" ]; then
   assert_equals "workspace wrapper mode is readable" "$(file_mode "$wrapper")" "644"
 else
   printf 'FAIL  workspace wrapper generated\n' >&2
+  fail=$((fail + 1))
+fi
+
+native_skill="$repo/.claude/skills/nase-workspace-read-only/SKILL.md"
+if [ -f "$native_skill" ]; then
+  printf 'PASS  native workspace skill generated\n'
+  pass=$((pass + 1))
+  native_content=$(cat "$native_skill")
+  assert_contains "native skill has generated marker" "$native_content" "<!-- NASE-GENERATED-WORKSPACE-SKILL; source: workspace/skills/read-only.md -->"
+  assert_contains "native skill is hidden from slash commands" "$native_content" "user-invocable: false"
+  assert_contains "native skill forwards allowed-tools" "$native_content" "allowed-tools: Bash(read-only:*)"
+  assert_contains "native skill forwards disallowed-tools" "$native_content" "disallowed-tools:"
+  assert_contains "native skill keeps source body" "$native_content" "Read only."
+  assert_equals "native skill file mode is readable" "$(file_mode "$native_skill")" "644"
+else
+  printf 'FAIL  native workspace skill generated\n' >&2
+  fail=$((fail + 1))
+fi
+
+if [ -f "$repo/.claude/skills/playwright-cli/SKILL.md" ]; then
+  printf 'PASS  hand-written local skill preserved\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  hand-written local skill preserved\n' >&2
+  fail=$((fail + 1))
+fi
+
+if [ ! -e "$repo/.claude/skills/nase-workspace-orphan" ]; then
+  printf 'PASS  orphaned generated native skill removed\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  orphaned generated native skill removed\n' >&2
   fail=$((fail + 1))
 fi
 

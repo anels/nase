@@ -1,6 +1,8 @@
 ---
 name: nase:stats
 description: Display workspace usage statistics inline (no report file) — vertical column chart (per-day ≤14d, per-week >14d), tiered skill usage, and summary counters. For a structured narrative recap of completed work, use /nase:recap instead. Use when asked "show stats", "how active am I", "productivity", "how much have I done", or to review activity patterns over 7/30/all-time windows.
+argument-hint: "[7|30|week|month|all]"
+when_to_use: "Display workspace usage statistics inline (no report file) — vertical column chart (per-day ≤14d, per-week >14d), tiered skill usage, and summary counters. For a structured narrative recap of completed work, use /nase:recap instead. Use when asked \"show stats\", \"how active am I\", \"productivity\", \"how much have I done\", or to review activity patterns..."
 pattern: utility
 category: Reporting
 model: haiku

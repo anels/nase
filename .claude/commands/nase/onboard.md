@@ -1,6 +1,8 @@
 ---
 name: nase:onboard
 description: Onboard or refresh project repos in the workspace knowledge base. Without arguments, refreshes ALL already-onboarded repos from workspace/context.md. With a repo path or GitHub URL, onboards or refreshes that single repo. Run before EVERY work session. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "refresh all repos", "add repo", or "update knowledge base".
+argument-hint: "[repo-path-or-url|--force]"
+when_to_use: "Onboard or refresh project repos in the workspace knowledge base. Without arguments, refreshes ALL already-onboarded repos from workspace/context.md. With a repo path or GitHub URL, onboards or refreshes that single repo. Run before EVERY work session. Use when starting work on any repo, or when asked to \"onboard\", \"refresh KB\", \"refresh all repos\",..."
 pattern: pipeline
 category: Knowledge base
 sub-patterns: [fan-out]
@@ -157,6 +159,8 @@ Run all scan groups in parallel:
 - **Config schema** — enumerate `(key, type, default, where consumed, secret?)`. Secrets first. Use this for incident debugging — config keys are the most common gap. Feature flag entries link to the flag-management UI (LaunchDarkly, ConfigCat) or config file.
 
 **3c. Deployment** — Dockerfile/docker-compose, helm/k8s/kustomize dirs, Terraform/Pulumi/Bicep, Azure Functions/Lambda, local dev (Makefile, Taskfile, scripts), env config templates
+
+**3c.1. Claude run recipes** — inspect repo-local `.claude/skills/run-*/SKILL.md` files. If present, record each recipe name, path, and frontmatter `description` in the KB build/run section so `/nase:fsd` can prefer Claude Code `/run` and `/verify` for runtime checks. If the repo appears runnable (service app, CLI, web app, test harness, Docker/compose, or local dev command) and no recipe exists, write this gap in the detailed onboard report and chat summary: `No Claude /run recipe found; consider /run-skill-generator`. Do not invoke `/run-skill-generator` automatically during onboard.
 
 **3d. CI/CD** — pipeline files (`.github/workflows`, `.pipelines`, Jenkinsfile). For each pipeline, capture enough that the next session can answer *"what does this pipeline actually do and what does it touch?"* without re-reading the YAML.
 
@@ -329,6 +333,7 @@ Before logging success, run the source-file portion of `.claude/docs/citation-va
 - First-time or refresh
 - What was discovered/updated (stack, architecture summary, notable changes)
 - Engineering workbench summary: entrypoints, safe change paths, minimum verification, top contracts, brittle boundaries
+- Claude run recipes: `{N found: run-api, ...}` or `No Claude /run recipe found; consider /run-skill-generator`
 - Hygiene report: auto-fixes, stale marks, human-review items
 - Detailed report path: `workspace/tmp/onboard-{domain}-{YYYY-MM-DD}.md` (or "not written" if no detailed scan ran)
 - KB entry path

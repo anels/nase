@@ -1,6 +1,8 @@
 ---
 name: nase:recap
 description: Generate a structured recap of completed work plus actionable improvement suggestions. Use when asked to "recap", "review my work", "review progress", "summarize", "what did I do", or "show my progress" for a week or month. Prompts for period if not specified. Always ends with concrete next-period suggestions.
+argument-hint: "[days|topic]"
+when_to_use: "Generate a structured recap of completed work plus actionable improvement suggestions. Use when asked to \"recap\", \"review my work\", \"review progress\", \"summarize\", \"what did I do\", or \"show my progress\" for a week or month. Prompts for period if not specified. Always ends with concrete next-period suggestions."
 pattern: pipeline
 category: Reporting
 sub-patterns: [fan-out]

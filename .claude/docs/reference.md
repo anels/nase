@@ -14,14 +14,18 @@ Read this file on demand when you need details about workspace layout, skills, K
                        `category:` / `order:` / `description:` feed docs/help
   hooks/
     session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
-                       surfaces backup warnings, suggests /nase:reflect when commits exist
+                       syncs workspace skill wrappers/native mirrors, surfaces backup warnings,
+                       suggests /nase:reflect when commits exist
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from workspace/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, creates timestamped
                        zip backup of workspace/ (via 7z), applies retention cleanup, warns if notes missing
     track-skill.sh   ← runs at PostToolUse (Skill): records /nase:* invocations to
                        workspace/stats/skill-usage.jsonl for /nase:stats reporting; same-second
                        dedup in script prevents double-counting
-    track-skill-prompt.sh ← runs at UserPromptSubmit: records slash-command invocations
+    track-skill-prompt.sh ← runs at UserPromptSubmit/UserPromptExpansion: records slash-command invocations
+    track-tool-failure.sh ← runs at PostToolUseFailure: records redacted bounded tool failure summaries
+    track-subagent.sh ← runs at SubagentStop: records bounded subagent summaries without assistant text
+    track-session-failure.sh ← runs at StopFailure: records redacted bounded session failure summaries
                        that bypass PostToolUse:Skill
     worktree-log.sh  ← runs at WorktreeRemove: appends timestamped removal entry to
                        today's daily log
@@ -35,7 +39,7 @@ Read this file on demand when you need details about workspace layout, skills, K
                        looks up repo in workspace/tmp/.typecheck-commands, runs quick
                        type-check (e.g. dotnet build --no-restore). 30s timeout.
                        Disabled by default — enable via /update-config.
-  settings.json      ← hook registrations (SessionStart + Stop + UserPromptSubmit + PreToolUse + PostToolUse + WorktreeRemove)
+  settings.json      ← hook registrations (SessionStart + Stop + StopFailure + UserPromptSubmit + UserPromptExpansion + PreToolUse + PostToolUse + PostToolUseFailure + SubagentStop + WorktreeRemove)
 .local-paths         ← machine-specific paths: backup-target + repo local paths (key=/path format)
                        lives at workspace root (NOT inside workspace/); managed by /nase:init
 workspace/               ← entirely git-ignored; never committed
@@ -206,7 +210,7 @@ See the [Available commands table in README.md](../../README.md#available-comman
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
 
 ### 2026-03-12 — Skill usage tracking restored to PostToolUse (track-skill.sh)
-`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `workspace/stats/skill-usage.jsonl`. The previous attempt to use `UserPromptSubmit` (`track-command.sh`) was reverted because it could not reliably detect the exact skill name invoked — regex parsing of user messages is fragile. PostToolUse provides the exact Skill tool call input, which is the authoritative source for `/nase:*` invocations. Stats are surfaced by `/nase:stats`.
+`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `workspace/stats/skill-usage.jsonl`. `track-skill-prompt.sh` also records `UserPromptExpansion:nase:*` as `source:"prompt-expansion"` so slash-command expansions that bypass `PostToolUse:Skill` are counted. PostToolUse remains the authoritative source when both fire; the scripts dedupe recent prompt/tool pairs. Stats are surfaced by `/nase:stats`.
 
 ### 2026-03-19 — Zip-based backup with retention
 `stop-backup.sh` creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) via `7z a -tzip` (`scoop install 7zip`). Retention policy (`count:N` or `days:N`) from `backup_retention:` in `workspace/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`. Supersedes earlier flat-copy and rsync approaches.

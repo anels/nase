@@ -39,6 +39,12 @@ class Command:
     description: str
     pattern: str
     order: int | None
+    argument_hint: str
+    when_to_use: str
+    model: str
+    effort: str
+    context: str
+    agent: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,6 +127,12 @@ def load_catalog(root: Path) -> list[Command]:
                 description=fields["description"],
                 pattern=fields["pattern"],
                 order=order,
+                argument_hint=fields.get("argument-hint", ""),
+                when_to_use=fields.get("when_to_use", ""),
+                model=fields.get("model", ""),
+                effort=fields.get("effort", ""),
+                context=fields.get("context", ""),
+                agent=fields.get("agent", ""),
             )
         )
 
@@ -206,7 +218,12 @@ def render_help_compact(commands: list[Command], command_limit: int, purpose_cha
 
 
 def render_json(commands: list[Command]) -> str:
-    return json.dumps([command.__dict__ for command in commands], indent=2, ensure_ascii=False)
+    rows = []
+    for command in commands:
+        row = dict(command.__dict__)
+        row["argument-hint"] = row["argument_hint"]
+        rows.append(row)
+    return json.dumps(rows, indent=2, ensure_ascii=False)
 
 
 def extract_readme_catalog(readme_text: str) -> str:

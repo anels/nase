@@ -20,6 +20,8 @@
 #   D15. critical KB-consuming workflows contain an explicit KB lookup marker
 #   D16. workspace skill source descriptions exceed the wrapper metadata cap
 #   D17. command frontmatter descriptions contain CJK trigger terms
+#   D18. core command frontmatter misses bounded Claude-native metadata
+#   D19. allowed-tools is described as a security boundary
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -654,6 +656,109 @@ if [[ -n "$d17_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': command descriptions avoid CJK trigger terms\n'
+fi
+
+# ---------- D18: Claude-native command metadata stays bounded --------------
+section "D18: command frontmatter has bounded Claude-native metadata"
+d18_hits=$(python3 - <<'PY'
+from pathlib import Path
+import json
+import re
+
+allowed = {
+    "name",
+    "description",
+    "argument-hint",
+    "when_to_use",
+    "pattern",
+    "category",
+    "sub-patterns",
+    "order",
+    "model",
+    "effort",
+    "context",
+    "agent",
+}
+
+
+def unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1]
+    return value
+
+
+hits = []
+for path in sorted(Path(".claude/commands/nase").glob("*.md")):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        hits.append(f"  {path}: missing frontmatter")
+        continue
+    fields = {}
+    for raw in match.group(1).splitlines():
+        if not raw.strip() or raw.startswith(" ") or raw.startswith("#"):
+            continue
+        if ":" not in raw:
+            hits.append(f"  {path}: malformed frontmatter line {raw!r}")
+            continue
+        key, value = raw.split(":", 1)
+        key = key.strip()
+        fields[key] = unquote(value)
+        if key not in allowed:
+            hits.append(f"  {path}: unsupported frontmatter key {key!r}")
+    for required in ("argument-hint", "when_to_use"):
+        if not fields.get(required):
+            hits.append(f"  {path}: missing {required}")
+    if len(fields.get("argument-hint", "")) > 80:
+        hits.append(f"  {path}: argument-hint length > 80")
+    if len(fields.get("when_to_use", "")) > 360:
+        hits.append(f"  {path}: when_to_use length > 360")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d18_hits" ]]; then
+  red "FAIL"; printf ': command frontmatter Claude-native metadata invalid:\n'
+  printf '%s\n' "$d18_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': command frontmatter Claude-native metadata is bounded\n'
+fi
+
+# ---------- D19: allowed-tools is not documented as a blocker --------------
+section "D19: allowed-tools is not treated as a security boundary"
+d19_hits=$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+bad = re.compile(r"allowed-tools.{0,120}\b(restrict|block|prevent|deny|security boundary|only allow|sandbox)\b", re.I)
+safe = re.compile(r"not (?:a )?restriction|not .*security boundary|pre-approves|does not block", re.I)
+hits = []
+for root in (Path(".claude/commands/nase"), Path(".claude/docs"), Path("docs"), Path("workspace/skills")):
+    if not root.exists():
+        continue
+    for path in sorted(root.rglob("*.md")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if "allowed-tools" not in line:
+                continue
+            if bad.search(line) and not safe.search(line):
+                hits.append(f"  {path}:{lineno}: {line.strip()}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d19_hits" ]]; then
+  red "FAIL"; printf ': allowed-tools pre-approves tools; do not describe it as a blocking boundary:\n'
+  printf '%s\n' "$d19_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': allowed-tools wording does not claim blocking security\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

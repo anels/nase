@@ -69,7 +69,7 @@ Then run `nase` from any terminal to open Claude Code in the workspace.
 - **Git** — required for hooks and report commands
 - **[GitHub CLI (`gh`)](https://cli.github.com/)** — required for PR metadata, diffs, reviews, and PR creation workflows
 - **7z or zip + unzip** — required for backups and restore; install via `scoop install 7zip` or `brew install p7zip`
-- **jq** — required by hooks that parse Claude Code tool-call JSON (`block-dangerous-git.sh`, external-write guards, `track-skill.sh`)
+- **jq** — required by hooks that parse Claude Code lifecycle JSON (`block-dangerous-git.sh`, external-write guards, `track-skill.sh`, telemetry hooks)
 - **python3** — required by date-range helpers used in recap/stats/KB-gap flows; also used for tech-digest archival of entries older than 30 days
 
 #### Recommended agent CLI tools
@@ -314,7 +314,7 @@ Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destr
 
 External-write hooks block direct Slack sends, require a fresh prompted Jira write token plus explicit body format, and stop oversized or non-ADF Confluence page writes before they can truncate or lose rich content. Use Slack drafts, explicit Jira confirmation, or a `workspace/tmp/` Confluence patch when those guards fire.
 
-Other hooks: `SessionStart` creates today's log and reports backup status; `UserPromptSubmit` nudges `[STYLE-DELTA]` capture for style corrections and records slash commands; `Stop` backs up `workspace/`; `PostToolUse:Skill` logs `/nase:*`; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts.
+Other hooks: `SessionStart` creates today's log, reports backup status, and syncs local `workspace/skills` into `/nase:workspace:*` plus hidden native Claude skills; `UserPromptSubmit` nudges `[STYLE-DELTA]` capture and records slash commands; `UserPromptExpansion` records expanded `/nase:*` commands; `Stop` backs up `workspace/`; `StopFailure`, `PostToolUseFailure`, and `SubagentStop` write redacted bounded failure/subagent summaries; `PostToolUse:Skill` logs `/nase:*`; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts. `WorktreeCreate` is intentionally unwired because Claude Code expects that hook to create and print the worktree path.
 
 Full table with behavior details: [`docs/architecture.md` — Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
 

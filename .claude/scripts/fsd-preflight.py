@@ -131,6 +131,41 @@ def tool_availability(root: Path) -> list[dict[str, Any]]:
         return []
 
 
+def frontmatter_field(text: str, field: str) -> str:
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        return ""
+    for line in match.group(1).splitlines():
+        if line.startswith(f"{field}:"):
+            value = line.split(":", 1)[1].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                if value[0] == '"':
+                    try:
+                        value = json.loads(value)
+                    except json.JSONDecodeError:
+                        value = value[1:-1]
+                else:
+                    value = value[1:-1]
+            return re.sub(r"\s+", " ", value).strip()
+    return ""
+
+
+def claude_run_skills(repo: Path) -> dict[str, Any]:
+    recipes: list[dict[str, str]] = []
+    skills_dir = repo / ".claude" / "skills"
+    if skills_dir.is_dir():
+        for skill_file in sorted(skills_dir.glob("run-*/SKILL.md")):
+            text = skill_file.read_text(encoding="utf-8", errors="replace")
+            recipes.append(
+                {
+                    "name": skill_file.parent.name,
+                    "path": skill_file.relative_to(repo).as_posix(),
+                    "description": frontmatter_field(text, "description")[:240],
+                }
+            )
+    return {"recipes": recipes}
+
+
 def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     repo = Path(args.repo).resolve()
     root = Path(__file__).resolve().parents[2]
@@ -141,6 +176,7 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
         "moduleInventory": module_inventory(repo, args.max_inventory_items),
         "kbMentionCandidates": kb_candidates(kb_file, args.task, args.max_kb_lines),
         "toolAvailability": tool_availability(root),
+        "claudeRunSkills": claude_run_skills(repo),
     }
 
 

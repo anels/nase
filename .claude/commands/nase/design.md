@@ -1,6 +1,8 @@
 ---
 name: nase:design
 description: "KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc with a built-in ETA estimate. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the end. Supports `--interactive` (turn-by-turn flow), `--grill` (multi-persona stress-test), `--review` (re-evaluate), `--auto` (explicit auto pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'."
+argument-hint: "<feature/request> [--auto|--interactive|--grill|--review]"
+when_to_use: "KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc with a built-in ETA estimate. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the..."
 pattern: pipeline
 category: Design & implementation
 sub-patterns: [fan-out]
