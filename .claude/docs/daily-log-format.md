@@ -20,6 +20,9 @@ Append under `## Sessions`:
 - {HH:MM} | {skill-tag}: {one-line summary}
 ```
 
+Only the `## Sessions` section is parsed as the canonical daily-log stream.
+Other sections may exist, but they are not counted as skill/session activity.
+
 ### Skill Tags (canonical)
 
 Renames only — i.e. tags where the form differs from the command name. Every other `/nase:*` skill uses the command name with the `/nase:` prefix stripped (e.g. `wrap-up`, `today`, `tech-digest`, `reflect`, `kb-update`, `kb-gap-detect`).
@@ -38,6 +41,8 @@ Skills not in this rename table: use the command name without the `/nase:` prefi
 - One line per entry. No multi-line blocks.
 - Include repo name or PR number when relevant: `fsd: {repo-name} — add watchdog function ({pr_number})`
 - Append immediately when the action completes — do not batch entries.
+- Deterministic hooks use the same shape, e.g. `- 10:42 | worktree: removed \`/tmp/foo\``.
+- Files such as `workspace/logs/{YYYY-MM-DD}-sre-tracker.md` use a separate tracker schema and are excluded from daily-log quality checks.
 
 ## Self-logging rule (mandatory for tracked skills)
 

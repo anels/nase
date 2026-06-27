@@ -141,7 +141,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 ### Design principles
 
-- **Deterministic guardrails beat prompt promises.** Prompt rules describe intent; hooks and tests enforce the dangerous edges: protected-branch pushes, destructive git, direct Slack sends, Jira mutations, oversized Confluence writes, and shell-script regressions.
+- **Deterministic guardrails beat prompt promises.** Prompt rules describe intent; hooks and tests enforce the dangerous edges: protected-branch pushes, destructive git, direct Slack sends, Jira mutations, oversized Confluence writes, shell-script regressions, and warn-only workspace quality drift.
 - **Context is sliced, not dumped.** Commands read repo KB, domain maps, GitHub metadata, focused diffs, and script-filtered logs before pulling more files into context.
 - **Knowledge stays reviewable.** Durable memory is plain Markdown under `workspace/kb/`, `workspace/tasks/`, `workspace/skills/`, and `workspace/journals/`; humans can inspect, edit, delete, and share it.
 - **Review claims need evidence.** PR and audit workflows should back findings with source paths, diffs, tests, logs, or `gh`/`rg`/`ast-grep` output, then drop candidates that cannot be verified.

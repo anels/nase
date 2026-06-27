@@ -99,6 +99,11 @@ run_hook "workspace/kb/general/read.md" "hook-dedupe"
 assert_count "T4: dedupes repeated same-file reads in a short window" "1" \
   '[.[] | select(.session == "hook-dedupe" and .file == "workspace/kb/general/read.md" and .access == "read")] | length'
 
+NASE_ROOT="$FIXTURE" python3 "$LOGGER" activate --skill "learn" --source test >/dev/null 2>&1
+run_hook "workspace/kb/general/read.md" "hook-fallback"
+assert_jq "T5: falls back to active skill when hook sessions differ" \
+  'select(.skill == "learn" and .file == "workspace/kb/general/read.md" and .access == "read" and .source == "read-hook" and .session == "hook-fallback")'
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

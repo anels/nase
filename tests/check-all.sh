@@ -58,6 +58,7 @@ HOOK_TESTS=(
   tests/hooks/test-post-edit-shellcheck.sh
   tests/hooks/test-pre-edit-write-fact-force.sh
   tests/hooks/test-track-kb-read.sh
+  tests/hooks/test-worktree-log.sh
 )
 
 SCRIPT_TESTS=(
@@ -67,6 +68,7 @@ SCRIPT_TESTS=(
   tests/scripts/test-kb-domain-resolve.sh
   tests/scripts/test-kb-hygiene-scan.sh
   tests/scripts/test-kb-usage-report.sh
+  tests/scripts/test-workspace-quality-scan.sh
   tests/scripts/test-kb-search.sh
   tests/scripts/test-today-stats.sh
   tests/scripts/test-tool-availability.sh

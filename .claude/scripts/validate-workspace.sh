@@ -183,4 +183,7 @@ grep -q '"skill":"today"' "$runtime_tmp/workspace/stats/kb-usage.jsonl"
 grep -q '"file":"workspace/kb/general/telemetry.md"' "$runtime_tmp/workspace/stats/kb-usage.jsonl"
 ok "KB read telemetry smoke check"
 
+python3 .claude/scripts/workspace-quality-scan.py --root . --days 30
+ok "workspace quality scan completed (warn-only)"
+
 echo "[validate] all checks passed"
