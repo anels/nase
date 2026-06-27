@@ -50,6 +50,8 @@ Follows `.claude/docs/workspace-write-guard.md` for `tech-trends.md`, archives, 
    - Prefer primary sources over aggregators. Use aggregators only to discover candidate items, then verify from the original source when possible.
    - If a source is unreachable, note the failure and continue with available sources. Do not fail the entire digest.
 
+   **Discovery sweep:** for each configured filter topic not already covered by a fetched primary source, run one web search for official release notes, changelog, EOL, deprecation, or security pages. Add at most 3 new candidate URLs total, then fetch and process them through the same cache, freshness, and de-dup rules.
+
    **Content-hash cache**:
    - Follow `.claude/docs/content-hash-cache.md`.
    - Cache file: `workspace/tmp/.content-hashes`.

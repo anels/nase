@@ -172,19 +172,18 @@ Set `{work_root}` = `{worktree_path}` if worktree = Yes, else `{repo}`.
 
 ---
 
-## Phase 3.5: Research Gate (unfamiliar APIs/libraries only)
+## Phase 3.5: Research Gate (external dependencies only)
 
-Before code, check whether external APIs/libraries/frameworks are not already documented in repo KB or `CLAUDE.md`.
+Before code, check whether the task depends on external APIs, libraries, frameworks, SDKs, CLIs, services, or platform behavior. KB and `CLAUDE.md` can satisfy familiar repo patterns, but not current external facts.
 
 1. **Scan** the task description ($ARGUMENTS) for library names, API references, SDK mentions, or framework-specific terms
-2. **Cross-check** against the repo's KB file (loaded in Phase 1) and `CLAUDE.md` for existing coverage
+2. **Pin version** when possible from manifests, lockfiles, SDK config, or service tier/config
 3. **Decision**:
-   - If all referenced APIs/libraries are already in KB or CLAUDE.md → **skip** (no overhead for familiar territory)
    - If task is purely internal code changes with no external dependencies → **skip**
-   - If task references APIs/libraries NOT in KB → **research gate**:
-     - Run WebSearch for official documentation of each unfamiliar API/library
-     - WebFetch the most relevant doc page (API reference, getting started, or migration guide)
-     - Extract: method signatures, required parameters, return types, common pitfalls
+   - If external behavior is familiar and not version-sensitive → use KB/`CLAUDE.md` as context; no web research required
+   - If unfamiliar, version-sensitive, dependency-bump, breaking-change, deprecation/EOL, or behavior is in doubt → run `.claude/docs/design-research.md → Part A: External Research`
+     - Prefer that source ladder: `ms-learn` / `context7`, then official docs, pinned source/changelog, then issue trackers
+     - Extract: method signatures, required parameters, return types, version constraints, and common pitfalls
      - Hold this context for Phase 4 — do not write to KB yet (Phase 8c handles that)
 
 **Track findings for KB:** always record `research_gate_findings`:

@@ -96,6 +96,8 @@ When you need a comprehensive view of a repo's health — not just "what's messy
 
    Note: only flag opportunities with a concrete benefit (faster builds, fewer bugs, reduced maintenance) — not "this is newer so use it." Each suggestion should state what it replaces and why the switch is worth the effort.
 
+   **Authority gate:** before categorizing or scoring any best-practice, modernization, deprecation, or EOL finding, cite repo evidence plus one current authority: official docs for the version in use, package-manager output, or upstream release/changelog/EOL notice. Without that, keep it as an unscored lead.
+
 6. **Categorize findings** — group by area:
    - **Security** — vulnerabilities, missing auth checks, secret handling
    - **Reliability** — error handling gaps, missing retries, race conditions
