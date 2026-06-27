@@ -108,6 +108,11 @@ EOF
 cat > "$FIXTURE/workspace/kb/.domain-map.md" <<'EOF'
 # Domain Map
 
+<!--
+Entry format: - <key> → <relative path> [last-updated:YYYY-MM-DD] [last-loaded:YYYY-MM-DD]
+- commented-example → workspace/kb/general/commented-example.md
+-->
+
 ## General
 - duplicate-a → workspace/kb/general/duplicate-a.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
 - duplicate-b → workspace/kb/general/duplicate-b.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
@@ -196,6 +201,14 @@ if [ "$workspace_rc" = 0 ] && printf '%s' "$workspace_json" | python3 -c 'import
 else
   fail=$((fail + 1))
   printf 'FAIL  workspace scan detects duplicate/missing/orphan/sparse issues\n%s\n' "$workspace_json" >&2
+fi
+
+if printf '%s' "$workspace_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert not any(i.get("path") in {"<relative", "workspace/kb/general/commented-example.md"} for i in data["issues"])'; then
+  pass=$((pass + 1))
+  printf 'PASS  workspace scan ignores commented domain-map examples\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  workspace scan ignores commented domain-map examples\n%s\n' "$workspace_json" >&2
 fi
 
 total=$((pass + fail))

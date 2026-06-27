@@ -270,7 +270,17 @@ def domain_map_targets(root: pathlib.Path) -> set[str]:
     if not domain_map.is_file():
         return set()
     targets: set[str] = set()
+    in_comment = False
     for line in domain_map.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped.startswith("<!--"):
+            if "-->" not in stripped:
+                in_comment = True
+            continue
         match = DOMAIN_MAP_TARGET_RE.match(line)
         if match:
             targets.add(match.group(1).strip().removeprefix("./"))

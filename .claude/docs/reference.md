@@ -190,6 +190,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
 | `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, install hints, or a Homebrew install command for brew-managed tools. Used by `doctor` and optional tooling-aware skills. |
 | `workspace-data-scan.py` | Emit compact, date-filtered workspace context, lessons, journals, and logs with source paths and truncation markers. Used by `workspace-data-gathering.md` callers. |
+| `workspace-quality-scan.py` | Read-only workspace quality scan for daily-log format drift, KB placeholders/refresh heartbeats, and KB usage attribution. Used by `validate-workspace.sh` in warn-only mode. |
 | `workspace-write-guard.py` | Stage, diff, and drift-check durable workspace full-file writes. Used by `design`, `kb-update`, and `wrap-up` write paths. |
 
 ---

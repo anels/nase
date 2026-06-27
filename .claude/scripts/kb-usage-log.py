@@ -67,11 +67,14 @@ def resolve_root(explicit: str | None = None) -> pathlib.Path | None:
 
 
 def session_id(explicit: str | None = None) -> str:
+    return stable_session_id(explicit) or f"local-{os.getppid()}"
+
+
+def stable_session_id(explicit: str | None = None) -> str | None:
     return (
         explicit
         or os.environ.get("CLAUDE_SESSION_ID")
         or os.environ.get("CLAUDE_SESSIONID")
-        or f"local-{os.getppid()}"
     )
 
 
@@ -82,6 +85,10 @@ def session_slug(session: str) -> str:
 
 def context_path(root: pathlib.Path, session: str) -> pathlib.Path:
     return root / "workspace" / "tmp" / f"kb-active-skill-{session_slug(session)}.json"
+
+
+def fallback_context_path(root: pathlib.Path) -> pathlib.Path:
+    return root / "workspace" / "tmp" / "kb-active-skill-current.json"
 
 
 def normalize_skill(skill: str | None) -> str:
@@ -121,8 +128,8 @@ def activate(args: argparse.Namespace) -> int:
     if root is None:
         return 0
 
+    stable = stable_session_id(args.session)
     session = session_id(args.session)
-    path = context_path(root, session)
     payload = {
         "ts": format_ts(utc_now()),
         "skill": normalize_skill(args.skill),
@@ -130,15 +137,20 @@ def activate(args: argparse.Namespace) -> int:
         "session": session,
     }
     try:
+        path = context_path(root, session)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
+        if stable is None:
+            fallback_context_path(root).write_text(
+                json.dumps(payload, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
     except Exception:
         return 0
     return 0
 
 
-def active_skill(root: pathlib.Path, session: str, now: datetime) -> str:
-    path = context_path(root, session)
+def active_skill_from_path(path: pathlib.Path, now: datetime) -> str:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -148,6 +160,13 @@ def active_skill(root: pathlib.Path, session: str, now: datetime) -> str:
     if ts is None or (now - ts).total_seconds() > 12 * 60 * 60:
         return "unknown"
     return normalize_skill(str(payload.get("skill", "")))
+
+
+def active_skill(root: pathlib.Path, session: str, now: datetime) -> str:
+    skill = active_skill_from_path(context_path(root, session), now)
+    if skill != "unknown":
+        return skill
+    return active_skill_from_path(fallback_context_path(root), now)
 
 
 def recent_duplicate(jsonl: pathlib.Path, event: dict[str, Any], now: datetime) -> bool:
