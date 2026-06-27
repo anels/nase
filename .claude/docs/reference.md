@@ -148,7 +148,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `design-auto-mode.md` | Algorithm for the default (no-flag) / `--auto` end-to-end design mode of `/nase:design`; asks deferred human-input questions in one batch at the end |
 | `design-grill-mode.md` | Algorithm for `--grill` multi-persona (architect/PM/eng/SRE/security) stress-test mode of `/nase:design` |
 | `design-review-mode.md` | Algorithm for `--review` re-evaluation mode of `/nase:design` |
-| `design-research.md` | Shared research + plan-gate + implementation-readiness reference for `/nase:design`: external source ladder, bug-repro / root-cause / prod-data / test-gap gates, decision matrix, junior-implementable spec rules |
+| `design-research.md` | Shared research + plan-gate + implementation-readiness reference for `/nase:design` and `/nase:fsd` Phase 3.5: external source ladder, bug-repro / root-cause / prod-data / test-gap gates, decision matrix, junior-implementable spec rules |
 | `design-principles.md` | Canonical principle set (First Principles / YAGNI / KISS / SOLID / DRY) + the 4 dynamic orderings by scenario; referenced by `design`, `fsd` Phase 3.6, and `simplify` |
 | `fsd-phase-decomposition.md` | Full "Direct with Phase isolation" algorithm for `fsd` Phase 3.7 — complexity precheck, state file format, subagent prompt template, TDD gate block |
 | `fsd-pre-impl-greps.md` | Pre-implementation grep checks for `fsd` Phase 3 (lint config, similar functions, test patterns) |

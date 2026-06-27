@@ -153,7 +153,8 @@ If deep research was skipped or failed and a retry is the only concrete useful a
 
 If `--auto-accept` is active, the notability bar is necessary but not sufficient. Auto-save only when all are true:
 - target KB domain is unambiguous from `.domain-map.md` or the routing rules
-- source quality is concrete: at least two independent credible sources, or one official/primary source, or a session-derived failure/decision with direct repo evidence
+- source quality is concrete: use an official/primary source when one exists; otherwise require at least two independent credible sources, or a session-derived failure/decision with direct repo evidence
+- Microsoft/.NET/Azure claims follow `.claude/docs/ms-learn-grounding.md` triggers; if grounding is unavailable under `--auto-accept`, write a draft only
 - the entry is not a generic best-practice restatement already covered by existing KB
 - no new KB domain is required
 
