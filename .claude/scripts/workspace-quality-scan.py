@@ -13,6 +13,8 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from nase_time import parse_ts
+
 
 LOG_NAME_RE = re.compile(r"^(20\d\d-\d\d-\d\d)\.md$")
 CANONICAL_SESSION_RE = re.compile(r"^- \d{2}:\d{2} \| [a-z0-9][a-z0-9:-]*: .+")
@@ -43,18 +45,6 @@ def resolve_root(explicit: str | None) -> pathlib.Path:
     except Exception:
         pass
     return pathlib.Path.cwd().resolve()
-
-
-def parse_ts(value: str) -> datetime | None:
-    try:
-        if value.endswith("Z"):
-            value = value[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-    except Exception:
-        return None
 
 
 def finding(category: str, path: pathlib.Path | str, message: str, line: int | None = None) -> dict[str, Any]:

@@ -20,6 +20,14 @@ Apply the principle set and dynamic ordering in `.claude/docs/design-principles.
 
 Before presenting options in Phase 3, explicitly state which ordering you're applying and why. Use the principles as a lens to evaluate each option — not just pros/cons, but *which principle each option honors or violates*.
 
+### What a technical decision optimizes for
+
+When choosing between approaches, optimize for the long-term health of the system: **quality, simplicity, robustness, scalability, elegance, and long-term maintainability**. Development cost — how fast or cheap an option is to build, how much effort it takes, how many hours it saves now — is **not** a selection weight. Do not pick a worse design because it ships sooner, and do not list "quicker to implement" as a pro that tips the decision. We are choosing what the codebase has to live with for years, not what is easiest this week; a few days saved at design time is noise against the cost of carrying the wrong shape.
+
+This is not a license to over-engineer. Simplicity and YAGNI are *in* the optimize-for set, so the bar is the simplest design that is genuinely robust, scalable, and maintainable — not the most elaborate one. Build effort being ignored as a *decision weight* does not mean building more; it means the cheaper-to-build option wins only when it is also the better-quality option.
+
+The ETA Estimate (Phase 4) is still produced — it is planning output for the chosen design, not a factor in choosing it. Runtime, operational, and maintenance cost of an option *are* legitimate quality concerns (they bear on robustness and maintainability); only **development cost** is excluded from the decision.
+
 ## Reviewability / PR Economy
 
 Default to one PR for one coherent behavior change. Decomposition is for thinking, implementation order, and risk control; it is not automatically a PR split.
@@ -161,8 +169,8 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 ```markdown
 ### Option {N}: {Name}
 **Approach:** {1-2 sentences}
-**Pros:** {concrete advantages}
-**Cons:** {concrete risks or costs}
+**Pros:** {concrete advantages — quality, simplicity, robustness, scalability, elegance, maintainability; not "faster to build"}
+**Cons:** {concrete risks, or runtime/operational/maintenance costs — not development cost}
 **Fits KB patterns?** {yes/no + cite the specific KB entry or file:line that backs the claim; if you cannot cite one, write `unverified` — never assert alignment from memory}
 **Principle alignment:** {which principles this honors; which it trades off}
 **Elegance:** {is the shape coherent and natural, or is it clever/awkward?}
@@ -211,7 +219,7 @@ Present the **full design in a single message** — do not pause between section
 
 The design must be **junior-implementable**: a competent junior engineer (or `/nase:fsd`) can execute it with zero remaining design decisions. Apply `.claude/docs/design-research.md → Part C` for the rules behind each section, and **tier the depth to scope (C7)** — a quick-fix gets a 3-line design, not the full template.
 
-**Always include the `### ETA Estimate`** — derive it from the Implementation Plan steps using `.claude/docs/eta-estimation.md`; the step breakdown already done its work, so the estimate is mostly assigning time per step and rolling up the confidence range. Tier the depth to scope like everything else: a quick-fix gets a single realistic line, a feature/initiative gets the per-step table and the optimistic/realistic/pessimistic range. Don't write the calibration log line here (that's `/nase:estimate-eta`'s job) — the estimate lives in the effort doc.
+**Always include the `### ETA Estimate`** — derive it from the Implementation Plan steps using `.claude/docs/eta-estimation.md`; the step breakdown already did its work, so the estimate is mostly classifying each step by lane/size and rolling up the confidence range. Tier the depth to scope like everything else: a quick-fix gets a single realistic line, a feature/initiative gets the per-step table and the optimistic/realistic/pessimistic range. Don't write the calibration log line here (that's `/nase:estimate-eta`'s job) — the estimate lives in the effort doc.
 
 ### Design Structure
 
@@ -250,13 +258,14 @@ The design must be **junior-implementable**: a competent junior engineer (or `/n
 Dependencies: {which steps are sequential (A before B) vs parallel (no edge)}. Critical path: {longest dependent chain}.
 
 ### ETA Estimate
-Derived from the Implementation Plan steps above per `.claude/docs/eta-estimation.md`. Estimate each step, then roll up to a confidence range.
+Derived from the Implementation Plan steps above per `.claude/docs/eta-estimation.md`. Tag each step with its dominant lane (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) and a rough size bucket (S/M/L/XL/XXL), then roll up to a confidence range.
 
-| Step / subtask | Estimate | Notes |
-|---|---|---|
-| {step} | Xh | {what drives it} |
+| Step / subtask | Lane | Size | Notes |
+|---|---|---|---|
+| {step} | 🤖 AI | S | {what drives it} |
 
-- **Optimistic:** X — **Realistic:** X — **Pessimistic:** X
+- **Where the time goes:** {which lanes dominate; if 🔌 / 🧠 / ✅ dominate, name the real bottleneck — fast code ≠ fast task}
+- **Optimistic:** X — **Realistic:** X — **Pessimistic:** X (widen the spread on AI-heavy steps)
 - **Estimate risks:** {the unknowns that widen the spread; cross-reference Risks & Mitigations}
 
 ### PR Plan
@@ -293,7 +302,7 @@ Run an internal quality gate before writing the effort doc.
    - Implementation readiness FAIL → add concrete file paths/signatures/data models, per-step tests + done-conditions, and resolve or mark `[NEEDS CLARIFICATION]`
    - Research grounding FAIL → add the doc URL / source / issue and pin the version, or mark the claim `unverified`
    - Repro & root cause FAIL → add the repro (or document why it won't reproduce) and trace the fix to the originating cause
-   - ETA grounded FAIL → add the `### ETA Estimate`, tie each line to a plan step, and give a realistic number (range for feature+, single line for quick-fix)
+   - ETA grounded FAIL → add the `### ETA Estimate`, tie each line to a plan step, classify lane/size, and give a rough confidence range (or a single realistic line for quick-fix)
 
 3. **If all PASS or at most 1 WEAK**: exit the loop and proceed to Phase 5.
 
@@ -378,7 +387,7 @@ Used by Review Mode and as a self-check before writing the design doc in Phase 5
 | **Implementation readiness** | A junior could execute with zero design decisions: exact file paths, signatures, data models, API contracts where applicable; step plan with per-step tests + done-condition; zero unresolved `[NEEDS CLARIFICATION]` markers |
 | **Research grounding** | External claims about library/SDK/platform behavior cite a doc URL, dependency source, or issue — not memory; versions pinned |
 | **Repro & root cause** (bug-shaped only) | A reproduction (or documented failure to reproduce) exists, and the fix targets the originating cause, not the symptom |
-| **ETA grounded** | An `### ETA Estimate` exists, ties to the Implementation Plan steps (not a free-floating guess), and gives a realistic number — a confidence range for feature+ scope, a single line for quick-fixes |
+| **ETA grounded** | An `### ETA Estimate` exists, ties to the Implementation Plan steps (not a free-floating guess), and gives a rough lane/size-based confidence range — or a single realistic line for quick-fixes |
 
 ## Notes
 

@@ -2,7 +2,6 @@
 name: nase:skill-usage
 description: "Report /nase:* skill usage from workspace/stats/skill-usage.jsonl with total, 30/7-day windows, last-used date, and deprecation candidates. Use for which skills do I use, skill stats, or deprecate skills. Read-only; writes a stats report."
 argument-hint: "[--window N --top N]"
-when_to_use: "Report /nase:* skill usage from workspace/stats/skill-usage.jsonl with total, 30/7-day windows, last-used date, and deprecation candidates. Use for which skills do I use, skill stats, or deprecate skills. Read-only; writes a stats report."
 pattern: utility
 category: Reporting
 model: haiku

@@ -31,8 +31,8 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
 3. Read `workspace/tasks/lessons.md` if it exists — look for similar past tasks and how long they took
    - Also check the relevant project KB (`workspace/kb/projects/`) for historical velocity data and known complexity patterns
 4. Read `workspace/tasks/todo.md` to understand current workload and what's in flight
-5. Break the task into concrete subtasks with individual estimates
-6. Factor in: complexity, unknowns, testing, review, and integration work
+5. Break the task into concrete subtasks. Tag each with its **dominant lane** (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) per `.claude/docs/eta-estimation.md` → Lane Classification — ask "what is this step blocked on?"
+6. Size each subtask with the rough bucket scale (S / M / L / XL / XXL). Apply AI-leverage compression only to 🤖 lane subtasks; 🔌 / 🧠 / ✅ do not speed up because codegen got faster
 
 7. Persist the estimate — append to `workspace/logs/{YYYY-MM-DD}.md`:
    ```
@@ -52,15 +52,20 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
 - Scope: [Small / Medium / Large / XL]
 
 **Subtask Breakdown**
-| Subtask | Estimate | Notes |
-|---------|----------|-------|
-| ... | Xh | ... |
-| ... | Xh | ... |
+| Subtask | Lane | Size | Notes |
+|---------|------|------|-------|
+| ... | 🤖 AI | S | ... |
+| ... | 🔌 Env | M | ... |
+| ... | 🧠 Human | M | ... |
+| ... | ✅ Verify | M | ... |
+
+**Where the time goes**
+- One line on the lane split (which lanes dominate). If 🔌 / 🧠 / ✅ dominate, name the real bottleneck — fast code ≠ fast task.
 
 **Total Estimate**
-- Optimistic: X hours / days
-- Realistic: X hours / days
-- Pessimistic: X hours / days
+- Optimistic: X (rough — S/M/L/XL buckets, not hour-precision)
+- Realistic: X
+- Pessimistic: X (widen the spread on AI-heavy tasks — variance is the cost of speed)
 
 **Key Risks & Unknowns**
 - List anything that could blow up the estimate

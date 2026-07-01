@@ -447,7 +447,7 @@ paths = [
     Path(".claude/docs/fsd-phase-decomposition.md"),
     Path("workspace/skills/deploy-alpha.md"),
 ]
-unsafe = re.compile(r"workspace/tmp/[^\n`]*\{(?:branch_name|branch)\}")
+unsafe = re.compile(r"workspace/tmp/[^\n\x60]*\{(?:branch_name|branch)\}")
 hits = []
 for path in paths:
     if not path.exists():
@@ -544,42 +544,10 @@ fi
 section "D16: workspace skill source descriptions fit wrapper cap"
 d16_hits=$(python3 - <<'PY'
 from pathlib import Path
-import re
+import sys
 
-
-def unquote(value: str) -> str:
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        return value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
-    if len(value) >= 2 and value[0] == value[-1] == "'":
-        return value[1:-1]
-    return value
-
-
-def description_from_frontmatter(text: str) -> str:
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
-    if not match:
-        return ""
-
-    lines = match.group(1).splitlines()
-    desc_lines: list[str] = []
-    capture_block = False
-    for raw in lines:
-        if capture_block:
-            if re.match(r"^[A-Za-z0-9_-]+:\s*", raw):
-                break
-            desc_lines.append(raw.strip())
-            continue
-
-        if raw.startswith("description:"):
-            value = raw.split(":", 1)[1].strip()
-            if value in {"|", ">", "|-", ">-", "|+", ">+"}:
-                capture_block = True
-                continue
-            desc_lines = [unquote(value)]
-            break
-
-    return re.sub(r"\s+", " ", " ".join(line for line in desc_lines if line)).strip()
+sys.path.insert(0, "tests/lib")
+from frontmatter import description_from_frontmatter
 
 
 hits = []
@@ -604,41 +572,10 @@ section "D17: command descriptions avoid CJK trigger terms"
 d17_hits=$(python3 - <<'PY'
 from pathlib import Path
 import re
+import sys
 
-
-def unquote(value: str) -> str:
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        return value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
-    if len(value) >= 2 and value[0] == value[-1] == "'":
-        return value[1:-1]
-    return value
-
-
-def description_from_frontmatter(text: str) -> str:
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
-    if not match:
-        return ""
-
-    lines = match.group(1).splitlines()
-    desc_lines: list[str] = []
-    capture_block = False
-    for raw in lines:
-        if capture_block:
-            if re.match(r"^[A-Za-z0-9_-]+:\s*", raw):
-                break
-            desc_lines.append(raw.strip())
-            continue
-
-        if raw.startswith("description:"):
-            value = raw.split(":", 1)[1].strip()
-            if value in {"|", ">", "|-", ">-", "|+", ">+"}:
-                capture_block = True
-                continue
-            desc_lines = [unquote(value)]
-            break
-
-    return re.sub(r"\s+", " ", " ".join(line for line in desc_lines if line)).strip()
+sys.path.insert(0, "tests/lib")
+from frontmatter import description_from_frontmatter
 
 
 hits = []
@@ -662,8 +599,11 @@ fi
 section "D18: command frontmatter has bounded Claude-native metadata"
 d18_hits=$(python3 - <<'PY'
 from pathlib import Path
-import json
 import re
+import sys
+
+sys.path.insert(0, "tests/lib")
+from frontmatter import unquote
 
 allowed = {
     "name",
@@ -679,19 +619,6 @@ allowed = {
     "context",
     "agent",
 }
-
-
-def unquote(value: str) -> str:
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
-    if len(value) >= 2 and value[0] == value[-1] == "'":
-        return value[1:-1]
-    return value
-
 
 hits = []
 for path in sorted(Path(".claude/commands/nase").glob("*.md")):
@@ -709,15 +636,18 @@ for path in sorted(Path(".claude/commands/nase").glob("*.md")):
             continue
         key, value = raw.split(":", 1)
         key = key.strip()
-        fields[key] = unquote(value)
+        fields[key] = unquote(value, json_double=True)
         if key not in allowed:
             hits.append(f"  {path}: unsupported frontmatter key {key!r}")
-    for required in ("argument-hint", "when_to_use"):
+    for required in ("argument-hint",):
         if not fields.get(required):
             hits.append(f"  {path}: missing {required}")
+    when_to_use = fields.get("when_to_use") or fields.get("description", "")
+    if not when_to_use:
+        hits.append(f"  {path}: missing when_to_use fallback")
     if len(fields.get("argument-hint", "")) > 80:
         hits.append(f"  {path}: argument-hint length > 80")
-    if len(fields.get("when_to_use", "")) > 360:
+    if len(when_to_use) > 360:
         hits.append(f"  {path}: when_to_use length > 360")
 
 print("\n".join(hits))

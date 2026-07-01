@@ -2,7 +2,6 @@
 name: nase:doctor
 description: "Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint. Triggers: 'doctor', 'check workspace', 'diagnose nase', 'verify config', 'health check', 'workspace doctor', 'is nase healthy'."
 argument-hint: "[--deep]"
-when_to_use: "Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint. Triggers: 'doctor', 'check workspace', 'diagnose nase', 'verify config', 'health check', 'workspace doctor', 'is nase healthy'."
 pattern: utility
 category: Setup & health
 ---

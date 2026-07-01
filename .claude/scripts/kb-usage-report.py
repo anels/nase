@@ -13,6 +13,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from nase_time import parse_ts
+
 
 KB_EXTENSIONS = {".md", ".sql"}
 VALID_ACCESS = {"read", "resolve", "search-result"}
@@ -36,18 +38,6 @@ def resolve_root(explicit: str | None = None) -> pathlib.Path:
     except Exception:
         pass
     return pathlib.Path.cwd().resolve()
-
-
-def parse_ts(value: str) -> datetime | None:
-    try:
-        if value.endswith("Z"):
-            value = value[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-    except Exception:
-        return None
 
 
 def parse_now(value: str | None) -> datetime:

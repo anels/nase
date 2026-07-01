@@ -2,7 +2,6 @@
 name: nase:kb-teamshare
 description: "Export KB files or learned workspace skills for teammates with sanitization and portable links. Use for share my KB, export KB, export knowledge base, share skills, or packaging content for /nase:kb-merge."
 argument-hint: "<kb-path-or-skill>"
-when_to_use: "Export KB files or learned workspace skills for teammates with sanitization and portable links. Use for share my KB, export KB, export knowledge base, share skills, or packaging content for /nase:kb-merge."
 pattern: pipeline
 category: Knowledge base
 ---

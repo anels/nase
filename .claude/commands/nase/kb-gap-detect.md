@@ -2,7 +2,6 @@
 name: nase:kb-gap-detect
 description: "Scan daily logs and lessons for missing KB topics, cluster gaps, and propose additions. Use for knowledge gap, find KB holes, or what should I document. Read-only by default; complements /nase:kb-review, which finds stale or duplicate entries."
 argument-hint: "[days/topic]"
-when_to_use: "Scan daily logs and lessons for missing KB topics, cluster gaps, and propose additions. Use for knowledge gap, find KB holes, or what should I document. Read-only by default; complements /nase:kb-review, which finds stale or duplicate entries."
 pattern: pipeline
 category: Knowledge base
 ---

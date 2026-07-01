@@ -128,7 +128,7 @@ def load_catalog(root: Path) -> list[Command]:
                 pattern=fields["pattern"],
                 order=order,
                 argument_hint=fields.get("argument-hint", ""),
-                when_to_use=fields.get("when_to_use", ""),
+                when_to_use=fields.get("when_to_use") or fields["description"],
                 model=fields.get("model", ""),
                 effort=fields.get("effort", ""),
                 context=fields.get("context", ""),
