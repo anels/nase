@@ -2,7 +2,6 @@
 name: nase:fsd
 description: "End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design."
 argument-hint: "<task description or effort doc>"
-when_to_use: "End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design."
 pattern: pipeline
 category: Design & implementation
 sub-patterns: [supervisor]
@@ -15,6 +14,19 @@ Confirm execution options upfront (team mode, worktree, PR), then continue throu
 Follows `.claude/docs/external-mutation-policy.md`: batch upfront decisions, only create/edit PR when `open_pr=true`, and push via standard commit-push pattern.
 Follows `.claude/docs/workspace-write-guard.md` for effort-doc topology/lifecycle updates and any KB writes from research findings.
 Follows `.claude/docs/repo-task-flow.md` for shared repo resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns FSD planning, implementation, verification scope, and PR creation decisions below.
+
+## Engineering Excellence Bar
+
+This workspace holds a high bar for the health of the tree we push. Three signals are **non-negotiable before push** — build/lint green, the full test suite green, and zero flaky tests — and they hold *regardless of whether this effort caused the problem*. A red or flaky gate you encounter is yours to fix the moment you see it; "not caused by my change" explains the failure, it does not license leaving it broken. Pushing on top of a known-red or flaky suite erodes the suite for everyone and hides the next real regression.
+
+This is the one sanctioned exception to `CLAUDE.md`'s "while we're at it" rejection — and it is narrow: it covers **lint errors, test failures, and test flakiness only**, never general drive-by refactors.
+
+**Attribute, then fix — both, not either:**
+- First attribute. Is this a regression my diff introduced, or pre-existing / upstream? Per `feedback_ci-unrelated-test-check-develop-first.md`, run `git log --since='48 hours ago' origin/{default_branch} -- <test-path>` and rebase onto current default before debugging. Attribution tells you *what kind* of failure it is; it never tells you to skip the fix.
+- A regression you introduced → fix inline; it is part of this change.
+- Pre-existing / upstream that survives the rebase → still fix it. **Default: fix inline in this branch and call it out in the Phase 10 report.** Isolate into a separate commit/PR (or escalate to the owning team) *only* when the fix crosses a repo or owner boundary, or would materially balloon the diff past the Phase 5.5 guardrail — but never leave the gate red to keep the diff small.
+
+**Flakiness is a defect, not noise.** A test that passes only on re-run is broken — fix the root cause (test isolation, async/timing, shared state). Do not paper over it with retries, sleeps, or a `cy.wait` on a deduped fetch (`feedback_swr-cywait-alias-flake.md`) — that deepens the flake. If the true fix is genuinely out of scope for this branch, quarantine the test explicitly (skip + a tracked follow-up), never re-run until it happens to go green.
 
 ## Mode Quick-Reference
 
@@ -287,7 +299,7 @@ For each behavior, do one full Red→Green cycle before starting the next:
 
 ## Phase 5: Build & Test Loop (max 5 iterations)
 
-Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff (skip it when tdd_mode = true — RED gate already covers it).
+Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. The exit condition is the **Engineering Excellence Bar** above: green build/lint/test and zero flakes — *including* pre-existing or upstream failures and flakes the run surfaces. Attribute (rebase-check), then fix; do not proceed past a red or flaky gate, and do not burn the 5-iteration budget re-running a flake instead of root-causing it. After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff (skip it when tdd_mode = true — RED gate already covers it).
 
 If `claudeRunSkills.recipes` from preflight is non-empty and this task changes runtime behavior, prefer Claude Code `/verify` as the first behavioral smoke check after local build/test gates. Use the matching `/run` recipe context surfaced by preflight; record `/verify` output as evidence. If no recipe exists, or the change is docs/config-only, keep the existing local gate flow and note that `/verify` was not applicable.
 
@@ -348,11 +360,17 @@ On "Split": stop and suggest the minimum PR count from the design PR plan, topol
 
 ---
 
-## Phase 5.75: Pre-Commit Self-Review Loop (fresh-context, until clean)
+## Phase 5.75: Pre-Commit Deep-Dive Self-Review Loop (fresh-context, until clean)
 
-Before simplifying or committing, the diff gets a real review — not a glance. The point is to catch correctness and maintainability defects while they're cheap, on the actual diff, before `/nase:simplify` reshapes it and before the cross-model spec check in Phase 6.5. AI-written diffs carry materially more defects than they appear to (`workspace/kb/general/llm.md` — "confidently incomplete"), so this pass is mandatory, not optional.
+Before simplifying or committing, the diff gets a real review at the depth of `/nase:discuss-pr`, and each finding is acted on with the discipline of `/nase:address-comments` — adapted to a pre-push local diff. There is no GitHub PR yet, so nothing here posts, replies, or resolves threads; the borrowed structure is the *method* (deep multi-lens analysis, then a per-finding accept/decline/fix loop), not the GitHub plumbing. The point is to catch correctness and maintainability defects while they're cheap, on the actual diff, before `/nase:simplify` reshapes it and before the cross-model spec check in Phase 6.5. AI-written diffs carry materially more defects than they appear to (`workspace/kb/general/llm.md` — "confidently incomplete"), so this pass is mandatory, not optional.
 
-**Reviewer is fresh-context, never the implementing context.** Scoring your own diff in the context that wrote it is self-approval — the blind spot that produced a bug scores right past it (`CLAUDE.md → Code Review`; `feedback_ai-code-comprehension-gate.md`). Spawn a read-only subagent (role `verifier` per `.claude/roles.yaml`, tools Read/Grep/Glob/Bash — no Edit/Write). Give it only: the task spec from `$ARGUMENTS` (the contract), the merge-base diff, and `{work_root}`. Do not hand it your reasoning or a verdict.
+**Reviewer is fresh-context, never the implementing context.** Scoring your own diff in the context that wrote it is self-approval — the blind spot that produced a bug scores right past it (`CLAUDE.md → Code Review`; `feedback_ai-code-comprehension-gate.md`). Spawn a read-only subagent (role `verifier` per `.claude/roles.yaml`, tools Read/Grep/Glob/Bash — no Edit/Write). Give it only: the task spec from `$ARGUMENTS` plus any `success_criteria_from_design` / `design_constraints` from Phase 1 (the contract), the merge-base diff, and `{work_root}`. Do not hand it your reasoning or a verdict.
+
+### Review depth — full `discuss-pr` lens set, every run
+
+The reviewer applies the `/nase:discuss-pr` review stance, in order: (1) what problem is this solving, for whom, and why now; (2) does the implementation actually satisfy that intent across every changed path; (3) does the design fit the larger system boundaries, ownership, and adjacent patterns; (4) is there a simpler, more elegant implementation that cuts risk or maintenance; (5) are tests, security, and hygiene sufficient for the risk. Run **all** of these lenses on every run regardless of diff size — problem fit, logic correctness, design/elegance + active simpler-option search, architecture, security, testability, and code-comment accuracy. Judge design and elegance through the principle ordering captured in Phase 3.6 and the design-time decision values (`/nase:design` → *What a technical decision optimizes for*): quality, simplicity, robustness, scalability, elegance, maintainability — not build speed.
+
+For any **non-trivial finding** (a non-obvious correctness claim, a cross-boundary assumption the diff alone can't settle, or a severity upgrade resting on inferred rather than observed behavior), run the `/nase:discuss-pr` doubt cycle: hand a fresh reviewer `ARTIFACT + CONTRACT` only — never your CLAIM — let it judge independently, then reconcile each result as contract-misread / valid / valid-trade-off / noise. This kills plausible-but-wrong findings before they cost a fix. Skip the doubt cycle only for mechanical nits already 100% grounded in the diff.
 
 ### Severity rubric
 
@@ -366,18 +384,26 @@ Reuse the existing ladder (`workspace/kb/general/clean-code.md` severity ladder;
 
 Don't over-escalate (`CLAUDE.md`): `P0` needs concrete evidence the code is broken or exploitable, not a preference.
 
+### Structured fix — per finding, `address-comments` discipline
+
+Treat each surviving finding like an unresolved review thread you own:
+
+1. **Dossier + verify.** One line per finding: file:line, the concrete defect, and the evidence (the diff hunk plus any cross-boundary code traced during the doubt cycle). Verify the finding against the actual line per `.claude/docs/pr-review-verification.md` §3 — if the claim doesn't match the file at that line, drop it.
+2. **Classify** (don't reflexively patch every comment): **accept** (real defect → fix it), **decline** (current code is already correct, or the finding misread context → record the one-line reason, change nothing), or **middle-ground** (a narrower fix now, or a tracked follow-up for an out-of-scope part). Probe for the middle ground before committing to a binary accept/decline.
+3. **Fix accepts.** Apply the minimal change for every accepted P0 and P1 in `{work_root}`. If a fix alters logic or fixes a bug, add or update the test that covers it (Beyoncé rule). P2s become Phase 10 follow-up notes.
+
 ### Scope discipline (so the loop converges)
 
-Review the **diff**, not the whole repo. Before acting on any finding, grep whether the pattern is **pre-existing** (`workspace/kb/general/workflow.md` § pre-existing-pattern check) — if this change didn't introduce it, log it as a follow-up and move on; do not fix it here (`CLAUDE.md` "while we're at it" rejection). This keeps the loop from ballooning into a debt cleanup.
+Review the **diff**, not the whole repo. For a *code-quality* finding, grep whether the pattern is **pre-existing** (`workspace/kb/general/workflow.md` § pre-existing-pattern check) — if this change didn't introduce it, log it as a follow-up; don't fix unrelated code smells here (`CLAUDE.md` "while we're at it" rejection). **Exception:** lint errors, test failures, and test flakiness are governed by the **Engineering Excellence Bar** above — those get fixed even when pre-existing, never deferred. The split is deliberate: a stray code smell is debt you may defer; a red or flaky gate is not.
 
 ### Loop
 
-1. Reviewer returns findings, each tagged P0/P1/P2 with file:line + the concrete problem.
-2. Fix **every P0 and P1** in `{work_root}` (respecting scope discipline). P2s become Phase 10 follow-up notes.
+1. Reviewer returns findings (full lens set + doubt cycle on non-trivial ones), each tagged P0/P1/P2 with file:line, the concrete problem, and its classification.
+2. Fix **every accepted P0 and P1** in `{work_root}` (respecting scope discipline). Record declines with their one-line reason. P2s become Phase 10 follow-up notes.
 3. **Re-spawn a fresh reviewer** on the updated diff. Confirm each prior fix actually landed at HEAD (`feedback_verify-claimed-fix-vs-head.md` — a claimed fix is a hypothesis until diff-confirmed) and that no new P0/P1 appeared.
-4. Repeat until a pass returns zero P0/P1, or **3 iterations**. If iteration 3 still has open P0/P1: stop, do **not** commit, present the remaining findings via `AskUserQuestion` (Fix more / Override with reason / Cancel). An honest stop beats pushing a known-broken diff.
+4. Repeat until a pass returns zero accepted P0/P1, or **3 iterations**. If iteration 3 still has open P0/P1: stop, do **not** commit, present the remaining findings via `AskUserQuestion` (Fix more / Override with reason / Cancel). An honest stop beats pushing a known-broken diff.
 
-Log one line: `self-review: {N} iters, {X} P0/P1 fixed, {Y} P2 deferred`.
+Log one line: `self-review: {N} iters, {X} P0/P1 fixed, {Y} declined, {Z} P2 deferred`.
 
 This is correctness/quality review; Phase 6.5 (Codex) is the independent cross-model spec-vs-diff check. They're complementary — keep both.
 
@@ -392,7 +418,7 @@ Do not skip because the change seems small; invoke the skill and let it decide.
 | Rationalization | Reality |
 |---|---|
 | "Linting / format warning is a false positive — leave it." | The CI gate doesn't read intent. Either silence with a justified `// noqa: <code>`-style comment or fix it. Re-running CI on a known-red diff burns minutes per cycle. |
-| "Failing CI test is flaky / unrelated — I'll re-run it." | Per `feedback_ci-unrelated-test-check-develop-first.md`: first `git log --since='48 hours ago' origin/{default} -- <test-path>`. Only after confirming upstream stability is "flaky" allowed; otherwise it's your bug. |
+| "Failing CI test is flaky / unrelated — I'll re-run it." | Per `feedback_ci-unrelated-test-check-develop-first.md`: first `git log --since='48 hours ago' origin/{default} -- <test-path>` and rebase. That *attributes* the failure — it never excuses it. Per the **Engineering Excellence Bar**, a real failure or a flake gets fixed (root-cause the flake; quarantine + tracked follow-up only when the true fix is out of scope), even if pre-existing. Re-running until green is not a fix. |
 | "This comment / TODO is obvious — Phase 6 doesn't need to touch it." | Code/comment drift is the #1 source of stale review-cycles. If the comment no longer matches the post-Phase-4 code, fix it now — the reviewer will catch it and you'll re-push anyway. |
 | "Simplifier didn't find anything — diff is already clean." | Verify by reading the simplifier's output, not by inferring from silence. If the run produced no diff, log `simplify: no changes` once and proceed. Skipping the invocation is not equivalent. |
 | "I already squashed once today, second prep-merge can reuse." | Per `feedback_prep-merge-upstream-check.md`: `git log origin/{default}..HEAD` first. Base may have shifted; refresh PR body if so. |

@@ -2,7 +2,6 @@
 name: nase:discuss-pr
 description: "Read-only PR analysis that finds the product/repo problem, then checks logic, design, simpler options, security, and testability before drafting comments. Use for analyze PR, self-review, prepare review comments, review PR #N, or PR URL + review without posting. Use /nase:address-comments for existing feedback."
 argument-hint: "<pr-url-or-number>"
-when_to_use: "Read-only PR analysis that finds the product/repo problem, then checks logic, design, simpler options, security, and testability before drafting comments. Use for analyze PR, self-review, prepare review comments, review PR #N, or PR URL + review without posting. Use /nase:address-comments for existing feedback."
 pattern: fan-out
 category: Git workflow
 ---

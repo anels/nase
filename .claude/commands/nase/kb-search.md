@@ -2,7 +2,6 @@
 name: nase:kb-search
 description: "Search all KB files for a topic, keyword, or pattern. Use to find documented context, verify whether something is already in the KB, or discover related entries. Triggers: search KB, find in KB, or is X in the KB. Read-only; use /nase:kb-update or /nase:learn to add entries."
 argument-hint: "<query>"
-when_to_use: "Search all KB files for a topic, keyword, or pattern. Use to find documented context, verify whether something is already in the KB, or discover related entries. Triggers: search KB, find in KB, or is X in the KB. Read-only; use /nase:kb-update or /nase:learn to add entries."
 pattern: utility
 category: Knowledge base
 ---

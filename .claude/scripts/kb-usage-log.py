@@ -18,6 +18,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
+from nase_time import parse_ts
+
 
 ALLOWED_ACCESS = {"read", "resolve", "search-result"}
 ALLOWED_SOURCE = {"read-hook", "kb-domain-resolve", "kb-search"}
@@ -31,18 +33,6 @@ def utc_now() -> datetime:
 
 def format_ts(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def parse_ts(value: str) -> datetime | None:
-    try:
-        if value.endswith("Z"):
-            value = value[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-    except Exception:
-        return None
 
 
 def resolve_root(explicit: str | None = None) -> pathlib.Path | None:

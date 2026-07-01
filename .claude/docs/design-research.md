@@ -87,7 +87,7 @@ Before deciding what tests the change needs, know what exists.
 
 Upgrade plain pros/cons to a structured comparison so the choice is auditable, not gut-feel.
 
-- Options as rows; **weighted criteria** as columns (e.g. complexity, KB/pattern alignment, elegance, maintainability, performance, security, review/PR cost, risk). Weight by what matters for *this* design.
+- Options as rows; **weighted criteria** as columns (e.g. quality, simplicity/complexity, robustness, scalability, KB/pattern alignment, elegance, maintainability, performance, security, review/PR cost, risk). Weight by what matters for *this* design. **Do not add a "development cost / effort / time-to-build" column** — build cost is not a decision weight (see `/nase:design` → *What a technical decision optimizes for*). Runtime/operational/maintenance cost belongs under robustness/maintainability; review/PR cost stays as a reviewability concern.
 - Score each cell; the recommendation is the weighted result — but state it, don't hide behind the math.
 - For architecture-level choices, prefer an **ATAM-style utility tree**: turn quality goals into testable scenarios, surface risks / sensitivity points / explicit trade-offs.
 - **Spike the unknowns.** If an option hinges on a risky unknown, prototype/spike it rather than deciding on paper.

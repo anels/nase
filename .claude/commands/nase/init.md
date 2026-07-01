@@ -2,7 +2,6 @@
 name: nase:init
 description: "Initialize or reconfigure the nase workspace. Use for first-time setup, after cloning on a new machine, or when workspace/config.md is missing. Safe to re-run — idempotent. Triggers: 'init nase', 'setup workspace', 'configure nase', 'first-time setup', 'reconfigure workspace', 'bootstrap nase'."
 argument-hint: "[--reconfigure]"
-when_to_use: "Initialize or reconfigure the nase workspace. Use for first-time setup, after cloning on a new machine, or when workspace/config.md is missing. Safe to re-run — idempotent. Triggers: 'init nase', 'setup workspace', 'configure nase', 'first-time setup', 'reconfigure workspace', 'bootstrap nase'."
 pattern: pipeline
 category: Setup & health
 ---
