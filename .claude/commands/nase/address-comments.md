@@ -231,6 +231,8 @@ Watch for per-type short-circuits (`if x is None: continue`) before the new gate
 
 Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply`. Draft a direct reply: clear reason, technical context if needed, no defensive tone.
 
+**Bot/AI reviewers get no courtesy opener.** When the thread author is a bot/AI (the same set the Phase 9b filter drops — Copilot, `chatgpt-codex-connector`, `claude`, CodeRabbit, Sonar, `*[bot]`), open straight on the substance — no "good catch", "nice catch", "good job", "thanks for bringing this up". A bot doesn't read tone, so the opener is pure filler that buries the evidence. Warmth stays fine for human reviewers.
+
 Example: "The current approach handles X because [reason]. Changing to Y would [specific downside]."
 
 **Per-thread concrete evidence rule:** each decline reply must cite evidence for *this* thread:

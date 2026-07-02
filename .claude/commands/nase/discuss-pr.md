@@ -514,13 +514,13 @@ Spawn Explore agents for selected items (same pattern as Step 5b). Update findin
 
 ## Step 7 — Stage 3: draft decision
 
-Ask the user how to handle drafting via `AskUserQuestion`. Three options, always in this order, always with these labels:
+Ask the user how to handle drafting via `AskUserQuestion`. Three options, always in this order, always with these labels. **Default recommendation is "Draft + post"** — the normal outcome of a review is inline comments on GitHub, so lead with it and append `(recommended)`. The other two options stay available for the cases where the user wants a chat-only draft or nothing at all; the recommendation does not skip the confirmation — the user still actively picks.
 
 ```
 Question: "Draft inline comments now?"
 Header: "Draft choice"
 Options (single-select):
-- "Draft + post" — I draft inline comments and proceed straight to Step 8 (post flow)
+- "Draft + post (recommended)" — I draft inline comments and proceed straight to Step 8 (post flow)
 - "Draft + discuss" — I draft inline comments inline in chat, you copy/refine manually, no posting
 - "No draft" — End the flow here, no comments drafted
 ```
@@ -556,9 +556,9 @@ Only enter this step if Step 7 = "Draft + post". Otherwise this step is skipped.
 
 **Determine recommended state** by these guidelines (recommend one — the user gets final say):
 
-- `APPROVE` — no confirmed bugs or security issues, PR ready to merge
+- `APPROVE` — **default recommendation** whenever no confirmed blocking issue exists. This includes LGTM-with-nits: medium/low findings or open style questions do not downgrade the recommendation. If you would be comfortable merging the PR, recommend `APPROVE` — do not fall back to `COMMENT` just because some non-blocking findings remain.
 - `REQUEST_CHANGES` — confirmed issue that would cause a production incident (data corruption, service crash on deploy, security breach). High bar.
-- `COMMENT` — default for everything else (reviewers address comments, no need to block)
+- `COMMENT` — only when findings genuinely need reviewer attention yet you are not comfortable approving, and they do not meet the `REQUEST_CHANGES` bar (e.g. an unresolved open question that blocks a merge verdict). Not the catch-all — prefer `APPROVE` when the PR is mergeable.
 
 Then ask via `AskUserQuestion`:
 

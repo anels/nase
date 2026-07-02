@@ -1,8 +1,8 @@
 ---
 name: nase:today
-description: Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items and optional concrete next actions from KB, logs, tasks, Jira, and Slack. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff".
+description: Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items (live status-checked — PR review/CI state, Slack replies/reactions, Confluence page activity) and optional concrete next actions from KB, logs, tasks, Jira, Slack, and Confluence. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff".
 argument-hint: "[date or focus]"
-when_to_use: "Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items and optional concrete next actions from KB, logs, tasks, Jira, and Slack. Use at the start of each work session, or when asked \"what should I work on?\", \"morning kickoff\", \"morning standup\", \"daily plan\", \"what's my plan for today?\", \"start of..."
+when_to_use: "Morning kickoff / daily plan. Surfaces today's focus, status-syncs tracked PR/Jira work, and checks Need Attention items with bounded live PR/CI, Slack reply/reaction, and Confluence page activity. Use for \"what should I work on?\", \"morning kickoff\", \"daily plan\", \"start of day\", or \"daily standup\"."
 pattern: pipeline
 category: Learning & reflection
 sub-patterns: [fan-out]
@@ -22,10 +22,10 @@ Fan-out threshold: stay main-thread unless the request spans multiple repos, mor
 
 <workflow>
 
-Run Step 0 first (preflight, blocking), then Step 1 (needed by 1b), then Steps 1b–4b in parallel, then Step 4c (Need Attention), then combine into Step 5 output. Honor `--verbose` from $ARGUMENTS for output caps in Step 5. Generate Step 4d (closing block) last so it can draw on the full picture and render as the final visible block.
+Run Step 0 first (preflight, blocking), then Step 1 (needed by 1b), then Steps 1b–4b (including 4b-conf) in parallel, then Step 4c (Need Attention — which runs a bounded live status-check on the top surfaced items before the action menu), then combine into Step 5 output. Honor `--verbose` from $ARGUMENTS for output caps in Step 5. Generate Step 4d (closing block) last so it can draw on the full picture and render as the final visible block.
 
 Local fan-out: use `nase-workspace-state-scanner` for tasks/logs/efforts/scheduled maintenance and `nase-pr-metadata-reader` for tracked PR status summaries when there are multiple PR URLs.
-Slack/Jira MCP queries stay in the main thread because they depend on live connector auth, user identity, and filtering state.
+Slack/Jira MCP queries stay in the main thread because they depend on live connector auth, user identity, and filtering state; the Step 4b-conf Confluence check stays main-thread for the same reason.
 The main thread owns status-sync writes and the final Need Attention ranking.
 
 **Bash idioms (avoid PATH/zsh pitfalls):**
@@ -166,6 +166,17 @@ For each surviving thread, build the permalink using: `https://{workspace}.slack
 After filtering, limit to **top 5 threads** (matches the Step 5 output cap). For each show: `#{channel}: "{one-sentence summary}" — [link]({permalink})`.
 If Slack MCP unavailable or no results: skip silently.
 
+### 4b-conf. Confluence — tracked pages with new activity
+
+Cheap discovery only. This finds Confluence pages your live work already points at and flags the ones that moved since you last touched them; the detailed comment read is deferred to the 4c enrichment pass so it only runs for pages that actually reach the top of Need Attention. This keeps the kickoff fast.
+
+1. Grep Confluence page URLs from the workspace files that represent live work — this is what scopes the check to pages you care about right now:
+   - `workspace/efforts/*.md` (excluding `done/`), unchecked (`[ ]`) lines in `workspace/tasks/todo.md`, and the two most recent `workspace/logs/YYYY-MM-DD.md`.
+   - Extract with `/usr/bin/grep -rhoE 'https://[a-z0-9.-]+\.atlassian\.net/wiki/[^ )]+'`, dedupe, and cap at **5 unique pages**. Parse the numeric page id from the `/pages/{id}/` segment when present.
+2. Resolve `cloudId` per `.claude/docs/jira-lifecycle.md` (same Atlassian connector as Jira). If `cloudId` is missing or the Atlassian MCP is unavailable, skip 4b-conf silently — never block the kickoff.
+3. For each page id, fetch metadata via `getConfluencePage`. Flag the page as a Need Attention candidate when the latest version's author is **someone other than you** and the update is within the last 7 days (someone else moved a page tied to your work). Capture: page title, url, last editor, last-updated date.
+4. Collect the flagged pages for the Need Attention sources in Step 4c. If no URLs are found, or none show recent non-self activity, skip silently — Confluence adds no output on a quiet day.
+
 ### 4c. Need Attention scan + action menu
 
 Build a lightweight `need_attention_items` list from signals already gathered in Steps 1–4 plus one cheap log/lesson scan. This is daily triage, not a full report.
@@ -189,6 +200,7 @@ Build a lightweight `need_attention_items` list from signals already gathered in
 - Recent KB-gap scan hits
 - Jira tickets from Step 4a whose extracted `updated` timestamp is within the last 48h
 - Slack Pulse threads from Step 4b that survived the already-acknowledged filter
+- Confluence pages from Step 4b-conf flagged with recent non-self edits
 
 **Stalled effort rules:**
 - Add an active effort when the most informative pending checkbox contains `blocked`, `waiting`, `needs`, `open question`, `review`, `deploy`, or `follow-up`.
@@ -199,7 +211,7 @@ Build a lightweight `need_attention_items` list from signals already gathered in
 **Ranking order:**
 1. User-unblocking items with a concrete next command (`/nase:design --review`, `/nase:onboard`, `/nase:kb-gap-detect`)
 2. Overdue/due maintenance
-3. In-review PRs and Slack/Jira items that likely need user response
+3. In-review PRs, Slack/Jira, and Confluence items that likely need user response (enrichment below confirms which actually do)
 4. Stale KB with known new commits
 5. Stalled efforts
 6. Awareness-only `tracking_only: true` items
@@ -209,7 +221,41 @@ For each item, store:
 - `reason` — why it needs attention today
 - `suggested_action` — exact command or local workflow suggestion
 - `candidate_type` — one of `Run maintenance`, `Refresh KB`, `Detect KB gaps`, `Review effort`, `Handle review/PR`, or `awareness-only`
+- `status` — live status-check result (filled by the enrichment pass below; may be empty if not enriched)
+- `waiting_on` — `you`, `others`, or `none` (set by enrichment; `none`/unset for items not enriched)
 - `actionable` — false for tracking-only or informational items
+
+**Live status enrichment (top surfaced items only — keep the kickoff fast):**
+
+Ranking above gives you an ordered list; before rendering, refresh the *true* state of only the items that can affect the visible output: the top **3** actionable action-menu candidates, plus any Confluence candidates that already land inside the top **5** Need Attention output. Do NOT enrich tracking-only efforts or the whole candidate list: enriching everything is what would turn a 2-minute kickoff into a full audit, and most candidates never reach the menu. Enrich by type, then fold the result back into `reason`/`status`/`waiting_on`:
+
+- **GitHub PR / review item** — one rich read (reuse the `state` already fetched in Step 1b; do not re-fetch state):
+  ```bash
+  gh pr view {number} --repo {owner}/{repo} \
+    --json reviewDecision,statusCheckRollup,mergeable,isDraft \
+    --jq '{reviewDecision, mergeable, isDraft,
+           failing: ([.statusCheckRollup[]? | (.conclusion // .state // "")] | map(select(.=="FAILURE" or .=="ERROR" or .=="CANCELLED" or .=="TIMED_OUT")) | length),
+           pending: ([.statusCheckRollup[]? | (.conclusion // .state // "PENDING")] | map(select(.=="PENDING" or .=="EXPECTED" or .=="")) | length)}'
+  ```
+  Then one GraphQL read for unresolved review threads (skip silently on any error):
+  ```bash
+  gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved}}}}}' \
+    -F o={owner} -F r={repo} -F n={number} \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved==false)] | length'
+  ```
+  Derive a one-line live `status` + `waiting_on` + `suggested_action`:
+  - `reviewDecision=CHANGES_REQUESTED` OR unresolved threads > 0 → `status: changes requested / {N} unresolved`, `waiting_on: you`, suggest `/nase:address-comments {PR-URL}`
+  - `failing > 0` → `status: CI {failing} failing`, `waiting_on: you`
+  - `mergeable=CONFLICTING` → `status: merge conflict`, `waiting_on: you`
+  - `reviewDecision=REVIEW_REQUIRED` and it is **not** your PR → `status: review requested`, `waiting_on: you`, suggest `/nase:discuss-pr {PR-URL}`
+  - `reviewDecision=APPROVED`, `failing=0`, no unresolved, `mergeable=MERGEABLE` → `status: approved, ready`, `waiting_on: none`, suggest `/nase:prep-merge {PR-URL}`
+  - If `gh` fails, keep the Step 1b `state`, leave `status` empty, and skip enrichment for that item.
+
+- **Slack thread item** — reuse the `slack_read_thread` payload already read in Step 4b-filter; do **not** read the thread again. From it derive reply count, latest author, and whether the last message is a question or @mention directed at you (`waiting_on: you`) vs. an FYI (`waiting_on: none`). Set `status` to `{N} replies, last from {author}`.
+
+- **Confluence page item** — for the Confluence pages selected by the cap above, read new comments via `getConfluencePageFooterComments` / `getConfluencePageInlineComments` (and the version author from Step 4b-conf's `getConfluencePage`). Set `status` to `{N} new comments` or `edited by {author} {date}`. Confluence items stay `awareness-only` (no nase mutation skill posts to Confluence) — set `waiting_on: you` when a comment mentions you so it sorts high, but keep `actionable: false`.
+
+After enrichment, **re-rank** using the refreshed signals (`waiting_on: you` items outrank `waiting_on: none`), and **drop** any item a live check proved resolved: PR merged or approved-and-you-already-know, Slack thread you already answered, Confluence page with no new activity. A stale reason that live state contradicts must not survive into the output.
 
 Cap Need Attention output at 5 items by default; with `--verbose`, show all.
 
@@ -288,10 +334,10 @@ Yesterday: [one-line summary from Step 1]
 [omit section entirely if nothing due within 3 days]
 
 **Need Attention** (if any from Step 4c)
-- 🔴 {title} — {reason}. Suggested: `{suggested_action}`
-- 🟡 {title} — {reason}. Suggested: `{suggested_action}`
+- 🔴 {title} — {reason} [{status}; waiting on {waiting_on}]. Suggested: `{suggested_action}`
+- 🟡 {title} — {reason} [{status}]. Suggested: `{suggested_action}`
 - 🔵 {title} — {reason}. Suggested: `{suggested_action}`
-[ranked by Step 4c; cap at 5 unless --verbose; omit section entirely if empty]
+[ranked by Step 4c; show the `[{status}; waiting on …]` bracket only for enriched items — omit it for un-enriched items rather than printing empty brackets; cap at 5 unless --verbose; omit section entirely if empty]
 [if action candidates exist, invoke AskUserQuestion here, execute selected actions, then print `Action result: ...` before continuing]
 
 **Focus**
