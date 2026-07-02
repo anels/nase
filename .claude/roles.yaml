@@ -89,3 +89,13 @@ roles:
 #   `tools:` list. lookup and verifier MUST NOT receive Edit/Write — they are read-only roles.
 #   Borrowed from affaan-m/ECC agent frontmatter pattern: explicit tools array
 #   prevents role drift (lookup agent silently doing Write work).
+#
+# Default-model note (Claude Code 2.1.197, 2026-06-30):
+#   Claude Sonnet 5 is now the Claude Code *default* model (native 1M-token context).
+#   The roles above pin models explicitly, so lookup/worker/verifier/architect routing
+#   is unaffected — but any UNPINNED path (a bare Agent() with no model=, plugin skills,
+#   the native Explore agent) now resolves to Sonnet 5 instead of the previous default.
+#   Do NOT silently promote Sonnet 5 to architect/verifier here on the strength of it
+#   being the new default: run a quality eval first (see the Manual-only note above and
+#   feedback_no-auto-model-downgrade-without-eval). The 1M-native window does not relax
+#   the context-slicing stance — keep slicing before broad reads.
