@@ -196,6 +196,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `workspace-data-scan.py` | Emit compact, date-filtered workspace context, lessons, journals, and logs with source paths and truncation markers. Used by `workspace-data-gathering.md` callers. |
 | `workspace-quality-scan.py` | Read-only workspace quality scan for daily-log format drift, KB placeholders/refresh heartbeats, and KB usage attribution. Used by `validate-workspace.sh` in warn-only mode. |
 | `workspace-write-guard.py` | Stage, diff, and drift-check durable workspace full-file writes. Used by `design`, `kb-update`, and `wrap-up` write paths. |
+| `month-efforts.sh` | Bucket `workspace/efforts/done/` efforts by mtime for a given `YYYY-MM` and pre-extract each doc's PR + Jira refs. Used by `effort-rollup`. |
 
 ---
 

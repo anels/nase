@@ -65,8 +65,10 @@ git -C {repo_path} fetch origin
 Use the shared helper for the full unresolved-thread GraphQL query:
 
 ```bash
-python3 .claude/scripts/pr-github-helper.py comment-dossiers "$PR_URL" --local-repo "{repo_path}" --unresolved-only > "$TMPDIR/pr-comment-dossiers.json"
+python3 .claude/scripts/pr-github-helper.py comment-dossiers "$PR_URL" --local-repo "{repo_path}" --unresolved-only > "$TMPDIR/pr-comment-dossiers-{owner}-{repo}-{number}.json"
 ```
+
+Use a **PR-unique** dossier filename (`{owner}-{repo}-{number}`) — `$TMPDIR` is a shared per-user dir on macOS, and a concurrent nase session running this helper for a different PR can clobber a fixed `pr-comment-dossiers.json` between write and re-read, silently loading the wrong PR's threads.
 
 Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, and unresolved thread dossiers from that JSON. If the helper or `gh` fails, stop with the raw error; do not fall back to an ad hoc query unless you also update `.claude/scripts/pr-github-helper.py` and its tests.
 
@@ -88,7 +90,7 @@ Follow `.claude/docs/pr-review-verification.md` and `.claude/docs/ai-code-verifi
 
 **Step 3a — Build one dossier per unresolved thread before classification:**
 
-Use `threads[]` from `$TMPDIR/pr-comment-dossiers.json` as the baseline dossier: comment chain, `id`/`databaseId`, path/line, head/base excerpts, diff availability, and KB mentions are already bounded there. The helper uses the same `mentions:<path>` lookup shape as the older manual pass.
+Use `threads[]` from `$TMPDIR/pr-comment-dossiers-{owner}-{repo}-{number}.json` as the baseline dossier: comment chain, `id`/`databaseId`, path/line, head/base excerpts, diff availability, and KB mentions are already bounded there. Before trusting a re-read of this file, re-assert `headRefName` and `headRepository.nameWithOwner` still match the target `{owner}/{repo}` (the Phase 2 same-repo guard); if they differ, stop — the file was clobbered by a concurrent session. The helper uses the same `mentions:<path>` lookup shape as the older manual pass.
 
 For each thread, add only the evidence the helper cannot know:
 
@@ -444,7 +446,7 @@ After replies + resolves succeed, offer to Slack-ping any human reviewers whose 
 
 - Ends with `[bot]` — covers `dependabot[bot]`, `github-actions[bot]`, `claude[bot]`, etc.
 - Ends with `-bot`
-- Matches one of the known AI-reviewer logins: `copilot-pull-request-reviewer`, `chatgpt-codex-connector`, `codecov-commenter`, `coderabbitai`, `sonarcloud`, `codacy-production`, `claude` (Claude review bot reports `type=User` on `/users/claude`, so the `[bot]`/`-bot` suffix filter misses it)
+- Matches one of the known AI-reviewer logins: `copilot-pull-request-reviewer`, `chatgpt-codex-connector`, `codecov-commenter`, `coderabbitai`, `sonarcloud`, `codacy-production`, `claude` (Claude review bot reports `type=User` on `/users/claude`, so the `[bot]`/`-bot` suffix filter misses it), `uipathepixa` (epixa severity bot; no `[bot]`/`-bot` suffix, so the suffix filter misses it — same set as `pr-github-helper.py` `BOT_LOGINS`)
 
 Also drop the PR author's own login (they don't ping themselves). Use `gh api user --jq .login` once if you don't already know it.
 

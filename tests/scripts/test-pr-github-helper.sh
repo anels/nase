@@ -307,6 +307,39 @@ assert data["adjacentSameFileOverlap"]["scanRan"] is True
 assert any(item["path"] == "src/a.ts" for item in data["adjacentSameFileOverlap"]["files"])
 PY
 
+assert_cmd "is_bot_login classifies epixa and suffix bots but not humans" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+# epixa has no [bot]/-bot suffix, so it must be in the explicit set to be caught.
+assert "uipathepixa" in mod.BOT_LOGINS
+assert mod.is_bot_login("uipathepixa") is True
+assert mod.is_bot_login("UiPathEpixa") is True  # case-insensitive
+assert mod.is_bot_login("github-actions[bot]") is True
+assert mod.is_bot_login("some-bot") is True
+assert mod.is_bot_login("carol") is False
+assert mod.is_bot_login(None) is False
+
+# an epixa-authored thread with a human decline is a bot-decline candidate.
+threads = [
+    {
+        "isResolved": False,
+        "comments": {
+            "nodes": [
+                {"author": {"login": "uipathepixa"}, "body": "config risk"},
+                {"author": {"login": "carol"}, "body": "declined, by design"},
+            ]
+        },
+    }
+]
+candidates = mod.bot_decline_candidates(threads, 200)
+assert len(candidates) == 1
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\npr-github-helper tests passed.\n'
   exit 0

@@ -231,7 +231,7 @@ The design must be **junior-implementable**: a competent junior engineer (or `/n
 {Bug-shaped work: repro (or failure to repro) + root cause from Phase 2e gates}
 
 ### Goals
-- {What this design must achieve}
+- {One measurable goal per line — what changes, and for any metric/perf/cost/coverage/behavior claim, the target number. "Cut dashboard-create p95 from ~50s to <1s", not "make it faster". A goal you can't later measure is a wish; if you can't attach a number or an observable state, say why and how success will otherwise be judged.}
 
 ### Non-Goals
 - {Reasonable things explicitly cut from scope — NOT negations of goals (C1). The most-omitted, highest-leverage scoping tool.}
@@ -247,6 +247,19 @@ The design must be **junior-implementable**: a competent junior engineer (or `/n
 {Given-When-Then, one assertion per behavior (C4). Each Then asserts an observable, binary outcome.}
 1. Given {precondition}, When {action}, Then {observable outcome}
 2. ...
+
+### Validation — how to get the real number
+{For each Success Criterion (and each numeric Goal), name the concrete way a future reader obtains the REAL post-change value: the data source + the exact query/command they can run. This is the payoff of the numbers above — it lets `/nase:fsd`'s verify pass and `/nase:effort-rollup` re-derive the real value instead of restating this doc's claim. A criterion with no runnable check is unverifiable; treat that as a design gap to fix now, not a formatting nicety. Match depth to scope — a quick-fix may need one line, an initiative one row per criterion.}
+- {Criterion} → {source} : `{exact query/command}` — expect {value}.
+
+Source recipes (use the one that fits; these carry gotchas learned the hard way):
+- **App Insights / telemetry counts** — if the component is workspace-based (`az monitor app-insights component show … --query ingestionMode` = `LogAnalytics`), query the backing Log Analytics workspace directly (`az monitor log-analytics query --workspace <customerId-guid>`, tables `AppEvents`/`AppTraces`/`AppRequests`, columns `Name`/`TimeGenerated`) — the classic App Insights query API returns **empty** for workspace-based data. Always pass a window (`--offset 14d` or UTC start/end) or the default minutes-wide span returns a false empty.
+- **Snowflake cost/latency** — `snow sql` on `ACCOUNT_USAGE.QUERY_HISTORY` with `TIMEZONE='UTC'` (windows are read in session TZ otherwise); split COMPILATION vs EXECUTION time before attributing scan cost.
+- **Coverage %** — the SonarCloud project `component_tree` on the merged branch, not local Cobertura (they diverge; CI-wiring gaps make local ≠ Sonar).
+- **PR-level facts** (lines/files/count added) — `gh pr diff <n> --repo <repo>`; cheapest and most definitive.
+- **Pipeline timing** — the ADO/GitHub run history for the pipeline, not the estimate.
+
+{If a number can only come from an external or one-time source (a cost-portal CSV export, a pre-deploy prod snapshot), say so explicitly — that flags it up front as not-re-derivable, so nobody later mistakes a projection or a stale figure for a live measurement.}
 
 ### Risks & Mitigations
 - {Risk} → {Mitigation}
