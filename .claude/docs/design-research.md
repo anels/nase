@@ -122,6 +122,10 @@ Mark every unresolved ambiguity inline: `[NEEDS CLARIFICATION: question]`. **Imp
 
 Write success criteria as testable scenarios: `Given {precondition}, When {action}, Then {observable outcome}`. The *Then* asserts an observable, binary result ("returns 200", "balance is £42") — never a vague qualifier. Declarative, domain language, 3–5 steps. Each maps directly to a test. Keep the AC-vs-DoD split clear: AC are per-step conditions; DoD is the design-wide done bar (build/lint/test green, docs updated, etc.).
 
+### C4b. Validation — the runnable way to get the real number
+
+An acceptance criterion states *what* the outcome is; validation states *how a future reader obtains the real value* — the data source plus the exact query/command. This is the difference between a design that can be verified and one whose claims can only be restated. Downstream (`/nase:fsd` verify, `/nase:effort-rollup`) re-derives real numbers from this section; without it they fall back to trusting the doc, which is how projections and stale figures get reported as measured fact. For each numeric goal / metric or behavior criterion, give `{source} : {exact query/command} — expect {value}`. Prefer the source of truth over a proxy (query the LAW that backs a workspace-based App Insights, not the classic API that returns empty for it; SonarCloud `component_tree`, not local Cobertura; `ACCOUNT_USAGE.QUERY_HISTORY` with `TIMEZONE='UTC'`; `gh pr diff` for PR-level facts). If a value can only come from a one-time or external source (a portal CSV, a pre-deploy prod snapshot), say so — flagging "not re-derivable" up front is itself the honest validation. A criterion with no runnable check is a design gap, not a formatting choice.
+
 ### C5. RFC 2119 normative keywords
 
 Use **MUST / SHALL** (binding), **SHOULD / RECOMMENDED** (justify exceptions), **MAY / OPTIONAL** (advisory), in caps, to disambiguate which parts of the design are required vs. advisory. Stops a reader from treating a hard constraint as a suggestion.

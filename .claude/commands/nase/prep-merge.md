@@ -63,6 +63,8 @@ Use `reviewThreads.unresolved` and `reviewThreads.botDeclineCandidates` from `$T
 
 Auto-resolve a thread when it appears in `botDeclineCandidates`: first author is a bot, last author is non-bot, and the thread is still unresolved. Bots don't re-engage; full thread history + daily log preserve the audit trail.
 
+Exception — the epixa severity bot (`uipathepixa`) DOES re-engage: it re-posts the same declined finding as a new thread with a fresh fingerprint on every push, so auto-resolving is only temporary. If the user keeps declining an epixa finding, note that it will re-fire on the next push and won't self-clear (surface it; don't silently re-resolve round after round).
+
 Before resolving, list the matched thread IDs, bot author, last commenter, and one-line summary from the helper output, then use `AskUserQuestion` as the immediate GitHub mutation gate:
 
 ```
@@ -286,8 +288,28 @@ Create the squash commit (skip this step for single-commit PRs — Phase 6 was s
 git -C {worktree_path} commit -m "{squash_commit_message}"
 ```
 
-Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md` (which handles `/nase:improve-commit-message` automatically).
+Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md` (which handles `/nase:improve-commit-message` automatically), including its Step 5 "commit landed" assertion — a `0`-commits-ahead force-push silently AUTO-CLOSES the PR.
 Deviation: use `--force-with-lease` instead of normal push. If force-push fails, report the error and stop — someone pushed new commits and the user needs to reconcile.
+
+On push success, verify the PR is still open (the force-push may have auto-closed it if it landed a no-diff head):
+
+```bash
+gh pr view {pr_number} --repo {owner}/{repo} --json state -q .state
+```
+
+If `state == "CLOSED"`, the force-push auto-closed it (Phase 8 always lands a real squash commit ahead of base, so a close here is the no-diff-head failure mode, not an intentional close). Surface it and offer to reopen via `AskUserQuestion` (GitHub mutation gate):
+
+```
+question: "Force-push auto-closed PR #{pr_number}. Reopen it?"
+header: "PR State"
+options:
+  - label: "Reopen"
+    description: "Run gh pr reopen {pr_number} — the branch has commits ahead of base"
+  - label: "Leave closed"
+    description: "Don't reopen; investigate manually"
+```
+
+On "Reopen", run `gh pr reopen {pr_number} --repo {owner}/{repo}`. Record the resulting state for the Phase 10 report.
 
 On push success, clear the Phase 4 abort signature:
 ```bash
@@ -340,6 +362,7 @@ PR ready for merge ✓
   Commits:      {original_count} → 1 (squashed)
   Title:        {new_title}
   Force-pushed: ✓ (--force-with-lease)
+  PR state:     {OPEN | reopened}
 ```
 
 Append to daily log following `.claude/docs/daily-log-format.md` (tag: `prep-merge`) **before** prompting (ensures the log is written regardless of the user's next choice).

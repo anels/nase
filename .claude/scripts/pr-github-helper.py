@@ -479,6 +479,9 @@ BOT_LOGINS = {
     "codex-bot",
     "claude",
     "claude[bot]",
+    # epixa severity bot: re-posts declined findings as new threads per push, and
+    # its login has no [bot]/-bot suffix, so the suffix rule below misses it.
+    "uipathepixa",
 }
 
 

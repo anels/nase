@@ -286,6 +286,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 | Command | Purpose |
 |---------|---------|
+| `/nase:effort-rollup` | Generate a monthly delivered-work report from completed efforts, reconciled against live GitHub PR state and Jira status, with before→after impact metrics and a self-contained HTML report artifact. Use for monthly report, month in review, what did I ship in <month>, effort rollup, monthly retrospective, impact report, or 'make me that report again'. Distinct from /nase:efforts (present-tense active inventory), /nase:recap (prose narrative), and /nase:stats (activity counts) — this one pulls live PR/Jira data, splits delivered vs closed-without-delivery, and produces a visual report. |
 | `/nase:efforts` | Report all active efforts by lifecycle stage and status, flag PR/Jira drift, and count active vs done. Use for list my efforts, effort status, stalled work, or what am I working on. Read-only; use /nase:today to move completed efforts and /nase:stats for activity counts. |
 | `/nase:estimate-eta` | Estimate the effort and ETA for a given task or feature request. Use whenever someone asks "how long will this take?", "when can we ship X?", "estimate this", or before committing to a timeline. |
 | `/nase:kb-usage` | Read-only KB observability report: shows which skills used which KB files, top files/skills, access-source breakdown, and mapped KB files with no recent usage. Supports --window N\|all, --top N, and --verbose. |

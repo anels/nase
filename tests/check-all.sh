@@ -65,6 +65,7 @@ HOOK_TESTS=(
 SCRIPT_TESTS=(
   tests/scripts/test-date-resolve.sh
   tests/scripts/test-kb-gap-scan.sh
+  tests/scripts/test-month-efforts.sh
   tests/scripts/test-help-summary.sh
   tests/scripts/test-kb-domain-resolve.sh
   tests/scripts/test-kb-hygiene-scan.sh

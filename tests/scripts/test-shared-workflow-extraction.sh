@@ -63,6 +63,8 @@ assert_contains "design has PR economy default" .claude/commands/nase/design.md 
 assert_contains "design records target PR count" .claude/commands/nase/design.md 'Target PR count'
 assert_contains "design gates multi-PR splits" .claude/commands/nase/design.md 'Split into multiple PRs only when'
 assert_contains "design quality checks reviewability" .claude/commands/nase/design.md 'Reviewability'
+assert_contains "design effort template has Validation section" .claude/commands/nase/design.md 'Validation — how to get the real number'
+assert_contains "design research doc defines validation rule C4b" .claude/docs/design-research.md 'C4b. Validation'
 assert_contains "auto design preserves PR plan" .claude/docs/design-auto-mode.md 'PR Plan'
 assert_contains "auto design uses full research ladder" .claude/docs/design-auto-mode.md 'After all 6'
 assert_not_contains "auto design has no stale five-source ladder" .claude/docs/design-auto-mode.md 'all 5 sources'
