@@ -20,7 +20,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspa
 
 ### Step 1: Inventory
 
-- Active: every `workspace/efforts/*.md` excluding `done/`. Read each file's YAML frontmatter (`status`, `scope`, `repo`, `jira`, `created`) and its `## Lifecycle` section if present. Capture last-updated date via `stat` mtime.
+- Active: every `workspace/efforts/*.md` excluding `done/`. Read each file's YAML frontmatter (`status`, `scope`, `repo`, `jira`, `created`, and — if present — `blocked-by`, `discovered-from`) and its `## Lifecycle` section if present. Capture last-updated date via `stat` mtime.
 - Done: count files in `workspace/efforts/done/` (count only — don't read each).
 
 If `workspace/efforts/` has no active files, say so and stop.
@@ -33,15 +33,23 @@ Reuse the canonical classifier — do not invent a parallel taxonomy. Apply `.cl
 
 Status vocabulary lives in `.claude/docs/effort-lifecycle.md`; tolerate real-world extras (`tracked`, `blocked`, `awaiting-deploy`) by mapping them through the rules above rather than discarding them.
 
+Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet: effort-slug blockers can be resolved from `done/` locally, but PR/Jira blockers need the Step 3 live reads.
+
 ### Step 3: Drift check (the value-add — verify against live state)
 
-For each active effort, extract PR URLs from the body (`github.com/([^/]+)/([^/]+)/pull/(\d+)`) and the `jira:` key. Verify current state read-only — this is where a dedicated pass beats stale frontmatter:
+For each active effort, extract PR URLs from the body (`github.com/([^/]+)/([^/]+)/pull/(\d+)`), PR URLs/Jira keys from `blocked-by`, and the `jira:` key. Verify each unique PR/Jira referent read-only — this is where a dedicated pass beats stale frontmatter:
 
 ```bash
 gh pr view <url> --json state,reviewDecision,statusCheckRollup
 ```
 
 When there are more than ~5 PRs to check, fan out via the `nase-pr-metadata-reader` agent instead of serial calls. Jira: read-only status read if an MCP is available; skip cleanly if not.
+
+After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecycle.md → Dependency & Discovery Fields`:
+- Blocked when `status: blocked` **or** `blocked-by` points at an unresolved referent.
+- Resolve effort-slug blockers when `workspace/efforts/done/{slug}.md` exists; PR blockers when merged; Jira blockers when Done.
+- Treat free-text blockers and unreadable PR/Jira blockers as unresolved. Name the skipped check in the blocked reason.
+- Everything else active is *unblocked*. This is the "what can I actually pick up right now" set; it sits beside the stage classifier and does not replace it.
 
 Flag drift where doc and reality disagree:
 - frontmatter `in-progress`/`merge-ready` but **all** its PRs are MERGED (and Jira is Done, if tracked) → **should move to `done/`**.
@@ -54,6 +62,7 @@ Drift items are reported, never auto-applied. Recommend `/nase:today` to apply t
 
 - By stage (Planning / Implementing / In review / Awaiting deploy / Follow-up).
 - By raw frontmatter `status:` value (shows vocabulary spread).
+- Unblocked vs blocked (from Step 3): count of unblocked active efforts and the list of blocked ones with their blocker.
 - Totals: active count, `done/` count, drift count, stalled count.
 - If `$ARGUMENTS` has `--by-scope` or `--by-repo`, add a count grouped by that frontmatter field.
 
@@ -70,15 +79,18 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 ## Drift & attention
 - {effort} — {drift reason} → {recommended action}
 
+## Blocked            ← omit section if none
+- {effort} — blocked-by {referent} ({unresolved reason})
+
 ## Active efforts          ← full per-effort table ALWAYS in the file
-| Effort | Stage | Status | Last updated | Repo | PR |
+| Effort | Stage | Status | Blocked-by | Last updated | Repo | PR |
 ```
 
 Per `.claude/docs/skill-contract.md`, the chat reply is pointer + bounded summary only:
 ```
 Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
 Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M}
-Drift: {K} need sync (run /nase:today to apply) · Stalled: {S}
+Unblocked: {U} · Blocked: {B} · Drift: {K} need sync (run /nase:today to apply) · Stalled: {S}
 ```
 With `--full`, also echo the per-effort table inline (otherwise it lives only in the file).
 
