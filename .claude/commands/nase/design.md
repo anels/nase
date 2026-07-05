@@ -107,7 +107,7 @@ project in (...) AND (summary ~ "{keywords}" OR description ~ "{keywords}") ORDE
 ```
 Note any existing tickets, their status, and assignees.
 
-**1f. External research** (scale to scope) — for any feature/initiative/exploration, or any approach leaning on an external library/framework/SDK/API/platform behavior, look outward per `.claude/docs/design-research.md → Part A`: official docs (via `context7` / `ms-learn` MCPs or `WebSearch`+`WebFetch`), dependency source + changelog at the pinned version, issue trackers, then Q&A/blogs. Every external claim cites a URL or `path:line`; apply the comprehension gate and debias pass before relying on a finding. Skip for well-understood quick-fixes.
+**1f. External research** (scale to scope) — for any feature/initiative/exploration, or any approach leaning on an external library/framework/SDK/API/platform behavior, look outward per `.claude/docs/design-research.md → Part A`: official docs (via `context7` / `ms-learn` MCPs or `WebSearch`+`WebFetch`), dependency source + changelog at the pinned version, issue trackers, then Q&A/blogs. Every external claim cites a URL or `path:line`, or is explicitly marked `gap: {reason}` and not used as support; apply the comprehension gate and debias pass before relying on a finding. Skip for well-understood quick-fixes.
 
 After gathering: synthesize a 3-5 sentence context brief showing what you already know. Present it to the user: "Here's what I found in the KB, codebase, and external docs before we dive in..."
 
@@ -158,6 +158,10 @@ Before committing to an approach, run the gates that fit the work per `.claude/d
 
 Infer the review package before Phase 3. Start with `Target PR count: 1`. Raise the count only when the Reviewability / PR Economy split criteria above are met. If multiple PRs are required, record the smallest count, dependency order, and why a single PR would be harder to review or riskier to merge.
 
+### 2g. Surface Map (ground the plan before decomposing)
+
+Before Phase 4 decomposes the design into steps, produce an explicit **surface map** of the code the design touches: the concrete files, modules, and call paths (entry point → the functions/types that change → downstream callers/tests affected). Each Implementation Plan step in Phase 4 must cite a location from this map — a step whose files were never mapped is inference, not a plan, and is the false-confidence failure mode this guards against. If a needed path can't be located, that gap becomes an Open Question, not a guessed file. Keep the map to the touched surface only; do not inventory the whole repo. (Pattern borrowed from claude-skills' Zero-Hallucination-Coder Map/Decompose phases — see `workspace/kb/general/workflow.md` 2026-04-05 entry.)
+
 ## Phase 3: Approach Exploration (all at once)
 
 Always present **2-3 options** — even for seemingly obvious problems. A second option sharpens the reasoning for the first. **Show everything in a single message** — no back-and-forth per option.
@@ -171,7 +175,7 @@ Always present **2-3 options** — even for seemingly obvious problems. A second
 **Approach:** {1-2 sentences}
 **Pros:** {concrete advantages — quality, simplicity, robustness, scalability, elegance, maintainability; not "faster to build"}
 **Cons:** {concrete risks, or runtime/operational/maintenance costs — not development cost}
-**Fits KB patterns?** {yes/no + cite the specific KB entry or file:line that backs the claim; if you cannot cite one, write `unverified` — never assert alignment from memory}
+**Fits KB patterns?** {yes/no + cite the specific KB entry or file:line that backs the claim; if you cannot cite one, mark `gap: {one-line why — no source found}` — never assert alignment from memory, and never score a `gap`-marked option as KB-aligned when comparing/selecting}
 **Principle alignment:** {which principles this honors; which it trades off}
 **Elegance:** {is the shape coherent and natural, or is it clever/awkward?}
 **Review / PR shape:** {target PR count and review cost; default to one PR unless a split criterion is met}
@@ -313,7 +317,7 @@ Run an internal quality gate before writing the effort doc.
    - Elegance FAIL → simplify the design shape, remove awkward glue, reduce moving parts, or choose the option that fits the existing model more naturally
    - Reviewability FAIL → reduce PR count, add a review guide, or justify the split with a real merge/release/owner boundary
    - Implementation readiness FAIL → add concrete file paths/signatures/data models, per-step tests + done-conditions, and resolve or mark `[NEEDS CLARIFICATION]`
-   - Research grounding FAIL → add the doc URL / source / issue and pin the version, or mark the claim `unverified`
+   - Research grounding FAIL → add the doc URL / source / issue and pin the version; if still uncitable, mark the claim `gap: {reason}` — abstain by default (a `gap` is better than a fabricated citation), and do not let a `gap`-marked claim serve as evidence for any other claim in the same doc
    - Repro & root cause FAIL → add the repro (or document why it won't reproduce) and trace the fix to the originating cause
    - ETA grounded FAIL → add the `### ETA Estimate`, tie each line to a plan step, classify lane/size, and give a rough confidence range (or a single realistic line for quick-fix)
 
@@ -335,6 +339,9 @@ status: planned
 created: {YYYY-MM-DD}
 scope: {quick-fix|feature|initiative|exploration}
 repo: {repo-name or "multiple"}
+# optional (see .claude/docs/effort-lifecycle.md → Dependency & Discovery Fields):
+# blocked-by: {effort slug | PR URL | Jira key}   — add + set status: blocked when this waits on something
+# discovered-from: {effort slug | PR URL | incident ref}   — add when this was spun off from other work
 ---
 
 {Full design from Phase 4}
@@ -355,6 +362,8 @@ Append to `workspace/tasks/todo.md` under `## Pending`:
 ```
 
 This makes the effort visible in `/nase:today` output.
+
+One effort = one file. Never spawn per-phase sidecar docs (`{slug}-phase-N.md`); append all progress to this single doc per `.claude/docs/effort-lifecycle.md → Single-File Invariant`.
 
 **5c. Create Jira ticket** (if user wants — ask via AskUserQuestion):
 ```
@@ -398,7 +407,7 @@ Used by Review Mode and as a self-check before writing the design doc in Phase 5
 | **Elegance** | Design has a coherent shape: minimal moving parts, clear ownership boundaries, natural fit with existing patterns, and no clever workaround where a simpler model exists |
 | **Reviewability** | Default to one PR; any multi-PR plan cites the split criterion, dependency order, and why review is easier than one coherent PR |
 | **Implementation readiness** | A junior could execute with zero design decisions: exact file paths, signatures, data models, API contracts where applicable; step plan with per-step tests + done-condition; zero unresolved `[NEEDS CLARIFICATION]` markers |
-| **Research grounding** | External claims about library/SDK/platform behavior cite a doc URL, dependency source, or issue — not memory; versions pinned |
+| **Research grounding** | External claims about library/SDK/platform behavior cite a doc URL, dependency source, or issue — not memory; uncited claims are marked `gap` and do not support other claims; versions pinned |
 | **Repro & root cause** (bug-shaped only) | A reproduction (or documented failure to reproduce) exists, and the fix targets the originating cause, not the symptom |
 | **ETA grounded** | An `### ETA Estimate` exists, ties to the Implementation Plan steps (not a free-floating guess), and gives a rough lane/size-based confidence range — or a single realistic line for quick-fixes |
 

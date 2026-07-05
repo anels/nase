@@ -31,7 +31,7 @@ Authoritativeness decreases as you go down. Stop when you have enough to design 
 
 ### Grounding discipline
 
-- **Cite or drop.** Every external fact in the design carries a URL or `path:line`. Uncited "X is faster than Y" claims get cut or marked `unverified`.
+- **Cite or gap.** Every external fact in the design carries a URL or `path:line`. Uncited "X is faster than Y" claims get cut or marked `gap: {why — no source}`; abstain by default (a `gap` beats a fabricated citation), and a `gap`-marked claim must not back another claim in the same doc.
 - **Pin the version.** "The default timeout is N" is meaningless without the version it's true for. State both.
 - **Comprehension gate.** If you cannot restate a borrowed pattern / answer in your own words, do not put it in the design. Copying a StackOverflow or AI answer you can't explain is how subtle bugs enter.
 - **Debias pass.** Before locking the leading approach, spend one explicit pass on:

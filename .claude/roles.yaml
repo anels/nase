@@ -43,7 +43,7 @@ roles:
     effort: medium
     tools: [Read, Grep, Glob, Bash]
     description: Read-only reasoning pass for spec-vs-artifact or review-thread verification
-    prompt_prefix: "This is an independent read-only verification pass. Do not edit files."
+    prompt_prefix: "This is an independent read-only verification pass. Do not edit files. Report outcomes faithfully: state a failed check as failed with the evidence, name any step you skipped, and do not soften or celebrate incomplete work. A pass is stated plainly; uncertainty is stated as uncertainty."
     use_when:
       - Verifying a diff against a task spec
       - Verifying review-thread replies and resolution safety

@@ -457,7 +457,7 @@ Codex returns `{threadId, content}`. For default one-call modes, only `content` 
 ## Error handling
 
 - **Tool not loaded** — skip the Codex MCP call cleanly with the message from the prerequisite check. Do not call a Claude-based review "Codex"; if the caller defines a separate local verifier fallback, run that caller-owned fallback and tag overrides as `fallback-verify`.
-- **Codex returns empty `content`** — treat as "no findings". Do not retry; an empty result is meaningful.
+- **Codex returns empty `content`** — split by the mode's output contract, not by convenience. For finding modes whose contract is a list of issues (`review`, `finding-doubt`, `tech-debt-review`, `adversary`), treat empty as "no findings"; do not retry, an empty result is meaningful. For any mode whose contract requires a `VERDICT:` line (`verify`, `comment-resolution`, `comment-dossier`), an empty `content` — or any `content` with no parseable `VERDICT:` line — is a can't-decide, NOT a pass: treat it as `NEEDS-HUMAN` and escalate via the parent skill's `AskUserQuestion`. Never let an empty or verdict-less gate response read as a silent PASS that allows a push or a thread resolve.
 - **Codex returns malformed output** (missing the expected fields for the current mode, or freeform prose) — save the raw text under the invoking workspace's `workspace/tmp/` or a `[codex — unparsed]` section and let the user decide. Don't drop it silently.
 - **Timeout / MCP error** — surface the error, skip the codex pass for this run, continue with the rest of the parent skill.
 
