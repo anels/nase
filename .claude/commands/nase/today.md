@@ -24,7 +24,7 @@ Fan-out threshold: stay main-thread unless the request spans multiple repos, mor
 
 Run Step 0 first (preflight, blocking), then Step 1 (needed by 1b), then Steps 1b–4b (including 4b-conf) in parallel, then Step 4c (Need Attention — which runs a bounded live status-check on the top surfaced items before the action menu), then combine into Step 5 output. Honor `--verbose` from $ARGUMENTS for output caps in Step 5. Generate Step 4d (closing block) last so it can draw on the full picture and render as the final visible block.
 
-Local fan-out: use `nase-workspace-state-scanner` for tasks/logs/efforts/scheduled maintenance and `nase-pr-metadata-reader` for tracked PR status summaries when there are multiple PR URLs.
+Local fan-out: use `nase-workspace-state-scanner` for tasks/logs/efforts/scheduled maintenance and `nase-pr-metadata-reader` for tracked PR status summaries when there are multiple PR references.
 Slack/Jira MCP queries stay in the main thread because they depend on live connector auth, user identity, and filtering state; the Step 4b-conf Confluence check stays main-thread for the same reason.
 The main thread owns status-sync writes and the final Need Attention ranking.
 
@@ -50,10 +50,10 @@ Before applying any status update, stage the target file change under `workspace
 
 **1b-i. Extract tracked items:**
 - From `todo.md`: find all lines containing `[ ]` (unchecked) that have GitHub PR URLs (`github.com/{owner}/{repo}/pull/{number}`) or Jira ticket keys (`[A-Z]+-\d+`). Skip `[x]` lines — they're already done.
-- From `workspace/efforts/*.md`: read each file's YAML frontmatter. **Skip** files where `status:` is `completed` or `closed`. For active files, extract PR URLs from the body (regex: `github.com/([^/]+)/([^/]+)/pull/(\d+)`) and `jira:` key from frontmatter.
+- From `workspace/efforts/*.md`: read each file's YAML frontmatter. **Skip** files where `status:` is `completed` or `closed`. For active files, extract PR references per `.claude/docs/effort-lifecycle.md → PR Reference Resolution` (full URLs, `owner/repo#n`, and scoped bare `#n`) plus the `jira:` key.
 
 **1b-ii. Check PR statuses (via Bash):**
-For each unique PR URL found, run:
+For each unique normalized PR reference found, run:
 ```bash
 gh pr view {number} --repo {owner}/{repo} --json state,mergedAt,closedAt --jq '{state,mergedAt,closedAt}'
 ```
@@ -84,18 +84,18 @@ For every `workspace/efforts/*.md` (excluding `done/`) that remains active after
 **Path A — file has a `## Lifecycle` section:** read the checkboxes (last `[x]` line wins). Stages, in order:
 1. **Planning** — design/grill not yet approved (`Auto-design completed`, `Plan grilled`, or `Design approved` is the last checked box, or none checked)
 2. **Implementing** — `Implementation started` checked but `PR opened` not checked
-3. **In review** — `PR opened` checked but `Merged` not checked (extract PR URL from the same line)
+3. **In review** — `PR opened` checked but `Merged` not checked (capture the lifecycle-line PR ref when present; otherwise use the doc-level PR Reference Resolution scan)
 4. **Awaiting deploy** — `Merged` checked but `Deployed*` not checked
 5. **Follow-up only** — all primary checkboxes checked but trailing `Follow-up:` items remain
 
 **Path B — file has NO `## Lifecycle` section** (older or hand-written efforts): fall back to the YAML frontmatter `status:` value:
 - `status: proposed` or `planned` → **Planning**
 - `status: in-progress` or `needs-revision` → **Implementing**
-- `status: in-review` or PR URL is present in the body → **In review**
+- `status: in-review` or a PR reference is present in the body (any form — see PR Reference Resolution) → **In review**
 - `status: merged` or `awaiting-deploy` → **Awaiting deploy**
 - Any other value → **Planning** (safe default; the user can re-categorize)
 
-In both paths, capture: filename (without `.md`), stage, last-updated date (file mtime via `stat`), PR URL if any (grep `github.com/.+/pull/\d+` from the body), status frontmatter value, and the single most informative pending checkbox text (Path A only — omit for Path B). Group by stage for the output. Sort within each group by mtime descending. If `workspace/efforts/` is empty (or only contains `done/`), skip this snapshot.
+In both paths, capture: filename (without `.md`), stage, last-updated date (file mtime via `stat`), PR reference if any (per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`; not a URL-only grep), status frontmatter value, and the single most informative pending checkbox text (Path A only — omit for Path B). Group by stage for the output. Sort within each group by mtime descending. If `workspace/efforts/` is empty (or only contains `done/`), skip this snapshot.
 
 ### 1c. Scheduled Maintenance Check
 

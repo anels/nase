@@ -44,8 +44,8 @@ each doc body. Both are optional — omit when not applicable.
 
 | field | value | meaning |
 |---|---|---|
-| `blocked-by` | effort slug, PR URL, Jira key, or short free text | this effort cannot proceed until the referent clears |
-| `discovered-from` | effort slug, PR URL, or incident/ticket ref | this effort was spun off while working the referent (captures work that would otherwise be noticed and lost) |
+| `blocked-by` | effort slug, PR reference, Jira key, or short free text | this effort cannot proceed until the referent clears |
+| `discovered-from` | effort slug, PR reference, or incident/ticket ref | this effort was spun off while working the referent (captures work that would otherwise be noticed and lost) |
 
 `blocked-by` may be a single value or a YAML list. Clearing the blocker: remove the
 key (or set `status:` off `blocked`). A blocker counts resolved when an effort slug is
@@ -56,6 +56,29 @@ so it stays unresolved until removed.
 *unblocked* when `status:` is not `blocked` **and** it has no unresolved `blocked-by`.
 This is distinct from the `ready` status token above (which is a manual alias). Callers
 must compute unblocked from `status` + `blocked-by`, never store it.
+
+## PR Reference Resolution
+
+Any skill that live-checks an effort's PRs (drift check, stage classification, deploy
+state) must find **every** PR the doc names — not just the ones written as full URLs.
+Effort docs cite PRs three ways, and older docs lean on the shorthand:
+
+1. **Full URL** — `https://github.com/{owner}/{repo}/pull/{n}` — anywhere in the body.
+2. **Qualified shorthand** — `{owner}/{repo}#{n}` (e.g. `UiPath/Insights#4640`) — anywhere.
+3. **Bare number** — `#{n}` (e.g. `#4640`) — resolve **only** inside the `## Lifecycle`
+   section and `blocked-by`, where a `#{n}` is definitionally a PR. Resolve its repo from
+   the nearest qualified/full reference in the doc, else from the `repo:` frontmatter under
+   the `UiPath` org (`UiPath/{repo}`). Do **not** treat bare `#{n}` in prose as a PR — bodies
+   are full of non-PR `#{n}` (CHANGELOG entries, `grill #3`, `Codex Q10`, RFC markers), so a
+   greedy bare-`#` sweep produces false PRs.
+
+Normalize each hit to `{owner}/{repo}` + number and verify read-only with
+`gh pr view {n} --repo {owner}/{repo} --json state,reviewDecision,statusCheckRollup,mergedAt`.
+Dedupe across the three forms (the same PR often appears as both a URL and a `#{n}`).
+
+**Why this matters:** frontmatter `status:` drifts; PR state is the ground truth that
+corrects it. URL-only extraction misses shorthand and can mis-bucket shipped work as
+planning, hiding the drift this check exists to catch.
 
 ## Single-File Invariant
 

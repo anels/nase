@@ -75,10 +75,15 @@ assert_contains "fsd consumes design PR plan" .claude/commands/nase/fsd.md 'desi
 assert_contains "fsd preserves one-PR default" .claude/commands/nase/fsd.md 'Default to the design PR plan'
 assert_contains "fsd gates draft PR create" .claude/commands/nase/fsd.md 'Create this draft PR\?'
 assert_contains "fsd gates verification PR edit" .claude/commands/nase/fsd.md 'Append this Verification section to the draft PR\?'
+assert_contains "fsd conditional closure excludes blockers" .claude/commands/nase/fsd.md 'conditional.*waiver reasons named'
+assert_not_contains "fsd conditional wording does not admit blockers" .claude/commands/nase/fsd.md 'waivers/blockers named'
 assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
 assert_contains "prep-merge uses shared repo task flow" .claude/commands/nase/prep-merge.md 'repo-task-flow\.md'
 assert_contains "address-comments uses shared repo task flow" .claude/commands/nase/address-comments.md 'repo-task-flow\.md'
 assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'
+assert_contains "effort lifecycle defines PR reference resolution" .claude/docs/effort-lifecycle.md 'PR Reference Resolution'
+assert_contains "today checks normalized PR references" .claude/commands/nase/today.md 'unique normalized PR reference'
+assert_not_contains "today status check is not URL-only" .claude/commands/nase/today.md 'For each unique PR URL found'
 
 tmprepo=$(mktemp -d "$TMPROOT/codex-bundle-repo.XXXXXX")
 (
