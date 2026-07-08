@@ -37,10 +37,10 @@ Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet
 
 ### Step 3: Drift check (the value-add — verify against live state)
 
-For each active effort, extract PR URLs from the body (`github.com/([^/]+)/([^/]+)/pull/(\d+)`), PR URLs/Jira keys from `blocked-by`, and the `jira:` key. Verify each unique PR/Jira referent read-only — this is where a dedicated pass beats stale frontmatter:
+For each active effort, extract PR references per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`, including refs from `blocked-by`, plus the `jira:` key. Normalize/dedupe PR refs, then verify each unique PR/Jira referent read-only — this is where a dedicated pass beats stale frontmatter:
 
 ```bash
-gh pr view <url> --json state,reviewDecision,statusCheckRollup
+gh pr view <n> --repo <owner>/<repo> --json state,reviewDecision,statusCheckRollup,mergedAt
 ```
 
 When there are more than ~5 PRs to check, fan out via the `nase-pr-metadata-reader` agent instead of serial calls. Jira: read-only status read if an MCP is available; skip cleanly if not.

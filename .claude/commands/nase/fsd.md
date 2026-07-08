@@ -606,15 +606,31 @@ Confirm: "Worktree removed."
 
 ## Phase 10: Report
 
+**First build the Success-Criteria Ledger.** One row per `success_criteria` item (from Phase 2 / the design doc), each mapped to exactly one:
+- `proven` — cite the evidence: a test name, a Phase 8.5 matrix row, or a check run. A green build is not proof a criterion is met.
+- `waived` — recorded reason.
+- `blocked` — named blocker.
+
+Derive `closure_state`:
+- `done` — every required criterion `proven`.
+- `conditional` — every required criterion `proven` or `waived`, with waiver reasons named.
+- `not-closed` — any required criterion `blocked` or unproven.
+
+Never print `done ✓` when a criterion is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger and print `done ✓` as before, noting verification is deferred to the user.
+
 Print a concise summary:
 ```
-FSD complete ✓
+FSD {done ✓ | conditional ⚠ | not-closed ✗}
 
   Repo:        {repo_name}
   Branch:      {branch_name}
   Test iters:  {N} (passed on iteration N)
   PR:          {PR URL}   ← or "not opened"
   Worktree:    cleaned up ← or "n/a"
+
+Criteria:                                            ← omit block if "Manual verify"
+  - {criterion} — proven: {evidence}
+  - {criterion} — waived: {reason}                   ← or blocked: {blocker}
 
 Verification before promote (full matrix appended to PR body):
   🔥 Critical:  {critical layer label} — {why}     ← omit line if no critical row
