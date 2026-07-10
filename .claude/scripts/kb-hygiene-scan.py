@@ -109,10 +109,6 @@ HISTORICAL_SECTION_RE = re.compile(
     r"\b(history|changelog|decision|incident|recent changes|refresh|notes)\b|20[0-9]{2}-[0-9]{2}-[0-9]{2}",
     re.I,
 )
-CURRENT_SECTION_RE = re.compile(
-    r"\b(overview|architecture|api surface|deployment|ci/cd|build|key files|change playbook|contract index|ownership)\b",
-    re.I,
-)
 PLACEHOLDER_RE = re.compile(
     r"\b(FILL_IN|TBD|TO_BE_FILLED|FIXME_PLACEHOLDER)\b|<[^>\n]*(fill|repo|path|todo)[^>\n]*>",
     re.I,
@@ -379,8 +375,6 @@ def section_kind(stack: list[tuple[int, str, int]]) -> str:
         return "risky"
     if HISTORICAL_SECTION_RE.search(text):
         return "historical"
-    if CURRENT_SECTION_RE.search(text):
-        return "current"
     return "general"
 
 

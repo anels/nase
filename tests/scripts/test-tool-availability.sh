@@ -12,25 +12,7 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 mkdir -p "$TMPDIR_TEST/bin"
 
 failures=0
-
-pass() {
-  printf 'PASS  %s\n' "$1"
-}
-
-fail() {
-  printf 'FAIL  %s\n' "$1" >&2
-  failures=$((failures + 1))
-}
-
-assert_cmd() {
-  local name="$1"
-  shift
-  if "$@"; then
-    pass "$name"
-  else
-    fail "$name"
-  fi
-}
+source "$ROOT/tests/lib/assert.sh"
 
 json_file="$TMPDIR_TEST/all.json"
 PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --all --format json > "$json_file"

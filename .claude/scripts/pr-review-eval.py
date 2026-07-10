@@ -145,14 +145,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     validate = sub.add_parser("validate", help="Validate an eval set")
     validate.add_argument("eval_set")
 
-    list_cmd = sub.add_parser("list", help="List eval cases")
-    list_cmd.add_argument("eval_set")
-
     score = sub.add_parser("score", help="Score one skill output file")
     score.add_argument("--eval-set", required=True)
     score.add_argument("--case", required=True)
     score.add_argument("--output", required=True)
-    score.add_argument("--format", choices=("json", "table"), default="json")
 
     return parser.parse_args(argv)
 
@@ -164,21 +160,9 @@ def main(argv: list[str]) -> int:
         if args.command == "validate":
             print(f"OK: {len(eval_set['cases'])} eval case(s)")
             return 0
-        if args.command == "list":
-            for case in eval_set["cases"]:
-                print(f"{case['id']}\t{case['skill']}\t{case.get('title', '')}")
-            return 0
-
         case = find_case(eval_set, args.case)
         result = score_case(case, args.output)
-        if args.format == "json":
-            print(json.dumps(result, indent=2, sort_keys=True))
-        else:
-            status = "PASS" if result["ok"] else "FAIL"
-            print(f"{status} {result['case_id']} {result['passed']}/{result['total']}")
-            for assertion in result["assertions"]:
-                prefix = "PASS" if assertion["passed"] else "FAIL"
-                print(f"{prefix} {assertion['name']}")
+        print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if result["ok"] else 1
     except (EvalError, OSError, json.JSONDecodeError, re.error) as exc:
         print(f"error: {exc}", file=sys.stderr)

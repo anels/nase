@@ -1,99 +1,13 @@
 # nase Reference Guide
 
-This file contains reference material moved from CLAUDE.md to reduce per-message token usage.
-Read this file on demand when you need details about workspace layout, skills, KB structure, or architecture notes.
+Read this file on demand. It points to the maintained source instead of repeating workspace and helper inventories.
 
----
+## Navigation
 
-## Workspace Layout
-
-```
-.claude/
-  commands/nase/     ← all /nase:* skills (one .md file per command);
-                       command names come from file paths, while frontmatter
-                       `category:` / `order:` / `description:` feed docs/help
-  hooks/
-    session-start.sh ← runs at SessionStart: creates daily log, archives old tech digest,
-                       syncs workspace skill wrappers/native mirrors, surfaces backup warnings,
-                       suggests /nase:reflect when commits exist
-    stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from workspace/tasks/todo.md
-    stop-backup.sh   ← runs at Stop: appends commit summary to daily log, creates timestamped
-                       zip backup of workspace/ (via 7z), applies retention cleanup, warns if notes missing
-    track-skill.sh   ← runs at PostToolUse (Skill): records tool_succeeded or
-                       tool_failed outcomes with session attribution; it does not
-                       claim a prompt recognition was a successful invocation
-    track-skill-prompt.sh ← runs at UserPromptSubmit/UserPromptExpansion: records slash-command invocations
-    track-tool-failure.sh ← runs at PostToolUseFailure: records redacted bounded tool failure summaries
-    track-subagent.sh ← runs at SubagentStop: records bounded subagent summaries without assistant text
-    track-session-failure.sh ← runs at StopFailure: records redacted bounded session failure summaries
-                       that bypass PostToolUse:Skill
-    worktree-log.sh  ← runs at WorktreeRemove: appends timestamped removal entry to
-                       today's daily log
-    external-cli-write-guard.sh ← runs at PreToolUse:Bash: blocks raw guarded-CLI
-                       mutations and fails closed for unrecognized guarded invocations
-    slack-send-guard.sh ← blocks direct Slack sends; use drafts
-    jira-write-guard.sh ← token-gates Jira mutation tools
-    confluence-size-guard.sh ← blocks oversized Confluence page writes
-    pre-edit-write-fact-force.sh ← runs at PreToolUse:Edit|Write|MultiEdit:
-                       reminds the agent to ground first source-file edits in
-                       callers, public-API impact, and the user instruction
-    edit-typecheck.sh ← (opt-in) runs at PostToolUse:Edit for .cs/.ts/.tsx files:
-                       looks up repo in workspace/tmp/.typecheck-commands, runs quick
-                       type-check (e.g. dotnet build --no-restore). 30s timeout.
-                       Disabled by default — enable via /update-config.
-  settings.json      ← hook registrations (SessionStart + Stop + StopFailure + UserPromptSubmit + UserPromptExpansion + PreToolUse + PostToolUse + PostToolUseFailure + SubagentStop + WorktreeRemove)
-.local-paths         ← machine-specific paths: backup-target + repo local paths (key=/path format)
-                       lives at workspace root (NOT inside workspace/); managed by /nase:init
-workspace/               ← entirely git-ignored; never committed
-  config.md          ← format: AI engineer: <name> / workspace: <folder-name> / backup_retention: <policy> / ## Language (conversation + output)  (managed by /nase:init)
-  journals/          ← end-of-day wrap-up files (written by /nase:wrap-up, one per day)
-  scripts/           ← optional local utility scripts
-```
-
----
-
-## Knowledge Base Structure
-
-```
-workspace/                   ← entirely git-ignored; never committed
-  context.md              ← repo list + domain patterns
-  tech-digest-config.md   ← personal sources + filter topics + output sections for /nase:tech-digest
-  kb/
-    .domain-map.md        ← project-domain → kb file mappings (managed by /nase:onboard)
-    projects/
-      <your-repo>.md           ← one file per repo (created by /nase:onboard)
-      tech-debt/               ← tech debt audit reports (created by /nase:tech-debt-audit)
-      decisions/               ← PR decisions & incident logs
-    general/
-      workflow.md              ← protocols, coding principles, PR rules
-      debugging.md             ← debugging techniques, past root causes
-      <your-stack>.md          ← general patterns for your primary stack (e.g. dotnet.md, spark-scala.md)
-      tech-trends.md           ← rolling 30-day tech digest (auto-managed by /nase:tech-digest)
-      tech-trends-archive-YYYY.md ← entries older than 30 days (auto-archived)
-    cross-project/
-      <topic>.md               ← work-related knowledge not tied to a single repo
-    ops/
-      <deployment-type>.md     ← ops runbooks by deployment type (see workspace/kb/.domain-map.md for known types)
-  skills/
-    {name}.md             ← auto-extracted reusable patterns (written by /nase:extract-skills; gitignored)
-  efforts/
-    {slug}.md             ← design docs with lifecycle tracking (written by /nase:design)
-    done/                 ← completed/closed efforts (auto-moved by /nase:today status sync)
-  tasks/
-    lessons.md            ← accumulated lessons from /nase:learn and /nase:reflect
-    todo.md               ← current task tracking
-  journals/
-    YYYY-MM-DD.md         ← end-of-day wrap-up output (written by /nase:wrap-up)
-  stats/
-    skill-usage.jsonl     ← append-only JSONL: {skill, ts, event_type, source, session_id?}; legacy records remain readable
-    skill-usage-YYYY-MM-DD.md ← detailed skill usage report (written by /nase:skill-usage)
-    effort-status-YYYY-MM-DD.md ← active-effort inventory + drift report (written by /nase:efforts)
-  logs/
-    YYYY-MM-DD.md         ← daily work logs (auto-created by SessionStart hook)
-    .backup-status        ← timestamped backup results (written by Stop hook)
-```
-
----
+- [Architecture](../../docs/architecture.md) owns the workspace layout, hooks, runtime configuration, and model routing.
+- [README](../../README.md) owns the command overview and setup guidance.
+- Slack draft styling routes through `voice-profile-routing.md`; read `workspace/communication-style.md` only for high-stakes or ambiguous drafts.
+- Use `rg --files .claude/docs .claude/scripts` to discover a shared doc or helper, then read only the needed file.
 
 ## Execution Style
 
@@ -105,115 +19,26 @@ Proceed through git commands, file reads, and data gathering without asking perm
 
 <execution_style>
 Engineering commands fall into three categories:
-- **Data gathering** (doctor, stats): collect all data first, then present — execute deterministically.
+- **Data gathering** (doctor, stats): collect all data first, then present - execute deterministically.
 - **Interactive** (kb-update, onboard): gather context automatically, then pause at marked checkpoints for user input.
-- **One-pass** (wrap-up): runs non-Jira/non-style-delta-gate steps without pausing — reflect → learn → extract-skills → kb-update → style-delta → journal entry, writes output to `workspace/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
+- **One-pass** (wrap-up): runs non-Jira/non-style-delta-gate steps without pausing - reflect -> learn -> extract-skills -> kb-update -> style-delta -> journal entry, writes output to `workspace/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
 In both cases, start executing immediately. Reserve deliberation for synthesis steps (writing summaries, identifying patterns).
 
-**Concurrency rule**: independent sub-tasks MUST be dispatched in a single message with multiple Agent/tool calls — never serialized. Sequential execution is only valid when step B's input depends on step A's output.
+**Concurrency rule**: independent sub-tasks MUST be dispatched in a single message with multiple Agent/tool calls - never serialized. Sequential execution is only valid when step B's input depends on step A's output.
 </execution_style>
 
----
+## Search Strategy
 
-## Search Strategy (when exploring a repo)
-
-- **Semantic search first**: use semantic/content search to understand unfamiliar code before reading files
-- **Exact search for symbols**: once you know what you're looking for, use exact grep/ripgrep for precise location
-- **Read only what's needed**: avoid reading entire large files — read the specific symbols or sections relevant to the task
-
----
-
-## Shared Docs (`.claude/docs/`)
-
-| Doc | Purpose |
-|-----|---------|
-| `ai-code-verification-debt.md` | Explicit-only AI provenance, risk tiers, review-comment dossier contract, and verification-debt scoring shared by review and audit skills |
-| `anti-rationalization.md` | Shared excuse → rebuttal catalog referenced by high-skip-risk gates in `fsd`, `address-comments`, and `prep-merge` |
-| `build-test-loop.md` | Build → test → fix loop used by `fsd`, `address-comments`, `prep-merge` |
-| `citation-validator.md` | Validate Jira, GitHub, Confluence, and source-file references before report-like skills mark saved artifacts as trusted |
-| `cli-tooling.md` | Optional CLI tool selection, availability probing, install mapping, and skill integration rules |
-| `closing-block.md` | TLDR + tint closing block for `today` / `wrap-up` outputs |
-| `confidential-marker.md` | `[CONFIDENTIAL]` routing tag rules so sensitive daily-log lines stay out of KB, recap, export, and report flows |
-| `commit-push-pattern.md` | Stage → secrets scan → commit → improve → push sequence |
-| `confluence-adf-pattern.md` | Confluence page update rules: `contentFormat:"adf"` enforced, full body requirement, `inlineCard` for Jira links, `hardBreak`, draft pages, content preservation |
-| `jira-write-pattern.md` | Jira write format rule: body tools must set `contentFormat` (`markdown` for plain text; ADF only under batch token for mentions/rich nodes); enforced by `jira-write-guard.sh` |
-| `content-hash-cache.md` | SHA-based change detection to skip unchanged content while periodically re-analyzing stale cache entries (used by `onboard`, `tech-digest`) |
-| `codex-review.md` | Optional Codex MCP contract for read-only second-opinion review, verification, tech-debt, and mutual-grill passes |
-| `codex-verification-bundle.md` | Shared Codex pre-push verification bundle algorithm, with optional AI verification-debt context, used by `fsd` |
-| `cross-repo-validation.md` | Cross-repo outbound/inbound contract validation algorithm used by `onboard` Step 6 |
-| `daily-log-format.md` | Standardized log entry format and canonical skill tags |
-| `effort-lifecycle.md` | Shared lifecycle/status rules for `workspace/efforts/{slug}.md` and related todo entries, used by `design`, `fsd`, and `prep-merge` |
-| `external-mutation-policy.md` | Cross-skill rule: every Slack / Jira / Confluence / GitHub / ADO / cloud mutation goes through draft-first or `AskUserQuestion`; guarded CLI writes also use a payload-bound action manifest. Reference from any mutation-capable skill. |
-| `skill-authoring-contract.md` | Behavior rules for skill authors: language preflight, external mutation, ADO CLI doctrine, bash hygiene, anti-overlap, subagent context. Read before adding a new skill. Enforced by `tests/check-skill-doctrine.sh`. |
-| `style-delta-capture.md` | Capture user corrections to drafted Slack/PR/external-doc text as `[STYLE-DELTA]` log lines and consolidate them into approved `communication-style.md` edits during `wrap-up` |
-| `voice-profile-routing.md` | Surface-specific routing layer for Ruilin's communication profile; callers use a capsule first, then read `workspace/communication-style.md` for high-stakes or ambiguous drafts |
-| `design-auto-mode.md` | Algorithm for the default (no-flag) / `--auto` end-to-end design mode of `/nase:design`; asks deferred human-input questions in one batch at the end |
-| `design-grill-mode.md` | Algorithm for `--grill` multi-persona (architect/PM/eng/SRE/security) stress-test mode of `/nase:design` |
-| `design-review-mode.md` | Algorithm for `--review` re-evaluation mode of `/nase:design` |
-| `design-research.md` | Shared research + plan-gate + implementation-readiness reference for `/nase:design` and `/nase:fsd` Phase 3.5: external source ladder, bug-repro / root-cause / prod-data / test-gap gates, decision matrix, junior-implementable spec rules |
-| `design-principles.md` | Canonical principle set (First Principles / YAGNI / KISS / SOLID / DRY) + the 4 dynamic orderings by scenario; referenced by `design`, `fsd` Phase 3.6, and `simplify` |
-| `fsd-phase-decomposition.md` | Full "Direct with Phase isolation" algorithm for `fsd` Phase 3.7 — complexity precheck, state file format, subagent prompt template, TDD gate block |
-| `fsd-pre-impl-greps.md` | Pre-implementation grep checks for `fsd` Phase 3 (lint config, similar functions, test patterns) |
-| `github-queries.md` | Shared GraphQL queries for PR data (reviews, comments, checks) |
-| `jira-lifecycle.md` | Jira MCP patterns: cloudId resolution, fetch/search/transition, confirmation rules, graceful degradation |
-| `azure-pipeline-kb-extract.md` | Azure Pipeline YAML capture rules + KB-write spec (Step 4.5) used by `onboard` Steps 3d/4.5 |
-| `kb-relationship-graph.md` | Cross-file relationship graph algorithm + output shape (hubs, orphans, clusters, missing reciprocal links) used by `kb-review` Step 3b |
-| `kb-teamshare-file-processing.md` | File processing pipeline for `kb-teamshare` Step 4 — path stripping (4a), internal link rewriting (4b), privacy classification (4c), output language translation (4d) |
-| `kb-template.md` | Template + Writing Conventions for new repo KB files (used by `onboard`, `learn`, `kb-update`, `kb-review`) |
-| `language-config.md` | Canonical algorithm for loading conversation vs output language |
-| `ms-learn-grounding.md` | Read-only verification of Azure / .NET / Microsoft SDK claims via the `ms-learn` MCP server. Used by `onboard` Step 3j; conditional on a Microsoft-stack trigger. |
-| `lessons-format.md` | Canonical format for `workspace/tasks/lessons.md` entries (header, body, signal-to-noise rules) |
-| `pr-creation-pattern.md` | PR template discovery, description drafting, title rules |
-| `pr-input-guard.md` | Input validation for skills that take a PR URL |
-| `pr-review-verification.md` | Verification checklist for PR review skills, including AI-reviewer audit, diff-vs-HEAD checks, bot citation triage, and comment dossiers |
-| `reference.md` | This file — workspace layout, KB structure, architecture notes |
-| `repo-resolution.md` | Resolve GitHub URLs / repo names to local paths via `.local-paths` |
-| `slack-draft-style.md` | Style checklist for Slack drafts: no greetings, bullets for tech content, English-only in public/non-CN DMs, `pls` over `please`; routes through `voice-profile-routing.md` and reads `workspace/communication-style.md` when needed |
-| `verification-matrix.md` | Verification evidence matrix used by `fsd` and `discuss-pr` to declare task done |
-| `workspace-data-gathering.md` | Load journals/logs/tasks within a date range (used by `recap`, `wrap-up`) |
-| `worktree-pattern.md` | Safe worktree creation with `EnterWorktree` avoidance |
-| `workspace-runtime-config.md` | Runtime config registry rules for org/project/page/model/tool names used by workspace skills |
-| `workspace-write-guard.md` | Staging, diff, and mtime/hash guard for durable workspace writes |
-
----
-
-## Utility Scripts (`.claude/scripts/`)
-
-| Script | Purpose |
-|--------|---------|
-| `command_catalog.py` | Render and validate the `/nase:*` command catalog from `.claude/commands/nase/*.md` frontmatter. Command IDs come from file names; README/help grouping comes from `category:` and optional `order:`. |
-| `date-resolve.py` | Parse natural-language date specs (e.g. "last week", "30", "YYYY-MM-DD to YYYY-MM-DD") to a `START_DATE END_DATE` pair. Used by `recap`, `stats`. |
-| `help-summary.py` | Render compact or verbose `/nase:help` output from the command catalog plus README intro/hooks and workspace directories. Used by `help`. |
-| `kb-domain-resolve.sh` | Resolve a repo name / domain key to its KB file path via `workspace/kb/.domain-map.md`. Used by `repo-resolution.md` callers. |
-| `kb-search.sh` | Full-text + metadata search across KB files. Supports `in:`, `tag:`, `since:`, `confidence:`, `mentions:`, capped previews, `--full`, and `--max-entry-lines`; weighted relevance (header 2×, body 1×); fuzzy fallback. Used by `kb-search`. |
-| `kb-gap-scan.sh` | Scan daily logs and lessons for KB-gap signals (uncertainty, doc lookups, SME teachings). Used by `kb-gap-detect`. |
-| `kb-hygiene-scan.py` | Scan project KB files for stale timestamps, unsafe stale claims, broken repo-source references, and compaction candidates. Used by `onboard`. |
-| `codex-verify-bundle.py` | Generate the markdown bundle for the Codex pre-push verification gate. Used by `fsd`. |
-| `pr-github-helper.py` | Parse GitHub PR refs, centralize read-only `gh` metadata/thread command shapes, and compute PR diff-size gates. Used by PR/review skills. |
-| `pr-review-eval.py` | Validate and score offline PR/review skill eval outputs from `evals/pr-review/evals.json`. |
-| `today-stats.py` | Emit a single date's activation-based skill-usage counts as `key=value` lines with legacy JSONL compatibility. Used by `wrap-up` Step 4d. |
-| `log-range.py` | Emit existing daily-log file paths for a date range (inclusive). Silently drops non-existent dates. Used by `recap` Step 4.5. |
-| `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
-| `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, install hints, or a Homebrew install command for brew-managed tools. Used by `doctor` and optional tooling-aware skills. |
-| `workspace-data-scan.py` | Emit compact, date-filtered workspace context, lessons, journals, and logs with source paths and truncation markers. Used by `workspace-data-gathering.md` callers. |
-| `workspace-quality-scan.py` | Read-only workspace quality scan for daily-log format drift, KB placeholders/refresh heartbeats, and KB usage attribution. Used by `validate-workspace.sh` in warn-only mode. |
-| `workspace-write-guard.py` | Stage, diff, and drift-check durable workspace full-file writes. Used by `design`, `kb-update`, and `wrap-up` write paths. |
-| `month-efforts.sh` | Bucket `workspace/efforts/done/` efforts by mtime for a given `YYYY-MM` and pre-extract each doc's PR + Jira refs. Used by `effort-rollup`. |
-
----
-
-## Skills — Full Reference
-
-See the [Available commands table in README.md](../../README.md#available-commands) for the generated list of `/nase:*` commands with descriptions. The source of truth is `.claude/commands/nase/*.md` frontmatter, validated by `python3 .claude/scripts/command_catalog.py --root . --check-readme`.
-
----
+- Start with semantic or content search when a repository is unfamiliar.
+- Use exact `rg` searches once the symbol or phrase is known.
+- Read only the relevant symbols or sections rather than large files wholesale.
 
 ## Key Decisions & Architecture Notes
-<!-- Format: ### YYYY-MM-DD — {topic} -->
+<!-- Format: ### YYYY-MM-DD - {topic} -->
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
 
 ### 2026-07-09 - Skill telemetry v2 uses activation as usage
 `track-skill-prompt.sh` records `requested` when a prompt contains a slash command and `activated` only when Claude Code expands it. `track-skill.sh` separately records `tool_succeeded` and `tool_failed`. Records carry `source` and, when supplied by the hook payload, `session_id`. Usage reports count activations, not prompt recognition or outcome events; old `{skill, ts, status?}` records remain readable with the prior bounded dedupe fallback.
 
-### 2026-03-19 — Zip-based backup with retention
+### 2026-03-19 - Zip-based backup with retention
 `stop-backup.sh` creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) via `7z a -tzip` (`scoop install 7zip`). Retention policy (`count:N` or `days:N`) from `backup_retention:` in `workspace/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`. Supersedes earlier flat-copy and rsync approaches.

@@ -10,25 +10,7 @@ TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 failures=0
-
-pass() {
-  printf 'PASS  %s\n' "$1"
-}
-
-fail() {
-  printf 'FAIL  %s\n' "$1" >&2
-  failures=$((failures + 1))
-}
-
-assert_cmd() {
-  local name="$1"
-  shift
-  if "$@"; then
-    pass "$name"
-  else
-    fail "$name"
-  fi
-}
+source "$ROOT/tests/lib/assert.sh"
 
 parsed="$TMPDIR_TEST/parsed.json"
 "$PYTHON_BIN" "$SCRIPT" parse "https://github.com/acme/widgets/pull/42/files" > "$parsed"
@@ -72,61 +54,24 @@ assert data["review_threads"][0:3] == ["gh", "api", "graphql"]
 assert "pageInfo" in data["review_threads"][-1]
 PY
 
-cat > "$TMPDIR_TEST/small.json" <<'JSON'
-{"additions": 50, "deletions": 25}
-JSON
-gate_small="$TMPDIR_TEST/gate-small.json"
-"$PYTHON_BIN" "$SCRIPT" size-gate --metadata "$TMPDIR_TEST/small.json" > "$gate_small"
-assert_cmd "small PR uses full diff" "$PYTHON_BIN" - "$gate_small" <<'PY'
-import json
+assert_cmd "size gate keeps its boundaries" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
 import sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-assert data["total_lines"] == 75
-assert data["diff_mode"] == "full"
-assert data["review_warning"] is False
-PY
 
-cat > "$TMPDIR_TEST/boundary.json" <<'JSON'
-{"additions": 1000, "deletions": 500}
-JSON
-gate_boundary="$TMPDIR_TEST/gate-boundary.json"
-"$PYTHON_BIN" "$SCRIPT" size-gate --metadata "$TMPDIR_TEST/boundary.json" > "$gate_boundary"
-assert_cmd "1500-line PR keeps full diff without warning" "$PYTHON_BIN" - "$gate_boundary" <<'PY'
-import json
-import sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-assert data["total_lines"] == 1500
-assert data["diff_mode"] == "full"
-assert data["review_warning"] is False
-PY
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
 
-cat > "$TMPDIR_TEST/mid.json" <<'JSON'
-{"additions": 1000, "deletions": 501}
-JSON
-gate_mid="$TMPDIR_TEST/gate-mid.json"
-"$PYTHON_BIN" "$SCRIPT" size-gate --metadata "$TMPDIR_TEST/mid.json" > "$gate_mid"
-assert_cmd "PR over 1500 lines uses stat diff and warns" "$PYTHON_BIN" - "$gate_mid" <<'PY'
-import json
-import sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-assert data["total_lines"] == 1501
-assert data["diff_mode"] == "stat"
-assert data["review_warning"] is True
-assert data["stat_threshold"] == 1500
-PY
-
-cat > "$TMPDIR_TEST/large.json" <<'JSON'
-{"additions": 4000, "deletions": 1501}
-JSON
-gate_large="$TMPDIR_TEST/gate-large.json"
-"$PYTHON_BIN" "$SCRIPT" size-gate --metadata "$TMPDIR_TEST/large.json" > "$gate_large"
-assert_cmd "large PR uses stat diff and warns" "$PYTHON_BIN" - "$gate_large" <<'PY'
-import json
-import sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-assert data["total_lines"] == 5501
-assert data["diff_mode"] == "stat"
-assert data["review_warning"] is True
+for metadata, total, mode, warned in (
+    ({"additions": 50, "deletions": 25}, 75, "full", False),
+    ({"additions": 1000, "deletions": 500}, 1500, "full", False),
+    ({"additions": 1000, "deletions": 501}, 1501, "stat", True),
+    ({"additions": 4000, "deletions": 1501}, 5501, "stat", True),
+):
+    result = module.size_gate(metadata, 1500, 1500)
+    assert result["total_lines"] == total
+    assert result["diff_mode"] == mode
+    assert result["review_warning"] is warned
 PY
 
 mkdir -p "$TMPDIR_TEST/bin"
