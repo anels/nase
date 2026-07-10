@@ -501,7 +501,7 @@ Deviation: use `push -u origin {branch_name}` on first push (sets upstream track
 
 Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors (relevant in team mode).
 
-Before the `gh pr create` / `gh pr edit` calls below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`.
+Before the GitHub actions below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`. Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command.
 
 Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation:
 
@@ -515,20 +515,24 @@ options:
     description: "Leave the pushed branch without opening a PR"
 ```
 
-If skipped, do not call `gh pr create`; report the pushed branch and the command the user can run later.
+If skipped, do not prepare an action; report the pushed branch and the command the user can run later.
 
-If approved, run the auth guard and open a draft PR with the approved payload:
+If approved, run the auth guard, write the already-shown body to a private file, then prepare, show, authorize, and execute this exact action:
 ```bash
-gh pr create \
-  --draft \
-  --title "{commit_subject_line}" \
-  --body "$(cat <<'EOF'
+PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/fsd-pr-body.XXXXXXXX.md")
+chmod 600 "$PR_BODY_FILE"
+trap 'rm -f "$PR_BODY_FILE"' EXIT
+cat > "$PR_BODY_FILE" <<'EOF'
 {pr_body_from_template}
 EOF
-)" \
-  --base {default_branch} \
-  --head {branch_name} \
-  -R {repo_owner}/{repo_name}
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "create draft PR {repo_owner}/{repo_name}" -- \
+  gh pr create --draft --title "{commit_subject_line}" --body-file "$PR_BODY_FILE" \
+  --base {default_branch} --head {branch_name} -R {repo_owner}/{repo_name} | jq -r .manifest)
+jq . "$MANIFEST"
+# AskUserQuestion approved this exact manifest. Then:
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
 Report the PR URL.
@@ -561,11 +565,19 @@ Skill-specific outputs:
      - label: "Skip PR edit"
        description: "Leave the PR body unchanged; include the matrix only in the final report"
    ```
-   If skipped, do not edit the PR body; still surface the matrix in Phase 10. If approved, use:
+   If skipped, do not edit the PR body; still surface the matrix in Phase 10. If approved, prepare, show, authorize, and execute this payload-bound action:
    ```bash
-   gh pr view {pr_number} -R {owner}/{repo} --json body --jq .body > /tmp/fsd-pr-body-{pr_number}.md
+   PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/fsd-pr-body.XXXXXXXX.md")
+   chmod 600 "$PR_BODY_FILE"
+   trap 'rm -f "$PR_BODY_FILE"' EXIT
+   gh pr view {pr_number} -R {owner}/{repo} --json body --jq .body > "$PR_BODY_FILE"
    # Append the Verification section to the file, then:
-   gh pr edit {pr_number} -R {owner}/{repo} --body-file /tmp/fsd-pr-body-{pr_number}.md
+   MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+     --system github --summary "append verification to PR {owner}/{repo}#{pr_number}" -- \
+     gh pr edit {pr_number} -R {owner}/{repo} --body-file "$PR_BODY_FILE" | jq -r .manifest)
+   jq . "$MANIFEST"
+   python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+   python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
    ```
    Append only; never overwrite. Skip when matrix has no rows.
 

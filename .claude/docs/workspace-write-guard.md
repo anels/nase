@@ -83,6 +83,15 @@ Daily logs, journal append sections, and skill-usage JSONL can append without a
 diff prompt, but should still create the parent directory and avoid rewriting
 existing entries.
 
+### Generated Integrity-Manifest Exception
+
+`workspace-skill-integrity.py write-manifest` may atomically replace only the
+ignored `workspace/skills/.nase-manifest.json` after it verifies every local
+source, wrapper, and native mirror is in sync. It writes a source-hash baseline
+with mode `0600`, never source content. It must refuse to write on any mirror
+drift. This narrow generator-owned exception does not permit direct writes to
+other `workspace/skills/` files.
+
 ## Auto-Accept Rules
 
 `--auto-accept` may skip the human prompt only when the skill has an explicit

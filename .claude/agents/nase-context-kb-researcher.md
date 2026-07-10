@@ -1,7 +1,8 @@
 ---
 name: nase-context-kb-researcher
 description: Read-only KB context researcher for nase workflows. Use for local KB lookup, related decisions, ownership notes, constraints, stale claims, and cross-reference candidates.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob
+permissionMode: plan
 model: haiku
 background: true
 color: blue

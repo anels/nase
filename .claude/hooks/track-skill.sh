@@ -12,16 +12,17 @@ HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 
 INPUT=$(cat)
-# Single jq pass: emit "<skill>\t<status>\t<duration_ms>". status derivation —
+# Single jq pass: emit "<skill>\t<status>\t<duration_ms>\t<session_id>". status derivation -
 # `tool_response.is_error == true` or non-empty error field counts as error;
 # everything else (including absent) is success. duration_ms surfaced from
 # Claude Code 2.1.119+ hook JSON (top-level). Empty string when absent.
 # Backward compat: readers must treat absent status/duration_ms as success/unknown.
-if ! IFS=$'\t' read -r SKILL STATUS DUR_MS < <(echo "$INPUT" | jq -r '
+if ! IFS=$'\t' read -r SKILL STATUS DUR_MS SESSION_ID < <(echo "$INPUT" | jq -r '
   [ (.tool_input.skill // ""),
     ((.tool_response // {}) as $r
      | if ($r.is_error == true) or (($r.error // "") != "") then "error" else "success" end),
-    (.duration_ms // "")
+    (.duration_ms // ""),
+    (.session_id // .sessionId // "")
   ] | @tsv
 ' 2>/dev/null); then
   echo "[track-skill] WARNING: malformed JSON on stdin — skipping" >&2
@@ -37,38 +38,25 @@ esac
 # Strip nase: prefix
 SKILL_NAME="${SKILL#nase:}"
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+[ -n "$SESSION_ID" ] || SESSION_ID="${CLAUDE_SESSION_ID:-${CLAUDE_SESSIONID:-}}"
+if [ "$STATUS" = "error" ]; then
+  EVENT_TYPE="tool_failed"
+else
+  EVENT_TYPE="tool_succeeded"
+fi
 
 mkdir -p "$STATS_DIR"
 
 if command -v python3 >/dev/null 2>&1; then
-  python3 "$LOGGER" activate \
-    --root "$NASE_ROOT" \
-    --skill "$SKILL_NAME" \
-    --source skill-hook >/dev/null 2>&1 || true
-fi
-
-# Dedup: skip if same skill + same second already recorded.
-# Bash string match avoids a second jq fork on the hot path; JSONL is
-# compact (one object per line) so substring match is safe.
-if [ -f "$JSONL" ]; then
-  LAST=$(tail -1 "$JSONL" 2>/dev/null || true)
-  if [[ "$LAST" == *"\"skill\":\"$SKILL_NAME\""*"\"ts\":\"$TS\""* ]]; then
-    exit 0
-  fi
-  if tail -50 "$JSONL" 2>/dev/null | jq -e --arg s "$SKILL_NAME" --arg t "$TS" '
-    ($t | fromdateiso8601) as $now
-    | select(.skill == $s and ((.source == "prompt") or (.source == "prompt-expansion")) and (.ts | type == "string"))
-    | (.ts | fromdateiso8601? // 0) as $event
-    | select($event > 0 and ($now - $event) >= 0 and ($now - $event) <= 60)
-  ' >/dev/null 2>&1; then
-    exit 0
-  fi
+  TRACK_ARGS=(activate --root "$NASE_ROOT" --skill "$SKILL_NAME" --source skill-hook)
+  [ -n "$SESSION_ID" ] && TRACK_ARGS+=(--session "$SESSION_ID")
+  python3 "$LOGGER" "${TRACK_ARGS[@]}" >/dev/null 2>&1 || true
 fi
 
 if [[ "$DUR_MS" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-  jq -cn --arg s "$SKILL_NAME" --arg t "$TS" --arg st "$STATUS" --argjson d "$DUR_MS" \
-    '{skill:$s,ts:$t,status:$st,duration_ms:$d}' >> "$JSONL"
+  jq -cn --arg s "$SKILL_NAME" --arg t "$TS" --arg event "$EVENT_TYPE" --arg session "$SESSION_ID" --argjson d "$DUR_MS" \
+    '{skill:$s,ts:$t,source:"skill-hook",event_type:$event,duration_ms:$d} + (if $session == "" then {} else {session_id:$session} end)' >> "$JSONL"
 else
-  jq -cn --arg s "$SKILL_NAME" --arg t "$TS" --arg st "$STATUS" \
-    '{skill:$s,ts:$t,status:$st}' >> "$JSONL"
+  jq -cn --arg s "$SKILL_NAME" --arg t "$TS" --arg event "$EVENT_TYPE" --arg session "$SESSION_ID" \
+    '{skill:$s,ts:$t,source:"skill-hook",event_type:$event} + (if $session == "" then {} else {session_id:$session} end)' >> "$JSONL"
 fi

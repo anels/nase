@@ -79,23 +79,15 @@ If Atlassian MCP unavailable or `cloudId` missing: skip all Jira checks silently
 Build a list of all status changes applied. This list feeds the "**Status Updates**" section in the output (Step 5). If no changes were detected, this section is omitted.
 
 **1b-vii. Active Efforts Snapshot:**
-For every `workspace/efforts/*.md` (excluding `done/`) that remains active after the updates above, classify each effort into a lifecycle stage. Two paths based on file shape:
+For every `workspace/efforts/*.md` (excluding `done/`) that remains active after the updates above, run the canonical classifier:
 
-**Path A — file has a `## Lifecycle` section:** read the checkboxes (last `[x]` line wins). Stages, in order:
-1. **Planning** — design/grill not yet approved (`Auto-design completed`, `Plan grilled`, or `Design approved` is the last checked box, or none checked)
-2. **Implementing** — `Implementation started` checked but `PR opened` not checked
-3. **In review** — `PR opened` checked but `Merged` not checked (capture the lifecycle-line PR ref when present; otherwise use the doc-level PR Reference Resolution scan)
-4. **Awaiting deploy** — `Merged` checked but `Deployed*` not checked
-5. **Follow-up only** — all primary checkboxes checked but trailing `Follow-up:` items remain
+```bash
+python3 .claude/scripts/effort-state.py --file "workspace/efforts/<slug>.md"
+```
 
-**Path B — file has NO `## Lifecycle` section** (older or hand-written efforts): fall back to the YAML frontmatter `status:` value:
-- `status: proposed` or `planned` → **Planning**
-- `status: in-progress` or `needs-revision` → **Implementing**
-- `status: in-review` or a PR reference is present in the body (any form — see PR Reference Resolution) → **In review**
-- `status: merged` or `awaiting-deploy` → **Awaiting deploy**
-- Any other value → **Planning** (safe default; the user can re-categorize)
+Use its `stage`, `evidence`, `pending_followups`, and `needs_live_verification` fields. The helper scans the whole file and uses the highest checked canonical stage (`Implementation started`, `PR opened`, `Merged`, `Deployed`) regardless of line order or a `## Lifecycle` header. Ordinary plan/grill checkboxes are not stage signals. A checked `Deployed` plus unchecked `Follow-up:` items becomes **Follow-up only**; no canonical stage falls back to frontmatter status. If `needs_live_verification` is true, resolve the conflict with the live PR/Jira read rather than guessing.
 
-In both paths, capture: filename (without `.md`), stage, last-updated date (file mtime via `stat`), PR reference if any (per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`; not a URL-only grep), status frontmatter value, and the single most informative pending checkbox text (Path A only — omit for Path B). Group by stage for the output. Sort within each group by mtime descending. If `workspace/efforts/` is empty (or only contains `done/`), skip this snapshot.
+Capture: filename (without `.md`), stage, last-updated date (file mtime via `stat`), PR reference if any (per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`; not a URL-only grep), status frontmatter value, and the single most informative pending checkbox text when the classifier supplies one. Group by stage for the output. Sort within each group by mtime descending. If `workspace/efforts/` is empty (or only contains `done/`), skip this snapshot.
 
 ### 1c. Scheduled Maintenance Check
 

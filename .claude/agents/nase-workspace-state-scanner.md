@@ -1,7 +1,8 @@
 ---
 name: nase-workspace-state-scanner
 description: Read-only workspace state scanner for nase workflows. Use for tasks, efforts, logs, journals, recaps, skill usage, and local activity summaries.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob
+permissionMode: plan
 model: haiku
 background: true
 color: yellow

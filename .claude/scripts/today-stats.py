@@ -68,6 +68,8 @@ def collect_skill_usage(root: Path, today: str) -> dict:
                         "skill": skill,
                         "ts": ts,
                         "source": d.get("source", ""),
+                        "event_type": d.get("event_type", ""),
+                        "session_id": d.get("session_id", ""),
                         "dt": parse_event_ts(ts),
                     })
             elif today_seen and ts > today:
@@ -80,20 +82,39 @@ def collect_skill_usage(root: Path, today: str) -> dict:
 
 
 def dedupe_prompt_tool_events(records: list[dict]) -> list[dict]:
-    prompt_times: dict[str, list[datetime]] = {}
+    prompt_times: dict[tuple[str, str], list[datetime]] = {}
     kept: list[dict] = []
     for event in sorted(records, key=lambda e: e["ts"]):
         skill = event["skill"]
         dt = event["dt"]
-        if event["source"] == "prompt":
+        event_type = event["event_type"]
+        session = event["session_id"] or "legacy"
+        if event_type == "requested" or event_type == "tool_failed":
+            continue
+        if event_type == "activated":
             kept.append(event)
             if dt is not None:
-                prompt_times.setdefault(skill, []).append(dt)
+                prompt_times.setdefault((skill, session), []).append(dt)
+            continue
+        if event_type == "tool_succeeded":
+            if dt is not None:
+                recent_prompt = any(
+                    timedelta(0) <= (dt - prompt_dt) <= PROMPT_TOOL_DEDUPE_WINDOW
+                    for prompt_dt in prompt_times.get((skill, session), [])
+                )
+                if recent_prompt:
+                    continue
+            kept.append(event)
+            continue
+        if event["source"] in {"prompt", "prompt-expansion"}:
+            kept.append(event)
+            if dt is not None:
+                prompt_times.setdefault((skill, session), []).append(dt)
             continue
         if dt is not None:
             recent_prompt = any(
                 timedelta(0) <= (dt - prompt_dt) <= PROMPT_TOOL_DEDUPE_WINDOW
-                for prompt_dt in prompt_times.get(skill, [])
+                for prompt_dt in prompt_times.get((skill, session), [])
             )
             if recent_prompt:
                 continue

@@ -18,6 +18,38 @@ Canonical rule for skills that change state in systems outside the local workspa
 | **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` — anything that mutates infrastructure requires explicit user confirmation. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
 | **git push** | Push to feature branch is OK after the standard commit sequence. Push to `main` / `master` / `develop` / `release/*` is BLOCKED by `block-dangerous-git.sh` hook — do not bypass. Force-push: only with `--force-with-lease` and only when the user has been warned. |
 
+## CLI mutation action contract
+
+GitHub CLI, ADO, Azure, Kubernetes, and Terraform mutations use
+`.claude/scripts/external-write-action.py`, not a raw mutating shell command.
+Prepare an action with the exact argv and any payload files, show the emitted
+manifest to the user, call `AskUserQuestion`, then authorize and execute it:
+
+```bash
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "create draft PR" -- \
+  gh pr create --draft --title "{title}" --body-file "{body_file}" \
+  | jq -r .manifest)
+
+# Show the manifest and exact payload content before AskUserQuestion confirms this action.
+cat "$body_file"
+jq . "$MANIFEST"
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+```
+
+The helper stores a local manifest and a one-shot 300-second token. Before the
+confirmation, show the exact argv, target, side effects, payload-file content (or
+the structured fields it contains), and each payload SHA - a path and hash alone
+are not an adequate payload review. The helper accepts no environment overrides;
+the CLI uses the current authenticated environment. Do not put credentials in
+argv or payload files. It hashes the argv and payload-file contents, rechecks both
+before execution, invokes the CLI without a shell, and consumes the token after
+success or failure. The Hook blocks raw mutations and fails closed for
+unrecognized guarded CLI invocations. This binds the approved action and prevents
+accidental payload drift; it does not prove a hostile model actually obtained user
+approval.
+
 ---
 
 ## Hook backstops
@@ -31,6 +63,7 @@ highest-risk rules even when a future skill forgets the prompt contract:
 | `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
 | `confluence-size-guard.sh` | Confluence page bodies over 60 KB; page writes not sent as `contentFormat: "adf"` (see `.claude/docs/confluence-adf-pattern.md`) |
 | `block-dangerous-git.sh` | destructive or protected-branch git commands |
+| `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
 
 ### Jira token contract
 

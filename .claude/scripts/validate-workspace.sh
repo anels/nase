@@ -23,6 +23,7 @@ bash -n .claude/scripts/*.sh
 ok "hook and script bash syntax"
 
 python3 -m py_compile .claude/scripts/*.py
+[ -f .claude/scripts/external-write-action.py ]
 ok "python helpers compile"
 
 python3 - <<'PY'
@@ -131,6 +132,7 @@ requirements = [
     ("UserPromptExpansion", "track-skill-prompt.sh", "nase:"),
     ("UserPromptSubmit", "style-edit-detect.sh", None),
     ("PreToolUse", "block-dangerous-git.sh", "Bash"),
+    ("PreToolUse", "external-cli-write-guard.sh", "Bash"),
     ("PreToolUse", "slack-send-guard.sh", "slack_send_message"),
     ("PreToolUse", "jira-write-guard.sh", "JiraIssue"),
     ("PreToolUse", "confluence-size-guard.sh", "ConfluencePage"),
@@ -169,7 +171,7 @@ runtime_tmp=$(mktemp -d)
 mkdir -p "$runtime_tmp/workspace/stats"
 printf '{"prompt":"/nase:today"}' \
   | NASE_ROOT="$runtime_tmp" bash .claude/hooks/track-skill-prompt.sh
-grep -q '"skill":"today"' "$runtime_tmp/workspace/stats/skill-usage.jsonl"
+grep -q '"skill":"today".*"event_type":"requested"' "$runtime_tmp/workspace/stats/skill-usage.jsonl"
 before_lines=$(wc -l < "$runtime_tmp/workspace/stats/skill-usage.jsonl" | tr -d ' ')
 printf '{"prompt":"what does /nase:today do?"}' \
   | NASE_ROOT="$runtime_tmp" bash .claude/hooks/track-skill-prompt.sh
@@ -177,7 +179,7 @@ after_lines=$(wc -l < "$runtime_tmp/workspace/stats/skill-usage.jsonl" | tr -d '
 [ "$before_lines" = "$after_lines" ]
 printf '{"command_name":"nase:stats"}' \
   | NASE_ROOT="$runtime_tmp" HOOK_EVENT_NAME=UserPromptExpansion bash .claude/hooks/track-skill-prompt.sh
-grep -q '"skill":"stats".*"source":"prompt-expansion"' "$runtime_tmp/workspace/stats/skill-usage.jsonl"
+grep -q '"skill":"stats".*"source":"prompt-expansion".*"event_type":"activated"' "$runtime_tmp/workspace/stats/skill-usage.jsonl"
 ok "slash command prompt tracking smoke check"
 
 mkdir -p "$runtime_tmp/workspace/kb/general"

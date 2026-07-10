@@ -9,7 +9,7 @@ category: Git workflow
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
-Follows `.claude/docs/external-mutation-policy.md` — review-thread resolution, force-push, `gh pr edit`, and `gh pr ready` go through `AskUserQuestion` before the call.
+Follows `.claude/docs/external-mutation-policy.md` - review-thread resolution, force-push, PR edits, reopen, and ready actions are immediately confirmed. Every GitHub CLI mutation additionally uses `external-write-action.py`; raw mutations are blocked by Hook.
 Follows `.claude/docs/workspace-write-guard.md` for effort lifecycle updates.
 Follows `.claude/docs/repo-task-flow.md` for shared repo/PR resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns prep-merge-specific rebase, squash, PR title/body cleanup, and ready-for-review logic below.
 
@@ -309,7 +309,16 @@ options:
     description: "Don't reopen; investigate manually"
 ```
 
-On "Reopen", run `gh pr reopen {pr_number} --repo {owner}/{repo}`. Record the resulting state for the Phase 10 report.
+On "Reopen", prepare, show, authorize, and execute the exact action below. Record the resulting state for the Phase 10 report.
+
+```bash
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "reopen PR {owner}/{repo}#{pr_number}" -- \
+  gh pr reopen {pr_number} --repo {owner}/{repo} | jq -r .manifest)
+jq . "$MANIFEST"
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+```
 
 On push success, clear the Phase 4 abort signature:
 ```bash
@@ -330,15 +339,21 @@ options:
     description: "Leave the pushed branch as-is; update the PR manually later"
 ```
 
-If the user chooses "Skip PR edit", skip the command below and continue to cleanup/report with `Title updated: skipped`.
+If the user chooses "Skip PR edit", skip the action below and continue to cleanup/report with `Title updated: skipped`.
 
 ```bash
-gh pr edit {pr_number} --repo {owner}/{repo} \
-  --title "{new_title}" \
-  --body "$(cat <<'NASE_PR_BODY'
+PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/prep-merge-pr-body.XXXXXXXX.md")
+chmod 600 "$PR_BODY_FILE"
+trap 'rm -f "$PR_BODY_FILE"' EXIT
+cat > "$PR_BODY_FILE" <<'NASE_PR_BODY'
 {new_description}
 NASE_PR_BODY
-)"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "update PR {owner}/{repo}#{pr_number}" -- \
+  gh pr edit {pr_number} --repo {owner}/{repo} --title "{new_title}" --body-file "$PR_BODY_FILE" | jq -r .manifest)
+jq . "$MANIFEST"
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
 ## Phase 9b: Effort Doc Update
@@ -384,7 +399,12 @@ options:
 
 - **If "Yes":** first un-draft the PR, then run `/nase:request-review {pr_url}`:
   ```bash
-  gh pr ready {pr_number} --repo {owner}/{repo}
+  MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+    --system github --summary "mark PR ready {owner}/{repo}#{pr_number}" -- \
+    gh pr ready {pr_number} --repo {owner}/{repo} | jq -r .manifest)
+  jq . "$MANIFEST"
+  python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+  python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
   ```
 - **If "No":** print `PR left as draft — un-draft and request review when you're ready.` and stop.
 

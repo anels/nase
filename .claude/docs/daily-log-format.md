@@ -46,6 +46,6 @@ Skills not in this rename table: use the command name without the `/nase:` prefi
 
 ## Self-logging rule (mandatory for tracked skills)
 
-Skills that need to show up in `/nase:stats` and `/nase:skill-usage` MUST append their own bullet on completion. The `PostToolUse:Skill` hook misses any skill invoked as a slash-command (e.g. typed `/nase:today`), so the daily-log bullet is the only reliable tracking source.
+Skills that need to show up in completion history MUST append their own bullet on completion. Telemetry records slash-command activation and tool outcomes, but the daily-log bullet is the durable completion audit record.
 
-Format: the standard entry shape above (`- {HH:MM} | {skill-tag}: {summary}`), using the skill's canonical tag from the rename table. Skip the bullet and the skill becomes invisible to tracking.
+Format: the standard entry shape above (`- {HH:MM} | {skill-tag}: {summary}`), using the skill's canonical tag from the rename table. Skip the bullet and the completed work is absent from the daily audit trail.

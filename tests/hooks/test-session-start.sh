@@ -101,6 +101,25 @@ allowed-tools: Bash(multiline:*)
 The full skill body still lives here.
 SKILL
 
+cat > "$repo/workspace/skills/manual-deploy.md" <<'SKILL'
+---
+description: User-triggered deployment.
+disable-model-invocation: true
+argument-hint: "<repo> <branch>"
+context: fork
+---
+
+Deploy only after explicit confirmation.
+SKILL
+
+cat > "$repo/workspace/skills/Unsafe_Name.md" <<'SKILL'
+---
+description: Unsupported name.
+---
+
+This must not generate a wrapper.
+SKILL
+
 mkdir -p "$repo/.claude/commands/nase/workspace"
 mkdir -p "$repo/.claude/skills/playwright-cli" "$repo/.claude/skills/nase-workspace-orphan"
 cat > "$repo/.claude/commands/nase/workspace/long-desc.md" <<'WRAPPER'
@@ -139,6 +158,28 @@ if [ "$rc" -eq 0 ]; then
   pass=$((pass + 1))
 else
   printf 'FAIL  session-start exits cleanly (rc=%s)\n      out: %s\n' "$rc" "$out" >&2
+  fail=$((fail + 1))
+fi
+
+manual_wrapper="$repo/.claude/commands/nase/workspace/manual-deploy.md"
+manual_native="$repo/.claude/skills/nase-workspace-manual-deploy/SKILL.md"
+if [ -f "$manual_wrapper" ] && [ -f "$manual_native" ]; then
+  assert_contains "wrapper forwards manual-only invocation" "$(cat "$manual_wrapper")" "disable-model-invocation: true"
+  assert_contains "wrapper forwards parameter metadata" "$(cat "$manual_wrapper")" 'argument-hint: "<repo> <branch>"'
+  assert_contains "wrapper forwards context metadata" "$(cat "$manual_wrapper")" "context: fork"
+  manual_native_content=$(cat "$manual_native")
+  assert_contains "native skill forwards manual-only invocation" "$manual_native_content" "disable-model-invocation: true"
+  assert_contains "native skill forwards parameter metadata" "$manual_native_content" 'argument-hint: "<repo> <branch>"'
+  if grep -qF "user-invocable: false" <<<"$manual_native_content"; then
+    report=1
+    printf 'FAIL  native manual skill is not contradictory\n' >&2
+    fail=$((fail + 1))
+  else
+    printf 'PASS  native manual skill is not contradictory\n'
+    pass=$((pass + 1))
+  fi
+else
+  printf 'FAIL  manual-only skill mirrors generated\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -187,6 +228,14 @@ if [ ! -e "$repo/.claude/skills/nase-workspace-orphan" ]; then
   pass=$((pass + 1))
 else
   printf 'FAIL  orphaned generated native skill removed\n' >&2
+  fail=$((fail + 1))
+fi
+
+if [ ! -e "$repo/.claude/commands/nase/workspace/Unsafe_Name.md" ]; then
+  printf 'PASS  unsafe workspace skill name is skipped\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  unsafe workspace skill name is skipped\n' >&2
   fail=$((fail + 1))
 fi
 

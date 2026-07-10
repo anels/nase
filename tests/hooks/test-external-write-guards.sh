@@ -95,6 +95,39 @@ expect_rc "confluence unset format write blocked" .claude/hooks/confluence-size-
 expect_rc "confluence read (markdown) allowed" .claude/hooks/confluence-size-guard.sh "$confluence_read" 0
 expect_rc "confluence malformed JSON blocked" .claude/hooks/confluence-size-guard.sh "{" 2 "could not parse"
 
+github_write='{"tool_name":"Bash","tool_input":{"command":"gh pr create --draft --title test"}}'
+github_read='{"tool_name":"Bash","tool_input":{"command":"gh pr view 7"}}'
+ado_write='{"tool_name":"Bash","tool_input":{"command":"az rest --method post --uri https://example.invalid"}}'
+azure_group_write='{"tool_name":"Bash","tool_input":{"command":"az group create --name example --location westus"}}'
+azure_role_write='{"tool_name":"Bash","tool_input":{"command":"az role assignment create --assignee example --role Reader"}}'
+azure_keyvault_write='{"tool_name":"Bash","tool_input":{"command":"az keyvault secret set --vault-name example --name sample --value value"}}'
+terraform_write='{"tool_name":"Bash","tool_input":{"command":"terraform apply -auto-approve"}}'
+github_workflow_write='{"tool_name":"Bash","tool_input":{"command":"gh workflow run deploy.yml --ref feature/test"}}'
+github_comment_write='{"tool_name":"Bash","tool_input":{"command":"gh pr comment 7 --body approved"}}'
+github_write_via_shell='{"tool_name":"Bash","tool_input":{"command":"bash -lc '\''gh pr create --draft --title test'\''"}}'
+github_write_via_eval=$(jq -cn --arg command "bash -c 'eval \"gh pr create --draft --title test\"'" '{tool_name:"Bash",tool_input:{command:$command}}')
+github_write_via_function=$(jq -cn --arg command "bash -c 'function deploy { gh pr create --draft --title test; }; deploy'" '{tool_name:"Bash",tool_input:{command:$command}}')
+github_graphql_read='{"tool_name":"Bash","tool_input":{"command":"gh api graphql -f query={viewer{login}} -f owner=example"}}'
+azure_unknown='{"tool_name":"Bash","tool_input":{"command":"az provider register --namespace Example.Provider"}}'
+azure_read='{"tool_name":"Bash","tool_input":{"command":"az monitor app-insights query --app example --analytics-query requests"}}'
+wrapped_action='{"tool_name":"Bash","tool_input":{"command":"python3 .claude/scripts/external-write-action.py execute --manifest workspace/tmp/external-actions/x.json"}}'
+expect_rc "raw GitHub mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_write" 2 "raw external mutation"
+expect_rc "GitHub read allowed" .claude/hooks/external-cli-write-guard.sh "$github_read" 0
+expect_rc "raw ADO mutation blocked" .claude/hooks/external-cli-write-guard.sh "$ado_write" 2 "raw external mutation"
+expect_rc "raw Azure group mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_group_write" 2 "raw external mutation"
+expect_rc "raw Azure role mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_role_write" 2 "raw external mutation"
+expect_rc "raw Azure Key Vault mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_keyvault_write" 2 "raw external mutation"
+expect_rc "raw Terraform mutation blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_write" 2 "raw external mutation"
+expect_rc "raw GitHub workflow mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_workflow_write" 2 "raw external mutation"
+expect_rc "raw GitHub comment mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_comment_write" 2 "raw external mutation"
+expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"
+expect_rc "dynamic shell eval fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_eval" 2 "unrecognized external CLI"
+expect_rc "dynamic shell function fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_function" 2 "unrecognized external CLI"
+expect_rc "GitHub GraphQL query remains allowed" .claude/hooks/external-cli-write-guard.sh "$github_graphql_read" 0
+expect_rc "unrecognized Azure command fails closed" .claude/hooks/external-cli-write-guard.sh "$azure_unknown" 2 "unrecognized external CLI"
+expect_rc "known Azure read remains allowed" .claude/hooks/external-cli-write-guard.sh "$azure_read" 0
+expect_rc "authorized helper invocation allowed" .claude/hooks/external-cli-write-guard.sh "$wrapped_action" 0
+
 jira_transition_tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
 jira_transition=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
 jira_transition_sha=$(payload_sha "$jira_transition")
@@ -222,6 +255,7 @@ expect_rc "jira adf body under batch token allowed" .claude/hooks/jira-write-gua
 expect_missing_jq "slack missing jq blocked" .claude/hooks/slack-send-guard.sh "$slack_send"
 expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$jira_transition"
 expect_missing_jq "confluence missing jq blocked" .claude/hooks/confluence-size-guard.sh "$small_confluence"
+expect_missing_jq "external CLI missing jq blocked" .claude/hooks/external-cli-write-guard.sh "$github_write"
 
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

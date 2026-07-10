@@ -16,6 +16,10 @@ cat > "$tmp/workspace/stats/skill-usage.jsonl" <<'JSONL'
 {"skill":"reflect","ts":"2026-06-01T00:01:00Z","status":"success","source":"prompt"}
 {"skill":"reflect","ts":"2026-06-01T00:02:05Z","status":"success","duration_ms":4}
 {"skill":"today","ts":"2026-06-01T00:03:00Z","status":"success"}
+{"skill":"new","ts":"2026-06-01T00:04:00Z","event_type":"requested","source":"prompt","session_id":"s1"}
+{"skill":"new","ts":"2026-06-01T00:04:01Z","event_type":"activated","source":"prompt-expansion","session_id":"s1"}
+{"skill":"new","ts":"2026-06-01T00:04:02Z","event_type":"tool_succeeded","source":"skill-hook","session_id":"s1"}
+{"skill":"failed","ts":"2026-06-01T00:04:03Z","event_type":"tool_failed","source":"skill-hook","session_id":"s2"}
 {"skill":"old","ts":"2026-05-31T23:59:59Z","status":"success"}
 JSONL
 
@@ -35,9 +39,10 @@ assert_line() {
   fi
 }
 
-assert_line "total_invocations=4"
-assert_line "unique_skills=3"
+assert_line "total_invocations=5"
+assert_line "unique_skills=4"
 assert_line "skill help 1"
+assert_line "skill new 1"
 assert_line "skill reflect 2"
 assert_line "skill today 1"
 
