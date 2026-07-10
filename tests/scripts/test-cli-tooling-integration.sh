@@ -5,26 +5,7 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT"
 
 failures=0
-
-pass() {
-  printf 'PASS  %s\n' "$1"
-}
-
-fail() {
-  printf 'FAIL  %s\n' "$1" >&2
-  failures=$((failures + 1))
-}
-
-assert_contains() {
-  local name="$1"
-  local file="$2"
-  local pattern="$3"
-  if grep -Fq -- "$pattern" "$file"; then
-    pass "$name"
-  else
-    fail "$name"
-  fi
-}
+source "$ROOT/tests/lib/assert.sh"
 
 assert_contains "fsd has post-edit tool gate" \
   ".claude/commands/nase/fsd.md" \

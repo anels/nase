@@ -49,51 +49,8 @@ SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally; GitHub Actions still
 ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || true)
 ACTIONLINT_SKIP='SKIP: actionlint is not installed locally; GitHub Actions still runs this gate.'
 
-HOOK_TESTS=(
-  tests/hooks/test-block-dangerous-git.sh
-  tests/hooks/test-external-write-guards.sh
-  tests/hooks/test-style-edit-detect.sh
-  tests/hooks/test-claude-native-hooks.sh
-  tests/hooks/test-session-start.sh
-  tests/hooks/test-stop-backup-safety.sh
-  tests/hooks/test-post-edit-shellcheck.sh
-  tests/hooks/test-pre-edit-write-fact-force.sh
-  tests/hooks/test-track-kb-read.sh
-  tests/hooks/test-worktree-log.sh
-)
-
-SCRIPT_TESTS=(
-  tests/scripts/test-date-resolve.sh
-  tests/scripts/test-kb-gap-scan.sh
-  tests/scripts/test-month-efforts.sh
-  tests/scripts/test-effort-state.sh
-  tests/scripts/test-external-write-action.sh
-  tests/scripts/test-skill-safety-boundaries.sh
-  tests/scripts/test-workspace-skill-integrity.sh
-  tests/scripts/test-workspace-skill-p1-fixes.sh
-  tests/scripts/test-help-summary.sh
-  tests/scripts/test-kb-domain-resolve.sh
-  tests/scripts/test-kb-hygiene-scan.sh
-  tests/scripts/test-kb-usage-report.sh
-  tests/scripts/test-workspace-quality-scan.sh
-  tests/scripts/test-kb-search.sh
-  tests/scripts/test-today-stats.sh
-  tests/scripts/test-tool-availability.sh
-  tests/scripts/test-roles-schema.sh
-  tests/scripts/test-local-parallel-subagents.sh
-  tests/scripts/test-cli-tooling-integration.sh
-  tests/scripts/test-github-actions-hardening.sh
-  tests/scripts/test-pr-github-helper.sh
-  tests/scripts/test-statusline-context.sh
-  tests/scripts/test-fsd-preflight.sh
-  tests/scripts/test-pr-review-eval.sh
-  tests/scripts/test-voice-profile-routing.sh
-  tests/scripts/test-local-sensitive-artifacts.sh
-  tests/scripts/test-shared-workflow-extraction.sh
-  tests/scripts/test-workspace-data-scan.sh
-  tests/scripts/test-workspace-write-guard.sh
-  workspace/skills/scripts/test-lesson-skill-optimizer.sh
-)
+HOOK_TESTS=(tests/hooks/test-*.sh)
+SCRIPT_TESTS=(tests/scripts/test-*.sh workspace/skills/scripts/test-*.sh)
 
 FAST_SCRIPT_TESTS=(
   tests/scripts/test-help-summary.sh

@@ -236,13 +236,6 @@ def run_git(repo: Path, *args: str, check: bool = False) -> subprocess.Completed
     )
 
 
-def load_json(path: str) -> Any:
-    if path == "-":
-        return json.load(sys.stdin)
-    with Path(path).open(encoding="utf-8") as handle:
-        return json.load(handle)
-
-
 def parse_json_documents(raw: str) -> list[Any]:
     decoder = json.JSONDecoder()
     docs: list[Any] = []
@@ -719,11 +712,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     threads.add_argument("--repo", help="owner/repo, required for number-only refs")
     threads.add_argument("--unresolved-only", action="store_true")
 
-    gate = sub.add_parser("size-gate", help="Classify diff fetch mode from PR metadata JSON")
-    gate.add_argument("--metadata", required=True, help="Path to metadata JSON, or - for stdin")
-    gate.add_argument("--warn-threshold", type=int, default=1500)
-    gate.add_argument("--stat-threshold", type=int, default=1500)
-
     review = sub.add_parser("review-context", help="Fetch compact read-only context for PR review")
     review.add_argument("ref")
     review.add_argument("--repo", help="owner/repo, required for number-only refs")
@@ -751,10 +739,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     try:
-        if args.command == "size-gate":
-            emit_json(size_gate(load_json(args.metadata), args.warn_threshold, args.stat_threshold))
-            return 0
-
         pr = parse_pr_ref(args.ref, getattr(args, "repo", None))
         if args.command == "parse":
             emit_json(pr)

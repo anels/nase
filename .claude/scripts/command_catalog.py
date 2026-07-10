@@ -141,16 +141,9 @@ def load_catalog(root: Path) -> list[Command]:
     return sorted(commands, key=sort_key)
 
 
-def category_index(category: str) -> int:
-    try:
-        return CATEGORY_ORDER.index(category)
-    except ValueError:
-        return len(CATEGORY_ORDER)
-
-
 def sort_key(command: Command) -> tuple[int, str, int, str]:
     return (
-        category_index(command.category),
+        CATEGORY_ORDER.index(command.category),
         command.category.lower(),
         command.order if command.order is not None else 10_000,
         command.command,

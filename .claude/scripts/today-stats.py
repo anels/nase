@@ -138,7 +138,6 @@ def main() -> int:
                         help="ISO date to query (default: today)")
     parser.add_argument("--root", default=None,
                         help="nase repo root (default: derived from script location via __file__)")
-    parser.add_argument("--workspace", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     root = Path(args.root) if args.root else NASE_ROOT

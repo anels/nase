@@ -7,30 +7,12 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 SCRIPT="$ROOT/.claude/scripts/workspace-write-guard.py"
 TMPROOT=$(mktemp -d)
 failures=0
+source "$ROOT/tests/lib/assert.sh"
 
 cleanup() {
   rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-
-pass() {
-  printf 'PASS  %s\n' "$1"
-}
-
-fail() {
-  printf 'FAIL  %s\n' "$1" >&2
-  failures=$((failures + 1))
-}
-
-assert_cmd() {
-  local desc="$1"
-  shift
-  if "$@"; then
-    pass "$desc"
-  else
-    fail "$desc"
-  fi
-}
 
 json_field() {
   python3 - "$1" "$2" <<'PY'

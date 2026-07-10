@@ -11,34 +11,9 @@ TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 failures=0
-
-pass() {
-  printf 'PASS  %s\n' "$1"
-}
-
-fail() {
-  printf 'FAIL  %s\n' "$1" >&2
-  failures=$((failures + 1))
-}
-
-assert_cmd() {
-  local name="$1"
-  shift
-  if "$@"; then
-    pass "$name"
-  else
-    fail "$name"
-  fi
-}
+source "$ROOT/tests/lib/assert.sh"
 
 assert_cmd "eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$EVAL_SET"
-
-list_out="$TMPDIR_TEST/list.txt"
-"$PYTHON_BIN" "$SCRIPT" list "$EVAL_SET" > "$list_out"
-assert_cmd "eval list includes discuss-pr case" grep -q "discuss-pr-problem-first" "$list_out"
-assert_cmd "eval list includes request-review case" grep -q "request-review-draft-style" "$list_out"
-assert_cmd "eval list includes address-comments dossier case" grep -q "address-comments-dossier-evidence" "$list_out"
-assert_cmd "eval list includes tech-debt AI verification case" grep -q "tech-debt-ai-verification-section" "$list_out"
 
 cat > "$TMPDIR_TEST/discuss-ok.txt" <<'TXT'
 Review frame

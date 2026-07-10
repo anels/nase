@@ -9,25 +9,7 @@ TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
 failures=0
-
-pass() {
-  printf 'PASS  %s\n' "$1"
-}
-
-fail() {
-  printf 'FAIL  %s\n' "$1" >&2
-  failures=$((failures + 1))
-}
-
-assert_cmd() {
-  local name="$1"
-  shift
-  if "$@"; then
-    pass "$name"
-  else
-    fail "$name"
-  fi
-}
+source "$ROOT/tests/lib/assert.sh"
 
 run_scan() {
   local root="$1" output="$2" rc_file="$3"
