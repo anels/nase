@@ -37,13 +37,15 @@ git rev-parse --show-toplevel
 - Check `.claude/hooks/track-session-failure.sh` exists
 - Check `.claude/hooks/worktree-log.sh` exists
 - Check `.claude/hooks/block-dangerous-git.sh` exists
+- Check `.claude/hooks/external-cli-write-guard.sh` exists
+- Check `.claude/scripts/external-write-action.py` exists and compiles with `python3 -m py_compile`
 - Check `.claude/hooks/slack-send-guard.sh` exists
 - Check `.claude/hooks/jira-write-guard.sh` exists
 - Check `.claude/hooks/confluence-size-guard.sh` exists
 - Check `.claude/hooks/pre-compact-archive.sh` exists
 - Check `.claude/hooks/style-edit-detect.sh` exists
 - Check `.claude/hooks/post-edit-shellcheck.sh` exists
-- Run `bash -n` on each required hook: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, `track-skill-prompt.sh`, `track-tool-failure.sh`, `track-subagent.sh`, `track-session-failure.sh`, `worktree-log.sh`, `block-dangerous-git.sh`, `slack-send-guard.sh`, `jira-write-guard.sh`, `confluence-size-guard.sh`, `pre-compact-archive.sh`, `style-edit-detect.sh`, `post-edit-shellcheck.sh`
+- Run `bash -n` on each required hook: `session-start.sh`, `stop-backup.sh`, `stop-todos.sh`, `track-skill.sh`, `track-skill-prompt.sh`, `track-tool-failure.sh`, `track-subagent.sh`, `track-session-failure.sh`, `worktree-log.sh`, `block-dangerous-git.sh`, `external-cli-write-guard.sh`, `slack-send-guard.sh`, `jira-write-guard.sh`, `confluence-size-guard.sh`, `pre-compact-archive.sh`, `style-edit-detect.sh`, `post-edit-shellcheck.sh`
 - If `.claude/hooks/edit-typecheck.sh` exists, run `bash -n` on it too, but treat it as optional/local
 - Pass: all files exist and pass syntax check
 - Fail: missing or syntax error (report which)
@@ -58,6 +60,7 @@ python3 -m json.tool .claude/settings.json > /dev/null 2>&1 || python -m json.to
 - Check Stop hook command contains `stop-backup.sh`
 - Check Stop hook command contains `stop-todos.sh`
 - Check PreToolUse hook command contains `block-dangerous-git.sh`
+- Check PreToolUse hook command contains `external-cli-write-guard.sh`
 - Check PreToolUse hook command contains `slack-send-guard.sh` for `slack_send_message`
 - Check PreToolUse hook command contains `jira-write-guard.sh` for Jira mutation tools
 - Check PreToolUse hook command contains `confluence-size-guard.sh` for Confluence page writes
@@ -148,6 +151,7 @@ python3 .claude/scripts/tool-availability.py --group baseline --missing --instal
 - Build the expected list dynamically by reading file names from the directory — do NOT hardcode a list. This way new skills are automatically included in future checks.
 - Cross-reference against the skill names registered in `.claude/settings.json` (under `permissions.allow` or hook configs) — flag any registered skill whose `.md` file is missing
 - **Stale thin wrappers**: for each `.claude/commands/nase/workspace/*.md` file, read it and check if the `workspace/skills/{name}.md` file it points to still exists. Flag any wrapper whose target skill file is missing — these are dead references left over after a skill was deleted.
+- **Local workspace skill integrity**: follows `.claude/docs/workspace-write-guard.md`'s generated integrity-manifest exception. When `workspace/skills/` exists, run `python3 .claude/scripts/workspace-skill-integrity.py --root . check`. Pass only when the reviewed local source manifest, generated wrapper, and native mirror match. A missing manifest or any source/wrapper/native drift is a FAIL. After reviewing intentional local-source edits, repair the generated mirrors first, then run `write-manifest` to establish the new local baseline. The helper refuses to refresh the baseline while any mirror drifts.
 
 <!-- Why: Claude Code project state (~/.claude/projects/<encoded-cwd>/) accumulates transcripts + config over time; large state slows session start and risks stale data. v2.1.126+ exposes `claude project purge` to clean it. -->
 ### 10. Claude Code project state

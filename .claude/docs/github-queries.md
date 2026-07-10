@@ -69,19 +69,23 @@ Filter threads where `isResolved == false`.
 
 ## Resolve Review Threads
 
-Two mutation shapes share one throttle rule. Pick the shape by call pattern; both go through the same `resolveReviewThread` GraphQL mutation.
+Two mutation shapes share one throttle rule. Pick the shape by call pattern; both go through the same `resolveReviewThread` GraphQL mutation. Both are GitHub writes: create a payload file, prepare the exact action manifest, show it with the thread IDs, obtain the immediate `AskUserQuestion` approval, then authorize and execute. Do not run raw `gh api graphql` mutations.
 
 ### Shape A — Single-thread (address-comments Phase 9)
 
 Use when each `resolveReviewThread` follows a per-thread reply, so calls must be sequenced one at a time per thread.
 
 ```bash
-gh api graphql -f query='
-mutation {
-  resolveReviewThread(input: { threadId: "{thread_graphql_id}" }) {
-    thread { isResolved }
-  }
-}'
+QUERY_FILE=$(mktemp "${TMPDIR:-/tmp}/resolve-review-thread.XXXXXXXX.json")
+chmod 600 "$QUERY_FILE"
+jq -n --arg thread "{thread_graphql_id}" '{query:"mutation($thread:ID!) { resolveReviewThread(input:{threadId:$thread}) { thread { isResolved } } }", variables:{thread:$thread}}' > "$QUERY_FILE"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "resolve review thread {thread_graphql_id}" -- \
+  gh api graphql --input "$QUERY_FILE" | jq -r .manifest)
+jq . "$MANIFEST"
+# AskUserQuestion approved this exact manifest. Then:
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
 Notes:
@@ -93,11 +97,17 @@ Notes:
 Use when you have N threads to resolve with no per-thread reply (e.g. auto-resolving bot-declined threads). One round-trip resolves all of them via GraphQL aliases.
 
 ```bash
-gh api graphql -f query="mutation {
-  r0: resolveReviewThread(input:{threadId:\"$ID0\"}){thread{id}}
-  r1: resolveReviewThread(input:{threadId:\"$ID1\"}){thread{id}}
-  ...
-}"
+BATCH_FILE=$(mktemp "${TMPDIR:-/tmp}/resolve-review-batch.XXXXXXXX.json")
+chmod 600 "$BATCH_FILE"
+# Build the aliases and IDs from the reviewed batch, then write one JSON request.
+printf '%s\n' '{"query":"mutation { r0: resolveReviewThread(input:{threadId:\"<id0>\"}){thread{id}} ... }"}' > "$BATCH_FILE"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "resolve reviewed bot-declined threads" -- \
+  gh api graphql --input "$BATCH_FILE" | jq -r .manifest)
+jq . "$MANIFEST"
+# AskUserQuestion approved this exact manifest. Then:
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
 ### Shared throttle rule (applies to both shapes)

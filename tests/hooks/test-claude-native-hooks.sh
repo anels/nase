@@ -38,7 +38,7 @@ printf '{"command_name":"nase:fsd"}' \
 
 skill_log="$FIXTURE/workspace/stats/skill-usage.jsonl"
 assert_jq "UserPromptExpansion records prompt-expansion source" "$skill_log" \
-  'select(.skill == "fsd" and .source == "prompt-expansion" and .status == "success")'
+  'select(.skill == "fsd" and .source == "prompt-expansion" and .event_type == "activated")'
 
 before_count=$(wc -l < "$skill_log" | tr -d ' ')
 printf '{"prompt":"nase:fsd is just text"}' \
@@ -54,10 +54,10 @@ fi
 printf '{"tool_input":{"skill":"nase:fsd"},"tool_response":{}}' \
   | NASE_ROOT="$FIXTURE" bash "$ROOT/.claude/hooks/track-skill.sh" >/dev/null 2>&1
 count=$(jq -s '[.[] | select(.skill == "fsd")] | length' "$skill_log" 2>/dev/null || echo 0)
-if [ "$count" = "1" ]; then
-  pass_msg "PostToolUse:Skill dedupes recent prompt-expansion entry"
+if [ "$count" = "2" ] && jq -e 'select(.skill == "fsd" and .event_type == "tool_succeeded" and .source == "skill-hook")' "$skill_log" >/dev/null; then
+  pass_msg "PostToolUse:Skill records a separate tool outcome"
 else
-  fail_msg "PostToolUse:Skill dedupes recent prompt-expansion entry (got $count)"
+  fail_msg "PostToolUse:Skill records a separate tool outcome (got $count)"
 fi
 
 fake_bearer="Bear""er redaction-test-token"

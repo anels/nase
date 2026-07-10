@@ -39,11 +39,12 @@ Hooks are registered in `.claude/settings.json`. Shell output and exit codes fee
 
 | Hook | Event | Script | Behavior |
 |------|-------|--------|----------|
-| `SessionStart` | New Claude Code session | `session-start.sh` | Creates `workspace/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target unreachable; archives tech-digest entries older than 30 days; syncs `workspace/skills/*.md` into `/nase:workspace:*` wrappers and hidden `.claude/skills/nase-workspace-*` native skills; suggests `/nase:reflect` if commits exist for today |
+| `SessionStart` | New Claude Code session | `session-start.sh` | Creates `workspace/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target unreachable; archives tech-digest entries older than 30 days; syncs `workspace/skills/*.md` into `/nase:workspace:*` wrappers and hidden `.claude/skills/nase-workspace-*` native skills; local source/wrapper/native parity is checked against the ignored manifest by `/nase:doctor`; suggests `/nase:reflect` if commits exist for today |
 | `UserPromptSubmit` | User prompt submitted | `style-edit-detect.sh` | Detects likely style corrections on Slack/PR/external-doc drafts and injects a reminder to log a `[STYLE-DELTA]` for later consolidation |
-| `UserPromptSubmit` | User prompt submitted | `track-skill-prompt.sh` | Records slash command invocations that do not pass through `PostToolUse:Skill` |
-| `UserPromptExpansion:nase:*` | Slash command expanded | `track-skill-prompt.sh` | Records expanded `/nase:*` commands as `source:"prompt-expansion"` in `workspace/stats/skill-usage.jsonl` |
+| `UserPromptSubmit` | User prompt submitted | `track-skill-prompt.sh` | Records `/nase:*` recognition as `event_type:"requested"`; recognition is not usage or success |
+| `UserPromptExpansion:nase:*` | Slash command expanded | `track-skill-prompt.sh` | Records actual slash expansion as `event_type:"activated"` in `workspace/stats/skill-usage.jsonl` |
 | `PreToolUse:Bash` | Before every Bash tool call | `block-dangerous-git.sh` | Rejects known destructive git patterns (see list below) before they execute |
+| `PreToolUse:Bash` | Before every Bash tool call | `external-cli-write-guard.sh` | Rejects raw GitHub, ADO, Azure, Kubernetes, and Terraform mutations; fails closed for unrecognized guarded-CLI invocations; approved actions run through a payload-bound manifest |
 | `PreToolUse:slack_send_message` | Before direct Slack send | `slack-send-guard.sh` | Blocks direct Slack sends; use draft messages instead |
 | `PreToolUse:Jira mutations` | Before Jira writes | `jira-write-guard.sh` | Requires a fresh `workspace/.jira-write-token` (single-shot payload-bound, or batch issue-set + op-cap + TTL) |
 | `PreToolUse:Confluence writes` | Before Confluence page writes | `confluence-size-guard.sh` | Blocks page bodies over 60 KB to avoid truncation/partial writes |
@@ -51,7 +52,7 @@ Hooks are registered in `.claude/settings.json`. Shell output and exit codes fee
 | `Stop` | Every session end | `stop-todos.sh`, `stop-backup.sh` | Surfaces pending todos from `workspace/tasks/todo.md`; appends today's commit summary to the daily log; warns if no session notes were written; creates a timestamped zip backup of `workspace/` at `.local-paths`'s `backup-target`; applies retention cleanup; writes status to `workspace/logs/.backup-status` |
 | `StopFailure` | Session failed before normal stop | `track-session-failure.sh` | Appends a redacted bounded failure summary to `workspace/stats/session-failures.jsonl` |
 | `PostToolUse:Read` | After every `Read` tool call | `track-kb-read.sh` | Appends KB file read events to `workspace/stats/kb-usage.jsonl`; only logs `workspace/kb/**/*.md` and `workspace/kb/**/*.sql`, excludes `.domain-map.md`, and uses session-local active skill context when available |
-| `PostToolUse:Skill` | After every `Skill` tool call | `track-skill.sh` | Appends `{"skill","ts","status"}` records to `workspace/stats/skill-usage.jsonl` (status derived from `tool_response.is_error`); same-second dedup |
+| `PostToolUse:Skill` | After every `Skill` tool call | `track-skill.sh` | Records `tool_succeeded` or `tool_failed` with source and session ID. Usage reports count activations, then fall back compatibly for legacy records. |
 | `PostToolUseFailure` | After a failed tool call | `track-tool-failure.sh` | Appends a redacted bounded tool failure summary to `workspace/stats/tool-failures.jsonl` without storing tool input |
 | `PostToolUse:Edit\|Write` | After editing/writing `.sh` files | `post-edit-shellcheck.sh` | Runs `shellcheck -S warning` on the edited file and returns exit 2 with diagnostics when shellcheck fails |
 | `PreToolUse:Edit\|Write\|MultiEdit` | Before editing/writing source files (non-blocking) | `pre-edit-write-fact-force.sh` | Inspired by ECC's [`gateguard-fact-force.js`](https://github.com/affaan-m/everything-claude-code/blob/main/scripts/hooks/gateguard-fact-force.js). On the first edit to a source file (`.py .ts .tsx .js .jsx .go .cs .rb .rs .java .sh .kt .swift .cpp .c .h`) per session, emits `hookSpecificOutput.additionalContext` demanding three concrete facts before the change is applied: callers, public-API impact, and the originating instruction. Skips `workspace/`, `docs/`, `tests/`, markdown/JSON/YAML, and brand-new files. Session state lives at `${TMPDIR}/nase-fact-force.${session}.state` with 30-minute inactivity expiry and a 500-entry cap. Disable per-run with `NASE_FACT_FORCE=0`. |
@@ -290,7 +291,7 @@ workspace/
     cross-project/
     ops/
   stats/
-    skill-usage.jsonl   append-only log of /nase:* invocations
+    skill-usage.jsonl   append-only activation and tool-outcome telemetry for /nase:*
     kb-usage.jsonl      append-only log of which skills used which KB files
     kb-usage-YYYY-MM-DD.md  generated /nase:kb-usage report
     report-YYYY-MM-DD.md

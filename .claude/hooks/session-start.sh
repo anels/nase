@@ -233,21 +233,27 @@ PYEOF
     for skill_file in "$SKILLS_DIR"/*.md; do
       [ -f "$skill_file" ] || continue
       name=$(basename "$skill_file" .md)
+      if ! printf '%s' "$name" | grep -Eq '^[a-z0-9][a-z0-9-]*$'; then
+        echo "[session-start] WARNING: skipped workspace skill with unsupported name: $name"
+        continue
+      fi
       cmd_file="$CMDS_DIR/$name.md"
       # Extract frontmatter fields. `description` prefers frontmatter, else first non-empty body line.
-      # `allowed-tools` / `disallowed-tools` are forwarded verbatim from source frontmatter when set.
-      # allowed-tools pre-approves tools; disallowed-tools is the blocking boundary.
+      # Runtime invocation, tool, and parameter metadata must have one source of truth:
+      # the local source skill. Keep wrappers and native mirrors in parity.
       desc=$(extract_skill_description "$skill_file")
-      allowed_tools=$(extract_frontmatter_block "allowed-tools" "$skill_file")
-      disallowed_tools=$(extract_frontmatter_block "disallowed-tools" "$skill_file")
+      disable_model_invocation=$(extract_frontmatter_block "disable-model-invocation" "$skill_file")
       desc=$(printf '%s' "$desc" | compact_skill_description | yaml_double_quote_escape)
       next_cmd_file=$(mktemp "$CMDS_DIR/.${name}.XXXXXX")
       {
         printf '%s\n' '---'
         printf 'name: nase:workspace:%s\n' "$name"
         printf 'description: "%s"\n' "$desc"
-        [ -n "$allowed_tools" ] && printf '%s\n' "$allowed_tools"
-        [ -n "$disallowed_tools" ] && printf '%s\n' "$disallowed_tools"
+        for key in argument-hint when_to_use model effort context agent allowed-tools disallowed-tools; do
+          block=$(extract_frontmatter_block "$key" "$skill_file")
+          [ -n "$block" ] && printf '%s\n' "$block"
+        done
+        [ -n "$disable_model_invocation" ] && printf '%s\n' "$disable_model_invocation"
         printf '%s\n\n' '---'
         printf 'Read `workspace/skills/%s.md` and follow every step exactly as written.\n\n' "$name"
         printf '$ARGUMENTS\n'
@@ -269,7 +275,11 @@ PYEOF
       {
         printf '%s\n' '---'
         printf 'description: "%s"\n' "$desc"
-        printf 'user-invocable: false\n'
+        if [ -n "$disable_model_invocation" ]; then
+          printf '%s\n' "$disable_model_invocation"
+        else
+          printf 'user-invocable: false\n'
+        fi
         for key in argument-hint when_to_use model effort context agent allowed-tools disallowed-tools; do
           block=$(extract_frontmatter_block "$key" "$skill_file")
           [ -n "$block" ] && printf '%s\n' "$block"

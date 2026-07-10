@@ -231,11 +231,11 @@ Ask "Does this look right? Any to change?" Research each 🔍 item before final 
 
 Apply `.claude/docs/pr-review-verification.md` §4 and §5 on every classification pass.
 
-**Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only — reactions, replies, and resolves remain gated by Step 7 / Step 8.
+**Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only; do not react, reply, resolve, or post a review.
 
 **Duplicate-of-N reframe check:** when a candidate finding would be dismissed as "duplicate of PR #N" or "superseded by #N", open #N's body + commits first. If #N explicitly defers the surface now being changed (`This PR does NOT change X`, unchecked `[ ]` items, "follow-up planned"), the PRs are complementary, not duplicate — the finding stands.
 
-Collect the final classifications. **Do not post reactions or replies yet** — batched into Step 8, posted only on explicit request.
+Collect the final classifications. This skill never posts reactions, replies, resolves, or reviews.
 
 ## Step 4 — Score, tier, and filter (after agents complete)
 
@@ -496,7 +496,7 @@ Collect remaining trace-worthy items:
 - Open questions that COULD be answered by code but weren't critical enough to auto-trace
 - Cross-file consistency checks the user might want validated
 
-If none, say "No additional deep-dive candidates — auto-dive covered everything." and skip to Step 7.
+If none, say "No additional deep-dive candidates - auto-dive covered everything." and skip to Step 7.
 
 Otherwise ask via `AskUserQuestion` (`multiSelect: true`, max 4 options):
 
@@ -512,28 +512,25 @@ Options (multiSelect):
 
 Spawn Explore agents for selected items (same pattern as Step 5b). Update findings with evidence. Then proceed to Step 7.
 
-## Step 7 — Stage 3: draft decision
+## Step 7 - Stage 3: draft decision
 
-Ask the user how to handle drafting via `AskUserQuestion`. Three options, always in this order, always with these labels. **Default recommendation is "Draft + post"** — the normal outcome of a review is inline comments on GitHub, so lead with it and append `(recommended)`. The other two options stay available for the cases where the user wants a chat-only draft or nothing at all; the recommendation does not skip the confirmation — the user still actively picks.
+This command is read-only. Ask whether to return draft comments or end without drafts. Never offer posting from this flow.
 
 ```
 Question: "Draft inline comments now?"
 Header: "Draft choice"
 Options (single-select):
-- "Draft + post (recommended)" — I draft inline comments and proceed straight to Step 8 (post flow)
-- "Draft + discuss" — I draft inline comments inline in chat, you copy/refine manually, no posting
-- "No draft" — End the flow here, no comments drafted
+- "Draft comments (recommended)" - I draft inline comments in chat; nothing is posted
+- "No draft" - End the flow here, no comments drafted
 ```
 
 Behavior per choice:
 
-**Draft + post** → produce the drafts (format below), then **immediately enter Step 8** without re-asking. Mention in the handoff line: "Drafts ready — moving to post selection."
+**Draft comments** -> produce the drafts below in chat. End with: "Drafts above. Post only after an explicit request through the GitHub mutation workflow."
 
-**Draft + discuss** → produce the drafts (format below) inline in chat. End the flow with: "Drafts above. Paste or refine manually. To post via this skill, re-invoke and pick 'Draft + post'." Do NOT enter Step 8.
+**No draft** -> End with: "No drafts produced. Re-invoke if you want to act on these later."
 
-**No draft** → End the flow with: "No drafts produced. Re-invoke if you want to act on these later." Do NOT proceed.
-
-**Draft format** (used by Draft+post and Draft+discuss):
+**Draft format:**
 
 - **Voice profile**: before drafting, follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`; read `workspace/communication-style.md` for high-stakes or ambiguous comments. Keep no-blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), and no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` — don't over-escalate severity, prefer measured assessments.
 - **1–2 sentences max** — state the point directly, no preamble or verbose explanation
@@ -547,67 +544,6 @@ Behavior per choice:
 **File:** `path/to/file.ts` line <N>
 <comment text>
 ```
-
-## Step 8 — Stage 4: post action
-
-Only enter this step if Step 7 = "Draft + post". Otherwise this step is skipped.
-
-**Ownership check:** verify the PR is the user's (compare `gh api user --jq .login` against PR `user.login`). If the PR is not the user's, this step posts a review on someone else's PR — confirm once more before proceeding ("PR is owned by @other-user — posting a review will notify them. Proceed?").
-
-**Determine recommended state** by these guidelines (recommend one — the user gets final say):
-
-- `APPROVE` — **default recommendation** whenever no confirmed blocking issue exists. This includes LGTM-with-nits: medium/low findings or open style questions do not downgrade the recommendation. If you would be comfortable merging the PR, recommend `APPROVE` — do not fall back to `COMMENT` just because some non-blocking findings remain.
-- `REQUEST_CHANGES` — confirmed issue that would cause a production incident (data corruption, service crash on deploy, security breach). High bar.
-- `COMMENT` — only when findings genuinely need reviewer attention yet you are not comfortable approving, and they do not meet the `REQUEST_CHANGES` bar (e.g. an unresolved open question that blocks a merge verdict). Not the catch-all — prefer `APPROVE` when the PR is mergeable.
-
-Then ask via `AskUserQuestion`:
-
-```
-Question: "Submit review as which state? (recommended: <STATE>)"
-Header: "Review state"
-Options (single-select):
-- "APPROVE" — LGTM / LGTM with nits
-- "COMMENT" — non-blocking review with inline comments
-- "REQUEST_CHANGES" — block merge until fixed
-```
-
-Put the recommended option first and append `(recommended)` to its label.
-
-**Post sequence** once user picks:
-
-- Approve body: "LGTM" or "LGTM with nits" — never repeat the fix mechanism or summarize the PR
-- Inline comments: same 1–2 sentence rule as drafts, concise, in `output:` language, voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`
-- Create pending review → add inline comments → submit with the chosen state
-- Also post any Step 3 batched reactions/replies the user agreed to (Step 3 collected the classifications; this is where they go to GitHub)
-
-```
-# Thumbs-up reaction
-gh api "repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions" \
-  --method POST --raw-field content="+1"
-
-# Short reply
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
-  --method POST --raw-field body="Agreed."
-```
-
-## Step 9 — Stage 5: completion message
-
-Reached only if Step 8 posted successfully. Emit a single chat block with this exact shape (in `conversation:` language for the labels, English for the URL and counts):
-
-```
-✅ Posted.
-
-- Review: <full review URL, e.g. https://github.com/owner/repo/pull/N#pullrequestreview-XXXXXX>
-- State: <APPROVE | COMMENT | REQUEST_CHANGES>
-- Inline comments: <N>
-- Reactions: <N>  (omit line if 0)
-- Replies: <N>    (omit line if 0)
-- Daily log: <appended | skipped>
-```
-
-Get the review URL from the API response (`html_url` from the `gh api ... /pulls/<PR>/reviews` POST, or build `https://github.com/<owner>/<repo>/pull/<N>#pullrequestreview-<id>` from the returned `id`).
-
-If the post partially failed (e.g. review submitted but a reaction failed), use ⚠️ instead of ✅ and list the failures explicitly.
 
 ## Error Handling
 
@@ -636,6 +572,6 @@ If the user agrees (or proactively says "add this to KB"), run `/nase:kb-update 
 
 ## Final — Daily Log
 
-Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`). Runs at the end of every invocation regardless of whether Step 7/8 fired (so a "No draft" exit still gets a one-line entry). Step 9's `Daily log:` field reports the actual outcome (`appended` / `skipped`).
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`). Runs at the end of every invocation, including a "No draft" exit.
 
 Log: `{repo}#{number} — {N} files, {N} issues ({categories}); key: {1-line summary}`

@@ -107,6 +107,15 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && NASE_ROOT=\"$WORKSPACE\" bash \"$WORKSPACE/.claude/hooks/external-cli-write-guard.sh\"'"
+          }
+        ]
+      },
+      {
         "matcher": "mcp__.*__slack_send_message$",
         "hooks": [
           {

@@ -35,7 +35,7 @@ If absent, surface a friendly note (`track-skill.sh` may have never fired; `jq` 
 
 ### Step 2: Aggregate by skill
 
-Parse JSONL with Python so prompt/tool pairs for the same slash command are deduped. Each entry has at minimum `{skill, ts}` and (post-2026-05) optional `{status}` plus optional `{source}` (`skill` or `prompt`). Treat missing `status` as `success` for backward compatibility.
+Parse JSONL with Python. v2 records have `{skill, ts, event_type, source, session_id?}` where `event_type` is one of `requested`, `activated`, `tool_succeeded`, or `tool_failed`. Count only `activated` as usage. Keep the old bounded prompt/tool fallback only for legacy records with no `event_type`; never turn a `requested` event into a success.
 
 Produce a per-skill record:
 - `total` — all-time invocations
@@ -43,7 +43,8 @@ Produce a per-skill record:
 - `last_7d` — invocations in trailing 7 days
 - `last_used` — most recent `ts` (ISO date)
 - `days_since_last` — today − `last_used`
-- `success_rate` — `success / total` (only meaningful if status field present)
+- `tool_successes` / `tool_failures` - observed outcome events, separate from usage
+- `tool_success_rate` - `tool_successes / (tool_successes + tool_failures)`, or `n/a` when no outcomes were observed
 
 ```bash
 TODAY=$(date -u +%Y-%m-%d)
@@ -78,41 +79,67 @@ with open(path, encoding="utf-8", errors="ignore") as fh:
         events.append({
             "skill": skill,
             "ts": ts,
-            "status": data.get("status", "success"),
             "source": data.get("source", ""),
+            "event_type": data.get("event_type", ""),
+            "session_id": data.get("session_id", "") or "legacy",
             "dt": parse_ts(ts),
         })
 
 prompt_times = defaultdict(list)
-kept = []
+usage = []
+outcomes = defaultdict(lambda: {"tool_successes": 0, "tool_failures": 0})
 for event in sorted(events, key=lambda item: item["ts"]):
     dt = event["dt"]
     skill = event["skill"]
-    if event["source"] == "prompt":
-        kept.append(event)
+    session = event["session_id"]
+    event_type = event["event_type"]
+    if event_type == "requested":
+        continue
+    if event_type == "tool_failed":
+        outcomes[skill]["tool_failures"] += 1
+        continue
+    if event_type == "activated":
+        usage.append(event)
         if dt is not None:
-            prompt_times[skill].append(dt)
+            prompt_times[(skill, session)].append(dt)
         continue
-    if dt is not None and any(timedelta(0) <= dt - p <= window for p in prompt_times[skill]):
+    if event_type == "tool_succeeded":
+        outcomes[skill]["tool_successes"] += 1
+        if dt is not None and any(timedelta(0) <= dt - p <= window for p in prompt_times[(skill, session)]):
+            continue
+        usage.append(event)
         continue
-    kept.append(event)
+
+    # Legacy JSONL: preserve the historical source/window fallback.
+    if event["source"] in {"prompt", "prompt-expansion"}:
+        usage.append(event)
+        if dt is not None:
+            prompt_times[(skill, session)].append(dt)
+        continue
+    if dt is not None and any(timedelta(0) <= dt - p <= window for p in prompt_times[(skill, session)]):
+        continue
+    usage.append(event)
 
 by_skill = defaultdict(list)
-for event in kept:
+for event in usage:
     by_skill[event["skill"]].append(event)
 
 for skill, items in sorted(by_skill.items()):
     dated = [item for item in items if item["dt"] is not None]
     last_dt = max((item["dt"] for item in dated), default=None)
     total = len(items)
-    success = sum(1 for item in items if item["status"] == "success")
+    tool_successes = outcomes[skill]["tool_successes"]
+    tool_failures = outcomes[skill]["tool_failures"]
+    observed_outcomes = tool_successes + tool_failures
     out = {
         "skill": skill,
         "total": total,
         "last_used": max(item["ts"] for item in items)[:10],
         "last_30d": sum(1 for item in dated if now - item["dt"] <= timedelta(days=30)),
         "last_7d": sum(1 for item in dated if now - item["dt"] <= timedelta(days=7)),
-        "success_rate": success / total,
+        "tool_successes": tool_successes,
+        "tool_failures": tool_failures,
+        "tool_success_rate": tool_successes / observed_outcomes if observed_outcomes else None,
     }
     if last_dt is not None:
         out["days_since_last"] = max(0, (datetime.fromisoformat(today).date() - last_dt.date()).days)

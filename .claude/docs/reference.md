@@ -19,9 +19,9 @@ Read this file on demand when you need details about workspace layout, skills, K
     stop-todos.sh    ← runs at Stop (before backup): surfaces pending todos from workspace/tasks/todo.md
     stop-backup.sh   ← runs at Stop: appends commit summary to daily log, creates timestamped
                        zip backup of workspace/ (via 7z), applies retention cleanup, warns if notes missing
-    track-skill.sh   ← runs at PostToolUse (Skill): records /nase:* invocations to
-                       workspace/stats/skill-usage.jsonl for /nase:stats reporting; same-second
-                       dedup in script prevents double-counting
+    track-skill.sh   ← runs at PostToolUse (Skill): records tool_succeeded or
+                       tool_failed outcomes with session attribution; it does not
+                       claim a prompt recognition was a successful invocation
     track-skill-prompt.sh ← runs at UserPromptSubmit/UserPromptExpansion: records slash-command invocations
     track-tool-failure.sh ← runs at PostToolUseFailure: records redacted bounded tool failure summaries
     track-subagent.sh ← runs at SubagentStop: records bounded subagent summaries without assistant text
@@ -29,6 +29,8 @@ Read this file on demand when you need details about workspace layout, skills, K
                        that bypass PostToolUse:Skill
     worktree-log.sh  ← runs at WorktreeRemove: appends timestamped removal entry to
                        today's daily log
+    external-cli-write-guard.sh ← runs at PreToolUse:Bash: blocks raw guarded-CLI
+                       mutations and fails closed for unrecognized guarded invocations
     slack-send-guard.sh ← blocks direct Slack sends; use drafts
     jira-write-guard.sh ← token-gates Jira mutation tools
     confluence-size-guard.sh ← blocks oversized Confluence page writes
@@ -83,7 +85,7 @@ workspace/                   ← entirely git-ignored; never committed
   journals/
     YYYY-MM-DD.md         ← end-of-day wrap-up output (written by /nase:wrap-up)
   stats/
-    skill-usage.jsonl     ← append-only JSONL: {skill, ts} per /nase:* invocation (auto-written by hook)
+    skill-usage.jsonl     ← append-only JSONL: {skill, ts, event_type, source, session_id?}; legacy records remain readable
     skill-usage-YYYY-MM-DD.md ← detailed skill usage report (written by /nase:skill-usage)
     effort-status-YYYY-MM-DD.md ← active-effort inventory + drift report (written by /nase:efforts)
   logs/
@@ -141,7 +143,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `cross-repo-validation.md` | Cross-repo outbound/inbound contract validation algorithm used by `onboard` Step 6 |
 | `daily-log-format.md` | Standardized log entry format and canonical skill tags |
 | `effort-lifecycle.md` | Shared lifecycle/status rules for `workspace/efforts/{slug}.md` and related todo entries, used by `design`, `fsd`, and `prep-merge` |
-| `external-mutation-policy.md` | Cross-skill rule: every Slack / Jira / Confluence / GitHub / ADO / cloud mutation goes through draft-first or `AskUserQuestion`. Reference from any mutation-capable skill. |
+| `external-mutation-policy.md` | Cross-skill rule: every Slack / Jira / Confluence / GitHub / ADO / cloud mutation goes through draft-first or `AskUserQuestion`; guarded CLI writes also use a payload-bound action manifest. Reference from any mutation-capable skill. |
 | `skill-authoring-contract.md` | Behavior rules for skill authors: language preflight, external mutation, ADO CLI doctrine, bash hygiene, anti-overlap, subagent context. Read before adding a new skill. Enforced by `tests/check-skill-doctrine.sh`. |
 | `style-delta-capture.md` | Capture user corrections to drafted Slack/PR/external-doc text as `[STYLE-DELTA]` log lines and consolidate them into approved `communication-style.md` edits during `wrap-up` |
 | `voice-profile-routing.md` | Surface-specific routing layer for Ruilin's communication profile; callers use a capsule first, then read `workspace/communication-style.md` for high-stakes or ambiguous drafts |
@@ -189,7 +191,7 @@ In both cases, start executing immediately. Reserve deliberation for synthesis s
 | `codex-verify-bundle.py` | Generate the markdown bundle for the Codex pre-push verification gate. Used by `fsd`. |
 | `pr-github-helper.py` | Parse GitHub PR refs, centralize read-only `gh` metadata/thread command shapes, and compute PR diff-size gates. Used by PR/review skills. |
 | `pr-review-eval.py` | Validate and score offline PR/review skill eval outputs from `evals/pr-review/evals.json`. |
-| `today-stats.py` | Emit a single date's skill-usage counts as `key=value` lines (token/session accounting removed — session-meta unreliable across harnesses). Used by `wrap-up` Step 4d. |
+| `today-stats.py` | Emit a single date's activation-based skill-usage counts as `key=value` lines with legacy JSONL compatibility. Used by `wrap-up` Step 4d. |
 | `log-range.py` | Emit existing daily-log file paths for a date range (inclusive). Silently drops non-existent dates. Used by `recap` Step 4.5. |
 | `stats-chart.py` | Render vertical ASCII column chart from `daily.csv`. Auto-picks per-day buckets (≤14 days) or per-week buckets (>14 days). Used by `stats` Step 3. |
 | `tool-availability.py` | Probe optional CLI tools by group and emit table, JSON, install hints, or a Homebrew install command for brew-managed tools. Used by `doctor` and optional tooling-aware skills. |
@@ -210,8 +212,8 @@ See the [Available commands table in README.md](../../README.md#available-comman
 <!-- Format: ### YYYY-MM-DD — {topic} -->
 <!-- Appended by /nase:learn or /nase:reflect when prompted -->
 
-### 2026-03-12 — Skill usage tracking restored to PostToolUse (track-skill.sh)
-`track-skill.sh` fires on `PostToolUse:Skill` and appends `{"skill":"<name>","ts":"<ISO8601>"}` to `workspace/stats/skill-usage.jsonl`. `track-skill-prompt.sh` also records `UserPromptExpansion:nase:*` as `source:"prompt-expansion"` so slash-command expansions that bypass `PostToolUse:Skill` are counted. PostToolUse remains the authoritative source when both fire; the scripts dedupe recent prompt/tool pairs. Stats are surfaced by `/nase:stats`.
+### 2026-07-09 - Skill telemetry v2 uses activation as usage
+`track-skill-prompt.sh` records `requested` when a prompt contains a slash command and `activated` only when Claude Code expands it. `track-skill.sh` separately records `tool_succeeded` and `tool_failed`. Records carry `source` and, when supplied by the hook payload, `session_id`. Usage reports count activations, not prompt recognition or outcome events; old `{skill, ts, status?}` records remain readable with the prior bounded dedupe fallback.
 
 ### 2026-03-19 — Zip-based backup with retention
 `stop-backup.sh` creates timestamped zip archives (`nase-backup-YYYYMMDD-HHMMSS.zip`) via `7z a -tzip` (`scoop install 7zip`). Retention policy (`count:N` or `days:N`) from `backup_retention:` in `workspace/config.md` (default: `count:100`). Old flat-copy backups are auto-migrated on first run. Restore (`restore.md`) lists available zip backups and extracts with `unzip`. Supersedes earlier flat-copy and rsync approaches.

@@ -14,11 +14,12 @@ LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 INPUT=$(cat)
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null || true)
 [ -z "$FILE_PATH" ] && exit 0
+SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // .sessionId // empty' 2>/dev/null || true)
+[ -n "$SESSION_ID" ] || SESSION_ID="${CLAUDE_SESSION_ID:-${CLAUDE_SESSIONID:-}}"
 
-python3 "$LOGGER" record \
-  --root "$NASE_ROOT" \
-  --file "$FILE_PATH" \
-  --access read \
-  --source read-hook >/dev/null 2>&1 || true
+ARGS=(record --root "$NASE_ROOT" --file "$FILE_PATH" --access read --source read-hook)
+[ -n "$SESSION_ID" ] && ARGS+=(--session "$SESSION_ID")
+python3 "$LOGGER" "${ARGS[@]}" \
+  >/dev/null 2>&1 || true
 
 exit 0

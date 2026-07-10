@@ -8,7 +8,7 @@ category: Git workflow
 
 **Input:** $ARGUMENTS — a GitHub PR URL (e.g. `https://github.com/owner/repo/pull/123`)
 
-Follows `.claude/docs/external-mutation-policy.md`: code push, `gh pr edit`, replies, thread resolution, and Slack DMs each have their own gate.
+Follows `.claude/docs/external-mutation-policy.md`: code push, PR edits, replies, thread resolution, and Slack DMs each have their own gate. Every GitHub CLI mutation uses its payload-bound `external-write-action.py` manifest; raw mutation commands are blocked by Hook.
 Follows `.claude/docs/workspace-write-guard.md` for KB/lesson updates and other durable workspace writes.
 Follows `.claude/docs/repo-task-flow.md` for shared repo/PR resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns the review-thread dossier and comment-resolution logic below.
 
@@ -373,13 +373,20 @@ options:
 
 If skipped, continue to Phase 9. Do not reuse earlier "Full auto" or push confirmation; show concrete body immediately before edit.
 
-Update:
+Prepare, show, authorize, and execute the exact approved update:
 ```bash
-gh pr edit {pr_number} --repo {owner}/{repo} \
-  --body "$(cat <<'NASE_PR_BODY'
+PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/address-comments-pr-body.XXXXXXXX.md")
+chmod 600 "$PR_BODY_FILE"
+trap 'rm -f "$PR_BODY_FILE"' EXIT
+cat > "$PR_BODY_FILE" <<'NASE_PR_BODY'
 {updated_description}
 NASE_PR_BODY
-)"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "update PR body {owner}/{repo}#{pr_number}" -- \
+  gh pr edit {pr_number} --repo {owner}/{repo} --body-file "$PR_BODY_FILE" | jq -r .manifest)
+jq . "$MANIFEST"
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
 If the description already follows the template, skip this phase.
@@ -422,12 +429,17 @@ options:
 
 If skipped, report the pending reply/resolve payload and stop before Phase 9b.
 
-Then execute both API calls in sequence:
+Then prepare, show, authorize, and execute each API call in sequence. A reply action and its following resolve action are independent actions, each with its own one-shot token:
 
 ```bash
 # Step 1: Reply (use the integer comment ID from REST, i.e. `databaseId` if fetched via GraphQL)
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
-  --method POST -f body="{reply_body}"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "reply to PR comment {owner}/{repo}#{pr_number}/{comment_id}" -- \
+  gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
+  --method POST -f body="{reply_body}" | jq -r .manifest)
+jq . "$MANIFEST"
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 
 # Step 2: Resolve the thread — use Shape A (single-thread) from
 # `.claude/docs/github-queries.md → Resolve Review Threads`.

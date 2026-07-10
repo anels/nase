@@ -27,9 +27,13 @@ If `workspace/efforts/` has no active files, say so and stop.
 
 ### Step 2: Classify each active effort by lifecycle stage
 
-Reuse the canonical classifier — do not invent a parallel taxonomy. Apply `.claude/commands/nase/today.md` → **§1b-vii Path A / Path B**:
-- **Path A** (file has `## Lifecycle`): last `[x]` checkbox wins → Planning / Implementing / In review / Awaiting deploy / Follow-up only.
-- **Path B** (no `## Lifecycle`): fall back to frontmatter `status:` (planned→Planning, in-progress→Implementing, PR-present/in-review→In review, awaiting-deploy/merged→Awaiting deploy, anything else→Planning).
+Reuse the canonical classifier - do not invent a parallel taxonomy:
+
+```bash
+python3 .claude/scripts/effort-state.py --file "workspace/efforts/<slug>.md"
+```
+
+Use its `stage`, `evidence`, `pending_followups`, and `needs_live_verification` fields. If `needs_live_verification` is true, keep the lifecycle result visible and resolve the conflict through the Step 3 live PR/Jira reads.
 
 Status vocabulary lives in `.claude/docs/effort-lifecycle.md`; tolerate real-world extras (`tracked`, `blocked`, `awaiting-deploy`) by mapping them through the rules above rather than discarding them.
 

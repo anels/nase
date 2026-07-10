@@ -7,6 +7,21 @@ All full-file writes use `.claude/docs/workspace-write-guard.md` and
 `workspace-write-guard.py`. Auto-write modes only skip human confirmation; they
 never skip final drift checks.
 
+## Stage Classifier
+
+`/nase:today` and `/nase:efforts` classify an active effort through:
+
+```bash
+python3 .claude/scripts/effort-state.py --file workspace/efforts/{slug}.md
+```
+
+The JSON result is the only stage contract. It scans the whole document for checked
+canonical labels in monotonic order: `Implementation started`, `PR opened`,
+`Merged`, then `Deployed`. It ignores unrelated plan and grill checkboxes, falls
+back to frontmatter only when no canonical label is checked, and flags frontmatter
+conflicts with `needs_live_verification`. A deployed effort with pending
+`Follow-up:` checkboxes is `follow_up_only`.
+
 ## Status Vocabulary
 
 Frontmatter `status:` for `workspace/efforts/{slug}.md`. This is the authoritative

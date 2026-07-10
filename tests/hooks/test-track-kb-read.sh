@@ -78,6 +78,11 @@ run_hook "workspace/kb/general/read.md" "hook-active"
 assert_jq "T1: relative KB read records active skill" \
   'select(.skill == "fsd" and .file == "workspace/kb/general/read.md" and .access == "read" and .source == "read-hook" and .session == "hook-active")'
 
+printf '{"session_id":"input-session","tool_input":{"file_path":"workspace/kb/general/read.md"}}' \
+  | NASE_ROOT="$FIXTURE" CLAUDE_SESSION_ID="different-env-session" bash "$HOOK" >/dev/null 2>&1
+assert_jq "T1b: hook input session wins over environment fallback" \
+  'select(.skill == "unknown" and .file == "workspace/kb/general/read.md" and .session == "input-session")'
+
 run_hook "$FIXTURE/workspace/kb/general/data.sql" "hook-unknown"
 assert_jq "T2: absolute SQL KB read records unknown skill" \
   'select(.skill == "unknown" and .file == "workspace/kb/general/data.sql" and .access == "read" and .source == "read-hook" and .session == "hook-unknown")'

@@ -43,7 +43,8 @@ assert_agent_contract() {
   assert_file "${agent} exists" "$path"
   if [[ -f "$path" ]]; then
     assert_contains "${agent} has matching name" "$path" "name: ${agent}"
-    assert_contains "${agent} is read-only" "$path" "tools: Read, Grep, Glob, Bash"
+    assert_contains "${agent} has minimal read-only tools" "$path" "tools: Read, Grep, Glob"
+    assert_contains "${agent} uses plan permissions" "$path" "permissionMode: plan"
     assert_contains "${agent} runs in background" "$path" "background: true"
     assert_contains "${agent} references output contract" "$path" ".claude/docs/subagent-output-contract.md"
     assert_contains "${agent} returns Verdict" "$path" "Verdict:"
