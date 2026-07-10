@@ -10,14 +10,44 @@ failures=0
 pass() { printf 'PASS  %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; failures=$((failures + 1)); }
 
+check_file_available() {
+  local name="$1" file="$2"
+
+  if [[ -f "$file" ]]; then
+    return 0
+  fi
+
+  case "$file" in
+    workspace/skills/*)
+      printf 'SKIP  %s (local workspace skill missing: %s)\n' "$name" "$file"
+      ;;
+    *)
+      fail "$name (tracked file missing: $file)"
+      ;;
+  esac
+  return 1
+}
+
 assert_contains() {
   local name="$1" file="$2" text="$3"
+  if ! check_file_available "$name" "$file"; then
+    return
+  fi
   if grep -Fq -- "$text" "$file"; then pass "$name"; else fail "$name"; fi
 }
 
 assert_not_contains() {
   local name="$1" file="$2" text="$3"
-  if grep -Fq -- "$text" "$file"; then fail "$name"; else pass "$name"; fi
+  local rc
+  if ! check_file_available "$name" "$file"; then
+    return
+  fi
+  if grep -Fq -- "$text" "$file"; then
+    fail "$name"
+  else
+    rc=$?
+    if [[ "$rc" -eq 1 ]]; then pass "$name"; else fail "$name (search exited $rc)"; fi
+  fi
 }
 
 ADO=workspace/skills/ado-pipeline-secret-audit.md

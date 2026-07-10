@@ -3,10 +3,33 @@
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$ROOT"
 fail=0
+
+check_file_available() {
+  local name="$1" file="$2"
+
+  if [[ -f "$file" ]]; then
+    return 0
+  fi
+
+  case "$file" in
+    workspace/skills/*)
+      printf 'SKIP  %s (local workspace skill missing: %s)\n' "$name" "$file"
+      ;;
+    *)
+      printf 'FAIL  %s (tracked file missing: %s)\n' "$name" "$file" >&2
+      fail=$((fail + 1))
+      ;;
+  esac
+  return 1
+}
 
 check_contains() {
   local name="$1" file="$2" pattern="$3"
+  if ! check_file_available "$name" "$file"; then
+    return
+  fi
   if rg -q --fixed-strings "$pattern" "$file"; then
     printf 'PASS  %s\n' "$name"
   else
@@ -17,11 +40,21 @@ check_contains() {
 
 check_absent() {
   local name="$1" file="$2" pattern="$3"
+  local rc
+  if ! check_file_available "$name" "$file"; then
+    return
+  fi
   if rg -q --fixed-strings "$pattern" "$file"; then
     printf 'FAIL  %s\n' "$name" >&2
     fail=$((fail + 1))
   else
-    printf 'PASS  %s\n' "$name"
+    rc=$?
+    if [[ "$rc" -eq 1 ]]; then
+      printf 'PASS  %s\n' "$name"
+    else
+      printf 'FAIL  %s (search exited %s)\n' "$name" "$rc" >&2
+      fail=$((fail + 1))
+    fi
   fi
 }
 
@@ -33,7 +66,7 @@ check_contains "deploy previews before the real trigger" "$deploy" 'previewRun:t
 check_contains "deploy reads back the created run version" "$deploy" 'resources.repositories.self.version'
 check_contains "deploy stops on a pinned-version mismatch" "$deploy" 'does not match approved SHA'
 check_contains "deploy cancellation has its own action token" "$deploy" 'CANCEL_MANIFEST'
-check_absent "deploy does not default CI skips to true" "$deploy" "CI skips** (all `true`)"
+check_absent "deploy does not default CI skips to true" "$deploy" 'CI skips** (all `true`)'
 
 for mutation_skill in \
   .claude/commands/nase/fsd.md \
