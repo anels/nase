@@ -53,6 +53,8 @@ If `metadata.state` is not `OPEN`: report "PR is already {state}" and stop.
 
 Set `pr_branch = metadata.headRefName` and `base_branch = metadata.baseRefName`.
 
+**Load the PR gate profile.** Resolve the repo KB file via `.claude/docs/repo-resolution.md` (Part 2), then follow `.claude/docs/pr-gates-consumption.md` §1–2 to read the `## PR Gates` section (with the live-fetch fallback when stale/empty, using `{base_branch}`) into `gate_profile`. Phase 6/7 use its commit/title/body rules; Phase 10 reports its `required_checks` status.
+
 If `remoteHead.matchesMetadata` is false, warn: "Branch has new commits since PR metadata was fetched — re-fetch metadata before continuing." and stop.
 
 ## Phase 3: Verify All Comments Resolved
@@ -230,7 +232,7 @@ Also read the changed files to understand the diff:
 git -C {worktree_path} diff --cached --stat
 ```
 
-Write a single conventional commit message that captures the full intent of the PR — not a list of the original commits, but a coherent summary.
+Write a single conventional commit message that captures the full intent of the PR — not a list of the original commits, but a coherent summary. Conform the subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope`, no `fixup!`/`squash!`) — the squash subject becomes the PR title in Phase 7, so it must clear the repo's commit-lint / title gate.
 
 ## Phase 7: Update PR Title & Description
 
@@ -239,6 +241,8 @@ The PR title should match the commit subject line (the first line of the squash 
 ### 7a–7b: PR Template & Description
 
 Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft and format the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors.
+
+Then apply `.claude/docs/pr-gates-consumption.md` §3 with `gate_profile`: a required ticket key sits in the documented PR-title position, every required PR-body section exists at its minimum length, and `## How to Review` is filled if the PR's size bucket mandates it. Never invent a ticket key — see the placeholder-strip rule below.
 
 **Strip leftover placeholders.** Before presenting the description, remove unfilled template placeholders and draft self-notes that should not survive into a merge-ready PR:
 - Placeholder issue keys and their reminder text — e.g. `[PROJ-0000](.../browse/PROJ-0000) draft placeholder; replace ...`, `JIRA-XXXX`, `TODO: add ticket`.
@@ -367,6 +371,8 @@ Remove the worktree:
 git -C {repo_path} worktree remove {worktree_path} --force
 ```
 
+**Required-check status (report-only).** Follow `.claude/docs/pr-gates-consumption.md` §4: read live check status with `gh pr checks {pr_number} --repo {owner}/{repo}`, cross-reference `gate_profile.required_checks`, and render the ✓/✗/…/⚠ list. Warn on failing or pending required checks so the user knows what still blocks the actual merge — but do not wait, poll, or block the force-push already done. If the gate-profile load used the live-fetch fallback, also add the §2 stale-KB note (`Run /nase:onboard {repo} to persist`).
+
 Print summary:
 
 ```
@@ -378,6 +384,7 @@ PR ready for merge ✓
   Title:        {new_title}
   Force-pushed: ✓ (--force-with-lease)
   PR state:     {OPEN | reopened}
+  Required checks: {✓ N passing / ✗ M failing / … K pending}   ← omit if no required checks known
 ```
 
 Append to daily log following `.claude/docs/daily-log-format.md` (tag: `prep-merge`) **before** prompting (ensures the log is written regardless of the user's next choice).

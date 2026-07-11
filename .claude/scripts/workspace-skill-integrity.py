@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify ignored workspace skill sources against their local generated mirrors."""
+"""Verify ignored workspace skill sources against generated command wrappers."""
 from __future__ import annotations
 
 import argparse
@@ -26,20 +26,6 @@ def manifest_path(root: Path) -> Path:
 def source_files(root: Path) -> dict[str, Path]:
     directory = root / "workspace" / "skills"
     return {path.stem: path for path in sorted(directory.glob("*.md")) if path.is_file()}
-
-
-def source_body(text: str) -> str:
-    match = re.match(r"^---\s*\n.*?\n---\s*\n?", text, re.DOTALL)
-    return text[match.end():] if match else text
-
-
-def frontmatter_value(text: str, key: str) -> str | None:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    if not match:
-        return None
-    needle = re.compile(rf"^{re.escape(key)}:\s*(.+?)\s*$", re.MULTILINE)
-    value = needle.search(match.group(1))
-    return value.group(1) if value else None
 
 
 def frontmatter_block(text: str, key: str) -> str | None:
@@ -70,7 +56,7 @@ RUNTIME_METADATA = (
 
 
 def mirror_errors(root: Path, sources: dict[str, Path]) -> list[str]:
-    """Return source-to-generated-mirror parity errors without reading a manifest."""
+    """Return source-to-generated-wrapper parity and legacy-mirror errors."""
     errors: list[str] = []
     for name, source_path in sources.items():
         source = source_path.read_text(encoding="utf-8")
@@ -86,25 +72,10 @@ def mirror_errors(root: Path, sources: dict[str, Path]) -> list[str]:
                 if block and block not in wrapper_text:
                     errors.append(f"{name}: wrapper {key} metadata differs")
 
-        native = root / ".claude" / "skills" / f"nase-workspace-{name}" / "SKILL.md"
-        if not native.is_file():
-            errors.append(f"{name}: generated native mirror is missing")
-            continue
+    for native in sorted((root / ".claude" / "skills").glob("nase-workspace-*/SKILL.md")):
         native_text = native.read_text(encoding="utf-8")
-        marker = f"{MARKER}; source: workspace/skills/{name}.md -->"
-        if marker not in native_text:
-            errors.append(f"{name}: native mirror marker differs")
-            continue
-        native_body = native_text.split(marker, 1)[1].lstrip("\n")
-        if native_body != source_body(source):
-            errors.append(f"{name}: native body differs from source")
-        manual_only = frontmatter_value(source, "disable-model-invocation")
-        if manual_only and "user-invocable: false" in native_text:
-            errors.append(f"{name}: native invocation metadata is contradictory")
-        for key in RUNTIME_METADATA:
-            block = frontmatter_block(source, key)
-            if block and block not in native_text:
-                errors.append(f"{name}: native {key} metadata differs")
+        if MARKER in native_text:
+            errors.append(f"{native}: obsolete generated native mirror remains")
     return errors
 
 
@@ -190,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("write-manifest", help="refresh the ignored local source hashes")
-    commands.add_parser("check", help="verify source, wrapper, and native mirror parity")
+    commands.add_parser("check", help="verify source, wrapper, and legacy-mirror cleanup")
     commands.add_parser("changed", help="list local sources that differ from the reviewed manifest")
     return parser
 

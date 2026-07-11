@@ -75,6 +75,14 @@ Score every criterion from the Quality Criteria table (in `/nase:design`):
 
 Also check for **staleness**: has the codebase or KB changed in ways that invalidate assumptions in the design?
 
+## Step 3.5: Doc Hygiene Pass (auto-cleanup)
+
+A doc reaching review has usually been through several edit rounds and carries cruft — duplicated claims across sections, session-process artifacts, wording superseded by a prior grill, value drifts (two lines stating different numbers for the same thing). Clean it before rendering the verdict so the verdict scores the durable spec, not the accretion. This runs regardless of verdict (an APPROVED doc still benefits). It edits only the design doc (within review mode's allowed scope) and goes through the workspace-write-guard diff, so it is reviewable.
+
+Apply the **same policy as `design-grill-mode.md` → Step 6.5** (auto-remove superseded wording / exact duplicates / session artifacts / dead-duplicate links / resolved `[NEEDS CLARIFICATION]`; list-only for judgment calls; never touch a MUST/constraint/SC/Risk/citation; flag value drifts rather than silently picking). The staleness findings from Step 3 feed this: a claim invalidated by codebase/KB change that a resolution already superseded is an auto-remove; one with no recorded replacement is a Step 4 issue, not a cleanup.
+
+Record the count in the Step 5 daily-log line and, if any judgment-call collapses were flagged, list them in the Step 4 output so the user can act on them.
+
 ## Step 4: Verdict
 
 Determine one of three verdicts:
@@ -121,7 +129,7 @@ Tell the user the doc is archived and suggest running `/nase:design {new-idea}` 
 
 Append to `workspace/logs/YYYY-MM-DD.md`:
 
-`reviewed {slug} — {verdict}: {1-line summary of key finding}`
+`reviewed {slug} — {verdict}: {1-line summary of key finding} (hygiene: {N auto-removed, M flagged})`
 
 ## Notes
 

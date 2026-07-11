@@ -39,7 +39,7 @@ Hooks are registered in `.claude/settings.json`. Shell output and exit codes fee
 
 | Hook | Event | Script | Behavior |
 |------|-------|--------|----------|
-| `SessionStart` | New Claude Code session | `session-start.sh` | Creates `workspace/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target unreachable; archives tech-digest entries older than 30 days; syncs `workspace/skills/*.md` into `/nase:workspace:*` wrappers and hidden `.claude/skills/nase-workspace-*` native skills; local source/wrapper/native parity is checked against the ignored manifest by `/nase:doctor`; suggests `/nase:reflect` if commits exist for today |
+| `SessionStart` | New Claude Code session | `session-start.sh` | Creates `workspace/logs/YYYY-MM-DD.md` if missing; alerts if last backup had an error or target unreachable; archives tech-digest entries older than 30 days; syncs `workspace/skills/*.md` into `/nase:workspace:*` command wrappers and removes legacy generated native mirrors; `/nase:doctor` checks source-wrapper integrity plus mirror cleanup against the ignored manifest; suggests `/nase:reflect` if commits exist for today |
 | `UserPromptSubmit` | User prompt submitted | `style-edit-detect.sh` | Detects likely style corrections on Slack/PR/external-doc drafts and injects a reminder to log a `[STYLE-DELTA]` for later consolidation |
 | `UserPromptSubmit` | User prompt submitted | `track-skill-prompt.sh` | Records `/nase:*` recognition as `event_type:"requested"`; recognition is not usage or success |
 | `UserPromptExpansion:nase:*` | Slash command expanded | `track-skill-prompt.sh` | Records actual slash expansion as `event_type:"activated"` in `workspace/stats/skill-usage.jsonl` |

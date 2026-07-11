@@ -221,6 +221,7 @@ Block format:
 **Repo explored:** `{repo_path}` ({N} codebase lookups, {M} auto-resolutions)
 **Branches walked:** {count}
 **Termination:** {user signal verbatim, or "branches exhausted"}
+**Cleaned:** {N lines auto-removed (superseded/duplicate/session-artifact), M flagged for the user — or "nothing needed cleaning"}
 
 ### Resolutions
 
@@ -256,6 +257,26 @@ Update lifecycle: append a checked item if the doc didn't already track grill:
 ```
 
 (If a previous grill checked this, do not duplicate. Just rely on the Grill Session timestamp.)
+
+## Step 6.5: Doc Hygiene Pass (auto-cleanup)
+
+An effort doc that has been through several grill/review rounds accumulates cruft — the resolutions you just wrote often supersede older wording, and iterative edits leave duplicates and session-process artifacts. Clean it in the same write-back so the doc stays the durable spec `/nase:fsd` reads, not an audit log of how it got there. Everything here goes through the normal workspace-write-guard diff, so it is reviewable, not silent.
+
+**Auto-remove (safe, mechanical):**
+- Wording this grill just **superseded** — once a resolution records the new decision, delete the old line it replaced (e.g. a decision the session overturned). The Grill Session table is the audit trail; the body should state the current decision once.
+- **Exact-duplicate** claims/bullets repeated across sections — keep the canonical instance, leave a one-line pointer if it was cross-referenced.
+- **Session/process artifacts** that aren't durable design — one-off `workspace/tmp/*` pointers, "appended this session / near end of file"-style meta, transient scaffolding notes.
+- **Dead/duplicated non-citation links** - the same artifact URL cited three times: keep one and point to it. Never remove a citation.
+- **Resolved `[NEEDS CLARIFICATION]` markers** whose answer is now recorded in a resolution.
+
+**List-only (judgment calls — never auto-delete, surface in the report):**
+- A section that looks redundant but carries unique detail, or a transitional subsection (e.g. a "research refinements" block) mostly folded inline but with some unique bits — propose a collapse, let the user decide.
+
+**Never touch:** any MUST / constraint / Success Criterion / Risk / citation, unless a recorded superseding decision explicitly replaces it.
+
+**Consistency check:** if the pass finds two lines asserting different values for the same thing (a drift, e.g. two different thresholds), **flag it, don't silently pick** — surface as a judgment call.
+
+Record the result in the Grill Session block's `**Cleaned:**` line (N auto-removed, M flagged). If nothing needed cleaning, say so — silence is a valid outcome.
 
 ## Step 7: Report
 

@@ -44,14 +44,19 @@ assert_cmd "codex verification bundle doc exists" test -f .claude/docs/codex-ver
 assert_cmd "effort lifecycle doc exists" test -f .claude/docs/effort-lifecycle.md
 assert_cmd "repo task flow doc exists" test -f .claude/docs/repo-task-flow.md
 assert_cmd "codex verify bundle script exists" test -f .claude/scripts/codex-verify-bundle.py
+assert_cmd "FSD delivery gates doc exists" test -f .claude/docs/fsd-delivery-gates.md
 
 assert_contains "address-comments skips PR gates" .claude/commands/nase/address-comments.md 'PR Gates .* Skip'
 assert_not_contains "address-comments does not run gh pr checks" .claude/commands/nase/address-comments.md 'gh pr checks'
 assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/commands/nase/address-comments.md 'pr-gate-remediation'
 assert_not_contains "address-comments does not claim PR gates green" .claude/commands/nase/address-comments.md 'PR gates: all green'
 
-assert_contains "fsd uses codex bundle shared doc" .claude/commands/nase/fsd.md 'codex-verification-bundle\.md'
-assert_contains "fsd uses codex bundle script" .claude/commands/nase/fsd.md 'codex-verify-bundle\.py'
+assert_contains "fsd uses delivery gates doc" .claude/commands/nase/fsd.md 'fsd-delivery-gates\.md'
+assert_contains "FSD delivery gates use codex bundle script" .claude/docs/fsd-delivery-gates.md 'codex-verify-bundle\.py'
+assert_contains "FSD delivery gates retain bundle repo argument" .claude/docs/fsd-delivery-gates.md 'repo.*worktree_or_repo'
+assert_not_contains "FSD delivery gates avoid unsupported bundle scope" .claude/docs/fsd-delivery-gates.md 'scope pre-push'
+assert_not_contains "FSD delivery gates avoid unsupported bundle diff-base" .claude/docs/fsd-delivery-gates.md 'diff-base'
+assert_contains "FSD delivery gates retain deep self-review" .claude/docs/fsd-delivery-gates.md 'Review depth'
 assert_contains "fsd uses shared repo task flow" .claude/commands/nase/fsd.md 'repo-task-flow\.md'
 assert_not_contains "fsd no inline codex diff algorithm" .claude/commands/nase/fsd.md 'Include the full diff for changed files only when'
 assert_contains "codex bundle doc names script" .claude/docs/codex-verification-bundle.md 'codex-verify-bundle\.py'
@@ -73,17 +78,24 @@ assert_contains "auto design respects higher-priority flags" .claude/docs/design
 assert_contains "fsd uses effort lifecycle doc" .claude/commands/nase/fsd.md 'effort-lifecycle\.md'
 assert_contains "fsd consumes design PR plan" .claude/commands/nase/fsd.md 'design_pr_plan'
 assert_contains "fsd preserves one-PR default" .claude/commands/nase/fsd.md 'Default to the design PR plan'
-assert_contains "fsd gates draft PR create" .claude/commands/nase/fsd.md 'Create this draft PR\?'
-assert_contains "fsd gates verification PR edit" .claude/commands/nase/fsd.md 'Append this Verification section to the draft PR\?'
+assert_contains "FSD delivery gates draft PR create" .claude/docs/fsd-delivery-gates.md 'Create this draft PR\?'
+assert_contains "FSD delivery gates verification PR edit" .claude/docs/fsd-delivery-gates.md 'Append this Verification section to the draft PR\?'
 assert_contains "fsd conditional closure excludes blockers" .claude/commands/nase/fsd.md 'conditional.*waiver reasons named'
 assert_not_contains "fsd conditional wording does not admit blockers" .claude/commands/nase/fsd.md 'waivers/blockers named'
 assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
 assert_contains "prep-merge uses shared repo task flow" .claude/commands/nase/prep-merge.md 'repo-task-flow\.md'
 assert_contains "address-comments uses shared repo task flow" .claude/commands/nase/address-comments.md 'repo-task-flow\.md'
+assert_contains "review reference retains thread verdict contract" .claude/docs/pr-review-verification.md 'THREADS NOT ADDRESSED'
+assert_contains "review reference retains pipeline specialist" .claude/docs/pr-review-verification.md 'Pipeline gates agent'
 assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'
 assert_contains "effort lifecycle defines PR reference resolution" .claude/docs/effort-lifecycle.md 'PR Reference Resolution'
 assert_contains "today checks normalized PR references" .claude/commands/nase/today.md 'unique normalized PR reference'
 assert_not_contains "today status check is not URL-only" .claude/commands/nase/today.md 'For each unique PR URL found'
+
+assert_not_contains "architecture does not claim native mirror generation" docs/architecture.md 'wrappers and hidden.*native skills'
+assert_contains "architecture documents legacy mirror cleanup" docs/architecture.md 'removes legacy generated native mirrors'
+assert_contains "doctor rejects legacy native mirrors" .claude/commands/nase/doctor.md 'no legacy generated native mirror remains'
+assert_contains "write guard matches legacy mirror policy" .claude/docs/workspace-write-guard.md 'no legacy generated native mirror'
 
 tmprepo=$(mktemp -d "$TMPROOT/codex-bundle-repo.XXXXXX")
 (

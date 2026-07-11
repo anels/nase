@@ -54,6 +54,8 @@ If this fails, do not update `.local-paths` automatically; ask for the correct p
 
 **Module-inventory extraction:** capture KB `## Modules` / `## Components`. If absent, set `module_inventory = needs-grep`; derive it in Phase 5 from the PR worktree, not the pre-worktree checkout.
 
+**Load the PR gate profile.** Follow `.claude/docs/pr-gates-consumption.md` §1–2 to read the repo's `## PR Gates` KB section (with the live-fetch fallback when stale/empty) into `gate_profile`. Phases 8 and 8b use it so the commit subject and any PR-body restructure satisfy the repo's commit-lint and PR-description gates.
+
 ## Phase 2: Fetch Latest & Unresolved Review Threads
 
 Fetch remote refs for the KB-resolved repo:
@@ -274,64 +276,15 @@ Scanner/tool output is not reviewer intent by itself. Verify findings against th
 
 ## Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is not loaded, skip cleanly past only the Codex invocation.
-
-Do NOT skip this gate: replying to and resolving someone's review threads is an outward-facing, hard-to-undo action, so it always gets the single-model fallback check below.
-
-**Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
-- the unresolved review threads from Phase 2 (full comment chains)
-- the final post-Phase-4 dossier/action map and drafted replies from Phase 6
-- the same diff payload described for the Codex prompt below
-
-Ask it to judge independently, per thread:
-- does the diff/reply actually address what the reviewer asked?
-- is any decline reply factually wrong?
-- does any reply contradict the dossier evidence or omit a required verification note?
-
-Do NOT include your own classification reasoning or expected verdict. It must answer in the same `VERDICT:` shape below; apply the same decision tree. Log `thread-resolution verify: single-model fallback (Codex unavailable)`; overrides use tag `fallback-verify`.
-
-Invoke the Codex MCP with the `comment-resolution` mode contract from `.claude/docs/codex-review.md`:
-
-- `cwd` = `{worktree_path}`
-- `prompt` = unresolved review threads from Phase 2, the final post-Phase-4 dossier/action map, drafted replies from Phase 6, and the implementation diff:
-  - If code changed: `git -C {worktree_path} diff origin/{pr_branch}` (working tree diff before commit)
-  - Also include `git -C {worktree_path} ls-files --others --exclude-standard` and the full content of any task-created untracked files
-  - If no code changed: say `No code diff; reply-only / decline verification only`
-  - For diffs >2000 lines: use `git diff --stat` plus the 5 most-changed files in full
-- `developer-instructions` = the `comment-resolution` template verbatim
-- `sandbox` = `read-only`
-
-Expected shape:
-```
-VERDICT: PASS | FAIL | NEEDS-HUMAN
-THREADS NOT ADDRESSED: ...
-REPLY / RESOLVE RISKS: ...
-SCOPE CREEP: ...
-REASONING: ...
-```
-
-Decision tree:
-
-- **PASS** → log one line (`Codex thread-resolution verify: PASS`) and proceed to Phase 8. No user prompt.
-- **NEEDS-HUMAN** → present the full Codex output and ask via `AskUserQuestion`:
-  - Q: "Codex flagged ambiguity in the review-thread resolution. What now?"
-  - Options: `Revise first` / `Proceed — push anyway` / `Show me the diff + replies`
-  - Honor the user's choice.
-- **FAIL** → do NOT commit or push. Present the full Codex output and ask via `AskUserQuestion`:
-  - Q: "Codex says at least one review thread isn't safely addressed. What now?"
-  - Options: `Fix it` / `Override — Codex is wrong` / `Cancel`
-  - On "Fix it": re-enter Phase 6 with the failing thread(s) as requirements, then rerun build/test and this gate.
-  - On "Override": log the override to the daily log (tag: `codex-override`) before proceeding.
-
-Malformed output (no `VERDICT:` line) → treat as `NEEDS-HUMAN`, present raw `content`, and ask the user.
-
-This gate checks reviewer intent, not just tests.
+Follow `.claude/docs/pr-review-verification.md → Review-Thread Resolution Gate`. The gate is mandatory before commit or outward replies: use Codex when available, otherwise the documented fresh-context fallback.
 
 ## Phase 8: Commit & Push
 
 If there are no code changes after Phase 6:
 - If the final post-Phase-4 dossier/action map has any `accept` threads, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
 - If the final dossier/action map has only `reply-only` / `decline` threads, skip commit and push. Set `no_commit=true`, report `No code changes; proceeding to review replies/resolution only.`, skip Phase 8b, and continue to Phase 9.
+
+Conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope`, no `fixup!`/`squash!`) before committing.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.
 Deviation: in "Confirm before push" mode, show the staged diff (`git diff --cached --stat` + key hunks) and the commit message before pushing, then use `AskUserQuestion`:
@@ -358,6 +311,7 @@ If a template exists and the current PR description doesn't follow it (missing s
 - Preserve existing author-written content — migrate it into the correct sections
 - Fill the "How to Review" section if empty, based on the changes made in this session
 - Do not overwrite sections the author already filled correctly
+- Apply `.claude/docs/pr-gates-consumption.md` §3 with `gate_profile`: every required PR-body section must exist at its minimum length, and `## How to Review` must be filled if the PR's size bucket mandates it. Never invent a ticket key — keep the placeholder and flag it.
 
 Before running `gh pr edit`, show the proposed PR body and use `AskUserQuestion` as the immediate external-mutation gate:
 
@@ -503,10 +457,7 @@ After staging each draft, print: `"Slack DM draft staged for @{login} (Slack: {s
 
 The user reviews and sends each draft themselves — this skill never sends.
 
-## Phase 10: Learn from this session
-
-If a reviewer suggestion revealed a non-obvious architectural constraint, run `/nase:kb-update` with the finding. If it was a general coding lesson, append to `workspace/tasks/lessons.md` under the `code` category — see `.claude/docs/lessons-format.md` for header and body format.
-
+## Phase 10: Learn from this session - record non-obvious architectural constraints with `/nase:kb-update`; put general coding lessons under the `code` category in `workspace/tasks/lessons.md`, following `.claude/docs/lessons-format.md`.
 ## Phase 11: Cleanup & Report
 
 Remove the worktree (only if one was created — skip if Phase 5 detected in-place path):
@@ -516,7 +467,6 @@ git -C {repo_path} worktree remove {worktree_path} --force
 ```
 
 Print summary:
-
 ```
 PR comments addressed ✓
 
@@ -531,30 +481,12 @@ PR comments addressed ✓
   Commit: {short_sha} — {commit_subject}          # omit if no code changes / no commit
 ```
 
+If the Phase 1 gate-profile load used the live-fetch fallback, add the stale-KB note from `.claude/docs/pr-gates-consumption.md` §2 (`Run /nase:onboard {repo} to persist`).
+
 Append to daily log following `.claude/docs/daily-log-format.md` (tag: `address-comments`) **before** prompting (ensures the log lands regardless of the user's next choice).
 Log: `{repo_name}#{pr_number} — {N} resolved ({M} accepted, {K} declined, {J} replies)`
 
-## Phase 12: Offer Next-Step Handoff
-
-Skip this phase if all threads were `decline` (PR still has open conversations the reviewer may push back on). Otherwise prompt so the user can choose the next workflow without retyping the PR URL.
-
-Reason for the prompt: after comments are addressed, the common next steps are prep-merge (squash/finalize) or request-review (find reviewers and stage Slack DM drafts). Do not auto-run either: prep-merge rewrites history, and request-review stages human pings. The user must choose each time.
-
-```
-question: "What should I do next for this PR? {pr_url}"
-header: "Next Step"
-options:
-  - label: "Prep merge"
-    description: "Invoke /nase:prep-merge {pr_url} to squash/finalize the PR"
-  - label: "Request review"
-    description: "Invoke /nase:request-review {pr_url} to find reviewers and stage Slack DM drafts"
-  - label: "Stop here"
-    description: "Do nothing else; leave follow-up for later"
-```
-
-If "Prep merge": invoke `/nase:prep-merge {pr_url}`.
-If "Request review": invoke `/nase:request-review {pr_url}`.
-If "Stop here": stop.
+## Phase 12: Offer Next-Step Handoff - follow `.claude/docs/pr-next-step-handoff.md → Address-Comments Handoff`.
 
 ---
 

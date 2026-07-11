@@ -8,8 +8,7 @@ TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 mkdir -p "$TMPDIR_TEST/workspace/skills" \
-  "$TMPDIR_TEST/.claude/commands/nase/workspace" \
-  "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha"
+  "$TMPDIR_TEST/.claude/commands/nase/workspace"
 
 cat > "$TMPDIR_TEST/workspace/skills/alpha.md" <<'SKILL'
 ---
@@ -34,18 +33,6 @@ Read `workspace/skills/alpha.md` and follow every step exactly as written.
 $ARGUMENTS
 SKILL
 
-cat > "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha/SKILL.md" <<'SKILL'
----
-description: "Alpha skill."
-disable-model-invocation: true
-argument-hint: "<target>"
----
-
-<!-- NASE-GENERATED-WORKSPACE-SKILL; source: workspace/skills/alpha.md -->
-
-Read alpha.
-SKILL
-
 python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest > "$TMPDIR_TEST/write.json"
 jq -e '.sources.alpha' "$TMPDIR_TEST/write.json" >/dev/null
 python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/check.json"
@@ -65,29 +52,48 @@ else
   exit 1
 fi
 
-set +e
-python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest > "$TMPDIR_TEST/refresh-drift.json"
-rc=$?
-set -e
-if [[ "$rc" -eq 1 ]] && jq -e 'any(.errors[]; contains("refusing to refresh the manifest"))' "$TMPDIR_TEST/refresh-drift.json" >/dev/null; then
-  printf 'PASS  manifest refresh refuses stale generated mirrors\n'
+python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest > "$TMPDIR_TEST/refresh-body-only.json"
+if jq -e '.sources.alpha' "$TMPDIR_TEST/refresh-body-only.json" >/dev/null; then
+  printf 'PASS  manifest refresh accepts source body changes\n'
 else
-  printf 'FAIL  manifest refresh refuses stale generated mirrors\n' >&2
+  printf 'FAIL  manifest refresh accepts source body changes\n' >&2
   exit 1
 fi
 
-printf '\nChanged source.\n' >> "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha/SKILL.md"
-python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest >/dev/null
-printf '\nmanual drift\n' >> "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha/SKILL.md"
+sed -i.bak '5i\
+model: sonnet
+' "$TMPDIR_TEST/workspace/skills/alpha.md"
+rm -f "$TMPDIR_TEST/workspace/skills/alpha.md.bak"
 set +e
-python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/native-drift.json"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest > "$TMPDIR_TEST/metadata-drift.json"
 rc=$?
 set -e
-if [[ "$rc" -eq 1 ]] && jq -e 'any(.errors[]; contains("native body differs"))' "$TMPDIR_TEST/native-drift.json" >/dev/null; then
-  printf 'PASS  native mirror drift fails local check\n'
+if [[ "$rc" -eq 1 ]] && jq -e 'any(.errors[]; contains("wrapper model metadata differs"))' "$TMPDIR_TEST/metadata-drift.json" >/dev/null; then
+  printf 'PASS  manifest refresh refuses wrapper metadata drift\n'
 else
-  printf 'FAIL  native mirror drift fails local check\n' >&2
+  printf 'FAIL  manifest refresh refuses wrapper metadata drift\n' >&2
   exit 1
 fi
+
+sed -i.bak '/^model: sonnet$/d' "$TMPDIR_TEST/workspace/skills/alpha.md"
+rm -f "$TMPDIR_TEST/workspace/skills/alpha.md.bak"
+mkdir -p "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha"
+cat > "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha/SKILL.md" <<'SKILL'
+<!-- NASE-GENERATED-WORKSPACE-SKILL; source: workspace/skills/alpha.md -->
+SKILL
+set +e
+python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/legacy-native.json"
+rc=$?
+set -e
+if [[ "$rc" -eq 1 ]] && jq -e 'any(.errors[]; contains("obsolete generated native mirror remains"))' "$TMPDIR_TEST/legacy-native.json" >/dev/null; then
+  printf 'PASS  legacy native mirror fails local check\n'
+else
+  printf 'FAIL  legacy native mirror fails local check\n' >&2
+  exit 1
+fi
+
+rm -rf "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/final-check.json"
+jq -e '.ok == true and (.errors | length) == 0' "$TMPDIR_TEST/final-check.json" >/dev/null
 
 printf 'workspace skill integrity tests passed.\n'

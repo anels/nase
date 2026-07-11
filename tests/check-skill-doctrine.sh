@@ -7,7 +7,8 @@
 #   D3. files claiming "at HEAD" in a verifier role but greping the working tree without
 #       `git show HEAD:` (regression guard for doc-pr-head-ground-scan.md)
 #   D4. skill files missing a language preflight / language-config reference
-#   D5. Codex MCP caller files missing the canonical prerequisite / clean-skip gate
+#   D5. Codex MCP caller files missing the canonical prerequisite / clean-skip gate,
+#       either directly or in a directly referenced shared workflow document
 #   D6. restore archive flow missing path traversal / symlink hardening
 #   D7. kb-merge external import flow missing canonical path / symlink hardening
 #   D8. kb-merge generated skill wrappers missing frontmatter sanitization
@@ -190,11 +191,31 @@ fi
 
 # ---------- D5: Codex MCP stays optional ----------------------------------
 section "D5: Codex MCP callers have clean-skip gate"
+has_codex_gate() {
+  local file="$1"
+  grep -qF '.claude/docs/codex-review.md → Prerequisite' "$file" 2>/dev/null && grep -qi 'skip cleanly' "$file" 2>/dev/null
+}
+
+codex_gate_ready() {
+  local candidate="$1" reference
+  if has_codex_gate "$candidate"; then
+    return 0
+  fi
+
+  while IFS= read -r reference; do
+    [[ -n "$reference" && -f "$reference" ]] || continue
+    if has_codex_gate "$reference"; then
+      return 0
+    fi
+  done < <(grep -oE '\.claude/docs/[A-Za-z0-9._/-]+\.md' "$candidate" 2>/dev/null | sort -u)
+
+  return 1
+}
+
 d5_hits=""
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  if ! grep -qF '.claude/docs/codex-review.md → Prerequisite' "$f" 2>/dev/null \
-    || ! grep -qi 'skip cleanly' "$f" 2>/dev/null; then
+  if ! codex_gate_ready "$f"; then
     d5_hits+="  $f"$'\n'
   fi
 done < <(
