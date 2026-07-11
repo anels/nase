@@ -274,6 +274,10 @@ Source recipes (use the one that fits; these carry gotchas learned the hard way)
 - [ ] **Step 2** — {goal}. Files: {paths}. Tests: {what}. Done when: {verifiable condition}.
 Dependencies: {which steps are sequential (A before B) vs parallel (no edge)}. Critical path: {longest dependent chain}.
 
+**Step-sizing sanity check** (per `workspace/kb/general/engineering-heuristics.md → Planning`): a single step should stay agent-sized — roughly ≤5 files, acceptance stateable in ≤3 bullets. Subdivide any step that trips a signal: touches 2+ subsystems, needs >~2h, or has "and" in its goal. Classify parallelism explicitly: independent slices/tests/docs run parallel; migrations, shared-state, and dependency chains stay sequential; shared API-contract changes need coordination. Order risk-first — put the most uncertain step early so it fails fast, not after the safe work is sunk.
+
+**Wide-refactor exception** (per `workspace/kb/general/workflow.md 2026-07-10 → to-tickets`): a mechanical change with codebase-wide blast radius (rename, signature change, dep swap) is NOT a vertical slice — forcing it into one produces a giant unreviewable step. Sequence it **expand → migrate → contract**: add the new form beside the old, migrate call sites in blast-radius-sized batches (per package/dir, each independently green), then delete the old form last. Represent each phase as its own step with the contract step blocked by every migrate batch.
+
 ### ETA Estimate
 Derived from the Implementation Plan steps above per `.claude/docs/eta-estimation.md`. Tag each step with its dominant lane (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) and a rough size bucket (S/M/L/XL/XXL), then roll up to a confidence range.
 

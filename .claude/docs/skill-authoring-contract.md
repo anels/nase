@@ -164,13 +164,33 @@ When a skill chains other skills (`/nase:reflect`, `/nase:learn`, `/team`, etc.)
 
 ---
 
+## 11. Authoring self-review — failure modes & invocation cost (advisory)
+
+Judgment-based self-review checklist for new/edited skill bodies. **Advisory, not CI-gated** (these are inherently non-mechanical — detecting a no-op line or a backfiring prohibition needs a reader, not a grep). Source: `mattpocock/skills → writing-great-skills`; full KB context in `workspace/kb/general/workflow.md 2026-07-10`.
+
+Root virtue: **predictability = the skill drives the same *process*, not the same output.** Cost/maintainability are symptoms of losing that, not competing goals.
+
+Six failure modes to scan a draft for:
+1. **Premature completion** — a step lets the agent stop early. Fix order: sharpen the step's completion criterion *first*; only then split to hide post-completion steps (hiding works only across a real context boundary, not an inline model-invoked call).
+2. **Duplication** — the same meaning stated in two places. Single source of truth per meaning.
+3. **Sediment** — stale layers left by edits. The default fate without active pruning.
+4. **Sprawl** — too long even when every line is live. Cure is the information hierarchy / a split, not word-trimming.
+5. **No-op** — a line the model already obeys by default. Test: *does it change behavior vs default?* "Be thorough" is a no-op; replace with a stronger leading word ("relentless"). Prune with the no-op test **per sentence in isolation — delete the whole sentence when it fails**, not trim words. Be aggressive.
+6. **Negation** — a bare prohibition backfires ("don't think of an elephant"). Prompt the *positive* target instead; keep a ban only when the target is unphraseable positively, and still pair it with what-to-do.
+
+Completion criteria have two axes: **clarity** (resists premature completion) + **demand** (sets legwork depth — an exhaustive "every modified model accounted for" beats "produce a change list"). Strongest criteria are both checkable and exhaustive.
+
+**Invocation-by-cost** (reinforces §8 pattern + the two-tier taxonomy in `workflow.md`): model-invoked keeps a `description` and pays permanent **context load** (it sits in the window every turn) — pick it only when the agent or another skill must reach the skill on its own. User-invoked (`disable-model-invocation: true`) is zero context load but spends human **cognitive load** (someone must remember it exists). When user-invoked skills outgrow memory, add one router skill that names the others.
+
+---
+
 ## CI
 
-`tests/check-skill-doctrine.sh` enforces sections 1, 2, 2.5, 3, and 8 mechanically, plus archive/import hardening rules. Run via `bash tests/check-all.sh` before pushing any skill change.
+`tests/check-skill-doctrine.sh` enforces sections 1, 2, 2.5, 3, and 8 mechanically, plus archive/import hardening rules. Run via `bash tests/check-all.sh` before pushing any skill change. Section 11 is advisory (no mechanical check).
 
 ## Editing this doc
 
 This is THE source of truth for skill authoring rules. When adding a new rule:
-1. Implement the CI check first (in `check-skill-doctrine.sh`)
-2. Add the rule here with a CI-check pointer
-3. Update affected skills in the same PR — do not ship the rule before the skills comply
+1. For a mechanically enforceable rule, implement the CI check first (in `check-skill-doctrine.sh`) and add the rule here with a CI-check pointer
+2. Put non-mechanical guidance in §11 and label it advisory
+3. Update affected skills in the same PR — do not ship a new enforceable rule before the skills comply
