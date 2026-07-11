@@ -286,10 +286,11 @@ Run in parallel:
 
 **`.local-paths`** — append if not present: `{RepoName}={repo_path}`
 
-**`workspace/kb/.domain-map.md`** — append domain mapping (create if absent):
+**`workspace/kb/.domain-map.md`** — upsert the domain mapping (create the file if absent). Both `[last-updated]` and `[last-loaded]` are required by the map's own header contract:
 ```
-- {domain} → workspace/kb/projects/{domain}.md
+- {domain} → workspace/kb/projects/{domain}.md [last-updated:YYYY-MM-DD] [last-loaded:YYYY-MM-DD] (optional notes)
 ```
+On **both** first-time and refresh runs, set `[last-updated]` to the **same date** written into the KB file's `<!-- Last updated -->` marker in Step 4 (they must not drift — a lagging map `[last-updated]` makes `/nase:today` over-flag the repo as stale), and set `[last-loaded]` to today's date. On refresh, update these fields on the existing row in place; do not just leave the old row untouched after appending content in Step 4.
 
 **MEMORY.md** — add to Quick Reference (skip if already listed). Path is in session-start system-reminder. **In batch mode subagents: skip this step** — parent session handles it.
 ```

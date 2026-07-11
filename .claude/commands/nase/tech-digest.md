@@ -97,6 +97,7 @@ Rules:
    - Keep each finding to one bullet unless the implementation detail truly needs sub-bullets.
    - Include source URLs for every positive finding. For source-fetch notes, include the failing source name and short reason.
    - If there are no actionable workflow changes, write `- None.` under `Actionable for nase workflow`.
+   - **Ground "affected" claims before writing them.** Any actionable asserting a concrete nase surface (a hook, matcher, config field, script) is *affected* by a described behavior change must first be grounded — grep/inspect the actual nase config for the field the change touches — before writing "audit/verify X". If the grep shows no affected surface, write it as a no-op note (`- No affected nase surface — {source} does not apply here.`), not an actionable. Do not infer impact from naming resemblance (a script filename is not a config "matcher" value).
 
 6. **Collect proactive action candidates**:
    - Do not mutate docs, KB, cache, or skill files in this step. Only collect concrete follow-up candidates.
