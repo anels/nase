@@ -237,3 +237,27 @@ Apply `.claude/docs/pr-review-verification.md` §4 and §5 on every classificati
 **Duplicate-of-N reframe check:** when a candidate finding would be dismissed as "duplicate of PR #N" or "superseded by #N", open #N's body + commits first. If #N explicitly defers the surface now being changed (`This PR does NOT change X`, unchecked `[ ]` items, "follow-up planned"), the PRs are complementary, not duplicate — the finding stands.
 
 Collect the final classifications. This skill never posts reactions, replies, resolves, or reviews.
+
+## 11. Diff-First Investigation
+
+Reusable directive for PR-review code investigation — referenced by `/nase:discuss-pr` and `/nase:address-comments`, and inlined (compact form) into any `Explore` agent they spawn for PR code investigation, because a spawned subagent does not load this doc. Distinct from §2 (which verifies the *scope of findings*); this governs *how you investigate*.
+
+Review investigation is **diff-first**: start from the diff and a specific question, `rg`/`glob` to narrow **before** reading, read exact line ranges, and batch discovery searches before file reads. This is diff-**first**, not diff-**only** — widen deliberately by the rules below, never by default.
+
+- **Narrow before read.** Form the specific question the diff raises, then `rg`/`glob` to locate; do not read whole files or scan neighboring directories to "get oriented". Batch the discovery searches, then read the exact ranges they point to.
+- **Failed-search recovery (bounded).** If an `rg`/`glob` returns nothing or errors, retry **once** using the changed symbol or path from the diff. If that also finds nothing, mark the concern evidence-missing / ask the author. Never guess neighboring paths and never fall into repeated broad sweeps — that is the exploration-loop failure mode.
+- **Positive widening rule.** Widen beyond the diff only to a contract the changed hunk itself evidences — a caller of a changed public symbol, an imported config key, a schema field, a deployment contract — and cite the diff→widen linkage. Absent such a signal, stay in the diff.
+- **Activation-PR carve-out.** For a §10 / Step 5a activation-PR candidate (last PR in a multi-PR migration, small diff / large blast radius), the activation transition **is** the diff-evidenced contract: enumerate every newly-live entry point and its load-bearing auth/scope/test path. Do not widen to dormant or unrelated migration components — the broad walk is bounded to what this PR activates.
+
+## 12. Trace-Shape Self-Check
+
+A short self-check on *how* the investigation ran — applied by **the agent that did the investigation, before it emits findings** (its own search sequence is in its own context). For a spawned `Explore` agent this rides in the spawn prompt as a pre-return self-check; the main thread never sees a subagent's trace, so this is **not** a fresh-context-verifier gate. It is behavior-shaping self-check guidance, not a scored gate.
+
+Before returning findings, confirm:
+
+- **Narrowed, not widened** — investigation started from the diff + a specific question and narrowed with `rg`/`glob`, rather than reading broadly to orient.
+- **Batched discovery** — discovery searches ran before file reads, not interleaved read-by-read.
+- **Diff-anchored** — every read traces back to the diff or a hunk-evidenced contract (positive widening rule), not a guessed path.
+- **Recovered without guessing** — any failed search was retried once with the changed symbol/path, then abandoned to evidence-missing — no neighboring-path guessing.
+
+A "widen-first / path-guessing" trace is a **WEAK** signal even when the final finding looked right: it means the finding survived a noisy process and the next one may not.

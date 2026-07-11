@@ -100,7 +100,7 @@ For each thread, add only the evidence the helper cannot know:
 - Related test/scanner evidence, or the exact missing verification signal.
 - Explicit AI provenance per `.claude/docs/ai-code-verification-debt.md → Explicit AI Provenance`; record `none-found` instead of inferring from style.
 
-Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; do not re-fetch full files or full diffs unless the bounded excerpt is insufficient for a specific thread.
+Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; do not re-fetch full files or full diffs unless the bounded excerpt is insufficient for a specific thread. Keep this investigation **diff-first** per `.claude/docs/pr-review-verification.md` §11: the bounded dossier is your diff anchor — narrow with `rg`/`git grep` from the changed symbol before reading, widen only to a contract the diff evidences (cite the diff→widen link), and on a failed search retry once with the changed symbol/path, then mark evidence-missing rather than guessing neighboring paths. Before classifying, run the **Trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own dossier-building investigation — narrowed? batched? diff-anchored? recovered without guessing? — and treat evidence from a widen-first / path-guessing trace as WEAK, re-verifying before it supports an accept/decline.
 
 **Step 3b — Assign risk before deciding action:**
 
