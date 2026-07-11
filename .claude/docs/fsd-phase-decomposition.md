@@ -14,6 +14,10 @@ Analyze task + KB context from Phase 1. Attempt to decompose into code-layer sub
 **Step 2 — Decompose (if ≥2 phases):**
 Decompose into 2–5 sequential sub-phases. Boundary rule: **code layer** (data model / API / test coverage / UI) — not file count or time estimate. Dependencies determine ordering (Phase B needs Phase A's output).
 
+Sizing sanity check (per `workspace/kb/general/engineering-heuristics.md → Planning`): the code-layer split is the primary axis, but a sub-phase that still touches many subsystems or ~8+ files is under-decomposed — split it further along the next natural seam. Order risk-first within the dependency constraints: schedule the most uncertain sub-phase as early as its blockers allow so it fails fast.
+
+Wide-refactor exception (per `workspace/kb/general/workflow.md 2026-07-10 → to-tickets`): a mechanical change with codebase-wide blast radius (rename, signature/type change, dep swap) does not fit the code-layer model — it cuts horizontally across every layer at once. Sequence it **expand → migrate → contract** instead: add the new form beside the old, migrate call sites in blast-radius batches (per package/dir, each keeping gates green), delete the old form last. Model these as sequential sub-phases with the contract phase depending on all migrate phases.
+
 **Step 3 — Write state file:**
 Create `workspace/tmp/fsd-phases-{branch_slug}.md`:
 

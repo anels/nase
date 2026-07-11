@@ -74,6 +74,8 @@ Use `sizeGate.total_lines` and `sizeGate.diff_mode` before fetching the diff:
 
 **PR size gate:** if `sizeGate.review_warning` is true, warn: "This PR is {N} lines — single-pass review reliability drops significantly. Consider splitting by concern before deep review." User decides whether to proceed.
 
+**Fan-out fail-fast (validate the review target before Step 3).** A bad base ref or empty diff should fail *here*, not inside parallel specialists (adapted from `mattpocock/skills → code-review`; see `workspace/kb/general/workflow.md 2026-07-10`). Before launching any specialist: confirm `pr.baseRefName`/`headRefName` resolved and `diffStat.total_lines > 0` (or `changedFiles` non-empty). If the diff is empty, the PR is already merged/closed with no delta, or the base is unresolved → stop and report the exact state (e.g. "0-line diff — PR already merged or base/head mismatch"); do not spawn specialists against nothing.
+
 ## Step 2.5 — Collect context
 
 Before judging the implementation, write a private review frame. Use it to guide the rest of the review and show it in the final answer.
@@ -331,6 +333,8 @@ Rate each dimension 1-5 from diff/tests/PR description. One phrase per row; aver
 | **Overall** | **N/5** | **one-sentence verdict** |
 
 Score guide: 5 exemplary, 4 solid, 3 adequate, 2 needs work, 1 significant gaps. N/A dimensions excluded.
+
+**Do not blend spec-fit into a code-quality average.** A failing **Problem fit** (implements the wrong thing / doesn't solve the stated problem) is not offset by high Logic/Design/Code-quality — a PR can be clean *and* wrong (adapted from `mattpocock/skills → code-review` two-axis "never pick a cross-axis winner"). The **Overall** verdict must state a low Problem-fit explicitly rather than averaging it away; when spec-fit and code-quality diverge, name both in the one-sentence verdict.
 
 **Internal only — never post this scorecard to GitHub.**
 

@@ -152,6 +152,16 @@ Writing guidelines:
 - One skill = one goal; if you're cramming two workflows into one file, split them
 - **MCP tool name verification**: if the skill references any MCP tools (e.g. `mcp__plugin_slack_slack__*`, `mcp__plugin_atlassian_atlassian__*`), verify each tool name against the current session's available tool list before writing. Wrong MCP tool names fail silently at runtime — the skill appears correct but produces no results when executed
 
+### 5.5. Failure-mode self-review (before writing)
+
+Run the staged draft against `.claude/docs/skill-authoring-contract.md → §11 Authoring self-review`. This exists because a freshly-generated skill is exactly where the six failure modes creep in — a mined pattern tends to arrive over-specified and padded with lines the model already obeys. Scan for and fix:
+- **No-op** — delete any step the model would do by default (test each sentence in isolation: does it change behavior vs no instruction?). A weak "be thorough" becomes a stronger leading word or gets cut.
+- **Negation** — rewrite bare prohibitions as the positive target; keep a ban only when the target is unphraseable positively.
+- **Premature completion** — every step ends on a checkable completion criterion; make the demanding ones exhaustive ("every X accounted for", not "produce a list of X").
+- **Duplication / Sediment / Sprawl** — one source of truth per meaning; if the body nears the length limit, push detail behind a reference pointer.
+
+Then set invocation type by cost (§11): default user-invoked (`disable-model-invocation`-style, zero context load) unless the agent or another skill must reach it on its own — model-invoked pays permanent per-turn context load, so it earns its keep only when auto-discovery is required.
+
 ### 6. Cross-reference lessons
 
 If the extracted skill captures a hard-won lesson (not just a procedural template), append a brief entry to `workspace/tasks/lessons.md` noting the pattern and why it matters.
