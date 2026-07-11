@@ -162,24 +162,12 @@ else
 fi
 
 manual_wrapper="$repo/.claude/commands/nase/workspace/manual-deploy.md"
-manual_native="$repo/.claude/skills/nase-workspace-manual-deploy/SKILL.md"
-if [ -f "$manual_wrapper" ] && [ -f "$manual_native" ]; then
+if [ -f "$manual_wrapper" ]; then
   assert_contains "wrapper forwards manual-only invocation" "$(cat "$manual_wrapper")" "disable-model-invocation: true"
   assert_contains "wrapper forwards parameter metadata" "$(cat "$manual_wrapper")" 'argument-hint: "<repo> <branch>"'
   assert_contains "wrapper forwards context metadata" "$(cat "$manual_wrapper")" "context: fork"
-  manual_native_content=$(cat "$manual_native")
-  assert_contains "native skill forwards manual-only invocation" "$manual_native_content" "disable-model-invocation: true"
-  assert_contains "native skill forwards parameter metadata" "$manual_native_content" 'argument-hint: "<repo> <branch>"'
-  if grep -qF "user-invocable: false" <<<"$manual_native_content"; then
-    report=1
-    printf 'FAIL  native manual skill is not contradictory\n' >&2
-    fail=$((fail + 1))
-  else
-    printf 'PASS  native manual skill is not contradictory\n'
-    pass=$((pass + 1))
-  fi
 else
-  printf 'FAIL  manual-only skill mirrors generated\n' >&2
+  printf 'FAIL  manual-only skill wrapper generated\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -200,18 +188,11 @@ else
 fi
 
 native_skill="$repo/.claude/skills/nase-workspace-read-only/SKILL.md"
-if [ -f "$native_skill" ]; then
-  printf 'PASS  native workspace skill generated\n'
+if [ ! -e "$native_skill" ]; then
+  printf 'PASS  native workspace skill is not generated\n'
   pass=$((pass + 1))
-  native_content=$(cat "$native_skill")
-  assert_contains "native skill has generated marker" "$native_content" "<!-- NASE-GENERATED-WORKSPACE-SKILL; source: workspace/skills/read-only.md -->"
-  assert_contains "native skill is hidden from slash commands" "$native_content" "user-invocable: false"
-  assert_contains "native skill forwards allowed-tools" "$native_content" "allowed-tools: Bash(read-only:*)"
-  assert_contains "native skill forwards disallowed-tools" "$native_content" "disallowed-tools:"
-  assert_contains "native skill keeps source body" "$native_content" "Read only."
-  assert_equals "native skill file mode is readable" "$(file_mode "$native_skill")" "644"
 else
-  printf 'FAIL  native workspace skill generated\n' >&2
+  printf 'FAIL  native workspace skill should not be generated\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -224,7 +205,7 @@ else
 fi
 
 if [ ! -e "$repo/.claude/skills/nase-workspace-orphan" ]; then
-  printf 'PASS  orphaned generated native skill removed\n'
+  printf 'PASS  generated native skill mirror removed\n'
   pass=$((pass + 1))
 else
   printf 'FAIL  orphaned generated native skill removed\n' >&2

@@ -61,7 +61,7 @@ assert_contains "request-review uses slack surface" ".claude/commands/nase/reque
 assert_contains "discuss-pr uses review-comment surface" ".claude/commands/nase/discuss-pr.md" 'surface=github-review-comment'
 assert_contains "address-comments uses review-reply surface" ".claude/commands/nase/address-comments.md" 'surface=github-review-reply'
 assert_contains "address-comments re-review ping uses slack surface" ".claude/commands/nase/address-comments.md" 'surface=slack-dm'
-assert_contains "fsd uses PR body surface" ".claude/commands/nase/fsd.md" 'surface=github-pr-body'
+assert_contains "FSD delivery gates use PR body surface" ".claude/docs/fsd-delivery-gates.md" 'surface=github-pr-body'
 assert_contains "prep-merge uses PR body surface" ".claude/commands/nase/prep-merge.md" 'surface=github-pr-body'
 
 assert_not_contains "request-review avoids review-this template" ".claude/commands/nase/request-review.md" 'Could you help review this\?'

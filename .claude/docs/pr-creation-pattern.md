@@ -4,6 +4,8 @@ Shared sequence for skills that create or update pull requests on GitHub (`fsd`,
 
 Before drafting any PR title or body, follow `.claude/docs/voice-profile-routing.md` with `surface=github-pr-body`.
 
+This doc covers template discovery, body drafting, title=subject, and co-authors. For the repo's *merge-blocking* constraints on the title, body, and size (ticket-key placement, required sections + minimum lengths, size buckets that mandate `## How to Review`), the caller applies `.claude/docs/pr-gates-consumption.md` §3 with the `gate_profile` it loaded — the two compose: this doc shapes the template, the gate profile makes it clear CI.
+
 ---
 
 ## 1. Discover PR Template

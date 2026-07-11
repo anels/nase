@@ -109,133 +109,13 @@ For design/elegance review, compare with adjacent implementations and propose an
 
 **Audit-PR list re-grep:** if the PR title/body signals exclusion-list pruning, blanket rule narrowing, allowlist removal, or similar audit work, re-grep every *remaining* entry against the same policy used for the removals. Treat it as "re-audit the full list against the new policy", not "verify the named removals". Flag sibling entries that match the same anti-pattern but escaped the cut.
 
-## Step 2.6 — Sense Check (4 pillars)
+## Step 2.6 - Sense Check and Review Frame
 
-Mandatory private evaluation before Step 3. The result must be surfaced early in Step 6 — even when every pillar passes. This block exists because diff-scope (4a), code-matches-description (4b), and verification matrix (5.5) live in different sections and reviewers (and you) miss them when scattered.
+Follow `.claude/docs/pr-review-verification.md → Review Frame and Specialist Selection` before launching specialists. Record the four-pillar verdicts for Step 6, then select only the review lenses the risk map warrants.
 
-Use this to answer four explicit questions about the PR before any specialist runs:
+## Step 3 - Build Risk Map, Select Specialists, and Engage Existing Comments
 
-**Pillar 1 — Scope alignment**
-- Extract Jira keys from PR body / title / branch name. Match `[A-Z]+-\d+` (most UiPath projects use `IN-####`); also accept Linear keys when the repo KB references Linear.
-- If a Jira key is found: fetch the ticket via Atlassian MCP `getJiraIssue` (`cloudId` from `workspace/config.md`). Compare ticket summary + description + acceptance criteria against diff scope.
-  - Diff is a strict subset of Jira AC and PR body does not document the partial delivery → flag as ⚠️ partial scope.
-  - Diff exceeds Jira AC (extra files, unrelated edits) and PR body does not justify the extension → flag as ⚠️ scope creep.
-  - MCP unavailable / ticket access denied → mark `Scope` evidence as `Jira fetch skipped: MCP unreachable` and fall back to description-only comparison.
-- If no Jira key is found: compare diff against the PR body's stated change list. Every diff file should map to a body claim; every body claim should map to at least one diff file. Asymmetries become findings.
-
-**Pillar 2 — Rationale soundness**
-- Read Step 2.5 Problem/Old/New/Constraints and ask: given that problem statement, does the chosen approach make sense?
-- Consider one realistic alternative reachable from KB or adjacent code (e.g., feature flag instead of full removal, targeted patch instead of refactor, library upgrade instead of vendoring). If the alternative is concretely simpler/safer/cheaper, surface it as ⚠️; otherwise note the rationale is sound.
-- Do **not** invent alternatives that contradict known platform prohibitions or that the PR body explicitly addresses.
-
-**Pillar 3 — Out-of-scope changes**
-- Walk the changed-file list. For each file, ask: is this directly required by the stated problem?
-- Flag drive-by formatting, unrelated refactors, surprise dependency bumps, leftover debug code, generated-file churn, and unrelated config edits. One ⚠️ per cluster, not per file.
-- Test fixtures and tests for the changed surface are in-scope by default — do not flag.
-
-**Pillar 4 — Test sufficiency**
-- Reuse the Step 5.5 verification matrix result. Verdict here is a one-symbol summary:
-  - ✅ — recommended bar met **and** PR-description test plan present
-  - ⚠️ — partial: either plan missing or one matrix layer untested
-  - ❌ — no plan and no executed verification for non-trivial behavior change
-- ❌ on a non-trivial change is automatically a `[MED]` finding (already emitted by Step 5.5 §4 as `Verification gap`) — do not duplicate as a separate finding here.
-
-Record each pillar's verdict + evidence in a private scratchpad; render in Step 6.
-
-## Step 3 — Build risk map, select specialists, and engage existing comments
-
-Before launching any specialist agents, build a private risk map. This avoids running every specialist on every PR.
-
-Risk map rows:
-
-| Area | Signals | Risk | Specialist(s) |
-|------|---------|------|---------------|
-| Problem fit | unclear body, linked issue mismatch, core path not touched | low/med/high | Problem fit |
-| Logic | state transitions, null/default changes, async, retries, persistence | low/med/high | Logic correctness |
-| Design | new abstraction, duplicated flow, changed boundary, many files | low/med/high | Design/elegance, Architecture |
-| Security | auth, tenant isolation, secrets, external input, telemetry export | low/med/high | Security |
-| Verification | non-trivial behavior, missing tests, migration/deploy path | low/med/high | Testability |
-| Review history | recurring comments, same files recently reverted, old decisions | low/med/high | Git history |
-| Comments/docs | comments changed or code contradicts existing comments | low/med/high | Code comments |
-| Pipeline/data | ETL, SQL, EventHub/Queue/Timer, LookerML, Avro/Parquet | low/med/high | Pipeline gates |
-| AI-slop self-review | self-authored PR; no-op/churn-only diff, filler description, leaked assistant phrasing, agent-report voice | low/med | AI-slop self-check |
-
-Selection rule:
-- Always cover `Problem fit`, `Logic correctness`, and `Testability` in the main review pass — these plus `Security` (whenever its signals fire) are the always-on hard gate; every other lens is change-scoped.
-- Spawn a specialist only when its risk row is `med` or `high`, or the user explicitly requested that focus.
-- Skip `Security`, `Git history`, `Code comments`, and `Pipeline gates` when their trigger signals are absent — match the lens to the change class (e.g. a backend-only PR skips any UI/design lens).
-- Run `AI-slop self-check` **only when the PR author login is one of the user's own GitHub accounts** (`work_gh_account` / `personal_gh_account` from `workspace/config.md`). Never run it on a teammate's PR — judging whether someone else's contribution "looks AI-generated" is low-value and adversarial. It is a self-nudge, not a reviewer verdict.
-- Run Codex second-opinion only for high-risk PRs, security-sensitive PRs, large diffs, unfamiliar core areas, or explicit user request.
-- Show the selected specialist list in the final output so omissions are auditable.
-
-**Pipeline-touch detection:** if diff touches `*.sql`, ETL/ingestion/aggregation paths, Avro/Parquet, Databricks notebooks, LookerML, or EventHub/Queue/Timer Functions, add the Pipeline gates agent.
-
-| Agent | Focus |
-|-------|-------|
-| **Problem fit** | Whether the PR solves the framed problem end-to-end without overreaching or leaving the main gap open |
-| **Logic correctness** | Branch conditions, state transitions, null/default behavior, async/race risks, idempotency, data loss, bad fallbacks |
-| **Design/elegance** | Whether a simpler local pattern, clearer API boundary, smaller abstraction, or less duplicated flow would solve the same problem better |
-| **Architecture** | DRY violations, KISS violations, layering issues, SRP violations, abstraction quality |
-| **Security** | Input validation, header injection, credential exposure, SSRF, auth bypass risks |
-| **Testability** | Missing coverage for new paths, tests that only chase signatures, untestable designs. **Also emit a verification-bar recommendation** (see Step 5.5 classification) and check the PR body for a test plan section — if absent for any non-trivial change, emit a `[MED]` finding tagged `Verification gap`. |
-| **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
-| **Code comments** | Violations of guidance in inline comments, stale or contradicted comments |
-| **Pipeline gates** (conditional) | Three Meta-style gates for pipeline changes — see below |
-| **AI-slop self-check** (conditional, self-authored only) | Heuristic self-nudge that the PR reads like unedited AI output — see below |
-| **Codex second-opinion** (conditional) | Cross-model pass via Codex MCP — see below |
-
-**Pipeline gates agent** — spawn only when pipeline-touch detected:
-
-1. **Correctness** — does the PR show evidence of row-count + checksum + business-aggregate comparison vs the prior pipeline on a representative window (≥ 7 days of partitions)? Acceptable evidence: backfill diff log linked in PR body, a comparison query referenced in description, a validation test added. Missing → flag as 🔧 needs-fix with severity proportional to blast radius.
-2. **Landing latency** — does the change risk regressing landing latency vs legacy? Look for: new joins on large tables without explicit index, removed parallelism, additional serial waits, new external calls in the hot path. Flag candidates and ask author for evidence (perf test result, EXPLAIN ANALYZE, prior-run timing).
-3. **Resource utilization** — does the change increase compute / IO / cost vs legacy? Look for: new full scans, removed pushdown filters, larger shuffle, additional materialization, more aggressive retry. Flag candidates and ask author for evidence (warehouse credit estimate, DBU diff, query profile).
-
-Output exactly the three gates plus per-gate verdict: ✅ evidenced / ⚠️ unclear / 🔧 missing. If any gate is 🔧 missing for a production pipeline, score as `[HIGH]` (≥80) at minimum.
-
-**AI-slop self-check** — spawn only on a self-authored PR (gate above). Adapted from SlopGuard's static heuristics, scoped to *your own* output so you fix it before reviewers see it. Scan the diff + PR description for:
-
-- **No-op / churn-only** — whitespace, reorder-only, comment-only, or generated-file churn with no behavior change masquerading as a real change.
-- **Filler description** — content-free praise ("comprehensive solution", "robust implementation"), restating the diff in prose, or a body that never states the actual problem.
-- **Leaked assistant phrasing** — "Here's the…", "I've implemented…", "Let me…", "Note that…", emoji-section headers, or other unedited-LLM tells in code comments, the PR body, or commit messages.
-- **Agent-report voice** — narrating what was done as a transcript ("First I…, then I…") instead of describing the change.
-- **Comment slop** — comments restating the code line they sit above, or `// TODO`/placeholder left by generation. (Cross-check `Code comments` lens; do not double-count.)
-
-This lens is **advisory only**: cap every finding at `[MED]`, render in the Step 6 findings tier tagged `self-review`, and never draft an inline comment from it. Skip any signal already raised by another pillar — scope creep is Pillar 3, premature abstraction is Design/elegance. If nothing fires, say so in one line. The point is a pre-reviewer cleanup pass (`/nase:simplify` territory), not a severity gate.
-
-**Codex second-opinion agent** — conditional per the risk-map selection rule above. Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly if MCP is not loaded:
-
-- `cwd` = absolute repo path
-- `prompt` = `{repo_name} / PR #{pr_number} — {pr_title}`, PR diff (or diff stat + top changed file snippets for PRs >5000 lines), and one-line summary of each queued Claude finding so Codex looks for new angles without duplicates
-- `developer-instructions` = the `review` template verbatim, with `{focus_areas}` set to the same focus list passed to the Claude specialists
-- `sandbox` = `read-only`
-
-Run Codex in parallel. Parse `[SEV] file:line — issue. Fix: action.`, score via Step 4, tag `[codex]`; if Claude and Codex flag same file/line, tag `[claude+codex]` and add +10 confidence capped at 100.
-
-**While agents run — triage existing comments** (if any):
-
-Auto-classify unresolved threads and present a confirmation table:
-
-| # | File:Line | Author | Summary | Auto-classification |
-|---|-----------|--------|---------|-------------------|
-| 1 | `foo.ts:42` | @alice | "null check missing" | 🔧 needs-fix |
-| 2 | `bar.ts:10` | @bob | "why not use X?" | 💬 needs-reply |
-| 3 | `baz.ts:99` | @alice | "nit: rename" | ✅ can-resolve |
-
-Classification rules:
-- 🔧 **needs-fix** — reviewer identified a concrete defect or missing guard; code change required
-- 💬 **needs-reply** — a question or design discussion; reply needed, may or may not require code change
-- ✅ **can-resolve** — nit/style/already addressed; safe to resolve without action
-- 🔍 **needs-research** — unclear without more context; look into code or Confluence before deciding
-
-Ask "Does this look right? Any to change?" Research each 🔍 item before final classification.
-
-Apply `.claude/docs/pr-review-verification.md` §4 and §5 on every classification pass.
-
-**Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only; do not react, reply, resolve, or post a review.
-
-**Duplicate-of-N reframe check:** when a candidate finding would be dismissed as "duplicate of PR #N" or "superseded by #N", open #N's body + commits first. If #N explicitly defers the surface now being changed (`This PR does NOT change X`, unchecked `[ ]` items, "follow-up planned"), the PRs are complementary, not duplicate — the finding stands.
-
-Collect the final classifications. This skill never posts reactions, replies, resolves, or reviews.
+Continue the same shared workflow. It owns pipeline-touch handling, self-authored AI-slop review, conditional Codex review, and read-only triage of existing comments.
 
 ## Step 4 — Score, tier, and filter (after agents complete)
 

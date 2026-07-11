@@ -69,14 +69,15 @@ check_contains "deploy cancellation has its own action token" "$deploy" 'CANCEL_
 check_absent "deploy does not default CI skips to true" "$deploy" 'CI skips** (all `true`)'
 
 for mutation_skill in \
-  .claude/commands/nase/fsd.md \
   .claude/commands/nase/address-comments.md \
   .claude/commands/nase/prep-merge.md \
   .claude/docs/github-queries.md
 do
   check_contains "${mutation_skill} uses payload-bound GitHub actions" "$mutation_skill" "external-write-action.py"
 done
-check_contains "FSD cleans private PR body files" .claude/commands/nase/fsd.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
+check_contains "FSD uses delivery gate guard" .claude/commands/nase/fsd.md "fsd-delivery-gates.md"
+check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-delivery-gates.md "external-write-action.py"
+check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-delivery-gates.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 check_contains "address-comments cleans private PR body files" .claude/commands/nase/address-comments.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 check_contains "prep-merge cleans private PR body files" .claude/commands/nase/prep-merge.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 

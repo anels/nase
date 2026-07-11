@@ -32,8 +32,7 @@ trap 'rm -f "$BUFFER"' EXIT
 
 synced=0
 removed=0
-native_synced=0
-native_removed=0
+legacy_native_removed=0
 
 extract_frontmatter_block() {
   local key="$1"
@@ -222,14 +221,15 @@ PYEOF
     fi
   fi
 
-  # Item 6 — sync workspace/skills/ → .claude/commands/nase/workspace/ and
-  # hidden native Claude Code skills under .claude/skills/nase-workspace-*.
+  # Item 6 - sync workspace/skills/ → .claude/commands/nase/workspace/.
+  # Do not create hidden native mirrors: they duplicate command discovery and
+  # allow the same operational workflow to be model-invoked twice.
   SKILLS_DIR="$NASE_ROOT/workspace/skills"
   CMDS_DIR="$NASE_ROOT/.claude/commands/nase/workspace"
   NATIVE_SKILLS_DIR="$NASE_ROOT/.claude/skills"
   NATIVE_MARKER="<!-- NASE-GENERATED-WORKSPACE-SKILL"
   if [ -d "$SKILLS_DIR" ]; then
-    mkdir -p "$CMDS_DIR" "$NATIVE_SKILLS_DIR"
+    mkdir -p "$CMDS_DIR"
     for skill_file in "$SKILLS_DIR"/*.md; do
       [ -f "$skill_file" ] || continue
       name=$(basename "$skill_file" .md)
@@ -239,8 +239,8 @@ PYEOF
       fi
       cmd_file="$CMDS_DIR/$name.md"
       # Extract frontmatter fields. `description` prefers frontmatter, else first non-empty body line.
-      # Runtime invocation, tool, and parameter metadata must have one source of truth:
-      # the local source skill. Keep wrappers and native mirrors in parity.
+      # Runtime invocation, tool, and parameter metadata have one source of truth:
+      # the local source skill.
       desc=$(extract_skill_description "$skill_file")
       disable_model_invocation=$(extract_frontmatter_block "disable-model-invocation" "$skill_file")
       desc=$(printf '%s' "$desc" | compact_skill_description | yaml_double_quote_escape)
@@ -267,35 +267,6 @@ PYEOF
         chmod 0644 "$cmd_file" 2>/dev/null || true
       fi
 
-      native_dir="$NATIVE_SKILLS_DIR/nase-workspace-$name"
-      native_file="$native_dir/SKILL.md"
-      mkdir -p "$native_dir"
-      chmod 0755 "$native_dir" 2>/dev/null || true
-      next_native_file=$(mktemp "$native_dir/.SKILL.XXXXXX")
-      {
-        printf '%s\n' '---'
-        printf 'description: "%s"\n' "$desc"
-        if [ -n "$disable_model_invocation" ]; then
-          printf '%s\n' "$disable_model_invocation"
-        else
-          printf 'user-invocable: false\n'
-        fi
-        for key in argument-hint when_to_use model effort context agent allowed-tools disallowed-tools; do
-          block=$(extract_frontmatter_block "$key" "$skill_file")
-          [ -n "$block" ] && printf '%s\n' "$block"
-        done
-        printf '%s\n\n' '---'
-        printf '%s; source: workspace/skills/%s.md -->\n\n' "$NATIVE_MARKER" "$name"
-        skill_body_without_frontmatter "$skill_file"
-      } > "$next_native_file"
-      chmod 0644 "$next_native_file"
-      if [ ! -f "$native_file" ] || ! cmp -s "$next_native_file" "$native_file"; then
-        mv "$next_native_file" "$native_file"
-        native_synced=$((native_synced + 1))
-      else
-        rm -f "$next_native_file"
-        chmod 0644 "$native_file" 2>/dev/null || true
-      fi
     done
     # Clean up orphaned stubs whose source files no longer exist
     for cmd_file in "$CMDS_DIR"/*.md; do
@@ -306,20 +277,16 @@ PYEOF
         removed=$((removed + 1))
       fi
     done
+    # Remove pre-existing generated mirrors while preserving hand-written skills.
     for native_file in "$NATIVE_SKILLS_DIR"/nase-workspace-*/SKILL.md; do
       [ -f "$native_file" ] || continue
       grep -qF "$NATIVE_MARKER" "$native_file" || continue
-      source_name=$(sed -nE 's/.*source: workspace\/skills\/([^/]+)\.md.*/\1/p' "$native_file" | head -1)
-      [ -n "$source_name" ] || continue
-      if [ ! -f "$SKILLS_DIR/$source_name.md" ]; then
-        rm -rf "$(dirname "$native_file")"
-        native_removed=$((native_removed + 1))
-      fi
+      rm -rf "$(dirname "$native_file")"
+      legacy_native_removed=$((legacy_native_removed + 1))
     done
     [ "$synced" -gt 0 ] && echo "[session-start] synced $synced skill(s) from workspace/skills/ → /nase:workspace:*"
     [ "$removed" -gt 0 ] && echo "[session-start] removed $removed orphaned skill stub(s) from .claude/commands/nase/workspace/"
-    [ "$native_synced" -gt 0 ] && echo "[session-start] synced $native_synced native workspace skill mirror(s)"
-    [ "$native_removed" -gt 0 ] && echo "[session-start] removed $native_removed orphaned native workspace skill mirror(s)"
+    [ "$legacy_native_removed" -gt 0 ] && echo "[session-start] removed $legacy_native_removed generated native workspace skill mirror(s)"
   fi
 
   # Item 8 — suggest /nase:reflect when today has commits
@@ -347,7 +314,7 @@ PYEOF
 # Emit consolidated SessionStart JSON envelope. reloadSkills:true is set when
 # the skill-sync block mutated stub files (see top-of-file comment).
 RELOAD="false"
-if [ "$synced" -gt 0 ] || [ "$removed" -gt 0 ] || [ "$native_synced" -gt 0 ] || [ "$native_removed" -gt 0 ]; then
+if [ "$synced" -gt 0 ] || [ "$removed" -gt 0 ] || [ "$legacy_native_removed" -gt 0 ]; then
   RELOAD="true"
 fi
 

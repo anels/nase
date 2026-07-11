@@ -51,6 +51,7 @@ When compacting, preserve active repo/path/branch, current task/plan, changed fi
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
 - For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` and link checks skip if the tools are missing; CI still runs them).
+- If `check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive: inspect it locally, remove or rotate it as appropriate, then rerun. Never stage it or suppress the gate.
 
 ### Logging & External Services
 - Append real-time one-line entries to `workspace/logs/YYYY-MM-DD.md` for completions, mistakes, user corrections, and decisions. Format: `.claude/docs/daily-log-format.md`.
@@ -81,7 +82,7 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 Hook registrations live in `.claude/settings.json`; hook behavior and file layout are summarized in `.claude/docs/reference.md`. Read those only when debugging or changing hooks.
 
 ### Workspace Skills Syncing
-`session-start.sh` syncs `workspace/skills/*.md` to `.claude/commands/nase/workspace/`; each becomes `/nase:workspace:<name>`. Add a skill by creating `workspace/skills/<name>.md` and restarting.
+`session-start.sh` syncs `workspace/skills/*.md` to `.claude/commands/nase/workspace/`; each becomes `/nase:workspace:<name>`. It removes legacy generated native mirrors to avoid duplicate model invocation. Add a skill by creating `workspace/skills/<name>.md` and restarting.
 
 ### CLAUDE.md Content Rules
 No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.

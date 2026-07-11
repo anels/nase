@@ -8,6 +8,8 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - [README](../../README.md) owns the command overview and setup guidance.
 - Slack draft styling routes through `voice-profile-routing.md`; read `workspace/communication-style.md` only for high-stakes or ambiguous drafts.
 - Use `rg --files .claude/docs .claude/scripts` to discover a shared doc or helper, then read only the needed file.
+- FSD delivery gates: `fsd-delivery-gates.md` owns the conditional self-review, pre-push, PR, verification-matrix, and KB controls.
+- PR next-step handoff: `pr-next-step-handoff.md` owns the explicit follow-on workflow choices after comment resolution.
 
 ## Execution Style
 
