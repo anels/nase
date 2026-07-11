@@ -30,6 +30,12 @@ Read the effort doc's frontmatter `repo:` field.
 
 Hold the resolved absolute path as `repo_path`. All codebase exploration in Step 4 runs against `repo_path`.
 
+## Step 2.5: Ground the mechanism premise
+
+Before building the decision tree, verify the plan's **load-bearing mechanism premise** — the 1-2 assumptions about how an external repo, pipeline, or system actually works that the plan's core approach rests on (e.g. "the cert job is separate", "AppGw config is imperative az", "this pipeline stage runs before that gate"). Fetch + grep the authority repo/pipeline (`repo_path` or the external source named in the plan) for those specific decision points and confirm each holds. If a premise is wrong, correct the plan body first, then build the tree.
+
+A grill run on an ungrounded premise multiplies the wrong model across every branch — the whole tree, and the rounds spent resolving it, are wasted when the premise flips only late (the failure this guards against). Step 4b resolves per-branch questions but does **not** re-validate the shared premise the tree is built from, so it must be grounded here. Keep this scoped to the load-bearing premise only — this is not a full re-research of the design (the main `/nase:design` flow's Phase 2b does that); a grill just cannot afford to skip the one check its entire tree depends on.
+
 ## Step 3: Build Decision Tree
 
 Read the plan content (effort doc body or raw text). Extract every branch where a real decision is implied or unresolved. Sources of branches:

@@ -157,6 +157,7 @@ Scan the scored findings (from Step 4) and flag any that meet these criteria:
 - **Cross-boundary assumption**: the finding assumes something about a caller, downstream consumer, or deployment environment that isn't visible in the diff
 - **Pattern divergence**: the diff follows a pattern from another controller/service but omits a step that the reference implementation includes (e.g., a validation, a Content check, a type conversion) — unclear if the omission is intentional or a gap
 - **Activation-PR scope**: the PR is the last in a multi-PR migration that activates dormant infrastructure from earlier PRs. Small diff, large blast radius. Walk every newly live entry point, cross-boundary auth/scope check, and test path that becomes load-bearing only with this PR. If a scoping gap is found, recommend splitting activation so the fix lands before the seed.
+- **Transitive CI/workflow guarantee**: a small CI/workflow YAML diff whose correctness rests on a guarantee outside the diff — an external action's source/await-semantics, an SDK exit-code contract, or a file fetched at runtime. The diff looks trivial but the load-bearing behavior lives elsewhere; trace it before accepting the author's justification.
 
 Goal: trace when it can move a finding to confirmed or dropped.
 
@@ -165,6 +166,7 @@ Goal: trace when it can move a finding to confirmed or dropped.
 For each deep-dive candidate, spawn an Explore agent (role: worker) to trace the code path. Give each agent:
 - The specific question to answer (e.g., "does `DashboardService.GetDashboardAsync` do `Enum.TryParse` internally when it receives a non-enum sourceType string?")
 - Where to look (the implementation repo if known from KB, NuGet package source, or the current repo)
+- When the claim rests on a pinned action/template/dependency, verify it at the **exact revision actually consumed** (tag/SHA/version), not the source repo's default branch — which drifts. Read the production blob at that ref: e.g. `gh api repos/{o}/{r}/contents/{path}?ref={tag-or-sha} --jq .content | base64 -d`, or the equivalent for the registry/host in play.
 - What to report: the concrete code path, whether the concern is confirmed or refuted, and evidence (file:line)
 
 Run traces in parallel. If source is unavailable, keep as "ask the author" and say what could not be verified.

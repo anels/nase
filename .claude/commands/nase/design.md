@@ -153,6 +153,7 @@ Before committing to an approach, run the gates that fit the work per `.claude/d
 - **Bug-shaped work** → **repro gate** (B1: reliable reproduction / failing test / MRE before designing a fix) and **root-cause gate** (B2: 5 Whys / Fishbone / Fault Tree to the originating cause, not the symptom). Record both in the design's Context.
 - **Any assumption about scale / usage / traffic / current behavior** → **prod-data validation gate** (B3): validate against telemetry/logs, or flag the assumption as a Risk / `[NEEDS CLARIFICATION]`.
 - **Any code change** → **unit-test-gap analysis** (B4): map existing coverage of the area, name the gaps the change exposes; the implementation plan assigns tests against them.
+- **Coverage-backfill work** → **coverage-baseline gate**: before decomposing the effort into per-PR steps, pull the real Sonar baseline (`api/measures/component_tree?metricKeys=coverage,uncovered_lines,ncloc` per in-scope component) and compare against the repo's `coverageExclusions` + `[ExcludeFromCodeCoverage]` list. Do not size or lock a per-PR split on local Cobertura numbers — they diverge (Cobertura ignores Migrations and `[ExcludeFromCodeCoverage]`, inflating the denominator), so a decomposition can target a criterion Sonar already reports met. Cache the baseline to `workspace/tmp/sonar-baseline-{effort}.json`. (Measuring the post-change value uses the same source — see the Validation "Coverage %" recipe below.)
 
 ### 2f. PR Packaging Analysis
 
