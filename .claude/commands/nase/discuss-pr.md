@@ -164,6 +164,7 @@ Goal: trace when it can move a finding to confirmed or dropped.
 ### 5b. Trace implementations
 
 For each deep-dive candidate, spawn an Explore agent (role: worker) to trace the code path. Give each agent:
+- **A diff-first investigation directive, inline** (do not merely cite the doc — a spawned subagent does not load it; see `.claude/docs/pr-review-verification.md` §11): start from the diff + the specific question below, `rg`/`glob` to narrow **before** reading, read exact line ranges, and batch discovery before file reads. On a failed search, retry **once** with the changed symbol/path from the diff, then report evidence-missing — never guess neighboring paths or fall into broad sweeps. Widen only to a contract the changed hunk evidences (caller of a changed symbol, imported config key, schema field, deploy contract) and cite the diff→widen link. **Before returning findings, run the §12 trace-shape self-check** (narrowed not widened? batched discovery? diff-anchored? recovered without guessing?) and flag your own result WEAK if the trace was widen-first / path-guessing.
 - The specific question to answer (e.g., "does `DashboardService.GetDashboardAsync` do `Enum.TryParse` internally when it receives a non-enum sourceType string?")
 - Where to look (the implementation repo if known from KB, NuGet package source, or the current repo)
 - When the claim rests on a pinned action/template/dependency, verify it at the **exact revision actually consumed** (tag/SHA/version), not the source repo's default branch — which drifts. Read the production blob at that ref: e.g. `gh api repos/{o}/{r}/contents/{path}?ref={tag-or-sha} --jq .content | base64 -d`, or the equivalent for the registry/host in play.
@@ -396,11 +397,13 @@ Options (multiSelect):
 - "Skip — proceed to draft" — no further dives
 ```
 
-Spawn Explore agents for selected items (same pattern as Step 5b). Update findings with evidence. Then proceed to Step 7.
+Spawn Explore agents for selected items (same pattern as Step 5b — each spawn prompt carries the inline diff-first directive and the §12 trace-shape self-check). Update findings with evidence. Then proceed to Step 7.
 
 ## Step 7 - Stage 3: draft decision
 
 This command is read-only. Ask whether to return draft comments or end without drafts. Never offer posting from this flow.
+
+**Before drafting, run the trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own main-thread investigation (Steps 4–5d): did it narrow before reading, batch discovery, stay diff-anchored, and recover from failed searches without path-guessing? Downgrade any finding that survived only a widen-first / path-guessing trace to WEAK and re-verify it before including it in the draft.
 
 ```
 Question: "Draft inline comments now?"

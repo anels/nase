@@ -712,6 +712,56 @@ else
   green "PASS"; printf ': allowed-tools wording does not claim blocking security\n'
 fi
 
+# ---------- D20: review skills wire the diff-first directive + trace-shape self-check ----------
+section "D20: review skills wire diff-first investigation + trace-shape self-check"
+d20_hits=$(python3 - <<'PY'
+from pathlib import Path
+
+# Assert the behavior-changing wiring, not just a doc citation: a future edit that
+# keeps the §11 reference but deletes the inline directive or the self-check call
+# site must fail this gate. Tokens below are what the wiring actually inserts.
+required = {
+    ".claude/docs/pr-review-verification.md": [
+        "## 11. Diff-First Investigation",
+        "## 12. Trace-Shape Self-Check",
+    ],
+    ".claude/commands/nase/discuss-pr.md": [
+        "§11",                                       # §11 block reference
+        "diff-first investigation directive, inline",     # inline directive @ Step 5b spawn
+        "inline diff-first directive",                    # inline directive @ deep-dive spawn (:397 site)
+        "trace-shape self-check",                         # self-check call site(s)
+        "§12",                                       # §12 self-check reference
+    ],
+    ".claude/commands/nase/address-comments.md": [
+        "§11",                                       # §11 block reference
+        "diff-first",                                     # diff-first dossier investigation
+        "Trace-shape self-check",                         # self-check call site
+        "§12",
+    ],
+}
+
+hits = []
+for filename, tokens in required.items():
+    path = Path(filename)
+    if not path.exists():
+        hits.append(f"  {path}: missing (expected to exist)")
+        continue
+    text = path.read_text(encoding="utf-8")
+    for token in tokens:
+        if token not in text:
+            hits.append(f"  {path}: missing required wiring token: {token!r}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d20_hits" ]]; then
+  red "FAIL"; printf ': review skills must inline the diff-first directive at both Explore spawn sites + name a trace-shape self-check call site (not just cite the doc):\n'
+  printf '%s\n' "$d20_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': diff-first directive + trace-shape self-check wired into discuss-pr and address-comments\n'
+fi
+
 # ---------- Result ---------------------------------------------------------
 printf '\n'
 if [[ $failed -eq 0 ]]; then
