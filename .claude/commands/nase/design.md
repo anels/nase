@@ -44,6 +44,8 @@ When a split is justified, minimize the count and name the dependency order. Do 
 
 ## Mode Detection
 
+Run the `## Setup` → Language preflight before this scan — it applies to every mode, including the default Auto Mode.
+
 Before Phase 1, scan `$ARGUMENTS` for mode flags. Strip the flag from `$ARGUMENTS` before downstream parsing. Check in this order — first match wins.
 
 - `--grill` present → enter **Grill Mode**: multi-persona stress-test of an existing plan, one question at a time. Skip all phases below and follow `.claude/docs/design-grill-mode.md`.
@@ -66,7 +68,11 @@ When genuinely uncertain about a requirement, ask for clarification — but pref
 
 ## Setup
 
-Follow `.claude/docs/language-config.md` — use conversation language for interview dialogue, output language for the design doc.
+### Language preflight (Step 0 — MUST run first, before Mode Detection, non-negotiable)
+
+Read `workspace/config.md` → `## Language` section. Extract `conversation:` (all chat/interview dialogue, `AskUserQuestion` prompts, the end-of-run report) and `output:` (the written design doc). **All chat output from this skill MUST be in `conversation:`.** English stays only for code identifiers, file paths, PR/Jira IDs, repo names, and structural/protocol-fixed labels. If `workspace/config.md` is missing or has no `## Language` section, default English and note it once.
+
+This preflight is not optional and is not satisfied by CLAUDE.md inheritance — the skill body and its examples are English, so without running it here the run drifts to English (observed on the default Auto Mode path, whose pipeline otherwise reaches language handling only at its final report step). Auto and Review mode docs restate it; run it regardless of which mode is detected.
 
 ## Hard Gate
 

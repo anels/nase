@@ -215,6 +215,24 @@ Parse each answer:
 
 Do not start a new Codex thread for round 2. The point is to make Codex re-check the updated design against its own first-round questions.
 
+## Step 5.6: Convergence loop
+
+Fixed two rounds under-converge. Empirically (nase design sessions), each successive Codex round can still surface NEW blocking/correctness findings — a design grilled twice was still shipping latent bugs (lagging-atom reads, invalid readiness signals, deeper coupling) that a third round caught. So loop; do not hard-code the round count.
+
+After Step 5.5, if the Codex round produced any NEW `blocking` or `suggestion`-severity finding (a real correctness/design gap, not a nit), revise the design and run another `codex-reply` round on the same `codex_grill_thread_id` with the updated snapshot plus a convergence-check prompt ("ask ONLY where a real blocking/correctness gap remains; otherwise state CONVERGED explicitly"). Repeat.
+
+If Codex was unavailable, start after Step 4 instead: revise the design, then rerun the relevant Step 3.4 persona lenses against the updated snapshot. Record those findings in `grill_resolutions` and repeat only when they add a NEW `blocking` or `suggestion` finding.
+
+Stop when either:
+- a full round yields **zero new `blocking`/`suggestion` findings** (only nits, or an explicit `CONVERGED`) — the design is stable, or
+- **5 Codex rounds total** have run (hard cap).
+
+Rules:
+- **Severity gate** — only `blocking`/`suggestion` re-open the loop; `nit`s are recorded but never trigger another round (else it chases wording forever).
+- **Structural-stability check** — evaluate convergence only after the design's shape is stable. A round that changes the shape (new component, new seam, scope change) opens new surface; its findings are the *first* round of the new shape, not proof the old shape "failed to converge". Expect the loop to run longer whenever a round restructures the design.
+- **Non-convergence = decompose signal** — if the cap is hit with blocking findings still appearing, do NOT keep grinding: that means the design is too large / entangled to converge as one doc. Recommend splitting into separate, independently-grillable efforts, record the still-open findings in `## Open after grill`, and say so.
+- When the Codex MCP is unavailable, the **same loop-until-no-new-blocking rule** governs the persona/self grill: keep running persona passes until one adds no new blocking finding, same 5-pass cap.
+
 ## Step 6: Write Back to Effort Doc
 
 Append a single block to `effort_path`. Place it AFTER the `## Lifecycle` section (so lifecycle stays adjacent to frontmatter) and BEFORE any prior `## Grill Session` block (latest-first).
@@ -249,9 +267,11 @@ Distill the resolutions into ≤7 imperative constraints downstream skills (e.g.
 Anything still unresolved (codebase exploration was inconclusive, or user deferred):
 - {item, if any — else "None."}
 
-### Codex round 2
+### Codex convergence
 
-Include only when Step 5.5 ran:
+Include only when Codex rounds ran:
+- Rounds completed: {count, 1-5}
+- Outcome: {converged / cap reached / blocked}
 - Confirmed: {count}
 - New risks resolved by evidence: {count}
 - Still needs human input: {count}
@@ -289,7 +309,7 @@ Record the result in the Grill Session block's `**Cleaned:**` line (N auto-remov
 Report to the user (conversation language):
 - Path of effort doc
 - Number of branches walked + lookups + auto-resolutions
-- Codex mutual grill status: skipped / round 1 only / round 1 + round 2, plus unresolved human-input count
+- Codex mutual grill status: skipped / {N} rounds / converged / cap reached, plus unresolved human-input count
 - 1-line summary of the most load-bearing constraint added
 - Suggest next step: `/nase:fsd {slug}` if user is ready to implement, else "Park it — surfaces in /nase:today."
 
