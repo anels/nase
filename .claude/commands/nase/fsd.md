@@ -15,6 +15,8 @@ Follows `.claude/docs/external-mutation-policy.md`: batch upfront decisions, onl
 Follows `.claude/docs/workspace-write-guard.md` for effort-doc topology/lifecycle updates and any KB writes from research findings.
 Follows `.claude/docs/repo-task-flow.md` for shared repo resolution, fetch + branch state checks, worktree setup, build/test loops, pre-push verification, commit/push, GitHub mutation gates, and cleanup/logging. This command still owns FSD planning, implementation, verification scope, and PR creation decisions below.
 
+**Language preflight (MUST run first, non-negotiable):** read `workspace/config.md` → `## Language`. Write all chat with the user — Phase 1/2 upfront options, progress notes, and the Phase 10 report — in `conversation:`; write PR title/description, commit messages, and other GitHub-bound text in `output:`. English only for code identifiers, file paths, PR/Jira IDs, and repo names. Config missing or no `## Language` section → default English, note once.
+
 ## Engineering Excellence Bar
 
 This workspace holds a high bar for the health of the tree we push. Three signals are **non-negotiable before push** — build/lint green, the full test suite green, and zero flaky tests — and they hold *regardless of whether this effort caused the problem*. A red or flaky gate you encounter is yours to fix the moment you see it; "not caused by my change" explains the failure, it does not license leaving it broken. Pushing on top of a known-red or flaky suite erodes the suite for everyone and hides the next real regression.
@@ -45,7 +47,7 @@ If $ARGUMENTS is empty: output `Usage: /nase:fsd <task description or plan>` and
 
 ## Phase 1: Infer Context (do the homework before asking anything)
 
-Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for `output:` language (default English if missing).
+Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for both `conversation:` (chat) and `output:` (PR/commit) languages (default English if missing) — see the Language preflight above.
 
 **Effort-doc intake (design handoff):** before repo inference, scan `$ARGUMENTS` tokens for a slug matching `workspace/efforts/{slug}.md`. If found, read the effort doc and extract:
 - `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.

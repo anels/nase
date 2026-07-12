@@ -11,6 +11,10 @@ effort: low
 
 Runs `.claude/scripts/help-summary.py` so command catalog rendering, command capping, KB layout scanning, and workspace-skill listing stay deterministic. The command list comes from `.claude/commands/nase/*.md` frontmatter via `.claude/scripts/command_catalog.py`; README supplies intro and hook prose. Default output is compact; pass `--verbose` for the generated command table plus full hook section.
 
+## Language
+
+Read `workspace/config.md` → `## Language` for the `conversation:` value. Translate every user-facing prose string in the helper output to that language; retain command names, paths, hook labels, and other protocol-fixed identifiers verbatim. If config is missing or has no `## Language` section, default English.
+
 ## Steps
 
 1. Locate the workspace root:
@@ -27,7 +31,7 @@ Runs `.claude/scripts/help-summary.py` so command catalog rendering, command cap
    esac
    python3 "$ROOT/.claude/scripts/help-summary.py" --root "$ROOT" "${ARGS[@]}"
    ```
-3. Return the helper output as-is. Do not re-read `README.md` unless the helper fails.
+3. Render the helper output in the configured conversation language. Do not re-read `README.md` unless the helper fails.
 
 ---
 
@@ -36,4 +40,4 @@ Runs `.claude/scripts/help-summary.py` so command catalog rendering, command cap
 - Do not hardcode the KB layout — helper scans `workspace/kb/` so it reflects current structure
 - Keep default help to a screenful; `--verbose` preserves the old full-section behavior
 - If README.md is missing, the helper still renders commands from `.claude/commands/nase/` filenames
-- Follow .claude/docs/language-config.md for conversation vs output language.
+- Follow `.claude/docs/language-config.md` for conversation vs output language.

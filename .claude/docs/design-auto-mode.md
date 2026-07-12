@@ -10,6 +10,10 @@ This is the **default** mode when `/nase:design` runs with no flag and the slug 
 
 Same as base skill: no code, no implementation, no FSD. Only the effort doc is produced.
 
+## Language preflight (Step 0 — MUST run before Step 1, non-negotiable)
+
+Read `workspace/config.md` → `## Language`. Write all chat output — the Step 4.5 `AskUserQuestion` batch and the Step 6 report — in the `conversation:` value; write the effort doc in `output:`. English stays only for code identifiers, file paths, PR/Jira IDs, repo names, and structural labels. If config is missing or has no `## Language` section, default English and note it once. Do not defer this to Step 6 — every user-facing string the pipeline emits depends on it.
+
 ## No-Ask Contract (mid-pipeline)
 
 **Never use `AskUserQuestion` mid-pipeline.** For every decision point, execute the Research Ladder first. Collect anything still unknowable into `human_input_queue` and keep going — do not stop to ask. The **one** place auto mode talks to the user is **Step 4.5**, which batches the whole queue into `AskUserQuestion` at the end, after research and grill have shrunk it to only what genuinely needs a human. Only after the ladder is exhausted does a question reach that batch.
