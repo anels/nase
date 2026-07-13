@@ -9,10 +9,10 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
 ```
 .claude/
   agents/              project-level Claude Code subagents
-  commands/nase/       slash commands (one Markdown file per command)
+  commands/nase/       compact slash-command entrypoints
     workspace/         generated /nase:workspace:* wrappers (git-ignored)
   hooks/               shell scripts wired in settings.json
-  docs/                shared algorithm docs referenced by skills
+  docs/                shared and on-demand phase docs referenced by skills
   scripts/             utility scripts (date resolution, KB search, stats)
   skills/              local Claude Code skills (git-ignored)
   roles.yaml           subagent model + effort routing
@@ -321,8 +321,8 @@ workspace/
 
 ## Where to read next
 
-- Skill source: `.claude/commands/nase/*.md` — each command is a single Markdown file with steps and rationale
-- Shared algorithm docs: `.claude/docs/*.md` — referenced from skills (kb-template, daily-log-format, repo-resolution, etc.)
+- Skill source: `.claude/commands/nase/*.md` - one compact entrypoint per command, owning its public interface, state handoffs, and standing safety rules
+- Shared and phase docs: `.claude/docs/*.md` - algorithms loaded only by the workflow phase that needs them
 - Offline evals: `evals/pr-review/` — deterministic output-shape checks for PR/review skills; scorer lives at `.claude/scripts/pr-review-eval.py`
 - Hook regression tests: `tests/hooks/` — exercise every block/allow case for `block-dangerous-git.sh`
 - CI gates: `.github/workflows/validate.yml` and `tests/check-all.sh`

@@ -43,7 +43,7 @@ Treat each surviving finding like an unresolved review thread you own:
 
 ### Scope discipline (so the loop converges)
 
-Review the **diff**, not the whole repo. For a *code-quality* finding, grep whether the pattern is **pre-existing** (`workspace/kb/general/workflow.md` § pre-existing-pattern check) — if this change didn't introduce it, log it as a follow-up; don't fix unrelated code smells here (`CLAUDE.md` "while we're at it" rejection). **Exception:** lint errors, test failures, and test flakiness are governed by the **Engineering Excellence Bar** above — those get fixed even when pre-existing, never deferred. The split is deliberate: a stray code smell is debt you may defer; a red or flaky gate is not.
+Review the **diff**, not the whole repo. For a *code-quality* finding, grep whether the pattern is **pre-existing** (`workspace/kb/general/workflow.md` § pre-existing-pattern check) - if this change didn't introduce it, log it as a follow-up; don't fix unrelated code smells here (`CLAUDE.md` "while we're at it" rejection). **Exception:** lint errors, test failures, and test flakiness follow `.claude/docs/fsd-implementation-loop.md -> Engineering Excellence Bar`; fix them even when pre-existing. A stray code smell may be deferred, but a red or flaky gate may not.
 
 ### Loop
 
