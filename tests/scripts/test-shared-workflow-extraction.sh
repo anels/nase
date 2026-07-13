@@ -45,13 +45,27 @@ assert_cmd "effort lifecycle doc exists" test -f .claude/docs/effort-lifecycle.m
 assert_cmd "repo task flow doc exists" test -f .claude/docs/repo-task-flow.md
 assert_cmd "codex verify bundle script exists" test -f .claude/scripts/codex-verify-bundle.py
 assert_cmd "FSD delivery gates doc exists" test -f .claude/docs/fsd-delivery-gates.md
+for doc in \
+  fsd-intake-and-setup \
+  fsd-implementation-loop \
+  address-comments-analysis \
+  address-comments-delivery \
+  discuss-pr-analysis \
+  discuss-pr-output
+do
+  assert_cmd "$doc phase doc exists" test -f ".claude/docs/$doc.md"
+done
 
-assert_contains "address-comments skips PR gates" .claude/commands/nase/address-comments.md 'PR Gates .* Skip'
-assert_not_contains "address-comments does not run gh pr checks" .claude/commands/nase/address-comments.md 'gh pr checks'
-assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/commands/nase/address-comments.md 'pr-gate-remediation'
-assert_not_contains "address-comments does not claim PR gates green" .claude/commands/nase/address-comments.md 'PR gates: all green'
+assert_contains "address-comments loads analysis on demand" .claude/commands/nase/address-comments.md 'address-comments-analysis\.md'
+assert_contains "address-comments loads delivery after confirmation" .claude/commands/nase/address-comments.md 'address-comments-delivery\.md'
+assert_contains "address-comments delivery skips PR gates" .claude/docs/address-comments-delivery.md 'PR Gates .* Skip'
+assert_not_contains "address-comments delivery does not run gh pr checks" .claude/docs/address-comments-delivery.md 'gh pr checks'
+assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/docs/address-comments-delivery.md 'pr-gate-remediation'
+assert_not_contains "address-comments does not claim PR gates green" .claude/docs/address-comments-delivery.md 'PR gates: all green'
 
 assert_contains "fsd uses delivery gates doc" .claude/commands/nase/fsd.md 'fsd-delivery-gates\.md'
+assert_contains "fsd loads intake on demand" .claude/commands/nase/fsd.md 'fsd-intake-and-setup\.md'
+assert_contains "fsd loads implementation loop on demand" .claude/commands/nase/fsd.md 'fsd-implementation-loop\.md'
 assert_contains "FSD delivery gates use codex bundle script" .claude/docs/fsd-delivery-gates.md 'codex-verify-bundle\.py'
 assert_contains "FSD delivery gates retain bundle repo argument" .claude/docs/fsd-delivery-gates.md 'repo.*worktree_or_repo'
 assert_not_contains "FSD delivery gates avoid unsupported bundle scope" .claude/docs/fsd-delivery-gates.md 'scope pre-push'
@@ -77,7 +91,7 @@ assert_not_contains "auto design has no stale four-source ladder" .claude/docs/d
 assert_contains "auto design respects higher-priority flags" .claude/docs/design-auto-mode.md 'routes `--grill` / `--review` to Grill/Review Mode before Auto Mode'
 assert_contains "fsd uses effort lifecycle doc" .claude/commands/nase/fsd.md 'effort-lifecycle\.md'
 assert_contains "fsd consumes design PR plan" .claude/commands/nase/fsd.md 'design_pr_plan'
-assert_contains "fsd preserves one-PR default" .claude/commands/nase/fsd.md 'Default to the design PR plan'
+assert_contains "fsd intake preserves one-PR default" .claude/docs/fsd-intake-and-setup.md 'Default to the design PR plan'
 assert_contains "FSD delivery gates draft PR create" .claude/docs/fsd-delivery-gates.md 'Create this draft PR\?'
 assert_contains "FSD delivery gates verification PR edit" .claude/docs/fsd-delivery-gates.md 'Append this Verification section to the draft PR\?'
 assert_contains "fsd conditional closure excludes blockers" .claude/commands/nase/fsd.md 'conditional.*waiver reasons named'
@@ -85,6 +99,8 @@ assert_not_contains "fsd conditional wording does not admit blockers" .claude/co
 assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
 assert_contains "prep-merge uses shared repo task flow" .claude/commands/nase/prep-merge.md 'repo-task-flow\.md'
 assert_contains "address-comments uses shared repo task flow" .claude/commands/nase/address-comments.md 'repo-task-flow\.md'
+assert_contains "discuss-pr loads analysis on demand" .claude/commands/nase/discuss-pr.md 'discuss-pr-analysis\.md'
+assert_contains "discuss-pr loads output on demand" .claude/commands/nase/discuss-pr.md 'discuss-pr-output\.md'
 assert_contains "review reference retains thread verdict contract" .claude/docs/pr-review-verification.md 'THREADS NOT ADDRESSED'
 assert_contains "review reference retains pipeline specialist" .claude/docs/pr-review-verification.md 'Pipeline gates agent'
 assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'

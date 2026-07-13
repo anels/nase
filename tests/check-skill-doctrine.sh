@@ -465,6 +465,7 @@ import re
 
 paths = [
     Path(".claude/commands/nase/fsd.md"),
+    Path(".claude/docs/fsd-intake-and-setup.md"),
     Path(".claude/docs/fsd-phase-decomposition.md"),
     Path("workspace/skills/deploy-alpha.md"),
 ]
@@ -725,18 +726,30 @@ required = {
         "## 11. Diff-First Investigation",
         "## 12. Trace-Shape Self-Check",
     ],
-    ".claude/commands/nase/discuss-pr.md": [
+    ".claude/docs/discuss-pr-analysis.md": [
         "§11",                                       # §11 block reference
         "diff-first investigation directive, inline",     # inline directive @ Step 5b spawn
-        "inline diff-first directive",                    # inline directive @ deep-dive spawn (:397 site)
         "trace-shape self-check",                         # self-check call site(s)
         "§12",                                       # §12 self-check reference
     ],
-    ".claude/commands/nase/address-comments.md": [
+    ".claude/docs/discuss-pr-output.md": [
+        "inline diff-first directive",                    # inline directive @ optional deep-dive spawn
+        "trace-shape self-check",
+        "§12",
+    ],
+    ".claude/docs/address-comments-analysis.md": [
         "§11",                                       # §11 block reference
         "diff-first",                                     # diff-first dossier investigation
         "Trace-shape self-check",                         # self-check call site
         "§12",
+    ],
+    ".claude/commands/nase/discuss-pr.md": [
+        "discuss-pr-analysis.md",
+        "discuss-pr-output.md",
+    ],
+    ".claude/commands/nase/address-comments.md": [
+        "address-comments-analysis.md",
+        "address-comments-delivery.md",
     ],
 }
 

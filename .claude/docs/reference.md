@@ -9,6 +9,9 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - Slack draft styling routes through `voice-profile-routing.md`; read `workspace/communication-style.md` only for high-stakes or ambiguous drafts.
 - Use `rg --files .claude/docs .claude/scripts` to discover a shared doc or helper, then read only the needed file.
 - FSD delivery gates: `fsd-delivery-gates.md` owns the conditional self-review, pre-push, PR, verification-matrix, and KB controls.
+- FSD progressive loading: `fsd-intake-and-setup.md` owns Phases 1-3.7; `fsd-implementation-loop.md` owns Phases 3.5-6. The command entrypoint owns the interface, state contract, delivery routing, and final report.
+- Address-comments progressive loading: `address-comments-analysis.md` owns Phases 1-4; `address-comments-delivery.md` owns Phases 5-12. Load delivery only after the user confirms execution.
+- Discuss-pr progressive loading: `discuss-pr-analysis.md` owns Steps 1-5.7; `discuss-pr-output.md` owns Step 6 through final logging. The command remains read-only.
 - PR next-step handoff: `pr-next-step-handoff.md` owns the explicit follow-on workflow choices after comment resolution.
 
 ## Execution Style

@@ -8,11 +8,11 @@ failures=0
 source "$ROOT/tests/lib/assert.sh"
 
 assert_contains "fsd has post-edit tool gate" \
-  ".claude/commands/nase/fsd.md" \
+  ".claude/docs/fsd-implementation-loop.md" \
   "Phase 5.25: Optional Post-Edit CLI Gates"
 
 assert_contains "address-comments has post-edit tool gate" \
-  ".claude/commands/nase/address-comments.md" \
+  ".claude/docs/address-comments-delivery.md" \
   "Phase 7.25: Optional Post-Edit CLI Gates"
 
 assert_contains "onboard probes baseline tools" \
@@ -40,27 +40,27 @@ assert_contains "tech-debt-audit mentions actionlint" \
   "actionlint"
 
 assert_contains "fsd probes security tools" \
-  ".claude/commands/nase/fsd.md" \
+  ".claude/docs/fsd-implementation-loop.md" \
   "--group security"
 
 assert_contains "address-comments probes security tools" \
-  ".claude/commands/nase/address-comments.md" \
+  ".claude/docs/address-comments-delivery.md" \
   "--group security"
 
 assert_contains "fsd probes ci tools" \
-  ".claude/commands/nase/fsd.md" \
+  ".claude/docs/fsd-implementation-loop.md" \
   "--group ci"
 
 assert_contains "address-comments probes ci tools" \
-  ".claude/commands/nase/address-comments.md" \
+  ".claude/docs/address-comments-delivery.md" \
   "--group ci"
 
 assert_contains "discuss-pr uses syntax-aware diff" \
-  ".claude/commands/nase/discuss-pr.md" \
+  ".claude/docs/discuss-pr-analysis.md" \
   "difft --display json"
 
 assert_contains "discuss-pr probes ci tools" \
-  ".claude/commands/nase/discuss-pr.md" \
+  ".claude/docs/discuss-pr-analysis.md" \
   "--group ci"
 
 assert_contains "onboard probes repo tools" \
