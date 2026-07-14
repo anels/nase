@@ -102,13 +102,14 @@ def sha256_file(path: Path) -> str:
 
 def file_state(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {"exists": False, "mtime_ns": "missing", "sha256": "missing"}
+        return {"exists": False, "mtime_ns": "missing", "mode": "missing", "sha256": "missing"}
     if not path.is_file():
         die(f"target is not a regular file: {path}")
     stat = path.stat()
     return {
         "exists": True,
         "mtime_ns": str(stat.st_mtime_ns),
+        "mode": format(stat.st_mode & 0o7777, "o"),
         "sha256": sha256_file(path),
     }
 
@@ -207,6 +208,178 @@ def cmd_apply(args: argparse.Namespace) -> None:
     print(json.dumps(output, indent=2, sort_keys=True))
 
 
+def cmd_apply_move(args: argparse.Namespace) -> None:
+    root = root_path(args.root)
+    source = validate_target(root, args.target)
+    destination = validate_target(root, args.destination)
+    staged = validate_staged(root, args.staged)
+    current = file_state(source)
+    if not current["exists"]:
+        die(
+            "Source does not exist; "
+            f"staged file preserved at {relpath(staged, root)}",
+            code=3,
+        )
+    if not states_match(current, args.expected_mtime_ns, args.expected_sha256):
+        die(
+            "Target changed while drafting; "
+            f"staged file preserved at {relpath(staged, root)}",
+            code=3,
+        )
+    if destination.exists():
+        die(
+            "Destination already exists; "
+            f"staged file preserved at {relpath(staged, root)}",
+            code=4,
+        )
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    nonce = f"{os.getpid()}-{time.time_ns()}"
+    tmp_destination = destination.parent / f".{destination.name}.tmp-{nonce}"
+    backup_source = source.parent / f".{source.name}.move-backup-{nonce}"
+    recovery_source = root / "workspace" / "tmp" / f"move-recovery-{nonce}{source.suffix}"
+    rollback_path = root / "workspace" / "tmp" / f"move-rollback-{nonce}{destination.suffix}"
+    destination_created = False
+    destination_identity: tuple[int, int] | None = None
+    source_moved = False
+    restored = False
+    preserve_backup = False
+    committed = False
+    staged_sha256 = sha256_file(staged)
+    source_mode = int(str(current["mode"]), 8)
+
+    def path_is_created_destination(path: Path) -> bool:
+        if not destination_created or destination_identity is None:
+            return False
+        try:
+            stat = path.stat()
+            return (
+                (stat.st_dev, stat.st_ino) == destination_identity
+                and (stat.st_mode & 0o7777) == source_mode
+                and sha256_file(path) == staged_sha256
+            )
+        except OSError:
+            return False
+
+    def created_destination_is_intact() -> bool:
+        return path_is_created_destination(destination)
+
+    def restore_source() -> tuple[bool, bool]:
+        if source.exists():
+            return False, False
+        candidate = backup_source if backup_source.exists() else recovery_source
+        if not candidate.exists():
+            return False, False
+        try:
+            os.link(candidate, source)
+        except OSError:
+            if not candidate.is_dir():
+                return False, False
+            try:
+                shutil.copytree(candidate, source)
+            except OSError:
+                return False, False
+            return True, True
+        return True, False
+
+    def rollback_destination() -> tuple[bool, Path | None]:
+        if not destination_created:
+            return False, None
+        try:
+            os.rename(destination, rollback_path)
+        except OSError:
+            return False, None
+        return True, rollback_path
+
+    def abort(message: str, code: int) -> None:
+        nonlocal preserve_backup, restored
+        restored, preserve_backup = restore_source()
+        destination_rolled_back, displaced_destination = rollback_destination()
+        recovery_note = ""
+        if source_moved and (not restored or preserve_backup):
+            preserved = backup_source if backup_source.exists() else recovery_source
+            recovery_note = f"; original preserved at {relpath(preserved, root)}"
+        destination_note = ""
+        if displaced_destination is not None:
+            destination_note = (
+                "; rolled-back destination preserved at "
+                f"{relpath(displaced_destination, root)}"
+            )
+        elif destination_created and not destination_rolled_back and destination.exists():
+            destination_note = f"; destination preserved at {relpath(destination, root)}"
+        raise GuardError(
+            f"{message}; staged file preserved at {relpath(staged, root)}"
+            f"{recovery_note}{destination_note}",
+            code,
+        )
+
+    try:
+        shutil.copyfile(staged, tmp_destination)
+        os.chmod(tmp_destination, source_mode)
+        stat = tmp_destination.stat()
+        destination_identity = (stat.st_dev, stat.st_ino)
+        os.link(tmp_destination, destination)
+        destination_created = True
+        tmp_destination.unlink()
+        if not created_destination_is_intact():
+            abort("Destination changed while moving", 5)
+
+        os.rename(source, backup_source)
+        source_moved = True
+        try:
+            backup_state = file_state(backup_source)
+        except GuardError as exc:
+            abort(str(exc), exc.code)
+        if (
+            not states_match(backup_state, args.expected_mtime_ns, args.expected_sha256)
+            or int(str(backup_state["mode"]), 8) != source_mode
+        ):
+            abort("Target changed while moving", 3)
+
+        shutil.copy2(backup_source, recovery_source)
+        try:
+            backup_state = file_state(backup_source)
+        except GuardError as exc:
+            abort(str(exc), exc.code)
+        if (
+            not states_match(backup_state, args.expected_mtime_ns, args.expected_sha256)
+            or int(str(backup_state["mode"]), 8) != source_mode
+        ):
+            abort("Target changed while preserving recovery copy", 3)
+
+        if source.exists():
+            abort("Source path was recreated while moving", 5)
+        if not created_destination_is_intact():
+            abort("Destination changed while moving", 5)
+
+        backup_source.unlink()
+        if source.exists():
+            abort("Source path was recreated while committing move", 5)
+        if not created_destination_is_intact():
+            abort("Destination changed while committing move", 5)
+        committed = True
+    except FileExistsError:
+        abort("Destination already exists", 4)
+    except OSError as exc:
+        abort(f"Move failed: {exc}", 5)
+    finally:
+        if tmp_destination.exists():
+            tmp_destination.unlink()
+        if (committed or (restored and not preserve_backup)) and backup_source.exists():
+            backup_source.unlink()
+        if (committed or (restored and not preserve_backup)) and recovery_source.exists():
+            recovery_source.unlink()
+
+    output = {
+        "applied": True,
+        "source": relpath(source, root),
+        "destination": relpath(destination, root),
+        "staged": relpath(staged, root),
+        "destination_state": file_state(destination),
+    }
+    print(json.dumps(output, indent=2, sort_keys=True))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -231,6 +404,18 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--expected-mtime-ns", required=True)
     apply.add_argument("--expected-sha256", required=True)
     apply.set_defaults(func=cmd_apply)
+
+    apply_move = sub.add_parser(
+        "apply-move",
+        help="Apply a staged file at a new path without overwriting an existing file.",
+    )
+    apply_move.add_argument("--root", default=None)
+    apply_move.add_argument("--target", required=True)
+    apply_move.add_argument("--destination", required=True)
+    apply_move.add_argument("--staged", required=True)
+    apply_move.add_argument("--expected-mtime-ns", required=True)
+    apply_move.add_argument("--expected-sha256", required=True)
+    apply_move.set_defaults(func=cmd_apply_move)
 
     return parser
 

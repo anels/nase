@@ -50,18 +50,18 @@ Before applying any status update, stage the target file change under `workspace
 
 **1b-i. Extract tracked items:**
 - From `todo.md`: find all lines containing `[ ]` (unchecked) that have GitHub PR URLs (`github.com/{owner}/{repo}/pull/{number}`) or Jira ticket keys (`[A-Z]+-\d+`). Skip `[x]` lines — they're already done.
-- From `workspace/efforts/*.md`: read each file's YAML frontmatter. **Skip** files where `status:` is `completed` or `closed`. For active files, extract PR references per `.claude/docs/effort-lifecycle.md → PR Reference Resolution` (full URLs, `owner/repo#n`, and scoped bare `#n`) plus the `jira:` key.
+- From `workspace/efforts/*.md`: read each file's YAML frontmatter. The active path itself requires reconciliation; do not skip a file because its status looks terminal. Extract structured delivery PRs per `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`, report-only PRs per `PR Reference Resolution`, dependency PRs from `blocked-by`, and the `jira:` key. Keep the three PR sets separate while normalizing/deduping them.
 
 **1b-ii. Check PR statuses (via Bash):**
 For each unique normalized PR reference found, run:
 ```bash
 gh pr view {number} --repo {owner}/{repo} --json state,mergedAt,closedAt --jq '{state,mergedAt,closedAt}'
 ```
-If `gh` fails for any PR (network error, repo access), skip that PR silently.
+If `gh` fails for a todo-only or report-only PR, skip that check silently. For a delivery or dependency PR, record it as unreadable, prevent that effort's transition, and report the unresolved read.
 
 **1b-iii. Check Jira statuses (via MCP):**
 Read `cloudId` from `workspace/config.md` `## Jira` section. For each unique Jira ticket key, use Atlassian MCP `getJiraIssue` to fetch current status. Extract the status category name.
-If Atlassian MCP unavailable or `cloudId` missing: skip all Jira checks silently.
+If Atlassian MCP is unavailable or `cloudId` is missing, todo-only Jira checks may be skipped silently. Mark each tracked effort Jira input unreadable, prevent that effort's transition, and report the unresolved read.
 
 **1b-iv. Apply updates to `todo.md`:**
 - PR state `MERGED` → change `[ ]` to `[x]`, append or update status annotation to `merged {YYYY-MM-DD}` (use `mergedAt` date)
@@ -71,9 +71,7 @@ If Atlassian MCP unavailable or `cloudId` missing: skip all Jira checks silently
 - Do NOT touch lines already marked `[x]`
 
 **1b-v. Apply updates to effort files:**
-- If **all** tracked PRs for an effort are `MERGED` AND Jira ticket (if any) is Done → update frontmatter `status: completed`, then move the file from `workspace/efforts/` to `workspace/efforts/done/` (create the `done/` directory if it doesn't exist)
-- If any PR is `CLOSED` (not merged) and no other open/merged PR exists for the effort → update frontmatter `status: closed`, then move to `workspace/efforts/done/`
-- If any PR is still `OPEN` → do NOT change the effort status
+Pass the separated live states to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`, apply its `transition` output exactly, and use the guarded `apply` or `apply-move` path.
 
 **1b-vi. Collect change report:**
 Build a list of all status changes applied. This list feeds the "**Status Updates**" section in the output (Step 5). If no changes were detected, this section is omitted.

@@ -1,16 +1,16 @@
 ---
 name: nase:efforts
-description: "Report all active efforts by lifecycle stage and status, flag PR/Jira drift, and count active vs done. Use for list my efforts, effort status, stalled work, or what am I working on. Read-only; use /nase:today to move completed efforts and /nase:stats for activity counts."
-argument-hint: "[--active|--done|--all]"
+description: "Report active efforts by stage/status, verify live PR/Jira state, sync merged work to awaiting-deploy, and move deployed or abandoned work to done/ (completed/wontfix). Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. Use /nase:stats for activity counts."
+argument-hint: "[--by-scope|--by-repo] [--full]"
 pattern: utility
 category: Reporting
 ---
 
 ## Purpose
 
-`/nase:today` shows a capped morning snapshot and owns the status-sync mutations (moving finished efforts to `done/`). This skill answers a different question: *across all my efforts right now, where does everything stand?* — a full count and inventory, plus the one thing a stale frontmatter field can't tell you: which docs have fallen out of sync with their PR/Jira reality.
+`/nase:today` shows a capped morning snapshot and status-syncs tracked work as a side effect. This skill answers a different question: *across all my efforts right now, where does everything stand?* — a full count and inventory, plus the one thing a stale frontmatter field can't tell you: which docs have fallen out of sync with their PR/Jira reality.
 
-It does not mutate effort lifecycle, PR, Jira, or KB state. It only writes its report and log entry. Mutating effort status or moving files to `done/` belongs to `/nase:today` (see `.claude/docs/effort-lifecycle.md`) — duplicating that here would let two skills drift apart. This skill surfaces *what* needs syncing and hands the fix to `/nase:today`.
+Because it already does the live PR/Jira reads to compute drift, it also **applies** the deterministic lifecycle transition on the spot rather than deferring to `/nase:today`: running `/nase:efforts` should leave the inventory correct, not just describe how to fix it. The transition itself is not reinvented here: both this skill and `/nase:today` call the single rule in `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`. It does not mutate PR, Jira, or KB state, only effort frontmatter/location plus its report and log entry.
 
 ## Step 0: Language preflight (run first)
 
@@ -41,13 +41,13 @@ Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet
 
 ### Step 3: Drift check (the value-add — verify against live state)
 
-For each active effort, extract PR references per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`, including refs from `blocked-by`, plus the `jira:` key. Normalize/dedupe PR refs, then verify each unique PR/Jira referent read-only — this is where a dedicated pass beats stale frontmatter:
+For each active effort, extract structured delivery PR references per `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`, other report-only PR references per `PR Reference Resolution`, dependency PRs from `blocked-by`, and the `jira:` key. Keep delivery, report-only, and dependency PR sets separate, normalize/dedupe each, then verify each unique PR/Jira referent read-only — this is where a dedicated pass beats stale frontmatter:
 
 ```bash
 gh pr view <n> --repo <owner>/<repo> --json state,reviewDecision,statusCheckRollup,mergedAt
 ```
 
-When there are more than ~5 PRs to check, fan out via the `nase-pr-metadata-reader` agent instead of serial calls. Jira: read-only status read if an MCP is available; skip cleanly if not.
+When there are more than ~5 PRs to check, fan out via the `nase-pr-metadata-reader` agent instead of serial calls. Jira: read-only status read if an MCP is available. If a tracked Jira issue cannot be read, mark its transition input `unreadable` and report the effort as unresolved.
 
 After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecycle.md → Dependency & Discovery Fields`:
 - Blocked when `status: blocked` **or** `blocked-by` points at an unresolved referent.
@@ -55,19 +55,19 @@ After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecy
 - Treat free-text blockers and unreadable PR/Jira blockers as unresolved. Name the skipped check in the blocked reason.
 - Everything else active is *unblocked*. This is the "what can I actually pick up right now" set; it sits beside the stage classifier and does not replace it.
 
-Flag drift where doc and reality disagree:
-- frontmatter `in-progress`/`merge-ready` but **all** its PRs are MERGED (and Jira is Done, if tracked) → **should move to `done/`**.
-- any PR CLOSED-not-merged with no open/merged sibling → **should close**.
+Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`. Apply its `transition` output exactly. This documented auto-write uses the workspace write guard's normal `apply` or collision-safe `apply-move` path with no per-item human prompt, matching `/nase:today` 1b-v.
+
+Record each transition applied for the Step 5 report. Report-only signals (no mutation):
 - effort with **no PR and no mtime change in 14+ days** → **stalled**, may need attention or a `/nase:design --review {slug}` pass.
 
-Drift items are reported, never auto-applied. Recommend `/nase:today` to apply the move-to-`done/` syncs.
-
 ### Step 4: Count
+
+Count **after** the Step 3 transitions so active/`done/` totals reflect post-sync reality.
 
 - By stage (Planning / Implementing / In review / Awaiting deploy / Follow-up).
 - By raw frontmatter `status:` value (shows vocabulary spread).
 - Unblocked vs blocked (from Step 3): count of unblocked active efforts and the list of blocked ones with their blocker.
-- Totals: active count, `done/` count, drift count, stalled count.
+- Totals: active count, `done/` count, transitioned-this-run count, stalled count.
 - If `$ARGUMENTS` has `--by-scope` or `--by-repo`, add a count grouped by that frontmatter field.
 
 ### Step 5: Write report + chat summary
@@ -78,10 +78,13 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 # Effort Status — {YYYY-MM-DD}
 
 ## Counts
-| Stage | Count |  + by-status table, active/done/drift/stalled totals
+| Stage | Count |  + by-status table, active/done/transitioned/stalled totals
 
-## Drift & attention
-- {effort} — {drift reason} → {recommended action}
+## Transitioned this run   ← omit section if none
+- {effort} — {evidence} → status: {awaiting-deploy|completed|wontfix}{; moved to done/ if terminal}
+
+## Attention
+- {effort} — {stalled, awaiting-deploy, or unresolved-read reason} → {recommended action}
 
 ## Blocked            ← omit section if none
 - {effort} — blocked-by {referent} ({unresolved reason})
@@ -94,7 +97,7 @@ Per `.claude/docs/skill-contract.md`, the chat reply is pointer + bounded summar
 ```
 Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
 Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M}
-Unblocked: {U} · Blocked: {B} · Drift: {K} need sync (run /nase:today to apply) · Stalled: {S}
+Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Stalled: {S}
 ```
 With `--full`, also echo the per-effort table inline (otherwise it lives only in the file).
 
@@ -102,11 +105,11 @@ With `--full`, also echo the per-effort table inline (otherwise it lives only in
 
 Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-format.md`:
 ```
-- {HH:MM} | efforts: {N} active, {K} drift flagged
+- {HH:MM} | efforts: {N} active, {K} transitions applied
 ```
 
 </workflow>
 
 ## Notes
 
-No lifecycle `--sync`/mutation flag by design. If you want finished efforts moved to `done/`, run `/nase:today`, which owns that lifecycle write.
+The move-to-`done/` transition is shared with `/nase:today` via `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`: both apply the same deterministic rule, so running either keeps the effort inventory in sync. Only that documented transition auto-writes; stalled and `awaiting-deploy` efforts are reported, never auto-moved.

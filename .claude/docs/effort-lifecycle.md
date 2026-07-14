@@ -47,9 +47,58 @@ list; `/nase:kb-review` Step 4d validates against it.
 | `completed` | shipped and verified |
 | `wontfix` | closed without shipping |
 
-`awaiting-deploy` has no automatic setter — set it by hand (or via `/nase:today`)
-when the PR merges, paired with `- [x] Merged` in the Lifecycle block. The effort
-moves to `done/` + `completed` only after deploy validation passes.
+`awaiting-deploy` is set by the Drift Auto-Sync rule below when delivery PRs merge,
+or by hand when needed, paired with `- [x] Merged` in the Lifecycle block. The
+effort moves to `done/` + `completed` only after deploy validation passes.
+
+## Drift Auto-Sync
+
+The deterministic lifecycle rule, applied by **both** `/nase:today` (Step 1b-v)
+and `/nase:efforts` (Step 3). Both callers keep delivery, report-only, and dependency
+PR sets separate, use *PR Reference Resolution* only to normalize/query each set, then
+pass the live delivery states to `effort-state.py`. The helper output is the executable
+source of truth for the transition.
+
+```bash
+python3 .claude/scripts/effort-state.py \
+  --file workspace/efforts/{slug}.md \
+  --evaluate-transition \
+  --delivery-pr-state MERGED \
+  --jira-state done
+```
+
+Repeat `--delivery-pr-state` for multiple PRs; valid values are `OPEN`, `MERGED`,
+`CLOSED`, and `UNREADABLE`. Jira state is `untracked`, `done`, `not-done`, or
+`unreadable`. Add `--blocked-by-unresolved` when any blocker remains unresolved.
+Use `transition.action` (`none`, `update`, or `move`) and `transition.status` exactly;
+do not independently reinterpret the rules below.
+
+After the live reads, per active effort:
+
+- Build the delivery PR set only from `pr`, `prs`, and `phase_*_pr` frontmatter
+  plus checked canonical `PR opened` lifecycle lines. Other body PR references are
+  context only. `blocked-by` PRs resolve dependencies but never count as delivery
+  evidence. A transition requires at least one readable delivery PR; Jira-only and
+  no-PR efforts remain active.
+- Any unreadable delivery PR or tracked Jira referent → skip that effort's transition;
+  it stays active and is reported as unresolved.
+- Any unresolved `blocked-by` referent → no lifecycle transition.
+- Any delivery PR still `OPEN` → no change.
+- With no open delivery PR, at least one `MERGED` delivery PR, and Jira (if tracked)
+  `Done`, use the merged path; closed superseded siblings do not block it:
+  - deploy validation incomplete → set `status: awaiting-deploy` if needed and
+    leave the file active.
+  - canonical classifier reports checked `Deployed` evidence with no pending
+    follow-up → set `status: completed` and move to `workspace/efforts/done/`.
+- If all readable delivery PRs are `CLOSED`-not-merged, set `status: wontfix` and
+  move to `workspace/efforts/done/`.
+
+**Write path.** These transitions qualify for the `.claude/docs/workspace-write-guard.md`
+auto-accept path because their evidence and target are deterministic. Stage the
+frontmatter change under `workspace/tmp/`. Use the normal guarded `apply` when the file
+stays active. For terminal transitions, use the guard's `apply-move` operation; never
+run `apply` followed by `mv`. If the source drifts or `done/{slug}.md` already exists,
+preserve the staged draft and leave the source active. Log each applied transition.
 
 ## Dependency & Discovery Fields
 

@@ -70,6 +70,23 @@ python3 .claude/scripts/workspace-write-guard.py apply \
 If the target changed, `apply` exits `3` and prints:
 `Target changed while drafting; staged file preserved at {path}`.
 
+For a guarded rename that also replaces file content, use `apply-move` instead
+of `apply` followed by `mv`. It rechecks the source and atomically refuses an
+existing destination, so a stale `done/{slug}.md` cannot be overwritten. It
+publishes the destination before hiding the source, preserves the source mode,
+and rolls back its own intact destination on a caught failure. If another writer
+replaces a path, it preserves that entry in place or moves it to a unique recovery
+path instead of deleting or overwriting it:
+
+```bash
+python3 .claude/scripts/workspace-write-guard.py apply-move \
+  --target workspace/efforts/{slug}.md \
+  --destination workspace/efforts/done/{slug}.md \
+  --staged "$staged" \
+  --expected-mtime-ns "$mtime_ns" \
+  --expected-sha256 "$sha256"
+```
+
 Allowed targets are durable workspace paths under `workspace/kb/`,
 `workspace/tasks/`, `workspace/skills/`, `workspace/efforts/`,
 `workspace/journals/`, `workspace/logs/`, `workspace/context.md`,
