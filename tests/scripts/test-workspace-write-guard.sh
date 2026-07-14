@@ -30,7 +30,12 @@ PY
 }
 
 file_mode() {
-  stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"
+  python3 - "$1" <<'PY'
+import os
+import sys
+
+print(format(os.stat(sys.argv[1]).st_mode & 0o7777, "o"))
+PY
 }
 
 mkdir -p "$TMPROOT/workspace/kb/projects" "$TMPROOT/workspace/tmp" "$TMPROOT/.claude/commands/nase/workspace"
