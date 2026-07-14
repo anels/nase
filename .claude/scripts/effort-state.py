@@ -110,9 +110,70 @@ def classify(text: str) -> dict[str, object]:
     }
 
 
+def transition(
+    classification: dict[str, object],
+    delivery_pr_states: list[str],
+    jira_state: str,
+    blocked_by_unresolved: bool,
+) -> dict[str, object]:
+    if not delivery_pr_states:
+        return {"action": "none", "status": None, "reason": "no-delivery-pr"}
+    if "UNREADABLE" in delivery_pr_states:
+        return {"action": "none", "status": None, "reason": "unreadable-delivery-pr"}
+    if jira_state == "unreadable":
+        return {"action": "none", "status": None, "reason": "unreadable-jira"}
+    if blocked_by_unresolved:
+        return {"action": "none", "status": None, "reason": "unresolved-blocker"}
+    if "OPEN" in delivery_pr_states:
+        return {"action": "none", "status": None, "reason": "open-delivery-pr"}
+    if "MERGED" in delivery_pr_states:
+        if jira_state == "not-done":
+            return {"action": "none", "status": None, "reason": "jira-not-done"}
+        deployed = any(
+            evidence["label"] == "Deployed" for evidence in classification["evidence"]
+        )
+        if deployed and classification["pending_followups"] == 0:
+            return {"action": "move", "status": "completed", "reason": "deployed"}
+        if classification["status"] == "awaiting-deploy":
+            return {
+                "action": "none",
+                "status": None,
+                "reason": "already-awaiting-deploy",
+            }
+        return {
+            "action": "update",
+            "status": "awaiting-deploy",
+            "reason": "merged-awaiting-deploy",
+        }
+    return {"action": "move", "status": "wontfix", "reason": "all-delivery-prs-closed"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", required=True, type=Path, help="active effort Markdown file")
+    parser.add_argument(
+        "--delivery-pr-state",
+        action="append",
+        default=[],
+        choices=("OPEN", "MERGED", "CLOSED", "UNREADABLE"),
+        help="live state for one structured delivery PR; repeat for multiple PRs",
+    )
+    parser.add_argument(
+        "--jira-state",
+        default="untracked",
+        choices=("untracked", "done", "not-done", "unreadable"),
+        help="live state for the tracked Jira issue",
+    )
+    parser.add_argument(
+        "--blocked-by-unresolved",
+        action="store_true",
+        help="prevent lifecycle mutation while any blocker remains unresolved",
+    )
+    parser.add_argument(
+        "--evaluate-transition",
+        action="store_true",
+        help="include the deterministic lifecycle transition decision",
+    )
     args = parser.parse_args()
 
     try:
@@ -121,7 +182,15 @@ def main() -> int:
         print(f"ERROR: cannot read {args.file}: {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps(classify(text), sort_keys=True))
+    result = classify(text)
+    if args.evaluate_transition:
+        result["transition"] = transition(
+            result,
+            args.delivery_pr_state,
+            args.jira_state,
+            args.blocked_by_unresolved,
+        )
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 

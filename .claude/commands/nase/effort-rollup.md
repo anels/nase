@@ -118,6 +118,6 @@ Then per `.claude/docs/skill-contract.md`: chat reply is the artifact link + a b
 
 ## Notes
 
-- **Read-only on lifecycle.** This skill reports; it never moves efforts between `done/` and active — that is `/nase:today`'s job (`.claude/docs/effort-lifecycle.md`). If reconciliation shows a `done/` effort that reopened, surface it and suggest `/nase:today`; don't mutate.
+- **Read-only on lifecycle.** This skill reports; it never moves efforts between `done/` and active. `/nase:today` and `/nase:efforts` own only the documented active-to-done transitions (`.claude/docs/effort-lifecycle.md`). If reconciliation shows a `done/` effort that reopened, surface it for manual reconciliation; don't mutate.
 - **External writes stay gated.** The report is local; no Jira/Slack/GitHub writes. Links only.
 - **Honesty over impressiveness.** The whole reason to pull live data is to avoid a rosy report. If the delivered number is lower than the closed number, that *is* the finding — say it plainly.
