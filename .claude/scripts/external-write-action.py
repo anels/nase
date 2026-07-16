@@ -20,7 +20,7 @@ TOKEN_TTL_SECONDS = 300
 MANIFEST_VERSION = 1
 MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AZURE_MUTATING_VERBS = {
-    "add", "apply", "assign", "cancel", "create", "delete", "invoke-action",
+    "add", "apply", "assign", "build", "cancel", "create", "delete", "invoke-action",
     "purge", "remove", "restart", "resume", "set", "start", "stop", "swap",
     "unassign", "update",
 }

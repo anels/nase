@@ -159,6 +159,19 @@ printf '{"changed":true}\n' > "$EQUALS_PAYLOAD"
 expect_rc "equals-form payload drift is blocked" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest"
 
+# `az acr build` builds + pushes an image — a mutation that must route through the gate.
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+  --system azure --summary "acr build" -- \
+  az acr build --registry example --image app:tag . > "$TMPDIR_TEST/acr-build-prepared.json"
+if jq -e '.action.system == "azure"' "$(jq -r '.manifest' "$TMPDIR_TEST/acr-build-prepared.json")" >/dev/null; then
+  report 0 "az acr build is gated as an azure mutation"
+else
+  report 1 "az acr build is gated as an azure mutation"
+fi
+
+expect_rc "az acr show stays read-only (not a mutation)" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "read" -- az acr show --name example
+
 manifest=$(prepare_action)
 python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
 python3 - "$manifest" <<'PY'
