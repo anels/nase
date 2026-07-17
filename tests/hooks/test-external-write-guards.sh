@@ -101,7 +101,12 @@ ado_write='{"tool_name":"Bash","tool_input":{"command":"az rest --method post --
 azure_group_write='{"tool_name":"Bash","tool_input":{"command":"az group create --name example --location westus"}}'
 azure_role_write='{"tool_name":"Bash","tool_input":{"command":"az role assignment create --assignee example --role Reader"}}'
 azure_keyvault_write='{"tool_name":"Bash","tool_input":{"command":"az keyvault secret set --vault-name example --name sample --value value"}}'
+azure_import_write='{"tool_name":"Bash","tool_input":{"command":"az acr import --name example --source source/image:tag"}}'
+azure_import_named_read='{"tool_name":"Bash","tool_input":{"command":"az storage blob show --container-name example --name import"}}'
+azure_unknown_global='{"tool_name":"Bash","tool_input":{"command":"az --future-global value group create --name example --location westus"}}'
 terraform_write='{"tool_name":"Bash","tool_input":{"command":"terraform apply -auto-approve"}}'
+terraform_import_write='{"tool_name":"Bash","tool_input":{"command":"terraform -chdir=/tmp import aws_instance.example i-123"}}'
+terraform_import_named_read='{"tool_name":"Bash","tool_input":{"command":"terraform -chdir=/tmp output import"}}'
 github_workflow_write='{"tool_name":"Bash","tool_input":{"command":"gh workflow run deploy.yml --ref feature/test"}}'
 github_comment_write='{"tool_name":"Bash","tool_input":{"command":"gh pr comment 7 --body approved"}}'
 github_write_via_shell='{"tool_name":"Bash","tool_input":{"command":"bash -lc '\''gh pr create --draft --title test'\''"}}'
@@ -117,7 +122,12 @@ expect_rc "raw ADO mutation blocked" .claude/hooks/external-cli-write-guard.sh "
 expect_rc "raw Azure group mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_group_write" 2 "raw external mutation"
 expect_rc "raw Azure role mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_role_write" 2 "raw external mutation"
 expect_rc "raw Azure Key Vault mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_keyvault_write" 2 "raw external mutation"
+expect_rc "raw Azure import blocked" .claude/hooks/external-cli-write-guard.sh "$azure_import_write" 2 "raw external mutation"
+expect_rc "Azure read operand named import allowed" .claude/hooks/external-cli-write-guard.sh "$azure_import_named_read" 0
+expect_rc "unknown Azure global option fails closed" .claude/hooks/external-cli-write-guard.sh "$azure_unknown_global" 2 "unrecognized external CLI"
 expect_rc "raw Terraform mutation blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_write" 2 "raw external mutation"
+expect_rc "raw Terraform import with global option blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_import_write" 2 "raw external mutation"
+expect_rc "Terraform output named import allowed" .claude/hooks/external-cli-write-guard.sh "$terraform_import_named_read" 0
 expect_rc "raw GitHub workflow mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_workflow_write" 2 "raw external mutation"
 expect_rc "raw GitHub comment mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_comment_write" 2 "raw external mutation"
 expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"

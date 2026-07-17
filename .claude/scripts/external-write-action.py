@@ -20,13 +20,15 @@ TOKEN_TTL_SECONDS = 300
 MANIFEST_VERSION = 1
 MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AZURE_MUTATING_VERBS = {
-    "add", "apply", "assign", "build", "cancel", "create", "delete", "invoke-action",
-    "purge", "remove", "restart", "resume", "set", "start", "stop", "swap",
-    "unassign", "update",
+    "add", "apply", "assign", "build", "cancel", "create", "delete", "import",
+    "invoke-action", "purge", "remove", "restart", "resume", "set", "start", "stop",
+    "swap", "unassign", "update",
 }
 AZURE_READ_VERBS = {
     "check", "describe", "exists", "get", "list", "query", "show", "status", "view", "what-if",
 }
+AZURE_GLOBAL_FLAGS = {"--debug", "--help", "-h", "--only-show-errors", "--verbose"}
+AZURE_GLOBAL_OPTIONS = {"--output", "-o", "--query", "--subscription"}
 PAYLOAD_FILE_FLAGS = {"--body-file", "--input", "--file"}
 SHELL_SEPARATORS = {";", "&&", "&", "|", "||", "(", ")"}
 SHELL_INTERPRETERS = {"bash", "dash", "ksh", "sh", "zsh"}
@@ -34,6 +36,31 @@ SHELL_INTERPRETERS = {"bash", "dash", "ksh", "sh", "zsh"}
 
 class ActionError(Exception):
     """A caller supplied an unsafe or invalid action."""
+
+
+def azure_command_path(words: list[str]) -> list[str]:
+    """Return Azure command groups and verb without option values."""
+    path: list[str] = []
+    skip_value = False
+    for word in words:
+        if skip_value:
+            skip_value = False
+            continue
+        option = word.split("=", 1)[0]
+        if option in AZURE_GLOBAL_OPTIONS:
+            skip_value = "=" not in word
+            continue
+        if word in AZURE_GLOBAL_FLAGS:
+            continue
+        if word.startswith("-"):
+            break
+        path.append(word)
+    return path
+
+
+def terraform_subcommand(words: list[str]) -> str | None:
+    """Return the Terraform subcommand after global options such as -chdir."""
+    return next((word for word in words if not word.startswith("-")), None)
 
 
 def canonical_json(value: Any) -> bytes:
@@ -87,13 +114,14 @@ def mutation_system(argv: list[str]) -> str | None:
     if executable == "az":
         if not words:
             return None
-        if words[0] == "rest":
+        command_path = azure_command_path(words)
+        if command_path and command_path[0] == "rest":
             method = option_value(argv[2:], "--method")
             if method and method.upper() in MUTATING_HTTP_METHODS:
                 return "azure"
-        if words[:2] == ["pipelines", "run"]:
+        if command_path[:2] == ["pipelines", "run"]:
             return "azure"
-        if any(word in AZURE_MUTATING_VERBS for word in words):
+        if any(word in AZURE_MUTATING_VERBS for word in command_path):
             return "azure"
         return None
 
@@ -104,7 +132,7 @@ def mutation_system(argv: list[str]) -> str | None:
             return "kubernetes"
         return None
 
-    if executable == "terraform" and words and words[0] in {"apply", "destroy"}:
+    if executable == "terraform" and terraform_subcommand(words) in {"apply", "destroy", "import"}:
         return "terraform"
 
     return None
@@ -349,18 +377,23 @@ def known_safe_external_command(argv: list[str]) -> bool:
             "checks", "diff", "list", "status", "view", "watch",
         }
     if executable == "az":
-        if not words or words[0] in {"account", "cloud", "configure", "extension", "login", "logout", "version"}:
+        command_path = azure_command_path(words)
+        if not words:
             return True
-        if words[0] == "rest":
+        if not command_path:
+            return all(word in AZURE_GLOBAL_FLAGS for word in words)
+        if command_path[0] in {"account", "cloud", "configure", "extension", "login", "logout", "version"}:
+            return True
+        if command_path[0] == "rest":
             method = option_value(argv[2:], "--method")
             return method is not None and method.upper() in {"GET", "HEAD"}
-        return any(word in AZURE_READ_VERBS for word in words)
+        return any(word in AZURE_READ_VERBS for word in command_path)
     if executable == "kubectl":
         return bool(words) and words[0] in {
             "api-resources", "cluster-info", "config", "describe", "diff", "get", "logs", "top", "version",
         }
     if executable == "terraform":
-        return bool(words) and words[0] in {
+        return terraform_subcommand(words) in {
             "fmt", "graph", "output", "plan", "providers", "show", "validate", "version",
         }
     return True
