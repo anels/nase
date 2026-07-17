@@ -74,7 +74,9 @@ python3 "$NASE_ROOT/.claude/scripts/worktree-cleanup.py" \
 
 The helper refuses the primary or locked worktree, in-progress Git operations,
 remote drift or an unavailable remote, and any tracked, untracked, ignored, or
-recursive submodule content. It never uses `git worktree remove` or `--force`.
+recursive submodule content. NUL-delimited index inspection also rejects
+assume-unchanged, skip-worktree, and fsmonitor-valid entries before the claim.
+It never uses `git worktree remove` or `--force`.
 
 The helper uses plain `git worktree move` to claim the clean worktree at a unique
 sibling path and repeats the HEAD, remote, and dirty checks.

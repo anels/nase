@@ -43,6 +43,18 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
     return result
 
 
+def git_bytes(repo: Path, *args: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).decode(errors="backslashreplace").strip()
+        raise GitError(f"git {' '.join(args)}: {detail or f'exit {result.returncode}'}")
+    return result.stdout
+
+
 def parse_worktrees(repo: Path) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     current: dict[str, object] = {}
@@ -100,6 +112,36 @@ def dirty_items(worktree: Path) -> list[str]:
     if probe.returncode == 128 and not items:
         raise GitError(probe.stderr.strip() or "could not inspect nested submodules")
     return items
+
+
+def index_flag_items(worktree: Path) -> list[str]:
+    flags: dict[bytes, set[str]] = {}
+
+    def records(option: str) -> list[tuple[int, bytes]]:
+        parsed = []
+        for raw in git_bytes(worktree, "ls-files", option, "-z").split(b"\0"):
+            if not raw:
+                continue
+            if len(raw) < 3 or raw[1:2] != b" ":
+                raise GitError(f"could not parse git ls-files {option} record")
+            parsed.append((raw[0], raw[2:]))
+        return parsed
+
+    for tag, path in records("-v"):
+        labels = flags.setdefault(path, set())
+        if tag == ord("S") or tag == ord("s"):
+            labels.add("skip-worktree")
+        if chr(tag).islower():
+            labels.add("assume-unchanged")
+    for tag, path in records("-f"):
+        if chr(tag).islower():
+            flags.setdefault(path, set()).add("fsmonitor-valid")
+
+    return [
+        f"index-flags:{','.join(sorted(labels))}:{os.fsdecode(path)!r}"
+        for path, labels in flags.items()
+        if labels
+    ]
 
 
 def git_path(worktree: Path, name: str) -> Path:
@@ -162,6 +204,10 @@ def cleanup(args: argparse.Namespace) -> int:
     for state in IN_PROGRESS:
         if git_path(worktree, state).exists():
             return retained(f"Git operation in progress: {state}")
+
+    hidden_index = index_flag_items(worktree)
+    if hidden_index:
+        return retained("worktree index contains hidden-change flags", hidden_index)
 
     head = git(worktree, "rev-parse", "--verify", "HEAD").stdout.strip().lower()
     expected = args.expected_head.lower()

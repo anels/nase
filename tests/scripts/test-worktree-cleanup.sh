@@ -42,8 +42,8 @@ new_case() {
   git -C "$base/repo" worktree add -q -b feature "$base/wt" main
   git -C "$base/wt" push -qu origin feature
   CASE_BASE=$base
-  CASE_REPO="$base/repo"
-  CASE_WT="$base/wt"
+  CASE_REPO=$(git -C "$base/repo" rev-parse --show-toplevel)
+  CASE_WT=$(git -C "$base/wt" rev-parse --show-toplevel)
   CASE_HEAD=$(git -C "$base/wt" rev-parse HEAD)
 }
 
@@ -147,6 +147,43 @@ new_case ignored
 mkdir -p "$CASE_WT/ignored"
 printf 'build\n' >"$CASE_WT/ignored/output.bin"
 expect_rc "ignored file retains worktree" 3 run_helper
+
+new_case assume-unchanged
+git -C "$CASE_WT" update-index --assume-unchanged tracked.txt
+printf 'assume hidden bytes\n' >"$CASE_WT/tracked.txt"
+expect_rc "assume-unchanged content is retained before move" 3 run_helper
+[[ $(<"$CASE_WT/tracked.txt") == "assume hidden bytes" ]] || fail "assume-unchanged bytes were changed"
+[[ $(linked_worktree_path) == "$CASE_WT" ]] || fail "assume-unchanged worktree moved"
+
+new_case skip-worktree
+odd_path=$'odd\nname.txt'
+printf 'baseline\n' >"$CASE_WT/$odd_path"
+git -C "$CASE_WT" add -- "$odd_path"
+git -C "$CASE_WT" commit -qm 'add odd path'
+git -C "$CASE_WT" push -q origin feature
+CASE_HEAD=$(git -C "$CASE_WT" rev-parse HEAD)
+git -C "$CASE_WT" update-index --skip-worktree -- "$odd_path"
+printf 'skip hidden bytes\n' >"$CASE_WT/$odd_path"
+expect_rc "skip-worktree unusual path content is retained before move" 3 run_helper
+[[ $(<"$CASE_WT/$odd_path") == "skip hidden bytes" ]] || fail "skip-worktree bytes were changed"
+[[ $(linked_worktree_path) == "$CASE_WT" ]] || fail "skip-worktree worktree moved"
+
+new_case fsmonitor-valid
+fsmonitor_supported=false
+if git -C "$CASE_WT" config core.fsmonitor true &&
+  git -C "$CASE_WT" update-index --fsmonitor-valid tracked.txt; then
+  if fsmonitor_listing=$(git -C "$CASE_WT" ls-files -f -- tracked.txt); then
+    [[ ${fsmonitor_listing:0:1} != [[:lower:]] ]] || fsmonitor_supported=true
+  fi
+fi
+if [[ $fsmonitor_supported == true ]]; then
+  printf 'fsmonitor hidden bytes\n' >"$CASE_WT/tracked.txt"
+  expect_rc "fsmonitor-valid content is retained before move" 3 run_helper
+  [[ $(<"$CASE_WT/tracked.txt") == "fsmonitor hidden bytes" ]] || fail "fsmonitor-valid bytes were changed"
+  [[ $(linked_worktree_path) == "$CASE_WT" ]] || fail "fsmonitor-valid worktree moved"
+else
+  pass "fsmonitor-valid regression skipped: local Git did not expose the flag"
+fi
 
 new_case late-ignored
 TEST_MODE=late
@@ -255,6 +292,16 @@ if rg -n '"worktree", "remove"' "$HELPER" >"$TMP/remove-call"; then
   fail "helper still invokes recursive worktree removal: $(tr '\n' ' ' <"$TMP/remove-call")"
 else
   pass "helper contains no automatic recursive worktree removal"
+fi
+
+if rg -n 'Worktree:[[:space:]]+cleaned up' "$ROOT/.claude/commands/nase/fsd.md" >"$TMP/fsd-worktree"; then
+  fail "FSD still reports unconditional worktree cleanup"
+elif ! grep -Fq 'Worktree:    {worktree_report}' "$ROOT/.claude/commands/nase/fsd.md"; then
+  fail "FSD report does not render conditional worktree_report"
+elif ! grep -Fq 'quarantined at {exact registered-worktree path}' "$ROOT/.claude/commands/nase/fsd.md"; then
+  fail "FSD does not bind quarantine report to exact returned path"
+else
+  pass "FSD reports removed, quarantined, retained, or n/a conditionally"
 fi
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"

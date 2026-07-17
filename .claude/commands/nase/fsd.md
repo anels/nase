@@ -32,7 +32,7 @@ Follow:
 
 Preserve these names across phase documents:
 
-`success_criteria`, `success_criteria_from_design`, `design_constraints`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings`.
+`success_criteria`, `success_criteria_from_design`, `design_constraints`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings`.
 
 ## Phase map
 
@@ -106,6 +106,15 @@ ref `refs/heads/{branch_name}`, and the full OID from
   cleanup result. The portable helper returns `3` even for a verified clean tree.
 - Return `2`: keep all artifacts, stop, and report the helper error.
 
+Set `worktree_report` for Phase 10 from the actual outcome:
+
+- no worktree flow: `n/a`
+- return `0`: `removed`
+- return `3` after rename-claim: `quarantined at {exact registered-worktree path}`
+- return `3` before rename-claim: `retained at {exact worktree_path}`
+
+Never summarize return `3` as removed or cleaned up.
+
 ---
 
 ## Phase 10: Report
@@ -130,7 +139,7 @@ FSD {done ✓ | conditional ⚠ | not-closed ✗}
   Branch:      {branch_name}
   Test iters:  {N} (passed on iteration N)
   PR:          {PR URL}   ← or "not opened"
-  Worktree:    cleaned up ← or "n/a"
+  Worktree:    {worktree_report}
 
 Criteria:                                            ← omit block if "Manual verify"
   - {criterion} - proven: {evidence}
