@@ -56,7 +56,54 @@ run_helper() {
     --expected-head "$CASE_HEAD"
 }
 
+make_git_wrapper() {
+  mkdir -p "$TMP/fakebin"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -u' \
+    'if [[ "${NASE_TEST_MODE:-}" == late && " $* " == *" worktree move "* ]]; then' \
+    '  "$NASE_TEST_REAL_GIT" "$@"' \
+    '  rc=$?' \
+    '  if [[ $rc -eq 0 ]]; then' \
+    '    mkdir -p "$NASE_TEST_OLD_PATH/ignored"' \
+    '    printf "late\\n" >"$NASE_TEST_OLD_PATH/ignored/late.bin"' \
+    '  fi' \
+    '  exit "$rc"' \
+    'fi' \
+    'if [[ "${NASE_TEST_MODE:-}" == remote-race && " $* " == *" ls-remote "* ]]; then' \
+    '  count=0' \
+    '  [[ ! -f "$NASE_TEST_COUNT_FILE" ]] || count=$(<"$NASE_TEST_COUNT_FILE")' \
+    '  count=$((count + 1))' \
+    '  printf "%s\\n" "$count" >"$NASE_TEST_COUNT_FILE"' \
+    '  if [[ $count -eq 3 ]]; then' \
+    '    "$NASE_TEST_REAL_GIT" --git-dir="$NASE_TEST_REMOTE" update-ref refs/heads/feature "$NASE_TEST_RACE_OID"' \
+    '  fi' \
+    'fi' \
+    'exec "$NASE_TEST_REAL_GIT" "$@"' \
+    >"$TMP/fakebin/git"
+  chmod +x "$TMP/fakebin/git"
+}
+
+run_helper_injected() {
+  env \
+    PATH="$TMP/fakebin:$PATH" \
+    NASE_TEST_REAL_GIT="$REAL_GIT" \
+    NASE_TEST_MODE="$TEST_MODE" \
+    NASE_TEST_OLD_PATH="$CASE_WT" \
+    NASE_TEST_COUNT_FILE="$TMP/ls-remote-count" \
+    NASE_TEST_REMOTE="$CASE_BASE/remote.git" \
+    NASE_TEST_RACE_OID="${RACE_OID:-}" \
+    python3 "$HELPER" \
+      --repo "$CASE_REPO" \
+      --worktree "$CASE_WT" \
+      --remote origin \
+      --remote-ref refs/heads/feature \
+      --expected-head "$CASE_HEAD"
+}
+
 set -e
+REAL_GIT=$(command -v git)
+make_git_wrapper
 
 new_case clean
 expect_rc "clean exact pushed worktree is removed" 0 run_helper
@@ -75,6 +122,13 @@ new_case ignored
 mkdir -p "$CASE_WT/ignored"
 printf 'build\n' >"$CASE_WT/ignored/output.bin"
 expect_rc "ignored file retains worktree" 3 run_helper
+
+new_case late-ignored
+TEST_MODE=late
+expect_rc "ignored file created after proof is preserved" 3 run_helper_injected
+[[ -f "$CASE_WT/ignored/late.bin" ]] || fail "late ignored file was deleted"
+claimed_path=$(git -C "$CASE_REPO" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | tail -1)
+[[ -d "$claimed_path" && "$claimed_path" != "$CASE_WT" ]] || fail "claimed worktree was not retained"
 
 new_case locked
 git -C "$CASE_REPO" worktree lock --reason test-lock "$CASE_WT"
@@ -111,6 +165,25 @@ git -C "$CASE_WT" push -q origin HEAD:refs/heads/detached-clean
 expect_rc "detached worktree with exact remote SHA is removed" 0 python3 "$HELPER" \
   --repo "$CASE_REPO" --worktree "$CASE_WT" --remote origin \
   --remote-ref refs/heads/detached-clean --expected-head "$CASE_HEAD"
+
+new_case detached-remote-race
+git -C "$CASE_REPO" worktree remove "$CASE_WT"
+git -C "$CASE_REPO" branch -D feature >/dev/null
+git -C "$CASE_REPO" worktree add -q --detach "$CASE_WT" main
+CASE_HEAD=$(git -C "$CASE_WT" rev-parse HEAD)
+printf 'remote moved\n' >>"$CASE_REPO/tracked.txt"
+git -C "$CASE_REPO" add tracked.txt
+git -C "$CASE_REPO" commit -qm 'remote race target'
+RACE_OID=$(git -C "$CASE_REPO" rev-parse HEAD)
+git -C "$CASE_REPO" push -q origin HEAD:refs/heads/race-seed
+rm -f "$TMP/ls-remote-count"
+TEST_MODE=remote-race
+expect_rc "remote move during detached deletion restores worktree" 3 run_helper_injected
+[[ -d "$CASE_WT" ]] || fail "detached worktree was not restored after remote race"
+[[ $(git -C "$CASE_WT" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "restored worktree lost expected HEAD"
+if git -C "$CASE_WT" symbolic-ref -q HEAD >/dev/null; then fail "restored worktree is not detached"; fi
+[[ $(git --git-dir="$CASE_BASE/remote.git" rev-parse refs/heads/feature) == "$RACE_OID" ]] || fail "remote race fixture did not move ref"
+[[ -z $(git -C "$CASE_REPO" for-each-ref refs/nase/worktree-cleanup/) ]] || fail "safety ref remained after restore"
 
 new_case submodule-dirty
 git init --bare -q -b main "$CASE_BASE/submodule.git"

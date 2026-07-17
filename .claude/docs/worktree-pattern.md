@@ -77,6 +77,13 @@ remote drift or an unavailable remote, and any tracked, untracked, ignored, or
 recursive submodule content. It calls only plain `git worktree remove` and never
 uses `--force`.
 
+Before deletion, the helper uses plain `git worktree move` to claim the clean
+worktree at a unique sibling path and repeats the HEAD, remote, and dirty checks.
+If another process recreates the old path, both the registered worktree and the
+foreign path are preserved. A temporary local safety ref pins HEAD until the
+post-removal remote check; if that check changes or fails, the helper recreates
+a detached worktree at the pinned commit and returns `3`.
+
 Return codes:
 
 - `0`: safely removed; cleanup-only state and research artifacts may now be deleted.
