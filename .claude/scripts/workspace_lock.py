@@ -35,6 +35,10 @@ class LockError(RuntimeError):
     pass
 
 
+class LockBusyError(LockError):
+    """The canonical lock is valid and currently owned by a live process."""
+
+
 @dataclass(frozen=True)
 class Lease:
     root: Path
@@ -387,7 +391,7 @@ def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
             except FileExistsError:
                 _quarantine_stale_at(root_fd, locks_fd, locks_metadata)
                 if time.monotonic() >= deadline:
-                    raise LockError("workspace mutation lock is busy")
+                    raise LockBusyError("workspace mutation lock is busy")
                 time.sleep(0.05)
                 continue
             except OSError as exc:

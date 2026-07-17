@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from workspace_lock import LockError, held  # noqa: E402
+from workspace_lock import LockBusyError, LockError, held  # noqa: E402
 
 
 LESSONS_HEADER = (
@@ -697,8 +697,11 @@ def main(argv: list[str]) -> int:
                 rotate_lessons(root)
             else:
                 rotate_tech_trends(root)
-    except LockError as exc:
+    except LockBusyError as exc:
         print(f"[workspace-archive] WARNING: {exc}; archive skipped", file=sys.stderr)
+    except LockError as exc:
+        print(f"[workspace-archive] WARNING: {exc}", file=sys.stderr)
+        return 1
     except (ArchiveError, OSError, UnicodeError, ValueError) as exc:
         print(f"[workspace-archive] WARNING: {exc}", file=sys.stderr)
         return 1
