@@ -25,6 +25,7 @@ from workspace_lock import LockError, held
 
 VERSION = 1
 JOURNAL_RELATIVE = Path(".nase-restore/transaction.json")
+SNAPSHOT_TIMESTAMP_RE = re.compile(r"^\d{8}T\d{6}$")
 
 
 class RestoreError(RuntimeError):
@@ -370,6 +371,29 @@ def validate_candidate(candidate: Path, members: list[dict[str, Any]]) -> dict[s
     return inventory(candidate)
 
 
+def validate_recovery_candidate(candidate: Path, expected_hash: object) -> dict[str, Any]:
+    if not candidate.is_dir() or candidate.is_symlink():
+        raise RestoreError(f"validated candidate is missing or unsafe: {candidate}")
+    inodes: set[tuple[int, int]] = set()
+    for current, dirs, files in os.walk(candidate, topdown=True, followlinks=False):
+        current_path = Path(current)
+        for name in [*dirs, *files]:
+            path = current_path / name
+            info = path.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                continue
+            if not stat.S_ISREG(info.st_mode):
+                raise RestoreError(f"candidate contains a link or special file: {path}")
+            inode = (info.st_dev, info.st_ino)
+            if info.st_nlink != 1 or inode in inodes:
+                raise RestoreError(f"candidate contains a hard-link alias: {path}")
+            inodes.add(inode)
+    candidate_inventory = inventory(candidate)
+    if candidate_inventory["inventory_hash"] != expected_hash:
+        raise RestoreError(f"candidate inventory changed after validation: {candidate}")
+    return candidate_inventory
+
+
 def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -> None:
     by_archive = {str(item["archive_path"]): item for item in members}
     with zipfile.ZipFile(archive) as source:
@@ -473,13 +497,71 @@ def clear_journal(root: Path) -> None:
     fsync_dir(journal_path.parent)
 
 
-def rollback_snapshot(root: Path, journal: dict[str, Any]) -> bool:
+def validate_journal_paths(root: Path, journal: dict[str, Any]) -> dict[str, Path | None]:
+    transaction_id = journal.get("transaction_id")
+    if not isinstance(transaction_id, str):
+        raise RestoreError("restore journal transaction ID is missing")
+    try:
+        if uuid.UUID(transaction_id).hex != transaction_id:
+            raise ValueError
+    except ValueError as exc:
+        raise RestoreError("restore journal transaction ID is not a canonical UUID") from exc
+
+    expected_candidate = root.parent / f".{root.name}-restore-candidate-{transaction_id}"
+    if journal.get("candidate") != str(expected_candidate):
+        raise RestoreError("restore journal candidate path is outside its transaction namespace")
+
+    snapshot_timestamp = journal.get("snapshot_timestamp")
+    snapshot_dir_raw = journal.get("snapshot_dir")
+    snapshot_workspace_raw = journal.get("snapshot_workspace")
+    if journal.get("had_old_content"):
+        if not isinstance(snapshot_timestamp, str) or not SNAPSHOT_TIMESTAMP_RE.fullmatch(snapshot_timestamp):
+            raise RestoreError("restore journal snapshot timestamp is invalid")
+        expected_snapshot_dir = root.parent / f"workspace-pre-restore-{snapshot_timestamp}-{transaction_id}"
+        expected_snapshot_workspace = expected_snapshot_dir / "workspace"
+        if snapshot_dir_raw != str(expected_snapshot_dir):
+            raise RestoreError("restore journal snapshot path is outside its transaction namespace")
+        if snapshot_workspace_raw != str(expected_snapshot_workspace):
+            raise RestoreError("restore journal snapshot workspace path is malformed")
+        if expected_snapshot_dir.is_symlink():
+            raise RestoreError("restore snapshot directory cannot be a symlink")
+    else:
+        if snapshot_timestamp is not None or snapshot_dir_raw is not None or snapshot_workspace_raw is not None:
+            raise RestoreError("restore journal unexpectedly contains snapshot paths")
+        expected_snapshot_dir = None
+        expected_snapshot_workspace = None
+
+    if root.parent.resolve() != root.parent or expected_candidate.parent != root.parent:
+        raise RestoreError("restore transaction parent is not canonical")
+    if expected_candidate.is_symlink():
+        raise RestoreError("restore candidate cannot be a symlink")
+    return {
+        "candidate": expected_candidate,
+        "snapshot_dir": expected_snapshot_dir,
+        "snapshot_workspace": expected_snapshot_workspace,
+    }
+
+
+def verified_snapshot(journal: dict[str, Any], paths: dict[str, Path | None]) -> Path | None:
+    snapshot = paths["snapshot_workspace"]
+    if snapshot is None or not snapshot.exists():
+        return None
+    if not snapshot.is_dir() or snapshot.is_symlink():
+        raise RestoreError(f"restore snapshot is missing or unsafe: {snapshot}")
+    if inventory(snapshot)["inventory_hash"] != journal.get("old_inventory_hash"):
+        raise RestoreError(f"restore snapshot inventory changed: {snapshot}")
+    return snapshot
+
+
+def rollback_snapshot(
+    root: Path, journal: dict[str, Any], paths: dict[str, Path | None] | None = None
+) -> bool:
     workspace = root / "workspace"
-    snapshot_raw = journal.get("snapshot_workspace")
-    if not snapshot_raw or workspace.exists():
+    paths = paths or validate_journal_paths(root, journal)
+    if workspace.exists():
         return False
-    snapshot = Path(str(snapshot_raw))
-    if not snapshot.is_dir():
+    snapshot = verified_snapshot(journal, paths)
+    if snapshot is None:
         return False
     snapshot.rename(workspace)
     fsync_dir(root)
@@ -489,14 +571,15 @@ def rollback_snapshot(root: Path, journal: dict[str, Any]) -> bool:
 
 def promote_candidate(root: Path, journal: dict[str, Any]) -> None:
     workspace = root / "workspace"
-    candidate = Path(str(journal["candidate"]))
+    paths = validate_journal_paths(root, journal)
+    candidate = paths["candidate"]
+    assert candidate is not None
     if workspace.exists() or workspace.is_symlink():
         raise RestoreError(
             "foreign workspace appeared during restore; preserving workspace, snapshot, and candidate: "
             f"{workspace}, {journal.get('snapshot_workspace') or 'none'}, {candidate}"
         )
-    if not candidate.is_dir() or candidate.is_symlink():
-        raise RestoreError(f"validated candidate is missing: {candidate}")
+    validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
     candidate.rename(workspace)
     fsync_dir(root)
     fsync_dir(root.parent)
@@ -505,12 +588,13 @@ def promote_candidate(root: Path, journal: dict[str, Any]) -> None:
 
 
 def finish_promoted(root: Path, journal: dict[str, Any]) -> dict[str, Any]:
-    live = inventory(root / "workspace")
-    if live["inventory_hash"] != journal.get("candidate_inventory_hash"):
+    try:
+        live = validate_recovery_candidate(root / "workspace", journal.get("candidate_inventory_hash"))
+    except RestoreError as exc:
         raise RestoreError(
             "promoted workspace inventory changed; preserving journal and recovery artifacts: "
             f"{root / 'workspace'}, {journal.get('snapshot_workspace') or 'none'}, {journal.get('candidate')}"
-        )
+        ) from exc
     clear_journal(root)
     return {
         "status": "restored",
@@ -547,7 +631,8 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
             workspace = root / "workspace"
             old_inventory = inventory(workspace)
             has_old_content = bool(old_inventory["entries"])
-            snapshot_dir = root.parent / f"workspace-pre-restore-{time.strftime('%Y%m%dT%H%M%S')}-{transaction_id}"
+            snapshot_timestamp = time.strftime("%Y%m%dT%H%M%S")
+            snapshot_dir = root.parent / f"workspace-pre-restore-{snapshot_timestamp}-{transaction_id}"
             journal: dict[str, Any] = {
                 "version": VERSION,
                 "state": "prepared",
@@ -558,6 +643,7 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
                 "old_inventory_hash": old_inventory["inventory_hash"],
                 "candidate": str(candidate),
                 "candidate_inventory_hash": candidate_inventory["inventory_hash"],
+                "snapshot_timestamp": snapshot_timestamp if has_old_content else None,
                 "snapshot_dir": str(snapshot_dir) if has_old_content else None,
                 "snapshot_workspace": str(snapshot_dir / "workspace") if has_old_content else None,
                 "had_live_workspace": old_inventory["exists"],
@@ -577,15 +663,33 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
             write_journal(root, journal)
             try:
                 promote_candidate(root, journal)
-            except Exception:
-                if rollback_snapshot(root, journal):
-                    candidate_path = Path(str(journal["candidate"]))
-                    if candidate_path.is_dir() and not candidate_path.is_symlink():
-                        shutil.rmtree(candidate_path)
-                    snapshot_path = journal.get("snapshot_dir")
+            except RestoreError as exc:
+                paths = validate_journal_paths(root, journal)
+                candidate_path = paths["candidate"]
+                assert candidate_path is not None
+                if rollback_snapshot(root, journal, paths):
+                    snapshot_path = paths["snapshot_dir"]
                     if snapshot_path:
                         try:
-                            Path(str(snapshot_path)).rmdir()
+                            snapshot_path.rmdir()
+                        except OSError:
+                            pass
+                    clear_journal(root)
+                    raise RestoreError(
+                        f"{exc}; prior workspace restored; candidate retained at {candidate_path}"
+                    ) from exc
+                raise
+            except Exception:
+                paths = validate_journal_paths(root, journal)
+                if rollback_snapshot(root, journal, paths):
+                    candidate_path = paths["candidate"]
+                    assert candidate_path is not None
+                    if candidate_path.is_dir() and not candidate_path.is_symlink():
+                        shutil.rmtree(candidate_path)
+                    snapshot_path = paths["snapshot_dir"]
+                    if snapshot_path:
+                        try:
+                            snapshot_path.rmdir()
                         except OSError:
                             pass
                     clear_journal(root)
@@ -595,12 +699,56 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
         raise RestoreError(str(exc)) from exc
 
 
-def discard_prepared(root: Path, journal: dict[str, Any]) -> dict[str, Any]:
-    candidate = Path(str(journal["candidate"]))
-    if candidate.is_dir() and not candidate.is_symlink():
+def discard_prepared(
+    root: Path, journal: dict[str, Any], paths: dict[str, Path | None]
+) -> dict[str, Any]:
+    candidate = paths["candidate"]
+    assert candidate is not None
+    validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
+    if candidate.is_dir():
         shutil.rmtree(candidate)
     clear_journal(root)
     return {"status": "rolled_back", "workspace": str(root / "workspace")}
+
+
+def finish_rollback(
+    root: Path,
+    paths: dict[str, Path | None],
+    retained_candidate: Path | None = None,
+) -> dict[str, Any]:
+    snapshot_dir = paths["snapshot_dir"]
+    if snapshot_dir is not None:
+        try:
+            snapshot_dir.rmdir()
+        except OSError:
+            pass
+    clear_journal(root)
+    result: dict[str, Any] = {"status": "rolled_back", "workspace": str(root / "workspace")}
+    if retained_candidate is not None:
+        result["retained_candidate"] = str(retained_candidate)
+    return result
+
+
+def rollback_invalid_candidate(
+    root: Path,
+    journal: dict[str, Any],
+    paths: dict[str, Path | None],
+    cause: RestoreError,
+) -> dict[str, Any]:
+    candidate = paths["candidate"]
+    assert candidate is not None
+    try:
+        rolled_back = rollback_snapshot(root, journal, paths)
+    except RestoreError as snapshot_error:
+        raise RestoreError(
+            "candidate and rollback snapshot both failed validation; preserving recovery artifacts"
+        ) from snapshot_error
+    if not rolled_back:
+        raise RestoreError(
+            "candidate failed validation and no verified rollback snapshot is available; "
+            "preserving recovery artifacts"
+        ) from cause
+    return finish_rollback(root, paths, retained_candidate=candidate)
 
 
 def recover_restore(root: Path) -> dict[str, Any]:
@@ -611,15 +759,21 @@ def recover_restore(root: Path) -> dict[str, Any]:
             journal = load_json(journal_path)
             if journal.get("version") != VERSION or journal.get("root") != str(root):
                 raise RestoreError("restore journal version or root does not match")
+            paths = validate_journal_paths(root, journal)
+            candidate = paths["candidate"]
+            assert candidate is not None
             state = journal.get("state")
             workspace = root / "workspace"
             if state == "prepared":
                 live_matches_old = inventory(workspace)["inventory_hash"] == journal.get("old_inventory_hash")
                 if journal.get("had_live_workspace") and live_matches_old:
-                    return discard_prepared(root, journal)
+                    return discard_prepared(root, journal, paths)
                 if workspace.exists():
                     raise RestoreError("foreign workspace blocks prepared restore recovery")
-                promote_candidate(root, journal)
+                try:
+                    promote_candidate(root, journal)
+                except RestoreError as exc:
+                    return rollback_invalid_candidate(root, journal, paths, exc)
                 return finish_promoted(root, journal)
             if state == "old_moved":
                 if workspace.exists():
@@ -629,35 +783,29 @@ def recover_restore(root: Path) -> dict[str, Any]:
                         write_journal(root, journal)
                         return finish_promoted(root, journal)
                     if live_hash == journal.get("old_inventory_hash"):
-                        candidate = Path(str(journal["candidate"]))
-                        if candidate.is_dir() and not candidate.is_symlink():
+                        if candidate.exists():
+                            validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
                             shutil.rmtree(candidate)
-                        snapshot_dir = journal.get("snapshot_dir")
-                        if snapshot_dir:
-                            try:
-                                Path(str(snapshot_dir)).rmdir()
-                            except OSError:
-                                pass
-                        clear_journal(root)
-                        return {"status": "rolled_back", "workspace": str(workspace)}
+                        return finish_rollback(root, paths)
                     raise RestoreError(
                         "foreign workspace blocks recovery; preserving workspace, snapshot, and candidate: "
                         f"{workspace}, {journal.get('snapshot_workspace') or 'none'}, {journal.get('candidate')}"
                     )
-                candidate = Path(str(journal["candidate"]))
-                if candidate.is_dir():
+                if candidate.exists():
+                    try:
+                        validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
+                    except RestoreError as exc:
+                        return rollback_invalid_candidate(root, journal, paths, exc)
                     promote_candidate(root, journal)
                     return finish_promoted(root, journal)
-                if rollback_snapshot(root, journal):
-                    clear_journal(root)
-                    return {"status": "rolled_back", "workspace": str(workspace)}
+                if rollback_snapshot(root, journal, paths):
+                    return finish_rollback(root, paths)
                 raise RestoreError("candidate and rollback snapshot are both unavailable")
             if state == "new_promoted":
                 if workspace.exists():
                     return finish_promoted(root, journal)
-                if rollback_snapshot(root, journal):
-                    clear_journal(root)
-                    return {"status": "rolled_back", "workspace": str(workspace)}
+                if rollback_snapshot(root, journal, paths):
+                    return finish_rollback(root, paths)
                 raise RestoreError("promoted workspace and rollback snapshot are both unavailable")
             raise RestoreError(f"unknown restore journal state: {state!r}")
     except LockError as exc:

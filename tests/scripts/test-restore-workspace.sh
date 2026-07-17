@@ -223,6 +223,7 @@ python3 - "$ROOT" "$TMPROOT/recover" <<'PY'
 import importlib.util
 import json
 import sys
+import uuid
 from pathlib import Path
 
 repo, base = Path(sys.argv[1]), Path(sys.argv[2])
@@ -232,30 +233,46 @@ module = importlib.util.module_from_spec(spec)
 assert spec.loader
 spec.loader.exec_module(module)
 
-def write_journal(root, state, candidate, snapshot=None, had_live=True):
-    old = module.inventory(root / "workspace")
-    candidate_inventory = module.inventory(candidate)
+TIMESTAMP = "20260716T120000"
+
+def tx_paths(root, with_snapshot=True):
+    root = root.resolve()
+    txid = uuid.uuid4().hex
+    candidate = root.parent / f".{root.name}-restore-candidate-{txid}"
+    snapshot_dir = root.parent / f"workspace-pre-restore-{TIMESTAMP}-{txid}" if with_snapshot else None
+    snapshot = snapshot_dir / "workspace" if snapshot_dir else None
+    return txid, candidate, snapshot_dir, snapshot
+
+def write_journal(root, state, txid, candidate, candidate_hash, old_hash, snapshot_dir=None, snapshot=None, overrides=None):
+    root = root.resolve()
     payload = {
         "version": 1,
         "state": state,
-        "transaction_id": root.name,
-        "root": str(root.resolve()),
+        "transaction_id": txid,
+        "root": str(root),
         "candidate": str(candidate),
-        "candidate_inventory_hash": candidate_inventory["inventory_hash"],
-        "snapshot_dir": str(snapshot.parent) if snapshot else None,
+        "candidate_inventory_hash": candidate_hash,
+        "snapshot_timestamp": TIMESTAMP if snapshot else None,
+        "snapshot_dir": str(snapshot_dir) if snapshot_dir else None,
         "snapshot_workspace": str(snapshot) if snapshot else None,
-        "had_live_workspace": had_live,
-        "old_inventory_hash": old["inventory_hash"],
+        "had_live_workspace": snapshot is not None,
+        "had_old_content": snapshot is not None,
+        "old_inventory_hash": old_hash,
     }
+    if overrides:
+        payload.update(overrides)
     module.atomic_write_json(root / ".nase-restore/transaction.json", payload)
+    return root / ".nase-restore/transaction.json"
 
 prepared = base / "prepared"
 (prepared / "workspace").mkdir(parents=True)
 (prepared / "workspace/old").write_text("old")
-candidate = base / "prepared-candidate"
+old_hash = module.inventory(prepared / "workspace")["inventory_hash"]
+txid, candidate, snapshot_dir, snapshot = tx_paths(prepared)
 candidate.mkdir()
 (candidate / "new").write_text("new")
-write_journal(prepared, "prepared", candidate)
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+write_journal(prepared, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
 result = module.recover_restore(prepared)
 assert result["status"] == "rolled_back"
 assert (prepared / "workspace/old").read_text() == "old"
@@ -264,12 +281,13 @@ assert not candidate.exists()
 rolled_back = base / "rolled-back"
 (rolled_back / "workspace").mkdir(parents=True)
 (rolled_back / "workspace/old").write_text("old")
-candidate = base / "rolled-back-candidate"
+old_hash = module.inventory(rolled_back / "workspace")["inventory_hash"]
+txid, candidate, snapshot_dir, snapshot = tx_paths(rolled_back)
 candidate.mkdir()
 (candidate / "new").write_text("new")
-snapshot_dir = base / "rolled-back-snapshot"
 snapshot_dir.mkdir()
-write_journal(rolled_back, "old_moved", candidate, snapshot_dir / "workspace", had_live=True)
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+write_journal(rolled_back, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
 result = module.recover_restore(rolled_back)
 assert result["status"] == "rolled_back"
 assert (rolled_back / "workspace/old").read_text() == "old"
@@ -277,13 +295,14 @@ assert not candidate.exists()
 
 old_moved = base / "old-moved"
 old_moved.mkdir()
-candidate = base / "old-moved-candidate"
+txid, candidate, snapshot_dir, snapshot = tx_paths(old_moved)
 candidate.mkdir()
 (candidate / "new").write_text("new")
-snapshot = base / "old-moved-snapshot/workspace"
 snapshot.mkdir(parents=True)
 (snapshot / "old").write_text("old")
-write_journal(old_moved, "old_moved", candidate, snapshot, had_live=True)
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+old_hash = module.inventory(snapshot)["inventory_hash"]
+write_journal(old_moved, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
 result = module.recover_restore(old_moved)
 assert result["status"] == "restored"
 assert (old_moved / "workspace/new").read_text() == "new"
@@ -292,23 +311,12 @@ assert (snapshot / "old").read_text() == "old"
 promoted_before_journal = base / "promoted-before-journal"
 (promoted_before_journal / "workspace").mkdir(parents=True)
 (promoted_before_journal / "workspace/new").write_text("new")
-consumed_candidate = base / "promoted-before-journal-candidate"
-snapshot = base / "promoted-before-journal-snapshot/workspace"
+txid, consumed_candidate, snapshot_dir, snapshot = tx_paths(promoted_before_journal)
 snapshot.mkdir(parents=True)
 (snapshot / "old").write_text("old")
-payload = {
-    "version": 1,
-    "state": "old_moved",
-    "transaction_id": "promoted-before-journal",
-    "root": str(promoted_before_journal.resolve()),
-    "candidate": str(consumed_candidate),
-    "candidate_inventory_hash": module.inventory(promoted_before_journal / "workspace")["inventory_hash"],
-    "snapshot_dir": str(snapshot.parent),
-    "snapshot_workspace": str(snapshot),
-    "had_live_workspace": True,
-    "old_inventory_hash": "unused",
-}
-module.atomic_write_json(promoted_before_journal / ".nase-restore/transaction.json", payload)
+candidate_hash = module.inventory(promoted_before_journal / "workspace")["inventory_hash"]
+old_hash = module.inventory(snapshot)["inventory_hash"]
+write_journal(promoted_before_journal, "old_moved", txid, consumed_candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
 result = module.recover_restore(promoted_before_journal)
 assert result["status"] == "restored"
 assert (promoted_before_journal / "workspace/new").read_text() == "new"
@@ -316,17 +324,14 @@ assert (promoted_before_journal / "workspace/new").read_text() == "new"
 foreign = base / "foreign"
 (foreign / "workspace").mkdir(parents=True)
 (foreign / "workspace/foreign").write_text("foreign")
-candidate = base / "foreign-candidate"
+txid, candidate, snapshot_dir, snapshot = tx_paths(foreign)
 candidate.mkdir()
 (candidate / "new").write_text("new")
-snapshot = base / "foreign-snapshot/workspace"
 snapshot.mkdir(parents=True)
 (snapshot / "old").write_text("old")
-write_journal(foreign, "old_moved", candidate, snapshot, had_live=True)
-journal_path = foreign / ".nase-restore/transaction.json"
-journal = json.loads(journal_path.read_text())
-journal["old_inventory_hash"] = "prior-workspace-hash"
-module.atomic_write_json(journal_path, journal)
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+old_hash = module.inventory(snapshot)["inventory_hash"]
+write_journal(foreign, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
 try:
     module.recover_restore(foreign)
 except module.RestoreError:
@@ -340,25 +345,160 @@ assert (snapshot / "old").read_text() == "old"
 promoted = base / "promoted"
 (promoted / "workspace").mkdir(parents=True)
 (promoted / "workspace/new").write_text("new")
-candidate_path = base / "promoted-consumed-candidate"
-payload = {
-    "version": 1,
-    "state": "new_promoted",
-    "transaction_id": "promoted",
-    "root": str(promoted.resolve()),
-    "candidate": str(candidate_path),
-    "candidate_inventory_hash": module.inventory(promoted / "workspace")["inventory_hash"],
-    "snapshot_dir": None,
-    "snapshot_workspace": None,
-    "had_live_workspace": False,
-    "old_inventory_hash": "unused",
-}
-module.atomic_write_json(promoted / ".nase-restore/transaction.json", payload)
+txid, candidate_path, _, _ = tx_paths(promoted, with_snapshot=False)
+candidate_hash = module.inventory(promoted / "workspace")["inventory_hash"]
+write_journal(promoted, "new_promoted", txid, candidate_path, candidate_hash, "missing", overrides={"had_live_workspace": False})
 result = module.recover_restore(promoted)
 assert result["status"] == "restored"
 assert not (promoted / ".nase-restore/transaction.json").exists()
+
+# A tampered journal must never rename or delete unrelated paths.
+tampered = base / "tampered"
+(tampered / "workspace").mkdir(parents=True)
+(tampered / "workspace/old").write_text("old")
+old_hash = module.inventory(tampered / "workspace")["inventory_hash"]
+txid, candidate, snapshot_dir, snapshot = tx_paths(tampered)
+candidate.mkdir()
+(candidate / "new").write_text("new")
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+unrelated = base / "unrelated"
+unrelated.mkdir()
+(unrelated / "keep").write_text("keep")
+write_journal(tampered, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot, {"candidate": str(unrelated)})
+try:
+    module.recover_restore(tampered)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("tampered candidate path was accepted")
+assert (unrelated / "keep").read_text() == "keep"
+assert candidate.exists()
+
+write_journal(tampered, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot, {"snapshot_dir": str(unrelated), "snapshot_workspace": str(unrelated / "workspace")})
+try:
+    module.recover_restore(tampered)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("tampered snapshot path was accepted")
+assert (unrelated / "keep").read_text() == "keep"
+
+write_journal(tampered, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot, {"snapshot_workspace": str(unrelated / "workspace")})
+try:
+    module.recover_restore(tampered)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("tampered snapshot workspace path was accepted")
+assert (unrelated / "keep").read_text() == "keep"
+
+# Exact namespace paths still fail closed when replaced by symlinks.
+(candidate / "new").unlink()
+candidate.rmdir()
+candidate.symlink_to(unrelated, target_is_directory=True)
+write_journal(tampered, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+try:
+    module.recover_restore(tampered)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("symlink candidate was accepted")
+assert (unrelated / "keep").read_text() == "keep"
+candidate.unlink()
+candidate.mkdir()
+(candidate / "new").write_text("new")
+snapshot_dir.symlink_to(unrelated, target_is_directory=True)
+write_journal(tampered, "prepared", txid, candidate, module.inventory(candidate)["inventory_hash"], old_hash, snapshot_dir, snapshot)
+try:
+    module.recover_restore(tampered)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("symlink snapshot parent was accepted")
+assert (unrelated / "keep").read_text() == "keep"
+
+# Candidate drift in prepared state is preserved without touching live workspace.
+prepared_drift = base / "prepared-drift"
+(prepared_drift / "workspace").mkdir(parents=True)
+(prepared_drift / "workspace/old").write_text("old")
+old_hash = module.inventory(prepared_drift / "workspace")["inventory_hash"]
+txid, candidate, snapshot_dir, snapshot = tx_paths(prepared_drift)
+candidate.mkdir()
+(candidate / "new").write_text("new")
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+write_journal(prepared_drift, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+(candidate / "new").write_text("drift")
+try:
+    module.recover_restore(prepared_drift)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("prepared candidate drift was deleted")
+assert (prepared_drift / "workspace/old").read_text() == "old"
+assert (candidate / "new").read_text() == "drift"
+assert (prepared_drift / ".nase-restore/transaction.json").exists()
+
+# Candidate drift after old_moved restores only a verified snapshot and retains the candidate.
+candidate_drift = base / "candidate-drift"
+candidate_drift.mkdir()
+txid, candidate, snapshot_dir, snapshot = tx_paths(candidate_drift)
+candidate.mkdir()
+(candidate / "new").write_text("new")
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+old_hash = module.inventory(snapshot)["inventory_hash"]
+write_journal(candidate_drift, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+(candidate / "new").write_text("drift")
+result = module.recover_restore(candidate_drift)
+assert result["status"] == "rolled_back"
+assert result["retained_candidate"] == str(candidate)
+assert (candidate_drift / "workspace/old").read_text() == "old"
+assert (candidate / "new").read_text() == "drift"
+
+# If both candidate and snapshot drift, recover preserves both and leaves workspace absent.
+both_drift = base / "both-drift"
+both_drift.mkdir()
+txid, candidate, snapshot_dir, snapshot = tx_paths(both_drift)
+candidate.mkdir()
+(candidate / "new").write_text("new")
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+old_hash = module.inventory(snapshot)["inventory_hash"]
+write_journal(both_drift, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+(candidate / "new").write_text("candidate drift")
+(snapshot / "old").write_text("snapshot drift")
+try:
+    module.recover_restore(both_drift)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("drifted snapshot was restored")
+assert not (both_drift / "workspace").exists()
+assert candidate.exists() and snapshot.exists()
+
+# A promoted workspace that drifts is treated as live/foreign and never overwritten.
+promoted_drift = base / "promoted-drift"
+(promoted_drift / "workspace").mkdir(parents=True)
+(promoted_drift / "workspace/new").write_text("new")
+txid, consumed_candidate, snapshot_dir, snapshot = tx_paths(promoted_drift)
+candidate_hash = module.inventory(promoted_drift / "workspace")["inventory_hash"]
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+old_hash = module.inventory(snapshot)["inventory_hash"]
+write_journal(promoted_drift, "new_promoted", txid, consumed_candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+(promoted_drift / "workspace/new").write_text("live drift")
+try:
+    module.recover_restore(promoted_drift)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("drifted live workspace was replaced")
+assert (promoted_drift / "workspace/new").read_text() == "live drift"
+assert (snapshot / "old").read_text() == "old"
 PY
-assert_cmd "prepared, old_moved, new_promoted, and foreign recovery are deterministic" test "$?" = 0
+assert_cmd "recovery validates journal namespaces and candidate/snapshot inventories" test "$?" = 0
 
 if [[ "$failures" -eq 0 ]]; then
   printf '\nrestore workspace tests passed.\n'
