@@ -222,6 +222,7 @@ assert_cmd "promotion faults roll back and extraction uses approved archive byte
 python3 - "$ROOT" "$TMPROOT/recover" <<'PY'
 import importlib.util
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -288,10 +289,15 @@ candidate.mkdir()
 snapshot_dir.mkdir()
 candidate_hash = module.inventory(candidate)["inventory_hash"]
 write_journal(rolled_back, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
-result = module.recover_restore(rolled_back)
-assert result["status"] == "rolled_back"
+try:
+    module.recover_restore(rolled_back)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("old_moved live workspace with candidate was guessed as owned")
 assert (rolled_back / "workspace/old").read_text() == "old"
-assert not candidate.exists()
+assert candidate.exists()
+assert (rolled_back / ".nase-restore/transaction.json").exists()
 
 old_moved = base / "old-moved"
 old_moved.mkdir()
@@ -341,6 +347,57 @@ else:
 assert (foreign / "workspace/foreign").read_text() == "foreign"
 assert (candidate / "new").read_text() == "new"
 assert (snapshot / "old").read_text() == "old"
+
+# Byte-identical foreign recreation is still foreign once a snapshot artifact proves the old workspace moved.
+prepared_identical = base / "prepared-identical-foreign"
+(prepared_identical / "workspace").mkdir(parents=True)
+(prepared_identical / "workspace/old").write_text("old")
+txid, candidate, snapshot_dir, snapshot = tx_paths(prepared_identical)
+candidate.mkdir()
+(candidate / "new").write_text("new")
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+snapshot_stat = (snapshot / "old").stat()
+os.utime(prepared_identical / "workspace/old", ns=(snapshot_stat.st_atime_ns, snapshot_stat.st_mtime_ns))
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+old_hash = module.inventory(snapshot)["inventory_hash"]
+assert module.inventory(prepared_identical / "workspace")["inventory_hash"] == old_hash
+write_journal(prepared_identical, "prepared", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+try:
+    module.recover_restore(prepared_identical)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("prepared identical foreign workspace was treated as owned")
+assert (prepared_identical / "workspace/old").read_text() == "old"
+assert (snapshot / "old").read_text() == "old"
+assert (candidate / "new").read_text() == "new"
+assert (prepared_identical / ".nase-restore/transaction.json").exists()
+
+old_moved_identical = base / "old-moved-identical-foreign"
+(old_moved_identical / "workspace").mkdir(parents=True)
+(old_moved_identical / "workspace/old").write_text("old")
+txid, candidate, snapshot_dir, snapshot = tx_paths(old_moved_identical)
+candidate.mkdir()
+(candidate / "new").write_text("new")
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+snapshot_stat = (snapshot / "old").stat()
+os.utime(old_moved_identical / "workspace/old", ns=(snapshot_stat.st_atime_ns, snapshot_stat.st_mtime_ns))
+candidate_hash = module.inventory(candidate)["inventory_hash"]
+old_hash = module.inventory(snapshot)["inventory_hash"]
+assert module.inventory(old_moved_identical / "workspace")["inventory_hash"] == old_hash
+write_journal(old_moved_identical, "old_moved", txid, candidate, candidate_hash, old_hash, snapshot_dir, snapshot)
+try:
+    module.recover_restore(old_moved_identical)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("old_moved identical foreign workspace was treated as owned")
+assert (old_moved_identical / "workspace/old").read_text() == "old"
+assert (snapshot / "old").read_text() == "old"
+assert (candidate / "new").read_text() == "new"
+assert (old_moved_identical / ".nase-restore/transaction.json").exists()
 
 promoted = base / "promoted"
 (promoted / "workspace").mkdir(parents=True)

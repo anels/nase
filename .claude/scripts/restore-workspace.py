@@ -751,6 +751,13 @@ def rollback_invalid_candidate(
     return finish_rollback(root, paths, retained_candidate=candidate)
 
 
+def foreign_workspace_error(root: Path, paths: dict[str, Path | None]) -> RestoreError:
+    return RestoreError(
+        "foreign workspace blocks recovery; preserving workspace, snapshot, and candidate: "
+        f"{root / 'workspace'}, {paths['snapshot_workspace'] or 'none'}, {paths['candidate']}"
+    )
+
+
 def recover_restore(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     journal_path = root / JOURNAL_RELATIVE
@@ -765,11 +772,22 @@ def recover_restore(root: Path) -> dict[str, Any]:
             state = journal.get("state")
             workspace = root / "workspace"
             if state == "prepared":
-                live_matches_old = inventory(workspace)["inventory_hash"] == journal.get("old_inventory_hash")
-                if journal.get("had_live_workspace") and live_matches_old:
-                    return discard_prepared(root, journal, paths)
+                snapshot_dir = paths["snapshot_dir"]
+                snapshot_artifact = snapshot_dir is not None and (
+                    snapshot_dir.exists() or snapshot_dir.is_symlink()
+                )
                 if workspace.exists():
-                    raise RestoreError("foreign workspace blocks prepared restore recovery")
+                    if not journal.get("had_live_workspace") or snapshot_artifact:
+                        raise foreign_workspace_error(root, paths)
+                    if inventory(workspace)["inventory_hash"] != journal.get("old_inventory_hash"):
+                        raise RestoreError(
+                            "prepared restore workspace drifted; preserving workspace, candidate, and journal"
+                        )
+                    return discard_prepared(root, journal, paths)
+                if journal.get("had_old_content") and not snapshot_artifact:
+                    raise RestoreError(
+                        "prepared restore lost its prior workspace snapshot; preserving candidate and journal"
+                    )
                 try:
                     promote_candidate(root, journal)
                 except RestoreError as exc:
@@ -777,20 +795,15 @@ def recover_restore(root: Path) -> dict[str, Any]:
                 return finish_promoted(root, journal)
             if state == "old_moved":
                 if workspace.exists():
-                    live_hash = inventory(workspace)["inventory_hash"]
-                    if live_hash == journal.get("candidate_inventory_hash"):
-                        journal["state"] = "new_promoted"
-                        write_journal(root, journal)
-                        return finish_promoted(root, journal)
-                    if live_hash == journal.get("old_inventory_hash"):
-                        if candidate.exists():
-                            validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
-                            shutil.rmtree(candidate)
-                        return finish_rollback(root, paths)
-                    raise RestoreError(
-                        "foreign workspace blocks recovery; preserving workspace, snapshot, and candidate: "
-                        f"{workspace}, {journal.get('snapshot_workspace') or 'none'}, {journal.get('candidate')}"
-                    )
+                    if candidate.exists():
+                        raise foreign_workspace_error(root, paths)
+                    try:
+                        validate_recovery_candidate(workspace, journal.get("candidate_inventory_hash"))
+                    except RestoreError as exc:
+                        raise foreign_workspace_error(root, paths) from exc
+                    journal["state"] = "new_promoted"
+                    write_journal(root, journal)
+                    return finish_promoted(root, journal)
                 if candidate.exists():
                     try:
                         validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
