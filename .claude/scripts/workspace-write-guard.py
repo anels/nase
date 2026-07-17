@@ -197,14 +197,9 @@ def fsync_file(path: Path) -> None:
 
 
 def fsync_dir(path: Path) -> None:
-    try:
-        descriptor = os.open(path, os.O_RDONLY)
-    except OSError:
-        return
+    descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)
-    except OSError:
-        pass
     finally:
         os.close(descriptor)
 
@@ -227,7 +222,9 @@ def cmd_apply(args: argparse.Namespace) -> None:
             return f"; original preserved at {relpath(backup, root)}"
         try:
             os.link(backup, target)
+            fsync_dir(target.parent)
             backup.unlink()
+            fsync_dir(target.parent)
             return ""
         except OSError:
             return f"; original preserved at {relpath(backup, root)}"
@@ -379,9 +376,14 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> None:
                 return False, False
             try:
                 shutil.copytree(candidate, source)
+                fsync_dir(source.parent)
             except OSError:
                 return False, False
             return True, True
+        try:
+            fsync_dir(source.parent)
+        except OSError:
+            return False, False
         return True, False
 
     def rollback_destination() -> tuple[bool, Path | None]:
@@ -391,6 +393,12 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> None:
             os.rename(destination, rollback_path)
         except OSError:
             return False, None
+        try:
+            fsync_dir(destination.parent)
+            if rollback_path.parent != destination.parent:
+                fsync_dir(rollback_path.parent)
+        except OSError:
+            return False, rollback_path
         return True, rollback_path
 
     def abort(message: str, code: int) -> None:
@@ -418,16 +426,20 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> None:
     try:
         shutil.copyfile(staged, tmp_destination)
         os.chmod(tmp_destination, source_mode)
+        fsync_file(tmp_destination)
         stat = tmp_destination.stat()
         destination_identity = (stat.st_dev, stat.st_ino)
         os.link(tmp_destination, destination)
         destination_created = True
+        fsync_dir(destination.parent)
         tmp_destination.unlink()
+        fsync_dir(destination.parent)
         if not created_destination_is_intact():
             abort("Destination changed while moving", 5)
 
         os.rename(source, backup_source)
         source_moved = True
+        fsync_dir(source.parent)
         try:
             backup_state = file_state(backup_source)
         except GuardError as exc:
@@ -439,6 +451,8 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> None:
             abort("Target changed while moving", 3)
 
         shutil.copy2(backup_source, recovery_source)
+        fsync_file(recovery_source)
+        fsync_dir(recovery_source.parent)
         try:
             backup_state = file_state(backup_source)
         except GuardError as exc:
@@ -455,6 +469,7 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> None:
             abort("Destination changed while moving", 5)
 
         backup_source.unlink()
+        fsync_dir(source.parent)
         if source.exists():
             abort("Source path was recreated while committing move", 5)
         if not created_destination_is_intact():

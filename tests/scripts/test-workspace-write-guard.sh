@@ -308,6 +308,63 @@ PY
 race_rc=$?
 assert_cmd "apply-move preserves data across replacement races" test "$race_rc" = "0"
 
+python3 - "$SCRIPT" "$TMPROOT" <<'PY'
+import argparse
+import importlib.util
+import sys
+from pathlib import Path
+
+script, root_arg = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("workspace_write_guard_durability", script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+
+root = Path(root_arg).resolve()
+real_fsync_dir = module.fsync_dir
+
+for fail_at in (1, 3, 4, 5):
+    source = root / f"workspace/efforts/durability-{fail_at}.md"
+    destination = root / f"workspace/efforts/done/durability-{fail_at}.md"
+    staged = root / f"workspace/tmp/staged-durability-{fail_at}.md"
+    source.write_text("source\n", encoding="utf-8")
+    staged.write_text("staged\n", encoding="utf-8")
+    state = module.file_state(source)
+    args = argparse.Namespace(
+        root=str(root),
+        target=f"workspace/efforts/durability-{fail_at}.md",
+        destination=f"workspace/efforts/done/durability-{fail_at}.md",
+        staged=f"workspace/tmp/staged-durability-{fail_at}.md",
+        expected_mtime_ns=state["mtime_ns"],
+        expected_sha256=state["sha256"],
+        expected_staged_sha256=module.sha256_file(staged),
+    )
+    calls = 0
+
+    def injected_fsync(path):
+        nonlocal_calls[0] += 1
+        if nonlocal_calls[0] == fail_at:
+            raise OSError(f"injected directory fsync failure {fail_at}")
+        real_fsync_dir(path)
+
+    nonlocal_calls = [calls]
+    module.fsync_dir = injected_fsync
+    try:
+        module.cmd_apply_move(args)
+    except module.GuardError as exc:
+        assert exc.code == 5, exc
+    else:
+        raise AssertionError(f"directory fsync failure {fail_at} did not abort")
+    finally:
+        module.fsync_dir = real_fsync_dir
+
+    assert source.is_file()
+    assert source.read_text(encoding="utf-8") == "source\n"
+    assert not destination.exists()
+PY
+durability_rc=$?
+assert_cmd "apply-move preserves source across durability failures" test "$durability_rc" = "0"
+
 printf 'draft\n' > "$proposal"
 python3 "$SCRIPT" stage \
   --root "$TMPROOT" \

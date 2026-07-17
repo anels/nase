@@ -76,9 +76,10 @@ For a guarded rename that also replaces file content, use `apply-move` instead
 of `apply` followed by `mv`. It rechecks the source and atomically refuses an
 existing destination, so a stale `done/{slug}.md` cannot be overwritten. It
 publishes the destination before hiding the source, preserves the source mode,
-and rolls back its own intact destination on a caught failure. If another writer
-replaces a path, it preserves that entry in place or moves it to a unique recovery
-path instead of deleting or overwriting it:
+fsyncs the published file and both affected directories before deleting the
+last original copy, and rolls back its own intact destination on a caught
+failure. If another writer replaces a path, it preserves that entry in place or
+moves it to a unique recovery path instead of deleting or overwriting it:
 
 ```bash
 python3 .claude/scripts/workspace-write-guard.py apply-move \
