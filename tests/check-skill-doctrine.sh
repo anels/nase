@@ -236,13 +236,27 @@ fi
 # ---------- D6: restore archive extraction is hardened ---------------------
 section "D6: restore archive extraction is path-safe"
 RESTORE_MD=".claude/commands/nase/restore.md"
+RESTORE_HELPER=".claude/scripts/restore-workspace.py"
 d6_hits=""
 for needle in \
   "selected backup is outside backup-target" \
-  "parent-traversal paths" \
-  "backup payload contains symlinks"; do
+  "restore-workspace.py\" inspect" \
+  "restore-workspace.py\" apply" \
+  "restore-workspace.py\" recover" \
+  'Do not copy, delete, or extract directly into `workspace/`'; do
   if ! grep -qF "$needle" "$RESTORE_MD" 2>/dev/null; then
     d6_hits+="  missing: $needle"$'\n'
+  fi
+done
+for needle in \
+  "7z listing has no member metadata separator" \
+  "archive contains parent traversal" \
+  "Unicode/case collision" \
+  "candidate contains a link or special file" \
+  "foreign workspace" \
+  'journal["state"] = "new_promoted"'; do
+  if ! grep -qF "$needle" "$RESTORE_HELPER" 2>/dev/null; then
+    d6_hits+="  helper missing: $needle"$'\n'
   fi
 done
 if [[ -n "$d6_hits" ]]; then

@@ -68,9 +68,9 @@ Then run `nase` from any terminal to open Claude Code in the workspace.
 - **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — required
 - **Git** — required for hooks and report commands
 - **[GitHub CLI (`gh`)](https://cli.github.com/)** — required for PR metadata, diffs, reviews, and PR creation workflows
-- **7z or zip + unzip** — required for backups and restore; install via `scoop install 7zip` or `brew install p7zip`
+- **7z or zip** - required for backups; 7z/7zz is also required to inspect and restore legacy `.7z` backups
 - **jq** — required by hooks that parse Claude Code lifecycle JSON (`block-dangerous-git.sh`, external-write guards, `track-skill.sh`, telemetry hooks)
-- **python3** — required by date-range helpers used in recap/stats/KB-gap flows; also used for tech-digest archival of entries older than 30 days
+- **python3** - required by date-range helpers, transactional workspace restore, and tech-digest archival
 
 #### Recommended agent CLI tools
 

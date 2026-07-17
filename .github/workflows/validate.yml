@@ -18,7 +18,7 @@ jobs:
 
       - name: Install tools
         run: |
-          sudo apt-get install -y shellcheck python3 jq ripgrep
+          sudo apt-get install -y shellcheck python3 jq ripgrep p7zip-full
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
