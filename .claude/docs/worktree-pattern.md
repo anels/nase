@@ -54,12 +54,31 @@ Do **not** switch the main repo off the branch — that touches the user's worki
 
    The lease verifies the remote SHA without needing a local branch ref; `HEAD:{branch}` lands the new commit on the remote branch. The main repo's branch ref auto-updates on next fetch.
 
-4. Cleanup is unchanged (`git worktree remove ... --force`).
+4. Cleanup uses the same remote-OID verification as branch-attached worktrees.
 
 ## Cleanup
 
-After the branch has been pushed (or work is otherwise complete):
+After the branch has been pushed, capture the exact local OID and verify that the
+remote branch still points to it before removing anything:
 
 ```bash
-git -C {repo_path} worktree remove {worktree_path} --force
+NASE_ROOT=$(git rev-parse --show-toplevel)
+EXPECTED_HEAD=$(git -C {worktree_path} rev-parse HEAD)
+python3 "$NASE_ROOT/.claude/scripts/worktree-cleanup.py" \
+  --repo {repo_path} \
+  --worktree {worktree_path} \
+  --remote origin \
+  --remote-ref refs/heads/{branch_name} \
+  --expected-head "$EXPECTED_HEAD"
 ```
+
+The helper refuses the primary or locked worktree, in-progress Git operations,
+remote drift or an unavailable remote, and any tracked, untracked, ignored, or
+recursive submodule content. It calls only plain `git worktree remove` and never
+uses `--force`.
+
+Return codes:
+
+- `0`: safely removed; cleanup-only state and research artifacts may now be deleted.
+- `3`: safely retained; report the worktree path and listed dirty items as a non-failure outcome.
+- `2`: invalid input or unparseable Git state; stop the workflow and report the error.

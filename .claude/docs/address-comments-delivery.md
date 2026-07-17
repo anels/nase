@@ -243,7 +243,11 @@ Offer `/nase:kb-update` for confirmed non-obvious architectural constraints. Put
 
 ## Phase 11: Cleanup and Report
 
-Remove the worktree only when `worktree_path != repo_path`, then print:
+When `worktree_path != repo_path`, follow `.claude/docs/worktree-pattern.md -> Cleanup`
+with remote `origin`, remote ref `refs/heads/{pr_branch}`, and the full worktree
+HEAD. Return `3` keeps the worktree and is reported as a non-failure cleanup
+outcome with its path and dirty items. Return `2` stops with the helper error.
+Never run cleanup when the workflow used the primary checkout. Then print:
 
 ```
 PR comments addressed ✓

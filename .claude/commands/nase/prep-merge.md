@@ -161,7 +161,7 @@ cat > "workspace/tmp/prep-merge-{owner}-{repo}-{pr_number}-abort.json" <<EOF
 EOF
 ```
 
-Then report the conflicting files to the user and suggest resolving them locally before re-running prep-merge. Alternatively, the user can delete the worktree (`git -C {repo_path} worktree remove {worktree_path} --force`) and start fresh.
+Then report the conflicting files to the user and suggest resolving them locally before re-running prep-merge. If cleanup is requested, use `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote ref `refs/heads/{pr_branch}`, and the full worktree HEAD. A return code of `3` means the worktree is retained for local resolution; never force-remove it.
 
 After a successful rebase, check if any files were auto-merged: `git -C {worktree_path} diff origin/{pr_branch}..HEAD`. If non-empty (code changed during rebase), run the build & test loop (`.claude/docs/build-test-loop.md`) before proceeding to ensure the rebased code still works.
 
@@ -366,10 +366,11 @@ Follow `.claude/docs/effort-lifecycle.md → Prep-Merge Update`. If the PR or br
 
 ## Phase 10: Cleanup & Report
 
-Remove the worktree:
-```bash
-git -C {repo_path} worktree remove {worktree_path} --force
-```
+Follow `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote
+ref `refs/heads/{pr_branch}`, and the full OID from
+`git -C {worktree_path} rev-parse HEAD`. Return `3` is a successful retained
+cleanup outcome and must report the path and dirty items. Return `2` stops the
+workflow with the helper error.
 
 **Required-check status (report-only).** Follow `.claude/docs/pr-gates-consumption.md` §4: read live check status with `gh pr checks {pr_number} --repo {owner}/{repo}`, cross-reference `gate_profile.required_checks`, and render the ✓/✗/…/⚠ list. Warn on failing or pending required checks so the user knows what still blocks the actual merge — but do not wait, poll, or block the force-push already done. If the gate-profile load used the live-fetch fallback, also add the §2 stale-KB note (`Run /nase:onboard {repo} to persist`).
 

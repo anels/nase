@@ -225,4 +225,6 @@ Persist before cleanup:
 
 **2. Implementation discoveries**: if implementation revealed new patterns, architectural insights, or hard constraints specific to the target repo, invoke `/nase:kb-update [domain]` with a concise summary.
 
-Team mode: read and delete `workspace/tmp/fsd-research-{branch_slug}.md` if present. Do not defer KB updates to wrap-up.
+Team mode: read `workspace/tmp/fsd-research-{branch_slug}.md` if present. Persist
+its findings here, but delete the artifact only after Phase 9's safe worktree
+helper returns `0`. Do not defer KB updates to wrap-up.

@@ -107,4 +107,6 @@ On success, return to `/nase:fsd` Phase 5. Phase isolation already implemented t
 
 **Error recovery:** Any FAILED entry or missing phase entry → stop. Report: "Phase {X} failed — state file preserved at `workspace/tmp/fsd-phases-{branch_slug}.md`." Do NOT continue `/nase:fsd`. Preserve the state file for diagnosis.
 
-**State file cleanup:** Delete `workspace/tmp/fsd-phases-{branch_slug}.md` at Phase 9 (worktree removal) or at the start of Phase 10 (no-worktree flow).
+**State file cleanup:** Delete `workspace/tmp/fsd-phases-{branch_slug}.md` only
+after Phase 9's safe worktree helper returns `0`, or at the start of Phase 10
+for a no-worktree flow. Preserve it when cleanup returns `2` or `3`.

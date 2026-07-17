@@ -89,15 +89,21 @@ Follow `.claude/docs/effort-lifecycle.md → FSD Update`. If $ARGUMENTS contains
 
 ## Phase 8c: KB Update
 
-Follow `.claude/docs/fsd-delivery-gates.md → Phase 8c`. Persist research and implementation discoveries before cleanup, then remove any team-mode research artifact.
+Follow `.claude/docs/fsd-delivery-gates.md → Phase 8c`. Persist research and
+implementation discoveries before cleanup. Keep any team-mode research artifact
+until Phase 9's safe cleanup helper returns `0`.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 
-Remove the worktree (safe since the branch is already pushed):
-```bash
-git -C {repo} worktree remove {worktree_path} --force
-```
-Confirm: "Worktree removed."
+Follow `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote
+ref `refs/heads/{branch_name}`, and the full OID from
+`git -C {worktree_path} rev-parse HEAD`.
+
+- Return `0`: delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
+  `workspace/tmp/fsd-research-{branch_slug}.md`, then confirm `Worktree removed.`
+- Return `3`: keep the worktree and both artifacts, report the retained path and
+  dirty items, and continue to the final report as a non-failure cleanup result.
+- Return `2`: keep all artifacts, stop, and report the helper error.
 
 ---
 
