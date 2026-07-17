@@ -48,7 +48,7 @@ Run the `## Setup` → Language preflight before this scan — it applies to eve
 
 Before Phase 1, scan `$ARGUMENTS` for mode flags. Strip the flag from `$ARGUMENTS` before downstream parsing. Check in this order — first match wins.
 
-- `--grill` present → enter **Grill Mode**: multi-persona stress-test of an existing plan, one question at a time. Skip all phases below and follow `.claude/docs/design-grill-mode.md`.
+- `--grill` present → enter **Grill Mode**: multi-persona stress-test of an existing plan in frontier rounds (resolve each round's settled-prerequisite branches, facts first, then a batched ask). Skip all phases below and follow `.claude/docs/design-grill-mode.md`.
 - `--review` present → enter **Review Mode** (next section).
 - `--interactive` present → run the **turn-by-turn interactive flow** (Phase 1 onward below): present context, options, and design with the user in the loop. This is the legacy default, now opt-in.
 - `--auto` present → enter **Auto Mode** explicitly (same as the no-flag default).

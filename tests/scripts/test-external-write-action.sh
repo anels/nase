@@ -169,6 +169,32 @@ else
   report 1 "az acr build is gated as an azure mutation"
 fi
 
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+  --system azure --summary "acr import" -- \
+  az acr import --name example --source source/image:tag > "$TMPDIR_TEST/acr-import-prepared.json"
+if jq -e '.action.system == "azure"' "$(jq -r '.manifest' "$TMPDIR_TEST/acr-import-prepared.json")" >/dev/null; then
+  report 0 "az acr import is gated as an azure mutation"
+else
+  report 1 "az acr import is gated as an azure mutation"
+fi
+
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+  --system terraform --summary "terraform import" -- \
+  terraform -chdir=/tmp import aws_instance.example i-123 > "$TMPDIR_TEST/terraform-import-prepared.json"
+if jq -e '.action.system == "terraform"' "$(jq -r '.manifest' "$TMPDIR_TEST/terraform-import-prepared.json")" >/dev/null; then
+  report 0 "terraform import after a global option is gated"
+else
+  report 1 "terraform import after a global option is gated"
+fi
+
+expect_rc "azure read operand named import stays read-only" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "read" -- \
+  az storage blob show --container-name example --name import
+
+expect_rc "terraform output named import stays read-only" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system terraform --summary "read" -- \
+  terraform -chdir=/tmp output import
+
 expect_rc "az acr show stays read-only (not a mutation)" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "read" -- az acr show --name example
 

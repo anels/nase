@@ -1,6 +1,6 @@
 # Grill Mode (`/nase:design --grill`)
 
-Stress-test an existing plan via relentless one-question-at-a-time interview. Goal: walk every branch of the decision tree until shared understanding, recording resolutions back to the effort doc so `/nase:fsd` can pick up the constraints.
+Stress-test an existing plan via a relentless frontier-round interview. Goal: walk every branch of the decision tree until shared understanding, resolving each round's frontier (facts first, then a batched ask) and recording resolutions back to the effort doc so `/nase:fsd` can pick up the constraints.
 
 ## Activation
 
@@ -46,11 +46,11 @@ Read the plan content (effort doc body or raw text). Extract every branch where 
 - Architectural choices the plan glosses over — interface shape, seam location, data path.
 - Review packaging ambiguity — proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, or implementation phases being treated as PRs without justification.
 
-Output internally: a list `branches: [{topic, why-it-matters, persona}]`. Cap at 15 top-level branches; if more candidates exist, prioritize by load-bearingness (security, data-loss risk, irreversibility, cross-team coordination) and surface the rest in `## Open after grill`. The 15-cap protects the 25-iteration budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
+Output internally: a list `branches: [{id, topic, why-it-matters, persona, depends_on: [branch-id]}]`. Assign each branch a stable `id`. Set `depends_on: []` only when the branch can be resolved independently; when a branch's valid options or recommendation depend on another decision, list that prerequisite's id. Dependency ids must exist, and the graph must contain no self-dependency or cycle. Cap at 15 top-level branches by keeping a dependency-closed set: if a kept branch depends on another branch, keep its full prerequisite chain too. Prioritize by load-bearingness (security, data-loss risk, irreversibility, cross-team coordination) and move the rest, plus any branch that depends on a moved branch, to `## Open after grill`. Revalidate ids and acyclicity after applying the cap. The 15-cap protects the 25-branch budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
 
 ## Step 3.4: Persona Lenses (multi-perspective grill)
 
-Run the plan past five reviewer personas — each catches a different failure class, and a design that survives all five is far harder to break than one grilled from a single angle. Walk the lenses, generate the sharpest 1–3 questions per persona that the plan does not already answer, and fold them into `branches` (tag each with its `persona`, respect the 15-cap, drop overflow into `## Open after grill`). A question a persona answers from the codebase/KB is resolved in Step 4 like any other branch — only genuine forks reach the user.
+Run the plan past five reviewer personas; each catches a different failure class, and a design that survives all five is far harder to break than one grilled from a single angle. Walk the lenses, generate the sharpest 1–3 questions per persona that the plan does not already answer, and fold them into `branches` (tag each with its `persona` and preserve or add `depends_on` edges). Apply Step 3's dependency-closed 15-cap again, then revalidate dependency ids and acyclicity. A question a persona answers from the codebase/KB is resolved in Step 4 like any other branch; only genuine forks reach the user.
 
 Lead with whichever personas matter most for this design (a CLI util needs little PM/SRE; a tenant-facing service needs all five). End with a **pre-mortem**: assume it's six months out and this design caused an incident — what was the cause? Treat each answer as a branch.
 
@@ -110,34 +110,35 @@ Capture both `content` and `threadId`; hold the thread id as `codex_grill_thread
 
 Parse `content` as a numbered list of questions (`QUESTION / WHY / EVIDENCE NEEDED / DEFAULT IF EVIDENCE MATCHES`). For each question:
 
-1. **Deduplicate** against the existing `branches` list. If the question maps to a branch already extracted in Step 3, merge — mark the existing branch with source `[claude+codex]` for a confidence bump.
-2. **Append new questions as branches**, each tagged `[codex]`, with `topic` = a short label, `why-it-matters` = the WHY line, `evidence_needed` = the EVIDENCE NEEDED line, and `recommended_default` = the DEFAULT line when present.
-3. **Respect the 15-branch cap**. If Codex pushes total branches past 15, drop the lowest-load-bearingness items (regardless of source) into `## Open after grill`. Never silently drop a Codex question — surface it.
+1. **Deduplicate** against the existing `branches` list. If the question maps to a branch already extracted in Step 3, merge it, mark the existing branch with source `[claude+codex]` for a confidence bump, and preserve the union of their `depends_on` edges.
+2. **Append new questions as branches**, each tagged `[codex]`, with a stable `id`, `topic` = a short label, `why-it-matters` = the WHY line, `evidence_needed` = the EVIDENCE NEEDED line, `recommended_default` = the DEFAULT line when present, and `depends_on` inferred by the Step 3 rule.
+3. **Respect the 15-branch cap**. If Codex pushes total branches past 15, keep the highest-load-bearing dependency-closed set and move the rest, plus their transitive dependents, into `## Open after grill`. Revalidate dependency ids and acyclicity after the merge/cap. Never silently drop a Codex question; surface it.
 
 Step 4 then runs unchanged except for one rule: for `[codex]` branches, exhaust the evidence named by Codex (`codebase / config / CLI / pipeline / KB / Jira`) before asking the user. The user should only see a question when both Claude/NASE and Codex cannot answer from available evidence or when a stakeholder decision is genuinely required.
 
-## Step 4: Grill Loop (one question at a time)
+## Step 4: Grill Loop (frontier rounds)
 
-For each branch (deepest first when branches depend on each other):
+Work the decision tree in **rounds**, not one question at a time. Compute the **frontier** from the branch graph: it is every unresolved branch whose `depends_on` ids are all resolved. These are the decisions you can resolve *now* without guessing at answers you haven't heard yet. A branch whose resolution depends on another still-open branch is not on the frontier; it belongs to a later round. If a branch is deferred, move all of its transitive dependents to `open_after_grill` instead of treating the missing decision as settled. Resolve the whole current frontier each round (facts first, then a single batched ask), then recompute the frontier and repeat. This front-loads evidence lookups and cuts the user's turn count versus asking serially. (Adapted from mattpocock/skills `batch-grill-me`; see `workspace/kb/general/workflow.md` §2026-07-16.)
 
-### 4a. Classify
+### 4a. Classify the frontier
 
-For the next branch, classify how it can be resolved:
+For every branch on the current frontier, classify how it can be resolved:
 - **codebase-answerable** — can be answered by reading the repo (file structure, existing patterns, current behavior)
 - **config-answerable** — answered by KB / CLAUDE.md / Confluence runbooks
 - **user-answerable** — only the user / stakeholder can decide
 
-### 4b. Resolve before asking (codebase + config branches)
+### 4b. Resolve facts before asking (codebase + config branches) — parallel, non-blocking
 
-If codebase-answerable: use Grep / Read / Glob in `repo_path` to find the answer. Record the evidence-backed decision directly in `grill_resolutions` with file/line evidence and proceed to the next branch. Do not ask the user to confirm something the codebase already answers.
+Finding *facts* is the agent's job, never the user's. Dispatch codebase/config lookups for the frontier **in parallel** (one read-only `lookup` sub-agent per independent branch, or batched Grep/Read/Glob in `repo_path`), and **don't block the round on them**: a running exploration is an unsettled prerequisite, so only the branches *downstream* of that exploration wait — ask the rest of the frontier now.
 
-If config-answerable: read the relevant KB, CLAUDE.md, or Confluence runbook. Record the evidence-backed decision directly in `grill_resolutions` with the source reference and proceed to the next branch. Do not ask the user to confirm documented constraints.
+- codebase-answerable → resolve via Grep / Read / Glob in `repo_path`; record the evidence-backed decision in `grill_resolutions` with file/line evidence. Never ask the user to confirm what the codebase answers.
+- config-answerable → read the relevant KB / CLAUDE.md / Confluence runbook; record with the source reference. Never ask the user to confirm documented constraints.
 
-Only fall through to step 4c when the branch is genuinely user-answerable, or when codebase/config exploration revealed a real fork with 2+ valid paths and no clear local precedent.
+Only fall through to 4c for branches that are genuinely user-answerable, or where evidence lookup revealed a real fork with 2+ valid paths and no clear local precedent.
 
-### 4c. Ask one question with a recommendation
+### 4c. Ask the frontier's user-answerable branches (batched round)
 
-Use `AskUserQuestion` with the structured form:
+Batch the round's user-answerable branches into a **single `AskUserQuestion` call**, up to the harness cap of 4 questions per call and never more than the Step 5 budget remaining (`25 - user-answerable branches already resolved`). If the frontier exceeds either limit, ask the most load-bearing branches that fit and carry the rest into the next round. Each question is still one single decision (never compound) and always leads with a recommended answer. Use the structured per-question form:
 
 ```
 question: "{Question — clear, single-decision, no compound 'and']}"
@@ -158,19 +159,20 @@ Rules:
 
   Trigger only when needed — overuse trains the user to ignore it. Good triggers: previous "Other" with a long free-form rebuttal, two consecutive grill iterations resolving the same branch differently, the recommended answer scoring < 60% in your own confidence check.
 
-### 4d. Record + drill down
+### 4d. Record + recompute frontier
 
-After each answer:
+After each round's answers:
+0. Apply the Step 5 stop-token rule first. If it matches, record the same batch's non-termination answers as specified there, then skip the steps below and end the grill.
 1. Append to internal buffer `grill_resolutions: [{persona, severity, topic, question, answer, rationale}]` (Step 6 does the single write; `persona`/`severity` default to `—`/`suggestion` for non-persona branches).
-2. If the answer implies a follow-up decision, push that as the next branch.
+2. Each answered decision reshapes the tree: settled branches push the frontier outward and unblock branches that depended on them. If an answer implies a new follow-up decision, add it as a branch. **Recompute the frontier** and run the next round (4a–4d).
 
 ## Step 5: Termination
 
-The loop ends when all branches have been resolved/deferred, or when the user explicitly stops the grill.
+The loop ends when the frontier is empty — every branch resolved/deferred — or when the user explicitly stops the grill.
 
 If every branch has been handled by evidence lookup, user answer, or `open_after_grill`, proceed to Step 5.5 with `termination = branches exhausted`. Do not ask a synthetic final question just to collect a stop token.
 
-If a user-facing question is active, the user can also stop via the harness-added `Other` free-form. Match the entire trimmed payload (case-insensitive) against this exact-token list:
+If a user-facing question batch is active, the user can also stop via any question's harness-added `Other` free-form. Evaluate each returned answer independently and match each trimmed `Other` payload (case-insensitive) against this exact-token list:
 
 - `done`
 - `enough`
@@ -183,9 +185,9 @@ If a user-facing question is active, the user can also stop via the harness-adde
 
 `good` is **not** a terminator — it's too easily produced as filler ("good, next question"). Require explicit termination.
 
-If the payload is anything else (e.g. a long free-form override of the recommendation), treat it as a non-termination "Other" answer and continue the loop with that answer.
+If any answer matches, record the other non-termination answers returned in the same batch, set `termination` to the first matching stop token in question order, and end the grill before adding follow-up branches or recomputing the frontier. The stop-token answer itself is not a branch resolution. If an `Other` payload does not match (e.g. a long free-form override of the recommendation), treat it as a non-termination answer and continue the loop with it.
 
-Hard cap: 25 iterations. If reached without termination, say so and ask whether to continue or stop. This is a safety bound, not a normal exit.
+Hard cap: 25 user-answerable branches resolved total (across all rounds). If reached without an empty frontier, say so and ask whether to continue or stop. This is a safety bound, not a normal exit.
 
 ## Step 5.5: Codex Mutual Grill Round 2 (answer Claude's questions)
 
