@@ -7,7 +7,7 @@ import argparse
 import fcntl
 import json
 import os
-import shutil
+import stat
 import time
 import uuid
 from contextlib import contextmanager
@@ -38,6 +38,79 @@ def _owner_path(lock_dir: Path) -> Path:
     return lock_dir / "owner.json"
 
 
+def _require_directory(path: Path, label: str) -> os.stat_result:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise LockError(f"{label} cannot be inspected: {path}: {exc}") from exc
+    if not stat.S_ISDIR(metadata.st_mode) or path.is_symlink():
+        raise LockError(f"{label} is not a lexical directory: {path}")
+    return metadata
+
+
+def _ensure_locks_root(root: Path) -> Path:
+    _require_directory(root, "repository root")
+    locks_root = root / ".nase-locks"
+    try:
+        locks_root.mkdir()
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise LockError(f"lock parent cannot be created: {locks_root}: {exc}") from exc
+    _require_directory(locks_root, "lock parent")
+    return locks_root
+
+
+def _require_regular(path: Path, label: str) -> os.stat_result:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise LockError(f"{label} cannot be inspected: {path}: {exc}") from exc
+    if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
+        raise LockError(f"{label} is not a lexical regular file: {path}")
+    return metadata
+
+
+def _open_existing_regular(path: Path, label: str, flags: int = os.O_RDONLY) -> int:
+    metadata = _require_regular(path, label)
+    safe_flags = flags | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, safe_flags)
+    except OSError as exc:
+        raise LockError(f"{label} cannot be opened safely: {path}: {exc}") from exc
+    opened = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or opened.st_dev != metadata.st_dev
+        or opened.st_ino != metadata.st_ino
+    ):
+        os.close(descriptor)
+        raise LockError(f"{label} changed while opening: {path}")
+    return descriptor
+
+
+def _open_recovery_guard(path: Path) -> int:
+    flags = os.O_RDWR | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return _open_existing_regular(path, "recovery guard", flags=os.O_RDWR)
+    except OSError as exc:
+        raise LockError(f"recovery guard cannot be created safely: {path}: {exc}") from exc
+
+
+def _validate_lock_contents(lock_dir: Path) -> None:
+    _require_directory(lock_dir, "workspace mutation lock")
+    try:
+        children = list(lock_dir.iterdir())
+    except OSError as exc:
+        raise LockError(f"workspace mutation lock cannot be listed: {lock_dir}: {exc}") from exc
+    for child in children:
+        if child.name != "owner.json":
+            raise LockError(f"workspace mutation lock has an unexpected entry: {child}")
+        _require_regular(child, "workspace mutation lock owner")
+
+
 def _pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -49,80 +122,159 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _read_owner(lock_dir: Path) -> dict[str, object] | None:
+    owner_path = _owner_path(lock_dir)
     try:
-        data = json.loads(_owner_path(lock_dir).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        owner_path.lstat()
+    except FileNotFoundError:
         return None
+    descriptor = _open_existing_regular(owner_path, "workspace mutation lock owner")
+    try:
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (UnicodeError, json.JSONDecodeError):
+        return None
+    except OSError as exc:
+        raise LockError(f"lock owner cannot be read safely: {owner_path}: {exc}") from exc
     return data if isinstance(data, dict) else None
 
 
 def _quarantine_stale(lock_dir: Path) -> bool:
+    _validate_lock_contents(lock_dir)
     recovery_guard = lock_dir.with_name("workspace-mutation.recovery.guard")
-    guard_handle = recovery_guard.open("a+")
+    guard_descriptor = _open_recovery_guard(recovery_guard)
     try:
-        fcntl.flock(guard_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(guard_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        guard_handle.close()
+        os.close(guard_descriptor)
         return False
     try:
+        _validate_lock_contents(lock_dir)
         owner = _read_owner(lock_dir)
         try:
-            age = time.time() - lock_dir.stat().st_mtime
+            age = time.time() - _require_directory(
+                lock_dir, "workspace mutation lock"
+            ).st_mtime
         except FileNotFoundError:
             return True
         pid = owner.get("pid") if owner else None
         if age <= STALE_AFTER_SECONDS or (isinstance(pid, int) and _pid_alive(pid)):
             return False
-        stale = lock_dir.with_name(f"{lock_dir.name}.stale-{uuid.uuid4().hex}")
+        while True:
+            stale = lock_dir.with_name(f"{lock_dir.name}.stale-{uuid.uuid4().hex}")
+            try:
+                stale.lstat()
+            except FileNotFoundError:
+                break
+            except OSError as exc:
+                raise LockError(f"stale lock path cannot be inspected: {stale}: {exc}") from exc
         try:
             lock_dir.rename(stale)
         except FileNotFoundError:
             return True
-        except OSError:
-            return False
-        shutil.rmtree(stale)
+        except OSError as exc:
+            raise LockError(f"stale lock cannot be quarantined: {lock_dir}: {exc}") from exc
+        _validate_lock_contents(stale)
+        owner_path = _owner_path(stale)
+        try:
+            owner_path.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            owner_descriptor = _open_existing_regular(
+                owner_path, "quarantined lock owner"
+            )
+            os.close(owner_descriptor)
+            try:
+                owner_path.unlink()
+            except OSError as exc:
+                raise LockError(
+                    f"quarantined lock owner cannot be removed: {owner_path}: {exc}"
+                ) from exc
+        try:
+            stale.rmdir()
+        except OSError as exc:
+            raise LockError(f"quarantined lock cannot be removed: {stale}: {exc}") from exc
         return True
     finally:
-        fcntl.flock(guard_handle.fileno(), fcntl.LOCK_UN)
-        guard_handle.close()
+        fcntl.flock(guard_descriptor, fcntl.LOCK_UN)
+        os.close(guard_descriptor)
 
 
 def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
     root = root.expanduser().resolve()
-    lock_dir = root / ".nase-locks" / "workspace-mutation.lock"
-    lock_dir.parent.mkdir(parents=True, exist_ok=True)
+    locks_root = _ensure_locks_root(root)
+    lock_dir = locks_root / "workspace-mutation.lock"
     deadline = time.monotonic() + max(timeout_ms, 0) / 1000
     nonce = uuid.uuid4().hex
     while True:
+        _require_directory(locks_root, "lock parent")
         try:
             lock_dir.mkdir()
         except FileExistsError:
+            _validate_lock_contents(lock_dir)
             _quarantine_stale(lock_dir)
             if time.monotonic() >= deadline:
                 raise LockError("workspace mutation lock is busy")
             time.sleep(0.05)
             continue
+        except OSError as exc:
+            raise LockError(
+                f"workspace mutation lock cannot be created: {lock_dir}: {exc}"
+            ) from exc
         owner = {
             "pid": owner_pid if owner_pid is not None else os.getpid(),
             "nonce": nonce,
             "created_at": time.time(),
             "root": str(root),
         }
+        owner_path = _owner_path(lock_dir)
         try:
-            _owner_path(lock_dir).write_text(json.dumps(owner, sort_keys=True), encoding="utf-8")
-        except OSError:
-            lock_dir.rmdir()
-            raise
+            flags = (
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            descriptor = os.open(owner_path, flags, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(owner, handle, sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError as exc:
+            try:
+                _validate_lock_contents(lock_dir)
+                try:
+                    owner_metadata = owner_path.lstat()
+                except FileNotFoundError:
+                    pass
+                else:
+                    if stat.S_ISREG(owner_metadata.st_mode) and not owner_path.is_symlink():
+                        owner_path.unlink()
+                lock_dir.rmdir()
+            except (LockError, OSError):
+                pass
+            raise LockError(f"lock owner cannot be created safely: {owner_path}: {exc}") from exc
         return Lease(root=root, nonce=nonce)
 
 
 def release(lease: Lease) -> None:
-    lock_dir = lease.lock_dir
+    root = lease.root.expanduser().resolve()
+    locks_root = _ensure_locks_root(root)
+    lock_dir = locks_root / "workspace-mutation.lock"
+    _validate_lock_contents(lock_dir)
     owner = _read_owner(lock_dir)
     if not owner or owner.get("nonce") != lease.nonce:
         raise LockError("workspace mutation lock ownership changed")
-    _owner_path(lock_dir).unlink()
-    lock_dir.rmdir()
+    owner_path = _owner_path(lock_dir)
+    owner_descriptor = _open_existing_regular(
+        owner_path, "workspace mutation lock owner"
+    )
+    os.close(owner_descriptor)
+    try:
+        owner_path.unlink()
+        lock_dir.rmdir()
+    except OSError as exc:
+        raise LockError(f"workspace mutation lock cannot be released: {lock_dir}: {exc}") from exc
 
 
 @contextmanager

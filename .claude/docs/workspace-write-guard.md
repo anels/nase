@@ -94,7 +94,10 @@ python3 .claude/scripts/workspace-write-guard.py apply-move \
 Both apply modes acquire the repository workspace-mutation lock. They bind the
 reviewed staged bytes by SHA-256, claim the old target before publishing, and
 refuse to overwrite a target recreated by another writer. Direct durable writes
-that bypass this helper are outside the concurrency contract.
+that bypass this helper are outside the concurrency contract. The lock rejects
+symlink or special-file substitutions for `.nase-locks`, its lock directory,
+owner, recovery guard, and stale quarantine paths before reading or mutating
+them. Dead-owner recovery only renames and removes a validated lexical lock.
 
 Allowed targets are durable workspace paths under `workspace/kb/`,
 `workspace/tasks/`, `workspace/skills/`, `workspace/efforts/`,
