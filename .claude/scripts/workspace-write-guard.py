@@ -14,6 +14,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workspace_lock import LockError, held  # noqa: E402
+
 
 ALLOWED_DIRS = (
     "workspace/kb",
@@ -138,6 +141,7 @@ def cmd_stage(args: argparse.Namespace) -> None:
 
     staged = staged_path(root, target, args.skill)
     shutil.copyfile(content, staged)
+    staged_sha256 = sha256_file(staged)
 
     output = {
         "mode": "stage",
@@ -145,6 +149,7 @@ def cmd_stage(args: argparse.Namespace) -> None:
         "target_abs": str(target),
         "staged": relpath(staged, root),
         "staged_abs": str(staged),
+        "staged_sha256": staged_sha256,
         "target": file_state(target),
         "diff_command": (
             "python3 .claude/scripts/workspace-write-guard.py diff "
@@ -177,23 +182,120 @@ def states_match(state: dict[str, object], expected_mtime_ns: str, expected_sha2
     return state["mtime_ns"] == expected_mtime_ns and state["sha256"] == expected_sha256
 
 
+def require_staged_sha(staged: Path, expected_sha256: str, root: Path) -> None:
+    if sha256_file(staged) != expected_sha256:
+        die(
+            "Staged file changed after review; "
+            f"staged file preserved at {relpath(staged, root)}; rerun stage",
+            code=3,
+        )
+
+
+def fsync_file(path: Path) -> None:
+    with path.open("rb") as handle:
+        os.fsync(handle.fileno())
+
+
+def fsync_dir(path: Path) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
 def cmd_apply(args: argparse.Namespace) -> None:
     root = root_path(args.root)
     target = validate_target(root, args.target)
     staged = validate_staged(root, args.staged)
-    current = file_state(target)
-    if not states_match(current, args.expected_mtime_ns, args.expected_sha256):
-        die(
-            "Target changed while drafting; "
-            f"staged file preserved at {relpath(staged, root)}",
-            code=3,
-        )
-
+    nonce = f"{os.getpid()}-{time.time_ns()}"
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_target = target.parent / f".{target.name}.tmp-{os.getpid()}-{time.time_ns()}"
+    tmp_target = target.parent / f".{target.name}.tmp-{nonce}"
+    backup = target.parent / f".{target.name}.write-backup-{nonce}"
+    claimed = False
+    published_identity: tuple[int, int] | None = None
+
+    def restore_backup() -> str:
+        if not claimed or not backup.exists():
+            return ""
+        if target.exists():
+            return f"; original preserved at {relpath(backup, root)}"
+        try:
+            os.link(backup, target)
+            backup.unlink()
+            return ""
+        except OSError:
+            return f"; original preserved at {relpath(backup, root)}"
+
     try:
-        shutil.copyfile(staged, tmp_target)
-        os.replace(tmp_target, target)
+        with held(root, timeout_ms=5000):
+            require_staged_sha(staged, args.expected_staged_sha256, root)
+            shutil.copyfile(staged, tmp_target)
+            current = file_state(target)
+            mode = int(str(current["mode"]), 8) if current["exists"] else staged.stat().st_mode & 0o7777
+            os.chmod(tmp_target, mode)
+            fsync_file(tmp_target)
+            if sha256_file(tmp_target) != args.expected_staged_sha256:
+                die("Staged file changed while copying; staged file preserved", code=3)
+
+            if current["exists"]:
+                os.rename(target, backup)
+                claimed = True
+                claimed_state = file_state(backup)
+                if not states_match(claimed_state, args.expected_mtime_ns, args.expected_sha256):
+                    note = restore_backup()
+                    die(
+                        "Target changed while drafting; "
+                        f"staged file preserved at {relpath(staged, root)}{note}",
+                        code=3,
+                    )
+            elif not states_match(current, args.expected_mtime_ns, args.expected_sha256):
+                die(
+                    "Target changed while drafting; "
+                    f"staged file preserved at {relpath(staged, root)}",
+                    code=3,
+                )
+
+            try:
+                tmp_stat = tmp_target.stat()
+                published_identity = (tmp_stat.st_dev, tmp_stat.st_ino)
+                os.link(tmp_target, target)
+            except FileExistsError:
+                note = restore_backup()
+                die(
+                    "Target was recreated while applying; "
+                    f"staged file preserved at {relpath(staged, root)}{note}",
+                    code=5,
+                )
+            stat = target.stat()
+            if (stat.st_dev, stat.st_ino) != published_identity:
+                die("Published target was replaced while applying", code=5)
+            if sha256_file(target) != args.expected_staged_sha256:
+                die("Published target changed while applying", code=5)
+            fsync_dir(target.parent)
+            if backup.exists():
+                backup.unlink()
+                fsync_dir(target.parent)
+    except LockError as exc:
+        die(f"{exc}; staged file preserved at {relpath(staged, root)}", code=5)
+    except GuardError:
+        if published_identity is not None and target.exists():
+            stat = target.stat()
+            if (stat.st_dev, stat.st_ino) == published_identity:
+                target.unlink()
+        restore_backup()
+        raise
+    except OSError as exc:
+        note = restore_backup()
+        die(
+            f"Apply failed: {exc}; staged file preserved at {relpath(staged, root)}{note}",
+            code=5,
+        )
     finally:
         if tmp_target.exists():
             tmp_target.unlink()
@@ -208,7 +310,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
     print(json.dumps(output, indent=2, sort_keys=True))
 
 
-def cmd_apply_move(args: argparse.Namespace) -> None:
+def cmd_apply_move_unlocked(args: argparse.Namespace) -> None:
     root = root_path(args.root)
     source = validate_target(root, args.target)
     destination = validate_target(root, args.destination)
@@ -380,6 +482,64 @@ def cmd_apply_move(args: argparse.Namespace) -> None:
     print(json.dumps(output, indent=2, sort_keys=True))
 
 
+def cmd_apply_move(args: argparse.Namespace) -> None:
+    root = root_path(args.root)
+    staged = validate_staged(root, args.staged)
+    try:
+        with held(root, timeout_ms=5000):
+            require_staged_sha(staged, args.expected_staged_sha256, root)
+            cmd_apply_move_unlocked(args)
+    except LockError as exc:
+        die(f"{exc}; staged file preserved at {relpath(staged, root)}", code=5)
+
+
+def cmd_move_existing(args: argparse.Namespace) -> None:
+    root = root_path(args.root)
+    source = validate_target(root, args.target)
+    destination = validate_target(root, args.destination)
+    try:
+        with held(root, timeout_ms=5000):
+            if not source.is_file():
+                die(f"Source is not a regular file: {relpath(source, root)}", code=3)
+            age_seconds = time.time() - source.stat().st_mtime
+            if age_seconds <= args.older_than_days * 86400:
+                die(f"Source is not older than {args.older_than_days} days", code=3)
+            if destination.exists():
+                die(f"Destination already exists: {relpath(destination, root)}", code=4)
+            state = file_state(source)
+            staged = staged_path(root, source, "archive-existing")
+            shutil.copyfile(source, staged)
+            move_args = argparse.Namespace(
+                root=str(root),
+                target=relpath(source, root),
+                destination=relpath(destination, root),
+                staged=relpath(staged, root),
+                expected_mtime_ns=state["mtime_ns"],
+                expected_sha256=state["sha256"],
+                expected_staged_sha256=sha256_file(staged),
+            )
+            cmd_apply_move_unlocked(move_args)
+            staged.unlink(missing_ok=True)
+    except LockError as exc:
+        die(str(exc), code=5)
+    except GuardError:
+        raise
+    except OSError as exc:
+        die(f"Move failed: {exc}", code=5)
+    print(
+        json.dumps(
+            {
+                "moved": True,
+                "source": relpath(source, root),
+                "destination": relpath(destination, root),
+                "destination_state": file_state(destination),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -403,6 +563,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--staged", required=True)
     apply.add_argument("--expected-mtime-ns", required=True)
     apply.add_argument("--expected-sha256", required=True)
+    apply.add_argument("--expected-staged-sha256", required=True)
     apply.set_defaults(func=cmd_apply)
 
     apply_move = sub.add_parser(
@@ -415,7 +576,18 @@ def build_parser() -> argparse.ArgumentParser:
     apply_move.add_argument("--staged", required=True)
     apply_move.add_argument("--expected-mtime-ns", required=True)
     apply_move.add_argument("--expected-sha256", required=True)
+    apply_move.add_argument("--expected-staged-sha256", required=True)
     apply_move.set_defaults(func=cmd_apply_move)
+
+    move_existing = sub.add_parser(
+        "move-existing",
+        help="Move an old file without overwriting an existing destination.",
+    )
+    move_existing.add_argument("--root", default=None)
+    move_existing.add_argument("--target", required=True)
+    move_existing.add_argument("--destination", required=True)
+    move_existing.add_argument("--older-than-days", type=int, required=True)
+    move_existing.set_defaults(func=cmd_move_existing)
 
     return parser
 

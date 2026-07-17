@@ -126,9 +126,9 @@ Brittle Boundaries (`onboard.md:112`) records each repo's top 3 high-risk areas 
 ## Workspace write safety
 
 Durable workspace writes use a stage-then-apply shape. Skills write proposed
-content to `workspace/tmp/`, show a diff, then check target mtime/hash again
-immediately before replacing or appending. This prevents stale KB/doc writes
-from overwriting edits made by another session.
+content to `workspace/tmp/`, show a diff, bind the staged SHA-256, then check
+target mtime/hash again before applying. The shared mutation lock and no-clobber
+publish prevent helper-mediated writers from overwriting each other.
 
 Append-only logs and JSONL stats are exceptions; they may append directly but
 must not rewrite existing entries. KB usage events live in

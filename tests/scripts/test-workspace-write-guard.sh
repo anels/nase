@@ -60,12 +60,14 @@ assert_cmd "stage exits 0" test "$stage_rc" = "0"
 staged=$(json_field "$stage_json" staged_abs)
 mtime_ns=$(json_field "$stage_json" target.mtime_ns)
 sha256=$(json_field "$stage_json" target.sha256)
+staged_sha256=$(json_field "$stage_json" staged_sha256)
 
 assert_cmd "stage creates staged file" test -f "$staged"
 assert_cmd "stage keeps target unchanged" grep -qx 'old' "$target"
 assert_cmd "staged file has proposed content" grep -qx 'new' "$staged"
 assert_cmd "stage records mtime" test "$mtime_ns" != "missing"
 assert_cmd "stage records sha256" test "$sha256" != "missing"
+assert_cmd "stage records staged sha256" test "$staged_sha256" != "missing"
 
 python3 "$SCRIPT" diff \
   --root "$TMPROOT" \
@@ -79,7 +81,8 @@ python3 "$SCRIPT" apply \
   --target workspace/kb/projects/demo.md \
   --staged "$staged" \
   --expected-mtime-ns "$mtime_ns" \
-  --expected-sha256 "$sha256" > "$apply_json"
+  --expected-sha256 "$sha256" \
+  --expected-staged-sha256 "$staged_sha256" > "$apply_json"
 apply_rc=$?
 
 assert_cmd "apply exits 0" test "$apply_rc" = "0"
@@ -100,6 +103,7 @@ python3 "$SCRIPT" stage \
 move_staged=$(json_field "$stage_json" staged_abs)
 move_mtime_ns=$(json_field "$stage_json" target.mtime_ns)
 move_sha256=$(json_field "$stage_json" target.sha256)
+move_staged_sha256=$(json_field "$stage_json" staged_sha256)
 
 python3 "$SCRIPT" apply-move \
   --root "$TMPROOT" \
@@ -107,10 +111,31 @@ python3 "$SCRIPT" apply-move \
   --destination workspace/efforts/done/move.md \
   --staged "$move_staged" \
   --expected-mtime-ns "$move_mtime_ns" \
-  --expected-sha256 "$move_sha256" > "$TMPROOT/apply-move.json"
+  --expected-sha256 "$move_sha256" \
+  --expected-staged-sha256 "$move_staged_sha256" > "$TMPROOT/apply-move.json"
 assert_cmd "apply-move removes source" test ! -e "$move_source"
 assert_cmd "apply-move writes staged destination" grep -qx 'new move' "$move_destination"
 assert_cmd "apply-move preserves source mode" test "$(file_mode "$move_destination")" = "600"
+
+archive_source="$TMPROOT/workspace/efforts/done/archive-me.md"
+archive_destination="$TMPROOT/workspace/efforts/archive/2026/archive-me.md"
+mkdir -p "$(dirname "$archive_source")"
+printf 'archive content\n' > "$archive_source"
+python3 - "$archive_source" <<'PY'
+import os
+import sys
+import time
+
+old = time.time() - 70 * 86400
+os.utime(sys.argv[1], (old, old))
+PY
+python3 "$SCRIPT" move-existing \
+  --root "$TMPROOT" \
+  --target workspace/efforts/done/archive-me.md \
+  --destination workspace/efforts/archive/2026/archive-me.md \
+  --older-than-days 60 > "$TMPROOT/move-existing.json"
+assert_cmd "move-existing removes old source" test ! -e "$archive_source"
+assert_cmd "move-existing preserves content" grep -qx 'archive content' "$archive_destination"
 
 collision_source="$TMPROOT/workspace/efforts/collision.md"
 collision_destination="$TMPROOT/workspace/efforts/done/collision.md"
@@ -125,6 +150,7 @@ python3 "$SCRIPT" stage \
 collision_staged=$(json_field "$stage_json" staged_abs)
 collision_mtime_ns=$(json_field "$stage_json" target.mtime_ns)
 collision_sha256=$(json_field "$stage_json" target.sha256)
+collision_staged_sha256=$(json_field "$stage_json" staged_sha256)
 
 python3 "$SCRIPT" apply-move \
   --root "$TMPROOT" \
@@ -132,7 +158,8 @@ python3 "$SCRIPT" apply-move \
   --destination workspace/efforts/done/collision.md \
   --staged "$collision_staged" \
   --expected-mtime-ns "$collision_mtime_ns" \
-  --expected-sha256 "$collision_sha256" > "$TMPROOT/collision.out" 2> "$TMPROOT/collision.err"
+  --expected-sha256 "$collision_sha256" \
+  --expected-staged-sha256 "$collision_staged_sha256" > "$TMPROOT/collision.out" 2> "$TMPROOT/collision.err"
 collision_rc=$?
 assert_cmd "apply-move collision exits 4" test "$collision_rc" = "4"
 assert_cmd "apply-move collision preserves source" grep -qx 'source' "$collision_source"
@@ -148,6 +175,7 @@ python3 "$SCRIPT" stage \
 missing_staged=$(json_field "$stage_json" staged_abs)
 missing_mtime_ns=$(json_field "$stage_json" target.mtime_ns)
 missing_sha256=$(json_field "$stage_json" target.sha256)
+missing_staged_sha256=$(json_field "$stage_json" staged_sha256)
 
 python3 "$SCRIPT" apply-move \
   --root "$TMPROOT" \
@@ -155,7 +183,8 @@ python3 "$SCRIPT" apply-move \
   --destination workspace/efforts/done/missing.md \
   --staged "$missing_staged" \
   --expected-mtime-ns "$missing_mtime_ns" \
-  --expected-sha256 "$missing_sha256" > "$TMPROOT/missing.out" 2> "$TMPROOT/missing.err"
+  --expected-sha256 "$missing_sha256" \
+  --expected-staged-sha256 "$missing_staged_sha256" > "$TMPROOT/missing.out" 2> "$TMPROOT/missing.err"
 missing_rc=$?
 assert_cmd "apply-move missing source exits 3" test "$missing_rc" = "3"
 assert_cmd "apply-move missing source creates no destination" test ! -e "$TMPROOT/workspace/efforts/done/missing.md"
@@ -204,6 +233,7 @@ for name, race, expected_code in (
         staged=f"workspace/tmp/staged-{name}.md",
         expected_mtime_ns=state["mtime_ns"],
         expected_sha256=state["sha256"],
+        expected_staged_sha256=module.sha256_file(staged),
     )
 
     def racing_link(src, dst):
@@ -287,6 +317,7 @@ python3 "$SCRIPT" stage \
 drift_staged=$(json_field "$stage_json" staged_abs)
 drift_mtime_ns=$(json_field "$stage_json" target.mtime_ns)
 drift_sha256=$(json_field "$stage_json" target.sha256)
+drift_staged_sha256=$(json_field "$stage_json" staged_sha256)
 printf 'changed elsewhere\n' > "$target"
 
 python3 "$SCRIPT" apply \
@@ -294,13 +325,129 @@ python3 "$SCRIPT" apply \
   --target workspace/kb/projects/demo.md \
   --staged "$drift_staged" \
   --expected-mtime-ns "$drift_mtime_ns" \
-  --expected-sha256 "$drift_sha256" > "$TMPROOT/drift.out" 2> "$TMPROOT/drift.err"
+  --expected-sha256 "$drift_sha256" \
+  --expected-staged-sha256 "$drift_staged_sha256" > "$TMPROOT/drift.out" 2> "$TMPROOT/drift.err"
 drift_rc=$?
 
 assert_cmd "drift exits 3" test "$drift_rc" = "3"
 assert_cmd "drift preserves target" grep -qx 'changed elsewhere' "$target"
 assert_cmd "drift preserves staged draft" test -f "$drift_staged"
 assert_cmd "drift message names staged file" grep -q 'staged file preserved' "$TMPROOT/drift.err"
+
+printf 'reviewed\n' > "$proposal"
+printf 'stable target\n' > "$target"
+python3 "$SCRIPT" stage \
+  --root "$TMPROOT" \
+  --target workspace/kb/projects/demo.md \
+  --content-file "$proposal" \
+  --skill kb-update > "$stage_json"
+tamper_staged=$(json_field "$stage_json" staged_abs)
+tamper_mtime_ns=$(json_field "$stage_json" target.mtime_ns)
+tamper_sha256=$(json_field "$stage_json" target.sha256)
+tamper_staged_sha256=$(json_field "$stage_json" staged_sha256)
+printf 'not reviewed\n' > "$tamper_staged"
+python3 "$SCRIPT" apply \
+  --root "$TMPROOT" \
+  --target workspace/kb/projects/demo.md \
+  --staged "$tamper_staged" \
+  --expected-mtime-ns "$tamper_mtime_ns" \
+  --expected-sha256 "$tamper_sha256" \
+  --expected-staged-sha256 "$tamper_staged_sha256" > "$TMPROOT/tamper.out" 2> "$TMPROOT/tamper.err"
+tamper_rc=$?
+assert_cmd "staged tamper exits 3" test "$tamper_rc" = "3"
+assert_cmd "staged tamper preserves target" grep -qx 'stable target' "$target"
+
+printf 'parallel base\n' > "$target"
+printf 'parallel one\n' > "$TMPROOT/proposal-one.md"
+printf 'parallel two\n' > "$TMPROOT/proposal-two.md"
+for n in one two; do
+  python3 "$SCRIPT" stage \
+    --root "$TMPROOT" \
+    --target workspace/kb/projects/demo.md \
+    --content-file "$TMPROOT/proposal-$n.md" \
+    --skill kb-update > "$TMPROOT/stage-$n.json"
+done
+run_parallel_apply() {
+  local n="$1" json="$TMPROOT/stage-$n.json"
+  python3 "$SCRIPT" apply \
+    --root "$TMPROOT" \
+    --target workspace/kb/projects/demo.md \
+    --staged "$(json_field "$json" staged_abs)" \
+    --expected-mtime-ns "$(json_field "$json" target.mtime_ns)" \
+    --expected-sha256 "$(json_field "$json" target.sha256)" \
+    --expected-staged-sha256 "$(json_field "$json" staged_sha256)" \
+    > "$TMPROOT/parallel-$n.out" 2> "$TMPROOT/parallel-$n.err"
+  printf '%s' "$?" > "$TMPROOT/parallel-$n.rc"
+}
+run_parallel_apply one &
+parallel_one_pid=$!
+run_parallel_apply two &
+parallel_two_pid=$!
+wait "$parallel_one_pid"
+wait "$parallel_two_pid"
+parallel_successes=0
+for n in one two; do
+  [[ "$(cat "$TMPROOT/parallel-$n.rc")" = "0" ]] && parallel_successes=$((parallel_successes + 1))
+done
+assert_cmd "parallel apply allows exactly one writer" test "$parallel_successes" = "1"
+
+python3 - "$SCRIPT" "$TMPROOT" <<'PY'
+import argparse
+import importlib.util
+import os
+import sys
+from pathlib import Path
+
+script, root_arg = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("workspace_write_guard_apply_race", script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+root = Path(root_arg).resolve()
+target = root / "workspace/kb/projects/publish-race.md"
+staged = root / "workspace/tmp/staged-publish-race.md"
+foreign = root / "workspace/tmp/foreign-publish-race.md"
+target.write_text("original\n", encoding="utf-8")
+staged.write_text("reviewed\n", encoding="utf-8")
+foreign.write_text("foreign\n", encoding="utf-8")
+state = module.file_state(target)
+args = argparse.Namespace(
+    root=str(root),
+    target="workspace/kb/projects/publish-race.md",
+    staged="workspace/tmp/staged-publish-race.md",
+    expected_mtime_ns=state["mtime_ns"],
+    expected_sha256=state["sha256"],
+    expected_staged_sha256=module.sha256_file(staged),
+)
+original_link = module.os.link
+injected = False
+
+def racing_link(src, dst):
+    global injected
+    result = original_link(src, dst)
+    if not injected and Path(dst) == target and ".tmp-" in Path(src).name:
+        injected = True
+        os.replace(foreign, target)
+    return result
+
+module.os.link = racing_link
+try:
+    module.cmd_apply(args)
+except module.GuardError as exc:
+    assert exc.code == 5
+else:
+    raise AssertionError("expected publish race rejection")
+finally:
+    module.os.link = original_link
+
+assert target.read_text(encoding="utf-8") == "foreign\n"
+backups = list(target.parent.glob(".publish-race.md.write-backup-*"))
+assert len(backups) == 1
+assert backups[0].read_text(encoding="utf-8") == "original\n"
+assert staged.read_text(encoding="utf-8") == "reviewed\n"
+PY
+publish_race_rc=$?
+assert_cmd "publish race preserves foreign target and original backup" test "$publish_race_rc" = "0"
 
 python3 "$SCRIPT" stage \
   --root "$TMPROOT" \
@@ -336,6 +483,7 @@ assert_cmd "journal rewrite target allowed" test "$journal_rc" = "0"
 
 assert_cmd "guard doc documents helper" grep -q 'workspace-write-guard.py stage' "$ROOT/.claude/docs/workspace-write-guard.md"
 assert_cmd "guard doc documents apply-move" grep -q 'workspace-write-guard.py apply-move' "$ROOT/.claude/docs/workspace-write-guard.md"
+assert_cmd "guard doc binds staged sha" grep -q -- '--expected-staged-sha256' "$ROOT/.claude/docs/workspace-write-guard.md"
 assert_cmd "design uses helper" grep -q 'workspace-write-guard.py stage' "$ROOT/.claude/commands/nase/design.md"
 assert_cmd "kb-update uses helper" grep -q 'workspace-write-guard.py stage' "$ROOT/.claude/commands/nase/kb-update.md"
 assert_cmd "wrap-up uses helper" grep -q 'workspace-write-guard.py stage' "$ROOT/.claude/commands/nase/wrap-up.md"
