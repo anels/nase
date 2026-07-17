@@ -262,6 +262,80 @@ expect_rc "jira create adf under batch blocked" .claude/hooks/jira-write-guard.s
 write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira adf body under batch token allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_adf" 0
 
+# --- concurrent token consumption ---
+parallel_jira_calls() {
+  local name="$1" input="$2" count="$3"
+  local output_dir="$TMP_ROOT/parallel-$name"
+  mkdir -p "$output_dir"
+  local index
+  for index in $(seq 1 "$count"); do
+    (
+      set +e
+      printf '%s' "$input" | NASE_ROOT="$TMP_ROOT" bash .claude/hooks/jira-write-guard.sh \
+        > "$output_dir/$index.out" 2>&1
+      printf '%s\n' "$?" > "$output_dir/$index.rc"
+    ) &
+  done
+  wait
+}
+
+count_parallel_rc() {
+  local name="$1" wanted="$2" count=0 rc_file
+  for rc_file in "$TMP_ROOT/parallel-$name"/*.rc; do
+    if [ "$(tr -d '\n' < "$rc_file")" = "$wanted" ]; then
+      count=$((count + 1))
+    fi
+  done
+  printf '%s\n' "$count"
+}
+
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"concurrent single",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+parallel_jira_calls single "$jira_transition" 16
+single_allowed=$(count_parallel_rc single 0)
+if [ "$single_allowed" -eq 1 ] && [ ! -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira concurrent single-shot allows exactly one" "allowed=$single_allowed"
+else
+  report 0 "jira concurrent single-shot allows exactly one" "allowed=$single_allowed token_exists=$([ -f "$TMP_ROOT/workspace/.jira-write-token" ] && echo yes || echo no)"
+fi
+
+write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 3
+parallel_jira_calls batch "$jira_transition" 16
+batch_allowed=$(count_parallel_rc batch 0)
+if [ "$batch_allowed" -eq 3 ] && [ ! -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira concurrent batch respects max_ops" "allowed=$batch_allowed"
+else
+  report 0 "jira concurrent batch respects max_ops" "allowed=$batch_allowed token_exists=$([ -f "$TMP_ROOT/workspace/.jira-write-token" ] && echo yes || echo no)"
+fi
+
+printf '{invalid' > "$TMP_ROOT/workspace/.jira-write-token"
+parallel_jira_calls invalid  "$jira_transition" 16
+invalid_consumers=$(rg -l "invalid token JSON" "$TMP_ROOT/parallel-invalid"/*.out 2>/dev/null | wc -l | tr -d ' ')
+if [ "$invalid_consumers" -eq 1 ] && [ ! -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira invalid token consumed by one process" "consumers=$invalid_consumers"
+else
+  report 0 "jira invalid token consumed by one process" "consumers=$invalid_consumers"
+fi
+
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"live lock",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+live_lease=$(python3 .claude/scripts/workspace_lock.py acquire --root "$TMP_ROOT" --timeout-ms 0 --owner-pid $$)
+live_nonce=$(printf '%s' "$live_lease" | jq -r '.nonce')
+expect_rc "jira live lock fails closed" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "lock is busy"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira live lock preserves token"
+else
+  report 0 "jira live lock preserves token" "token was consumed"
+fi
+python3 .claude/scripts/workspace_lock.py release --root "$TMP_ROOT" --nonce "$live_nonce"
+
+python3 .claude/scripts/workspace_lock.py acquire --root "$TMP_ROOT" --timeout-ms 0 --owner-pid 2147483647 >/dev/null
+python3 -c 'import os, sys, time; old=time.time()-20; os.utime(sys.argv[1], (old, old))' \
+  "$TMP_ROOT/.nase-locks/workspace-mutation.lock"
+expect_rc "jira stale lock is recovered" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
+
 expect_missing_jq "slack missing jq blocked" .claude/hooks/slack-send-guard.sh "$slack_send"
 expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$jira_transition"
 expect_missing_jq "confluence missing jq blocked" .claude/hooks/confluence-size-guard.sh "$small_confluence"

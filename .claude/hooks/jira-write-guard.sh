@@ -79,9 +79,44 @@ esac
 NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo ".")}"
 TOKEN="$NASE_ROOT/workspace/.jira-write-token"
 LOG="$NASE_ROOT/workspace/logs/.jira-writes.log"
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+LOCK_HELPER="$SCRIPT_DIR/../scripts/workspace_lock.py"
 mkdir -p "$NASE_ROOT/workspace/logs"
 
 TS=$(date +%Y-%m-%dT%H:%M:%S)
+
+command -v python3 >/dev/null 2>&1 \
+  || block_without_log "python3 is required to serialize Jira token consumption"
+[ -f "$LOCK_HELPER" ] \
+  || block_without_log "workspace mutation lock helper is missing"
+
+set +e
+LOCK_OUTPUT=$(python3 "$LOCK_HELPER" acquire \
+  --root "$NASE_ROOT" \
+  --timeout-ms 2000 \
+  --owner-pid $$ 2>&1)
+LOCK_RC=$?
+set -e
+if [ "$LOCK_RC" -ne 0 ]; then
+  block_without_log "workspace mutation lock is busy; token was not consumed"
+fi
+LOCK_NONCE=$(printf '%s' "$LOCK_OUTPUT" | jq -er '.nonce' 2>/dev/null || echo "")
+if [ -z "$LOCK_NONCE" ]; then
+  block_without_log "workspace mutation lock returned an invalid lease"
+fi
+
+# shellcheck disable=SC2329 # Invoked by the EXIT trap below.
+release_workspace_lock() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if ! python3 "$LOCK_HELPER" release --root "$NASE_ROOT" --nonce "$LOCK_NONCE" >/dev/null 2>&1; then
+    echo "BLOCKED by jira-write-guard: could not release workspace mutation lock." >&2
+    status=2
+  fi
+  exit "$status"
+}
+trap release_workspace_lock EXIT
+trap 'exit 2' HUP INT TERM
 
 block() {
   local reason="$1"
@@ -248,11 +283,28 @@ if [ "$IS_BATCH" = "1" ]; then
 
   REMAINING=$((MAX_OPS - 1))
   if [ "$REMAINING" -le 0 ]; then
-    rm -f "$TOKEN"
+    rm -f "$TOKEN" || block "could not consume exhausted batch token"
   else
-    TMP="$TOKEN.tmp.$$"
+    TMP=$(mktemp "${TOKEN}.tmp.XXXXXX") || block "could not create batch token temp file"
     if printf '%s' "$TOKEN_CONTENT" | jq -c --argjson r "$REMAINING" '.max_ops = $r' > "$TMP" 2>/dev/null; then
-      mv "$TMP" "$TOKEN"
+      if ! python3 - "$TMP" "$TOKEN" <<'PY'
+import os
+import sys
+
+temporary, target = sys.argv[1:]
+with open(temporary, "rb") as stream:
+    os.fsync(stream.fileno())
+os.replace(temporary, target)
+directory_fd = os.open(os.path.dirname(target), os.O_RDONLY)
+try:
+    os.fsync(directory_fd)
+finally:
+    os.close(directory_fd)
+PY
+      then
+        rm -f "$TMP"
+        block "could not atomically decrement batch token max_ops"
+      fi
     else
       rm -f "$TMP"
       block "could not decrement batch token max_ops"
@@ -329,6 +381,6 @@ if [[ "$TOOL" == *__createIssueLink ]]; then
   done < <(printf '%s\n' "$CURRENT_ISSUES" | tr ',' '\n')
 fi
 
-rm -f "$TOKEN"
+rm -f "$TOKEN" || block "could not consume single-shot token"
 printf '%s ALLOWED %s | issue: %s | summary: %s\n' "$TS" "$TOOL" "${APPROVED_ISSUES_CSV:-n/a}" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"
 exit 0

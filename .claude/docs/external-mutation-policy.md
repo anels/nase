@@ -123,6 +123,12 @@ optional allowlist (exact or suffix match, to tolerate MCP namespace prefixes);
 omit it to allow all gated Jira tools. A non-empty `approved_issues` array is
 what selects batch mode.
 
+Token validation, consumption, and audit logging run inside the repo-wide
+workspace mutation lock. Concurrent calls therefore share one atomic approval
+budget: a single-shot token allows exactly one call, and a batch token allows
+at most `max_ops` calls. If the lock cannot be acquired within two seconds, the
+hook blocks the call and leaves the token untouched.
+
 Batch mode trades the exact-payload sha binding for an **issue allowlist + op
 cap + TTL**: a runaway loop still cannot touch a ticket outside the approved set
 or exceed the approved op budget. Use it only for the concrete batch the user
