@@ -56,6 +56,12 @@ run_helper() {
     --expected-head "$CASE_HEAD"
 }
 
+linked_worktree_path() {
+  git -C "$CASE_REPO" worktree list --porcelain |
+    awk -v primary="$CASE_REPO" '/^worktree /{path=substr($0,10); if (path != primary) print path}' |
+    tail -1
+}
+
 make_git_wrapper() {
   mkdir -p "$TMP/fakebin"
   printf '%s\n' \
@@ -70,12 +76,27 @@ make_git_wrapper() {
     '  fi' \
     '  exit "$rc"' \
     'fi' \
+    'if [[ "${NASE_TEST_MODE:-}" != "" && " $* " == *" worktree remove "* ]]; then' \
+    '  printf "automatic remove invoked\\n" >&2' \
+    '  exit 99' \
+    'fi' \
+    'if [[ "${NASE_TEST_MODE:-}" == late-claimed && " $* " == *" ls-remote "* ]]; then' \
+    '  count=0' \
+    '  [[ ! -f "$NASE_TEST_COUNT_FILE" ]] || count=$(<"$NASE_TEST_COUNT_FILE")' \
+    '  count=$((count + 1))' \
+    '  printf "%s\\n" "$count" >"$NASE_TEST_COUNT_FILE"' \
+    '  if [[ $count -eq 2 ]]; then' \
+    '    claimed=$("$NASE_TEST_REAL_GIT" -C "$NASE_TEST_REPO" worktree list --porcelain | awk -v primary="$NASE_TEST_REPO" '\''/^worktree /{path=substr($0,10); if (path != primary) print path}'\'' | tail -1)' \
+    '    mkdir -p "$claimed/ignored"' \
+    '    printf "late-claimed-bytes\\n" >"$claimed/ignored/late.bin"' \
+    '  fi' \
+    'fi' \
     'if [[ "${NASE_TEST_MODE:-}" == remote-race && " $* " == *" ls-remote "* ]]; then' \
     '  count=0' \
     '  [[ ! -f "$NASE_TEST_COUNT_FILE" ]] || count=$(<"$NASE_TEST_COUNT_FILE")' \
     '  count=$((count + 1))' \
     '  printf "%s\\n" "$count" >"$NASE_TEST_COUNT_FILE"' \
-    '  if [[ $count -eq 3 ]]; then' \
+    '  if [[ $count -eq 2 ]]; then' \
     '    "$NASE_TEST_REAL_GIT" --git-dir="$NASE_TEST_REMOTE" update-ref refs/heads/feature "$NASE_TEST_RACE_OID"' \
     '  fi' \
     'fi' \
@@ -92,6 +113,7 @@ run_helper_injected() {
     NASE_TEST_OLD_PATH="$CASE_WT" \
     NASE_TEST_COUNT_FILE="$TMP/ls-remote-count" \
     NASE_TEST_REMOTE="$CASE_BASE/remote.git" \
+    NASE_TEST_REPO="$CASE_REPO" \
     NASE_TEST_RACE_OID="${RACE_OID:-}" \
     python3 "$HELPER" \
       --repo "$CASE_REPO" \
@@ -106,8 +128,11 @@ REAL_GIT=$(command -v git)
 make_git_wrapper
 
 new_case clean
-expect_rc "clean exact pushed worktree is removed" 0 run_helper
-[[ ! -e "$CASE_WT" ]] || fail "clean worktree path still exists"
+expect_rc "clean exact pushed worktree is quarantined" 3 run_helper
+[[ ! -e "$CASE_WT" ]] || fail "clean worktree original path still exists"
+claimed_path=$(linked_worktree_path)
+[[ -d "$claimed_path" ]] || fail "clean worktree quarantine is missing"
+git -C "$CASE_REPO" worktree list --porcelain | grep -A5 -F "worktree $claimed_path" | grep -q '^locked nase cleanup quarantine$' || fail "clean quarantine is not locked"
 
 new_case tracked
 printf 'changed\n' >>"$CASE_WT/tracked.txt"
@@ -127,8 +152,16 @@ new_case late-ignored
 TEST_MODE=late
 expect_rc "ignored file created after proof is preserved" 3 run_helper_injected
 [[ -f "$CASE_WT/ignored/late.bin" ]] || fail "late ignored file was deleted"
-claimed_path=$(git -C "$CASE_REPO" worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | tail -1)
+claimed_path=$(linked_worktree_path)
 [[ -d "$claimed_path" && "$claimed_path" != "$CASE_WT" ]] || fail "claimed worktree was not retained"
+
+new_case late-claimed
+rm -f "$TMP/ls-remote-count"
+TEST_MODE=late-claimed
+expect_rc "ignored file created after final scan is quarantined" 3 run_helper_injected
+claimed_path=$(linked_worktree_path)
+[[ $(<"$claimed_path/ignored/late.bin") == "late-claimed-bytes" ]] || fail "late claimed bytes were deleted"
+[[ ! -e "$CASE_WT" ]] || fail "late claimed test recreated original path"
 
 new_case locked
 git -C "$CASE_REPO" worktree lock --reason test-lock "$CASE_WT"
@@ -162,9 +195,11 @@ git -C "$CASE_REPO" branch -D feature >/dev/null
 git -C "$CASE_REPO" worktree add -q --detach "$CASE_WT" main
 CASE_HEAD=$(git -C "$CASE_WT" rev-parse HEAD)
 git -C "$CASE_WT" push -q origin HEAD:refs/heads/detached-clean
-expect_rc "detached worktree with exact remote SHA is removed" 0 python3 "$HELPER" \
+expect_rc "detached worktree with exact remote SHA is quarantined" 3 python3 "$HELPER" \
   --repo "$CASE_REPO" --worktree "$CASE_WT" --remote origin \
   --remote-ref refs/heads/detached-clean --expected-head "$CASE_HEAD"
+claimed_path=$(linked_worktree_path)
+[[ $(git -C "$claimed_path" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "detached quarantine lost expected HEAD"
 
 new_case detached-remote-race
 git -C "$CASE_REPO" worktree remove "$CASE_WT"
@@ -178,10 +213,11 @@ RACE_OID=$(git -C "$CASE_REPO" rev-parse HEAD)
 git -C "$CASE_REPO" push -q origin HEAD:refs/heads/race-seed
 rm -f "$TMP/ls-remote-count"
 TEST_MODE=remote-race
-expect_rc "remote move during detached deletion restores worktree" 3 run_helper_injected
-[[ -d "$CASE_WT" ]] || fail "detached worktree was not restored after remote race"
-[[ $(git -C "$CASE_WT" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "restored worktree lost expected HEAD"
-if git -C "$CASE_WT" symbolic-ref -q HEAD >/dev/null; then fail "restored worktree is not detached"; fi
+expect_rc "remote move during detached quarantine preserves worktree" 3 run_helper_injected
+claimed_path=$(linked_worktree_path)
+[[ -d "$claimed_path" ]] || fail "detached worktree was not quarantined after remote race"
+[[ $(git -C "$claimed_path" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "quarantined worktree lost expected HEAD"
+if git -C "$claimed_path" symbolic-ref -q HEAD >/dev/null; then fail "quarantined worktree is not detached"; fi
 [[ $(git --git-dir="$CASE_BASE/remote.git" rev-parse refs/heads/feature) == "$RACE_OID" ]] || fail "remote race fixture did not move ref"
 [[ -z $(git -C "$CASE_REPO" for-each-ref refs/nase/worktree-cleanup/) ]] || fail "safety ref remained after restore"
 
@@ -213,6 +249,12 @@ if rg -n 'worktree remove[^`\n]*--force|worktree remove \{[^\n]*--force' \
   fail "documented force worktree removal remains: $(tr '\n' ' ' <"$TMP/force-references")"
 else
   pass "documented consumers contain no force worktree removal"
+fi
+
+if rg -n '"worktree", "remove"' "$HELPER" >"$TMP/remove-call"; then
+  fail "helper still invokes recursive worktree removal: $(tr '\n' ' ' <"$TMP/remove-call")"
+else
+  pass "helper contains no automatic recursive worktree removal"
 fi
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"

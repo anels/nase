@@ -84,8 +84,9 @@ The hook parses Bash tool-call JSON with `jq`, splits executable segments on she
 Automated worktree deletion routes through `.claude/scripts/worktree-cleanup.py`.
 It verifies the live remote OID and complete dirty state, refuses primary or
 in-progress worktrees, atomically claims the path with `git worktree move`, and
-never passes `--force` to `git worktree remove`. A temporary local ref pins HEAD
-through the post-removal remote check so detached commits remain recoverable.
+never calls `git worktree remove`. The claimed worktree is locked and retained
+as a quarantine because open cwd or directory handles make portable recursive
+deletion race-prone. A temporary local ref pins detached HEAD through the claim.
 
 Regression tests live in `tests/hooks/test-block-dangerous-git.sh`. Add bypass-shaped cases whenever parsing tightens. Missing/unparseable `jq` input blocks the Bash call.
 

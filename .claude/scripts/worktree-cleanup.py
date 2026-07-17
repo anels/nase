@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remove a linked Git worktree only after proving it is safe to delete."""
+"""Verify and quarantine a linked Git worktree without recursive deletion."""
 
 from __future__ import annotations
 
@@ -139,26 +139,6 @@ def delete_safety_ref(repo: Path, safety_ref: str, expected: str) -> None:
         raise GitError(deleted.stderr.strip() or f"could not delete safety ref {safety_ref}")
 
 
-def restore_after_remote_race(
-    repo: Path,
-    original: Path,
-    expected: str,
-    safety_ref: str,
-    reason: str,
-) -> int:
-    restored = original
-    if restored.exists():
-        restored = original.parent / f"{original.name}-retained-{uuid.uuid4().hex}"
-    result = git(repo, "worktree", "add", "--detach", str(restored), safety_ref, check=False)
-    if result.returncode != 0:
-        raise GitError(
-            f"remote proof changed after removal and restore failed; commit remains at "
-            f"{safety_ref}: {result.stderr.strip() or result.stdout.strip()}"
-        )
-    delete_safety_ref(repo, safety_ref, expected)
-    return retained(reason, [f"restored-worktree:{restored}", f"head:{expected}"])
-
-
 def cleanup(args: argparse.Namespace) -> int:
     repo = normalized(args.repo)
     worktree = normalized(args.worktree)
@@ -240,38 +220,35 @@ def cleanup(args: argparse.Namespace) -> int:
             [f"registered-worktree:{claimed}", *claimed_dirty],
         )
 
-    predelete_remote, remote_error = remote_oid(repo, args.remote, args.remote_ref)
-    if predelete_remote != expected:
-        delete_safety_ref(repo, safety_ref, expected)
-        return retained(
-            f"remote proof changed before deletion: {remote_error or predelete_remote}",
-            [f"registered-worktree:{claimed}"],
+    locked = git(
+        repo,
+        "worktree",
+        "lock",
+        "--reason",
+        "nase cleanup quarantine",
+        str(claimed),
+        check=False,
+    )
+    if locked.returncode != 0:
+        raise GitError(
+            f"could not lock quarantined worktree {claimed}; safety ref retained at {safety_ref}: "
+            f"{locked.stderr.strip() or locked.stdout.strip()}"
         )
 
-    removed = git(repo, "worktree", "remove", str(claimed), check=False)
-    if removed.returncode != 0:
+    quarantined_remote, remote_error = remote_oid(repo, args.remote, args.remote_ref)
+    if quarantined_remote != expected:
         delete_safety_ref(repo, safety_ref, expected)
         return retained(
-            f"plain git worktree remove refused {claimed}: "
-            f"{removed.stderr.strip() or removed.stdout.strip() or 'unknown error'}",
-            [f"registered-worktree:{claimed}"],
+            f"remote proof changed after quarantine: {remote_error or quarantined_remote}",
+            [f"registered-worktree:{claimed}", f"head:{expected}"],
         )
-    remaining = parse_worktrees(repo)
-    if claimed.exists() or any(normalized(str(r["worktree"])) == claimed for r in remaining):
-        raise GitError(f"postcondition failed after removing {claimed}; safety ref retained at {safety_ref}")
 
-    postdelete_remote, remote_error = remote_oid(repo, args.remote, args.remote_ref)
-    if postdelete_remote != expected:
-        return restore_after_remote_race(
-            repo,
-            worktree,
-            expected,
-            safety_ref,
-            f"remote proof changed during deletion: {remote_error or postdelete_remote}",
-        )
     delete_safety_ref(repo, safety_ref, expected)
-    print(f"REMOVED: {worktree}")
-    return 0
+    # ponytail: portable Git has no atomic delete-if-clean; quarantine until a human inspects it.
+    return retained(
+        "verified worktree quarantined; automatic recursive deletion is not race-safe",
+        [f"registered-worktree:{claimed}", f"original-path:{worktree}", f"head:{expected}"],
+    )
 
 
 def parser() -> argparse.ArgumentParser:
