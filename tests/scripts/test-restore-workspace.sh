@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+# Regression tests for transactional workspace restore.
+
+set -uo pipefail
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+SCRIPT="$ROOT/.claude/scripts/restore-workspace.py"
+TMPROOT=$(mktemp -d)
+failures=0
+source "$ROOT/tests/lib/assert.sh"
+trap 'rm -rf "$TMPROOT"' EXIT
+
+SEVEN_ZIP=$(command -v 7z 2>/dev/null || command -v 7zz 2>/dev/null || true)
+assert_cmd "real 7z binary is available" test -n "$SEVEN_ZIP"
+
+make_zip() {
+  local source=$1 destination=$2
+  (cd "$source" && zip -qr "$destination" .)
+}
+
+case_dir="$TMPROOT/flat"
+mkdir -p "$case_dir/root/workspace" "$case_dir/source/kb"
+printf 'old\n' > "$case_dir/root/workspace/local-only.md"
+printf 'context\n' > "$case_dir/source/context.md"
+printf 'knowledge\n' > "$case_dir/source/kb/a.md"
+make_zip "$case_dir/source" "$case_dir/flat.zip"
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/flat.zip" --manifest-out "$case_dir/manifest.json" > "$case_dir/inspect.out"
+assert_cmd "flat zip shape is inspected" test "$(jq -r .payload_shape "$case_dir/manifest.json")" = flat
+assert_cmd "local deletion preview is persisted" test "$(jq -r '.local_only[0]' "$case_dir/manifest.json")" = local-only.md
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" > "$case_dir/apply.out"
+snapshot=$(jq -r .snapshot "$case_dir/apply.out")
+assert_cmd "flat zip restores content" test "$(cat "$case_dir/root/workspace/context.md")" = context
+assert_cmd "non-empty workspace is renamed into snapshot" test "$(cat "$snapshot/workspace/local-only.md")" = old
+assert_cmd "successful apply removes journal" test ! -e "$case_dir/root/.nase-restore/transaction.json"
+
+case_dir="$TMPROOT/wrapped"
+mkdir -p "$case_dir/root" "$case_dir/source/workspace/kb"
+printf 'wrapped\n' > "$case_dir/source/workspace/context.md"
+printf 'value\n' > "$case_dir/source/workspace/kb/a.md"
+make_zip "$case_dir/source" "$case_dir/wrapped.zip"
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/wrapped.zip" --manifest-out "$case_dir/manifest.json" >/dev/null
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" > "$case_dir/apply.out"
+assert_cmd "wrapped zip restores missing workspace" test "$(cat "$case_dir/root/workspace/context.md")" = wrapped
+assert_cmd "missing workspace needs no snapshot" test "$(jq -r .snapshot "$case_dir/apply.out")" = null
+
+case_dir="$TMPROOT/empty"
+mkdir -p "$case_dir/root/workspace" "$case_dir/source"
+printf 'empty-start\n' > "$case_dir/source/context.md"
+make_zip "$case_dir/source" "$case_dir/archive.zip"
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.zip" --manifest-out "$case_dir/manifest.json" >/dev/null
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" > "$case_dir/apply.out"
+assert_cmd "empty workspace restores without snapshot" test "$(jq -r .snapshot "$case_dir/apply.out")" = null
+
+case_dir="$TMPROOT/sevenzip"
+mkdir -p "$case_dir/root" "$case_dir/source/workspace/kb"
+printf 'seven\n' > "$case_dir/source/workspace/context.md"
+printf 'archive\n' > "$case_dir/source/workspace/kb/a.md"
+(cd "$case_dir/source" && "$SEVEN_ZIP" a -t7z "$case_dir/archive.7z" workspace >/dev/null)
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.7z" --manifest-out "$case_dir/manifest.json" >/dev/null
+assert_cmd "7z metadata Path is not treated as a member" bash -c '! jq -e --arg archive "$1" '\''any(.members[]; .archive_path == $archive)'\'' "$2" >/dev/null' _ "$case_dir/archive.7z" "$case_dir/manifest.json"
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" >/dev/null
+assert_cmd "real 7z payload restores" test "$(cat "$case_dir/root/workspace/context.md")" = seven
+
+case_dir="$TMPROOT/drift"
+mkdir -p "$case_dir/root/workspace" "$case_dir/source"
+printf 'old\n' > "$case_dir/root/workspace/context.md"
+printf 'new\n' > "$case_dir/source/context.md"
+make_zip "$case_dir/source" "$case_dir/archive.zip"
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.zip" --manifest-out "$case_dir/manifest.json" >/dev/null
+printf 'changed\n' > "$case_dir/root/workspace/context.md"
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" > "$case_dir/workspace.out" 2> "$case_dir/workspace.err"
+workspace_rc=$?
+assert_cmd "workspace drift rejects apply" test "$workspace_rc" = 2
+assert_contains "workspace drift explains re-inspect" "$case_dir/workspace.err" "workspace changed after inspect"
+printf 'old\n' > "$case_dir/root/workspace/context.md"
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.zip" --manifest-out "$case_dir/manifest.json" >/dev/null
+printf 'tamper' >> "$case_dir/archive.zip"
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" > "$case_dir/archive.out" 2> "$case_dir/archive.err"
+archive_rc=$?
+assert_cmd "archive drift rejects apply" test "$archive_rc" = 2
+assert_contains "archive drift explains re-inspect" "$case_dir/archive.err" "archive changed after inspect"
+
+python3 - "$TMPROOT" <<'PY'
+import stat
+import sys
+import zipfile
+from pathlib import Path
+
+root = Path(sys.argv[1]) / "unsafe"
+root.mkdir()
+cases = {
+    "traversal": ["../escape"],
+    "absolute": ["/absolute"],
+    "unc": [r"\\server\share\x"],
+    "drive": [r"C:\escape"],
+    "duplicate": ["same", "./same"],
+    "case": ["Readme", "README"],
+    "file-dir": ["a", "a/b"],
+    "mixed": ["workspace/context.md", "kb/a.md"],
+}
+for name, members in cases.items():
+    with zipfile.ZipFile(root / f"{name}.zip", "w") as archive:
+        for member in members:
+            archive.writestr(member, b"x")
+with zipfile.ZipFile(root / "symlink.zip", "w") as archive:
+    info = zipfile.ZipInfo("link")
+    info.create_system = 3
+    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+    archive.writestr(info, b"target")
+PY
+for archive in "$TMPROOT"/unsafe/*.zip; do
+  name=$(basename "$archive")
+  root="$TMPROOT/unsafe-root-${name%.zip}"
+  mkdir -p "$root"
+  python3 "$SCRIPT" inspect --root "$root" --archive "$archive" --manifest-out "$root/manifest.json" > "$root/out" 2> "$root/err"
+  rc=$?
+  assert_cmd "unsafe archive is rejected: $name" test "$rc" = 2
+done
+
+case_dir="$TMPROOT/link7z"
+mkdir -p "$case_dir/root" "$case_dir/source"
+printf 'target\n' > "$case_dir/source/file"
+ln -s file "$case_dir/source/link"
+(cd "$case_dir/source" && "$SEVEN_ZIP" a -t7z -snl "$case_dir/link.7z" . >/dev/null)
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/link.7z" --manifest-out "$case_dir/manifest.json" > "$case_dir/out" 2> "$case_dir/err"
+link_rc=$?
+assert_cmd "legacy 7z symlink metadata fails closed" test "$link_rc" = 2
+assert_contains "legacy 7z link rejection is explicit" "$case_dir/err" "link member is not allowed"
+
+python3 - "$ROOT" "$TMPROOT/candidate-types" <<'PY'
+import importlib.util
+import os
+import sys
+from pathlib import Path
+
+repo, base = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, str(repo / ".claude/scripts"))
+spec = importlib.util.spec_from_file_location("restore_workspace", repo / ".claude/scripts/restore-workspace.py")
+module = importlib.util.module_from_spec(spec)
+assert spec.loader
+spec.loader.exec_module(module)
+
+hard = base / "hard"
+hard.mkdir(parents=True)
+(hard / "a").write_text("x")
+os.link(hard / "a", hard / "b")
+try:
+    module.validate_candidate(hard, [{"path": "a", "type": "file"}, {"path": "b", "type": "file"}])
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("hard-link candidate was accepted")
+
+special = base / "special"
+special.mkdir()
+os.mkfifo(special / "fifo")
+try:
+    module.validate_candidate(special, [{"path": "fifo", "type": "file"}])
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("special-file candidate was accepted")
+PY
+assert_cmd "candidate hard links and special files are rejected" test "$?" = 0
+
+python3 - "$ROOT" "$TMPROOT/fault" <<'PY'
+import importlib.util
+import sys
+import zipfile
+from pathlib import Path
+from unittest import mock
+
+repo, base = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, str(repo / ".claude/scripts"))
+spec = importlib.util.spec_from_file_location("restore_workspace", repo / ".claude/scripts/restore-workspace.py")
+module = importlib.util.module_from_spec(spec)
+assert spec.loader
+spec.loader.exec_module(module)
+
+root = base / "root"
+(root / "workspace").mkdir(parents=True)
+(root / "workspace/old").write_text("old")
+archive = base / "archive.zip"
+base.mkdir(exist_ok=True)
+with zipfile.ZipFile(archive, "w") as target:
+    target.writestr("context.md", "new")
+manifest = base / "manifest.json"
+module.inspect_archive(root, archive, manifest)
+with mock.patch.object(module, "promote_candidate", side_effect=OSError("injected promotion failure")):
+    try:
+        module.apply_restore(root, manifest)
+    except OSError:
+        pass
+    else:
+        raise SystemExit("injected promotion failure did not escape")
+assert (root / "workspace/old").read_text() == "old"
+assert not (root / ".nase-restore/transaction.json").exists()
+assert not list(base.glob(".root-restore-candidate-*"))
+
+bound_root = base / "bound-root"
+bound_root.mkdir()
+bound_archive = base / "bound.zip"
+with zipfile.ZipFile(bound_archive, "w") as target:
+    target.writestr("context.md", "approved")
+bound_manifest = base / "bound-manifest.json"
+module.inspect_archive(bound_root, bound_archive, bound_manifest)
+original_extract = module.extract_candidate
+
+def mutate_source_after_copy(call_root, extraction_archive, manifest_data, transaction_id):
+    assert call_root == bound_root.resolve()
+    assert extraction_archive != bound_archive.resolve()
+    with zipfile.ZipFile(bound_archive, "w") as target:
+        target.writestr("context.md", "unreview")
+    return original_extract(call_root, extraction_archive, manifest_data, transaction_id)
+
+with mock.patch.object(module, "extract_candidate", side_effect=mutate_source_after_copy):
+    module.apply_restore(bound_root, bound_manifest)
+assert (bound_root / "workspace/context.md").read_text() == "approved"
+PY
+assert_cmd "promotion faults roll back and extraction uses approved archive bytes" test "$?" = 0
+
+python3 - "$ROOT" "$TMPROOT/recover" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+repo, base = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, str(repo / ".claude/scripts"))
+spec = importlib.util.spec_from_file_location("restore_workspace", repo / ".claude/scripts/restore-workspace.py")
+module = importlib.util.module_from_spec(spec)
+assert spec.loader
+spec.loader.exec_module(module)
+
+def write_journal(root, state, candidate, snapshot=None, had_live=True):
+    old = module.inventory(root / "workspace")
+    candidate_inventory = module.inventory(candidate)
+    payload = {
+        "version": 1,
+        "state": state,
+        "transaction_id": root.name,
+        "root": str(root.resolve()),
+        "candidate": str(candidate),
+        "candidate_inventory_hash": candidate_inventory["inventory_hash"],
+        "snapshot_dir": str(snapshot.parent) if snapshot else None,
+        "snapshot_workspace": str(snapshot) if snapshot else None,
+        "had_live_workspace": had_live,
+        "old_inventory_hash": old["inventory_hash"],
+    }
+    module.atomic_write_json(root / ".nase-restore/transaction.json", payload)
+
+prepared = base / "prepared"
+(prepared / "workspace").mkdir(parents=True)
+(prepared / "workspace/old").write_text("old")
+candidate = base / "prepared-candidate"
+candidate.mkdir()
+(candidate / "new").write_text("new")
+write_journal(prepared, "prepared", candidate)
+result = module.recover_restore(prepared)
+assert result["status"] == "rolled_back"
+assert (prepared / "workspace/old").read_text() == "old"
+assert not candidate.exists()
+
+rolled_back = base / "rolled-back"
+(rolled_back / "workspace").mkdir(parents=True)
+(rolled_back / "workspace/old").write_text("old")
+candidate = base / "rolled-back-candidate"
+candidate.mkdir()
+(candidate / "new").write_text("new")
+snapshot_dir = base / "rolled-back-snapshot"
+snapshot_dir.mkdir()
+write_journal(rolled_back, "old_moved", candidate, snapshot_dir / "workspace", had_live=True)
+result = module.recover_restore(rolled_back)
+assert result["status"] == "rolled_back"
+assert (rolled_back / "workspace/old").read_text() == "old"
+assert not candidate.exists()
+
+old_moved = base / "old-moved"
+old_moved.mkdir()
+candidate = base / "old-moved-candidate"
+candidate.mkdir()
+(candidate / "new").write_text("new")
+snapshot = base / "old-moved-snapshot/workspace"
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+write_journal(old_moved, "old_moved", candidate, snapshot, had_live=True)
+result = module.recover_restore(old_moved)
+assert result["status"] == "restored"
+assert (old_moved / "workspace/new").read_text() == "new"
+assert (snapshot / "old").read_text() == "old"
+
+promoted_before_journal = base / "promoted-before-journal"
+(promoted_before_journal / "workspace").mkdir(parents=True)
+(promoted_before_journal / "workspace/new").write_text("new")
+consumed_candidate = base / "promoted-before-journal-candidate"
+snapshot = base / "promoted-before-journal-snapshot/workspace"
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+payload = {
+    "version": 1,
+    "state": "old_moved",
+    "transaction_id": "promoted-before-journal",
+    "root": str(promoted_before_journal.resolve()),
+    "candidate": str(consumed_candidate),
+    "candidate_inventory_hash": module.inventory(promoted_before_journal / "workspace")["inventory_hash"],
+    "snapshot_dir": str(snapshot.parent),
+    "snapshot_workspace": str(snapshot),
+    "had_live_workspace": True,
+    "old_inventory_hash": "unused",
+}
+module.atomic_write_json(promoted_before_journal / ".nase-restore/transaction.json", payload)
+result = module.recover_restore(promoted_before_journal)
+assert result["status"] == "restored"
+assert (promoted_before_journal / "workspace/new").read_text() == "new"
+
+foreign = base / "foreign"
+(foreign / "workspace").mkdir(parents=True)
+(foreign / "workspace/foreign").write_text("foreign")
+candidate = base / "foreign-candidate"
+candidate.mkdir()
+(candidate / "new").write_text("new")
+snapshot = base / "foreign-snapshot/workspace"
+snapshot.mkdir(parents=True)
+(snapshot / "old").write_text("old")
+write_journal(foreign, "old_moved", candidate, snapshot, had_live=True)
+journal_path = foreign / ".nase-restore/transaction.json"
+journal = json.loads(journal_path.read_text())
+journal["old_inventory_hash"] = "prior-workspace-hash"
+module.atomic_write_json(journal_path, journal)
+try:
+    module.recover_restore(foreign)
+except module.RestoreError:
+    pass
+else:
+    raise SystemExit("foreign workspace was overwritten")
+assert (foreign / "workspace/foreign").read_text() == "foreign"
+assert (candidate / "new").read_text() == "new"
+assert (snapshot / "old").read_text() == "old"
+
+promoted = base / "promoted"
+(promoted / "workspace").mkdir(parents=True)
+(promoted / "workspace/new").write_text("new")
+candidate_path = base / "promoted-consumed-candidate"
+payload = {
+    "version": 1,
+    "state": "new_promoted",
+    "transaction_id": "promoted",
+    "root": str(promoted.resolve()),
+    "candidate": str(candidate_path),
+    "candidate_inventory_hash": module.inventory(promoted / "workspace")["inventory_hash"],
+    "snapshot_dir": None,
+    "snapshot_workspace": None,
+    "had_live_workspace": False,
+    "old_inventory_hash": "unused",
+}
+module.atomic_write_json(promoted / ".nase-restore/transaction.json", payload)
+result = module.recover_restore(promoted)
+assert result["status"] == "restored"
+assert not (promoted / ".nase-restore/transaction.json").exists()
+PY
+assert_cmd "prepared, old_moved, new_promoted, and foreign recovery are deterministic" test "$?" = 0
+
+if [[ "$failures" -eq 0 ]]; then
+  printf '\nrestore workspace tests passed.\n'
+  exit 0
+fi
+
+printf '\n%d restore workspace assertion(s) failed.\n' "$failures" >&2
+exit "$failures"

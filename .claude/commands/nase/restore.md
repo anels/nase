@@ -82,134 +82,63 @@ case "$(basename "$ZIP_PATH")" in
 esac
 ```
 
-### 4. Confirm with user
-Before asking for confirmation, show files that exist in `workspace/` but NOT in the selected backup:
+### 4. Inspect and confirm
+
+Create a persisted preview manifest before asking for confirmation. The helper parses only archive member records, validates both supported payload shapes, rejects unsafe paths and link metadata, and binds the preview to the archive bytes and current workspace inventory:
+
 ```bash
-mkdir -p "$NASE_ROOT/workspace/tmp"
-TMPFILE_BACKUP=$(mktemp "$NASE_ROOT/workspace/tmp/nase-backup-files-XXXXXX.txt")
-TMPFILE_LOCAL=$(mktemp "$NASE_ROOT/workspace/tmp/nase-local-files-XXXXXX.txt")
-# List files in the zip (try 7z first, fall back to zip listing tools)
-if command -v 7z &>/dev/null; then
-  7z l -slt "$ZIP_PATH" | grep "^Path = " | sed 's/^Path = //' | sed 's|^workspace/||' | sort > "$TMPFILE_BACKUP"
-elif command -v unzip &>/dev/null; then
-  unzip -Z1 "$ZIP_PATH" | sed 's|^workspace/||' | sort > "$TMPFILE_BACKUP"
-elif command -v zipinfo &>/dev/null; then
-  zipinfo -1 "$ZIP_PATH" | sed 's|^workspace/||' | sort > "$TMPFILE_BACKUP"
-else
-  echo "ERROR: need 7z, unzip, or zipinfo to inspect backup contents" >&2
-  exit 1
-fi
-# List files in current workspace/ — strip leading ./ so paths are comparable
-(cd "$NASE_ROOT/workspace" && find . -type f | sed 's|^\./||' | sort) > "$TMPFILE_LOCAL"
-# Files that exist locally but not in the backup (will be deleted by restore)
-comm -23 "$TMPFILE_LOCAL" "$TMPFILE_BACKUP"
-# Cleanup temp files
-rm -f "$TMPFILE_BACKUP" "$TMPFILE_LOCAL"
+mkdir -p "$NASE_ROOT/.nase-restore"
+MANIFEST="$NASE_ROOT/.nase-restore/preview-$(date +%s)-$$.json"
+python3 "$NASE_ROOT/.claude/scripts/restore-workspace.py" inspect \
+  --root "$NASE_ROOT" \
+  --archive "$ZIP_PATH" \
+  --manifest-out "$MANIFEST"
+jq -r '.local_only[]?' "$MANIFEST"
 ```
-If any such files exist, warn: "The following files exist locally but not in the backup and will be DELETED by the restore."
+
+If `local_only` contains files, warn: "The following files exist locally but not in the backup and will be removed from the restored workspace. They remain in the pre-restore snapshot."
 
 Then confirm:
 ```
 question: "Restore will overwrite workspace/ with {ZIP_NAME}. Files to be deleted (not in backup): {N or 'none'}."
 header: "Confirm Restore"
 options:
-  - label: "Yes — restore now"  , description: "Overwrites workspace/ with backup; snapshot created first"
-  - label: "No — abort"          , description: "No changes made"
+  - label: "Yes - restore now" , description: "Atomically replaces workspace/; non-empty workspace is retained as a snapshot"
+  - label: "No - abort"        , description: "No changes made"
 ```
 
-### 5. Create pre-restore snapshot
-Before any changes, capture the timestamp once and create a local snapshot for rollback:
-```bash
-TS=$(date +%Y%m%dT%H%M%S)
-SNAPSHOT_DIR="$NASE_ROOT/workspace-pre-restore-$TS"
-cp -rp "$NASE_ROOT/workspace" "$SNAPSHOT_DIR/"
-```
-Tell the user: "Snapshot created at `workspace-pre-restore-$TS/`. Delete it once you've verified the restore."
+### 5. Apply the inspected transaction
 
-Before proceeding, verify the snapshot was created successfully:
+After explicit confirmation, apply the exact manifest. `apply` rechecks the archive and workspace inventory, takes the repository mutation lock, extracts and validates a sibling candidate directory, journals each directory-rename transition, and never overwrites a workspace recreated by another process:
+
 ```bash
-snapshot_count=$(find "$SNAPSHOT_DIR" -type f 2>/dev/null | wc -l)
+python3 "$NASE_ROOT/.claude/scripts/restore-workspace.py" apply \
+  --root "$NASE_ROOT" \
+  --manifest "$MANIFEST"
 ```
-If `$SNAPSHOT_DIR` does not exist or `$snapshot_count` is 0: abort with "ERROR: Pre-restore snapshot is empty or missing — aborting to prevent data loss. Check disk space and permissions, then retry." Do NOT proceed with deletion.
+
+Do not copy, delete, or extract directly into `workspace/`. A missing or empty workspace is valid and does not require a snapshot. A non-empty workspace is renamed to a unique `workspace-pre-restore-{timestamp}-{uuid}/workspace` snapshot and retained after success.
+
+If `apply` reports an existing journal or a prior restore was interrupted, recover it before inspecting another archive:
+
+```bash
+python3 "$NASE_ROOT/.claude/scripts/restore-workspace.py" recover --root "$NASE_ROOT"
+```
+
+Recovery uses the fsynced state (`prepared`, `old_moved`, or `new_promoted`) to finish or roll back. It never guesses ownership or overwrites a foreign `workspace/`; on such a race it reports and preserves the live workspace, snapshot, and candidate paths.
 
 On a new machine, also suggest `/nase:init` to verify hooks and config.
 
-### 6. Restore
-Extract into a temporary directory first, verify it contains a plausible workspace payload, then replace `workspace/`. Current backups are created by running the archive tool from inside `workspace/`, so archive entries are usually `context.md`, `kb/...`, etc. Older/manual backups may include a top-level `workspace/` folder; handle both shapes.
+### 6. Verify integrity
 
-Before extraction, validate the archive member list. Do not extract if any member is absolute, contains parent traversal (`..`), or uses a Windows drive / UNC path:
-```bash
-ARCHIVE_LIST=$(mktemp "$NASE_ROOT/workspace/tmp/nase-restore-list-XXXXXX.txt")
-case "$ZIP_PATH" in
-  *.7z)  7z l -slt "$ZIP_PATH" | sed -n 's/^Path = //p' > "$ARCHIVE_LIST" ;;
-  *.zip)
-    if command -v 7z &>/dev/null; then
-      7z l -slt "$ZIP_PATH" | sed -n 's/^Path = //p' > "$ARCHIVE_LIST"
-    elif command -v unzip &>/dev/null; then
-      unzip -Z1 "$ZIP_PATH" > "$ARCHIVE_LIST"
-    elif command -v zipinfo &>/dev/null; then
-      zipinfo -1 "$ZIP_PATH" > "$ARCHIVE_LIST"
-    else
-      echo "ERROR: need 7z, unzip, or zipinfo to inspect backup contents" >&2
-      exit 1
-    fi
-    ;;
-  *)     echo "ERROR: unsupported backup extension: $ZIP_PATH" >&2 ; exit 1 ;;
-esac
+- Read the helper JSON result and report its restored file count.
+- Check whether `workspace/context.md` exists. If absent, warn that the selected backup may be incomplete; do not roll back a completed transaction automatically.
+- Keep the snapshot until the user verifies the restored workspace.
 
-if grep -Eq '(^[\\/]|(^|[\\/])\.\.([\\/]|$)|^[A-Za-z]:[\\/]|^\\\\)' "$ARCHIVE_LIST"; then
-  echo "ERROR: backup archive contains unsafe absolute or parent-traversal paths" >&2
-  rm -f "$ARCHIVE_LIST"
-  exit 1
-fi
-rm -f "$ARCHIVE_LIST"
-```
-
-```bash
-RESTORE_TMP=$(mktemp -d "$NASE_ROOT/workspace-restore-XXXXXX")
-trap 'rm -rf "$RESTORE_TMP"' EXIT
-case "$ZIP_PATH" in
-  *.7z)  7z x "$ZIP_PATH" -o"$RESTORE_TMP" ;;
-  *.zip)
-    if command -v 7z &>/dev/null; then
-      7z x "$ZIP_PATH" -o"$RESTORE_TMP"
-    elif command -v unzip &>/dev/null; then
-      unzip -oq "$ZIP_PATH" -d "$RESTORE_TMP"
-    else
-      echo "ERROR: need 7z or unzip to extract zip backup" >&2
-      exit 1
-    fi
-    ;;
-  *)     echo "ERROR: unsupported backup extension: $ZIP_PATH" >&2 ; exit 1 ;;
-esac
-
-RESTORE_SRC="$RESTORE_TMP"
-if [ -d "$RESTORE_TMP/workspace" ] && [ ! -f "$RESTORE_TMP/context.md" ]; then
-  RESTORE_SRC="$RESTORE_TMP/workspace"
-fi
-
-if [ ! -f "$RESTORE_SRC/context.md" ] && [ ! -d "$RESTORE_SRC/kb" ]; then
-  echo "ERROR: backup payload does not look like workspace/ (missing context.md and kb/)" >&2
-  exit 1
-fi
-if find "$RESTORE_TMP" -type l -print -quit | grep -q .; then
-  echo "ERROR: backup payload contains symlinks; refusing restore to avoid copying links outside workspace/" >&2
-  exit 1
-fi
-
-rm -rf "$NASE_ROOT/workspace/"
-mkdir -p "$NASE_ROOT/workspace"
-cp -Rp "$RESTORE_SRC"/. "$NASE_ROOT/workspace/"
-```
-
-### 7. Verify integrity
-- Check that `workspace/context.md` exists (sentinel file)
-- Count restored files: `find "$NASE_ROOT/workspace" -type f | wc -l`
-- If sentinel missing, warn: "context.md not found — backup may be incomplete. Rollback snapshot at workspace-pre-restore-{timestamp}/"
-
-### 8. Report
+### 7. Report
 - Which backup was restored and from where
 - Timestamp extracted from filename
 - File count before and after
-- Path of the pre-restore snapshot (for rollback)
+- Path of the pre-restore snapshot when one was created
+- Any candidate, snapshot, or foreign workspace paths retained for manual recovery
 - Reminder: the Stop hook will continue creating zip backups on future session ends
