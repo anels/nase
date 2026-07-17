@@ -147,7 +147,7 @@ Run these two sub-steps in parallel. Write results to the `## Jira` and `## Slac
 
 Skip this step if `workspace/context.md` already exists locally — the workspace is populated and a restore would be destructive.
 
-When `workspace/context.md` does NOT exist locally, delegate the entire restore offer to `/nase:restore` — it already owns backup detection, the user prompt, snapshot, overwrite, and verification. Calling it twice is harmless; the skill no-ops when no usable backup is present.
+When `workspace/context.md` does NOT exist locally, delegate the entire restore offer to `/nase:restore` - it already owns backup detection, the user prompt, manifest inspection, transactional apply/recover, and verification. Calling it twice is harmless; the skill no-ops when no usable backup is present.
 
 ```
 Invoke /nase:restore (it self-detects whether there is anything to restore and prompts the user if so).

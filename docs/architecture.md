@@ -309,6 +309,8 @@ workspace/
 
 `.local-paths` lives at the workspace root (not inside `workspace/`) so it survives a `workspace/` deletion or restore.
 
+Restore is a directory transaction owned by `.claude/scripts/restore-workspace.py`. Inspection binds the selected archive and current workspace inventory into a manifest. Apply and recover share the repository mutation lock, extract to a validated sibling candidate, journal `prepared` / `old_moved` / `new_promoted`, and promote with directory renames. A non-empty prior workspace remains in a unique `workspace-pre-restore-{timestamp}-{uuid}/workspace` snapshot until the user removes it. Direct extraction or copy into live `workspace/` is unsupported because it bypasses the preview and recovery contract.
+
 | Path | In git? | Reason |
 |------|---------|--------|
 | `.claude/` | Yes, except `.claude/settings.local.json`, `.claude/skills/`, and `.claude/commands/nase/workspace/` | Shared workflow improvements; local settings/skills and generated wrappers stay local |
