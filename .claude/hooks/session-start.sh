@@ -168,7 +168,9 @@ skill_body_without_frontmatter() {
 
   # Item 5 — auto-archive tech digest entries older than 30 days
   TRENDS="$NASE_ROOT/workspace/kb/general/tech-trends.md"
-  if [ -f "$TRENDS" ]; then
+  TRENDS_JOURNAL="$NASE_ROOT/.nase-locks/workspace-archive-tech-trends.json"
+  if { [ -f "$TRENDS" ] && [ ! -L "$TRENDS" ]; } \
+    || [ -e "$TRENDS_JOURNAL" ] || [ -L "$TRENDS_JOURNAL" ]; then
     if [ -z "$PYTHON" ]; then
       echo "[session-start] WARNING: python3/python not found — tech digest archival skipped (tech-trends.md may grow unbounded)"
     else

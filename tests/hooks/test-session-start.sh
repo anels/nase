@@ -268,6 +268,55 @@ assert_contains "backup-target-only local paths does not abort" "$out" "backup t
 assert_contains "old tech trend is archived" "$(cat "$repo/workspace/kb/general/tech-trends-archive-2020.md")" "old trend"
 assert_contains "future tech trend stays live" "$(cat "$repo/workspace/kb/general/tech-trends.md")" "future trend"
 
+# A pending journal bypasses the source-exists gate so missing-source recovery
+# is reported instead of silently abandoned.
+python3 - "$repo" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+from unittest import mock
+
+root = Path(sys.argv[1])
+script = root / ".claude/scripts/workspace-archive.py"
+spec = importlib.util.spec_from_file_location("workspace_archive", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+source = root / "workspace/kb/general/tech-trends.md"
+source.write_text(
+    "# Tech Trends\n\n## Tech Digest — 2020-01-01\n\npending missing source\n",
+    encoding="utf-8",
+)
+real_replace = module.atomic_replace
+
+
+def fail_source_replace(path, content, validate):
+    if path == source:
+        raise OSError("source replace failed")
+    return real_replace(path, content, validate)
+
+
+with mock.patch.object(module, "atomic_replace", side_effect=fail_source_replace):
+    try:
+        module.rotate_tech_trends(root)
+    except OSError:
+        pass
+assert module.journal_path(root, "tech-trends").exists()
+source.unlink()
+PY
+
+pending_out=$(cd "$repo" && bash .claude/hooks/session-start.sh 2>&1)
+assert_contains "pending tech journal bypasses missing source gate" "$pending_out" "tech digest archival failed"
+if [ -f "$repo/.nase-locks/workspace-archive-tech-trends.json" ]; then
+  printf 'PASS  missing source preserves pending tech journal\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  missing source preserves pending tech journal\n' >&2
+  fail=$((fail + 1))
+fi
+rm "$repo/.nase-locks/workspace-archive-tech-trends.json"
+printf '# Tech Trends\n' > "$repo/workspace/kb/general/tech-trends.md"
+
 chmod 0600 "$wrapper"
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 rc=$?

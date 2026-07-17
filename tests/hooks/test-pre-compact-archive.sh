@@ -44,4 +44,53 @@ grep -q 'retained workspace/efforts/done/collision.md' <<<"$out"
 grep -q 'nase-archive:' "$repo/workspace/tasks/lessons-archive.md"
 test "$(wc -c < "$repo/workspace/tasks/lessons.md")" -lt 81920
 
+# A source replace can succeed before its directory fsync fails. The pending
+# journal must bypass the size threshold after the source has already shrunk.
+python3 - "$repo" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+from unittest import mock
+
+root = Path(sys.argv[1])
+script = root / ".claude/scripts/workspace-archive.py"
+spec = importlib.util.spec_from_file_location("workspace_archive", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+source = root / "workspace/tasks/lessons.md"
+source.write_text(
+    "# Lessons\n\n## debugging -- 2020-01-01 -- retry\n\npending\n\n"
+    "> Promoted → kb.md\n",
+    encoding="utf-8",
+)
+real_fsync_dir = module.fsync_dir
+source_dir_fsyncs = 0
+
+
+def fail_after_source_replace(path):
+    global source_dir_fsyncs
+    if path == source.parent:
+        source_dir_fsyncs += 1
+        if source_dir_fsyncs == 2:
+            raise OSError("source directory fsync failed")
+    return real_fsync_dir(path)
+
+
+with mock.patch.object(module, "fsync_dir", side_effect=fail_after_source_replace):
+    try:
+        module.rotate_lessons(root)
+    except OSError:
+        pass
+assert module.journal_path(root, "lessons").exists()
+assert "pending" not in source.read_text(encoding="utf-8")
+assert source.stat().st_size < 81920
+PY
+
+markers_before=$(grep -c 'nase-archive:' "$repo/workspace/tasks/lessons-archive.md")
+out=$(cd "$repo" && bash .claude/hooks/pre-compact-archive.sh 2>&1)
+test ! -e "$repo/.nase-locks/workspace-archive-lessons.json"
+test "$(grep -c 'nase-archive:' "$repo/workspace/tasks/lessons-archive.md")" = "$markers_before"
+test "$(wc -c < "$repo/workspace/tasks/lessons.md")" -lt 81920
+
 printf 'pre-compact archive hook tests passed.\n'

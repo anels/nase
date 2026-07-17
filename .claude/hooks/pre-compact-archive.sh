@@ -20,13 +20,23 @@ PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true
 
 # --- Lessons rotation -------------------------------------------------------
 LESSONS="$NASE_ROOT/workspace/tasks/lessons.md"
-if [ -f "$LESSONS" ]; then
-  # Size guard — only do work when the file has grown past the threshold.
+LESSONS_JOURNAL="$NASE_ROOT/.nase-locks/workspace-archive-lessons.json"
+RUN_LESSONS_ARCHIVE=0
+if [ -e "$LESSONS_JOURNAL" ] || [ -L "$LESSONS_JOURNAL" ]; then
+  # A prior archive transaction must finish even if cleanup already shrank the source.
+  RUN_LESSONS_ARCHIVE=1
+elif [ -f "$LESSONS" ] && [ ! -L "$LESSONS" ]; then
+  # Start new work only when the file has grown past the threshold.
   SIZE=$(wc -c <"$LESSONS" 2>/dev/null || echo 0)
-  if [ "${SIZE:-0}" -gt 81920 ] && [ -n "$PYTHON" ]; then
-    if ! "$PYTHON" .claude/scripts/workspace-archive.py lessons --root "$NASE_ROOT"; then
-      echo "[pre-compact] WARNING: lessons archival failed; source was preserved" >&2
-    fi
+  if [ "${SIZE:-0}" -gt 81920 ]; then
+    RUN_LESSONS_ARCHIVE=1
+  fi
+fi
+if [ "$RUN_LESSONS_ARCHIVE" -eq 1 ]; then
+  if [ -z "$PYTHON" ]; then
+    echo "[pre-compact] WARNING: python3/python not found; lessons archival skipped" >&2
+  elif ! "$PYTHON" .claude/scripts/workspace-archive.py lessons --root "$NASE_ROOT"; then
+    echo "[pre-compact] WARNING: lessons archival failed; source was preserved" >&2
   fi
 fi
 
