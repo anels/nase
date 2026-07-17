@@ -51,7 +51,7 @@ block_format() {
     printf '%s BLOCKED %s (%s)\n' "${TS:-unknown-time}" "${TOOL:-unknown-tool}" "$reason" >> "$LOG" || true
   fi
   if [ -n "${TOKEN:-}" ] && [ -f "$TOKEN" ]; then
-    rm -f "$TOKEN"
+    rm -f "$TOKEN" || true
   fi
   exit 2
 }
@@ -81,7 +81,8 @@ TOKEN="$NASE_ROOT/workspace/.jira-write-token"
 LOG="$NASE_ROOT/workspace/logs/.jira-writes.log"
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 LOCK_HELPER="$SCRIPT_DIR/../scripts/workspace_lock.py"
-mkdir -p "$NASE_ROOT/workspace/logs"
+mkdir -p "$NASE_ROOT/workspace/logs" \
+  || block_without_log "could not create Jira mutation audit directory"
 
 TS=$(date +%Y-%m-%dT%H:%M:%S)
 
@@ -113,6 +114,9 @@ fi
 release_workspace_lock() {
   local status=$?
   trap - EXIT HUP INT TERM
+  if [ "$status" -ne 0 ]; then
+    status=2
+  fi
   if ! python3 "$LOCK_HELPER" release --root "$NASE_ROOT" --nonce "$LOCK_NONCE" >/dev/null 2>&1; then
     echo "BLOCKED by jira-write-guard: could not release workspace mutation lock." >&2
     status=2
@@ -152,7 +156,9 @@ block() {
     echo "Policy source: .claude/docs/external-mutation-policy.md"
   } >&2
   printf '%s BLOCKED %s (%s)\n' "$TS" "$TOOL" "$reason" >> "$LOG" || true
-  [ -f "$TOKEN" ] && rm -f "$TOKEN"
+  if [ -f "$TOKEN" ]; then
+    rm -f "$TOKEN" || true
+  fi
   exit 2
 }
 
@@ -254,6 +260,14 @@ if [ "$IS_BATCH" = "1" ]; then
 
   # Optional tool allowlist. When present the current tool must match (exact
   # name or suffix, to tolerate MCP namespace-prefix differences).
+  TOOLS_VALID=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
+    if has("tools") then
+      if (.tools | type) == "array"
+         and all(.tools[]; type == "string" and length > 0)
+      then "1" else "0" end
+    else "1" end')
+  [ "$TOOLS_VALID" = "1" ] \
+    || block "batch token tools must be an array of non-empty strings"
   TOOLS_LEN=$(printf '%s' "$TOKEN_CONTENT" | jq -r '(.tools // []) | length')
   if [ "$TOOLS_LEN" -gt 0 ]; then
     TOOL_OK=$(printf '%s' "$TOKEN_CONTENT" | jq -r --arg t "$TOOL" '
