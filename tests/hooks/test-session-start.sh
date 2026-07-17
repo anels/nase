@@ -64,11 +64,25 @@ fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 
 repo="$fixture/repo"
-mkdir -p "$repo/.claude/hooks" "$repo/workspace/logs" "$repo/workspace/skills"
+mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" "$repo/workspace/logs" \
+  "$repo/workspace/skills" "$repo/workspace/kb/general"
 git -C "$repo" init -q
 cp "$HOOK" "$repo/.claude/hooks/session-start.sh"
+cp "$ROOT/.claude/scripts/workspace-archive.py" "$ROOT/.claude/scripts/workspace_lock.py" \
+  "$repo/.claude/scripts/"
 printf '%s\n' '2026-05-28T00:00:00 [WARNING] backup target unavailable' > "$repo/workspace/logs/.backup-status"
 printf 'backup-target=%s\n' "$fixture/backups" > "$repo/.local-paths"
+cat > "$repo/workspace/kb/general/tech-trends.md" <<'TRENDS'
+# Tech Trends
+
+## Tech Digest — 2020-01-01
+
+old trend
+
+## Tech Digest — 2099-01-01
+
+future trend
+TRENDS
 
 cat > "$repo/workspace/skills/read-only.md" <<'SKILL'
 ---
@@ -251,6 +265,8 @@ fi
 assert_json_reload "reloadSkills true after wrapper sync" "$out"
 assert_contains "warning-only backup status does not abort" "$out" "no successful backup recorded yet"
 assert_contains "backup-target-only local paths does not abort" "$out" "backup target not reachable"
+assert_contains "old tech trend is archived" "$(cat "$repo/workspace/kb/general/tech-trends-archive-2020.md")" "old trend"
+assert_contains "future tech trend stays live" "$(cat "$repo/workspace/kb/general/tech-trends.md")" "future trend"
 
 chmod 0600 "$wrapper"
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)

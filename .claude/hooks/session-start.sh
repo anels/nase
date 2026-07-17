@@ -172,52 +172,9 @@ skill_body_without_frontmatter() {
     if [ -z "$PYTHON" ]; then
       echo "[session-start] WARNING: python3/python not found — tech digest archival skipped (tech-trends.md may grow unbounded)"
     else
-    "$PYTHON" - "$TRENDS" "$NASE_ROOT/workspace/kb/general" << 'PYEOF' || true
-import sys, re, os
-from datetime import datetime, timedelta
-
-trends_path = sys.argv[1]
-kb_dir = sys.argv[2]
-cutoff = datetime.now() - timedelta(days=30)
-
-with open(trends_path, encoding='utf-8') as f:
-    content = f.read()
-
-sections = re.split(r'(?=\n## Tech Digest — \d{4}-\d{2}-\d{2})', content)
-if not sections[0].strip().startswith('## Tech Digest'):
-    preamble = sections.pop(0)
-else:
-    preamble = ''
-
-keep, archive_by_year = [], {}
-for section in sections:
-    m = re.search(r'## Tech Digest — (\d{4}-\d{2}-\d{2})', section)
-    if not m:
-        keep.append(section); continue
-    entry_date = datetime.strptime(m.group(1), '%Y-%m-%d')
-    if entry_date < cutoff:
-        year = m.group(1)[:4]
-        archive_by_year.setdefault(year, []).append(section)
-    else:
-        keep.append(section)
-
-if not archive_by_year:
-    sys.exit(0)
-
-with open(trends_path, 'w', encoding='utf-8') as f:
-    f.write(preamble + ''.join(keep))
-
-for year, entries in archive_by_year.items():
-    archive_path = os.path.join(kb_dir, f'tech-trends-archive-{year}.md')
-    if not os.path.exists(archive_path):
-        with open(archive_path, 'w', encoding='utf-8') as f:
-            f.write(f'# Tech Trends Archive — {year}\n')
-    with open(archive_path, 'a', encoding='utf-8') as f:
-        f.write(''.join(entries))
-
-total = sum(len(v) for v in archive_by_year.values())
-print(f"[session-start] archived {total} tech digest entries older than 30 days")
-PYEOF
+    if ! "$PYTHON" .claude/scripts/workspace-archive.py tech-trends --root "$NASE_ROOT"; then
+      echo "[session-start] WARNING: tech digest archival failed; source was preserved"
+    fi
     fi
   fi
 
