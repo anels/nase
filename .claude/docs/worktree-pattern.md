@@ -76,23 +76,21 @@ The helper refuses the primary or locked worktree, in-progress Git operations,
 remote drift or an unavailable remote, and any tracked, untracked, ignored, or
 recursive submodule content. NUL-delimited index inspection also rejects
 assume-unchanged, skip-worktree, and fsmonitor-valid entries before the claim.
-It never uses `git worktree remove` or `--force`.
+It never uses `--force`.
 
 The helper uses plain `git worktree move` to claim the clean worktree at a unique
 sibling path and repeats the HEAD, remote, and dirty checks.
 If another process recreates the old path, both the registered worktree and the
 foreign path are preserved. A temporary local safety ref pins HEAD through the
-claim and remote recheck. The claimed worktree is then locked and retained as a
-quarantine because portable Git cannot atomically exclude writes through an open
-cwd or directory handle between a clean scan and recursive deletion.
+claim and remote recheck. The helper then runs ordinary `git worktree remove`
+on the claimed clean path. Git refusing that final removal is a safe retain:
+the helper does not use `--force` and reports the registered path.
 
 Return codes:
 
-- `0`: reserved for a future platform primitive that proves atomic safe removal;
-  the portable implementation does not emit it.
-- `3`: safely retained or quarantined; report every returned path as a non-failure outcome.
+- `0`: worktree was removed and is absent from the registry.
+- `3`: safely retained; report every returned path as a non-failure outcome.
 - `2`: invalid input or unparseable Git state; stop the workflow and report the error.
 
-For a verified clean quarantine, inspect the returned path before manually
-unlocking or removing it. Automated consumers must keep cleanup-only state and
-research artifacts on return `3`.
+Automated consumers must keep cleanup-only state and research artifacts on
+return `3`.

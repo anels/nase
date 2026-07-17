@@ -101,17 +101,16 @@ ref `refs/heads/{branch_name}`, and the full OID from
 
 - Return `0`: delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
   `workspace/tmp/fsd-research-{branch_slug}.md`, then confirm `Worktree removed.`
-- Return `3`: keep the quarantined worktree and both artifacts, report every
+- Return `3`: keep the retained worktree and both artifacts, report every
   returned path and dirty item, and continue to the final report as a non-failure
-  cleanup result. The portable helper returns `3` even for a verified clean tree.
+  cleanup result.
 - Return `2`: keep all artifacts, stop, and report the helper error.
 
 Set `worktree_report` for Phase 10 from the actual outcome:
 
 - no worktree flow: `n/a`
 - return `0`: `removed`
-- return `3` after rename-claim: `quarantined at {exact registered-worktree path}`
-- return `3` before rename-claim: `retained at {exact worktree_path}`
+- return `3`: `retained at {exact returned worktree path}`
 
 Never summarize return `3` as removed or cleaned up.
 

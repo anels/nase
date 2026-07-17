@@ -369,8 +369,8 @@ Follow `.claude/docs/effort-lifecycle.md → Prep-Merge Update`. If the PR or br
 Follow `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote
 ref `refs/heads/{pr_branch}`, and the full OID from
 `git -C {worktree_path} rev-parse HEAD`. Return `3` is a successful retained
-quarantine outcome, including for a verified clean tree, and must report every
-returned path and dirty item. Return `2` stops the workflow with the helper error.
+outcome and must report every returned path and dirty item. Return `2` stops the
+workflow with the helper error.
 
 **Required-check status (report-only).** Follow `.claude/docs/pr-gates-consumption.md` §4: read live check status with `gh pr checks {pr_number} --repo {owner}/{repo}`, cross-reference `gate_profile.required_checks`, and render the ✓/✗/…/⚠ list. Warn on failing or pending required checks so the user knows what still blocks the actual merge — but do not wait, poll, or block the force-push already done. If the gate-profile load used the live-fetch fallback, also add the §2 stale-KB note (`Run /nase:onboard {repo} to persist`).
 

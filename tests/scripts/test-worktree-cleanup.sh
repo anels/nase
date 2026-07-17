@@ -76,10 +76,6 @@ make_git_wrapper() {
     '  fi' \
     '  exit "$rc"' \
     'fi' \
-    'if [[ "${NASE_TEST_MODE:-}" != "" && " $* " == *" worktree remove "* ]]; then' \
-    '  printf "automatic remove invoked\\n" >&2' \
-    '  exit 99' \
-    'fi' \
     'if [[ "${NASE_TEST_MODE:-}" == late-claimed && " $* " == *" ls-remote "* ]]; then' \
     '  count=0' \
     '  [[ ! -f "$NASE_TEST_COUNT_FILE" ]] || count=$(<"$NASE_TEST_COUNT_FILE")' \
@@ -128,11 +124,9 @@ REAL_GIT=$(command -v git)
 make_git_wrapper
 
 new_case clean
-expect_rc "clean exact pushed worktree is quarantined" 3 run_helper
+expect_rc "clean exact pushed worktree is removed" 0 run_helper
 [[ ! -e "$CASE_WT" ]] || fail "clean worktree original path still exists"
-claimed_path=$(linked_worktree_path)
-[[ -d "$claimed_path" ]] || fail "clean worktree quarantine is missing"
-git -C "$CASE_REPO" worktree list --porcelain | grep -A5 -F "worktree $claimed_path" | grep -q '^locked nase cleanup quarantine$' || fail "clean quarantine is not locked"
+[[ -z $(linked_worktree_path) ]] || fail "clean worktree remains registered"
 
 new_case tracked
 printf 'changed\n' >>"$CASE_WT/tracked.txt"
@@ -195,7 +189,7 @@ claimed_path=$(linked_worktree_path)
 new_case late-claimed
 rm -f "$TMP/ls-remote-count"
 TEST_MODE=late-claimed
-expect_rc "ignored file created after final scan is quarantined" 3 run_helper_injected
+expect_rc "ignored file created after final scan is retained" 3 run_helper_injected
 claimed_path=$(linked_worktree_path)
 [[ $(<"$claimed_path/ignored/late.bin") == "late-claimed-bytes" ]] || fail "late claimed bytes were deleted"
 [[ ! -e "$CASE_WT" ]] || fail "late claimed test recreated original path"
@@ -232,11 +226,11 @@ git -C "$CASE_REPO" branch -D feature >/dev/null
 git -C "$CASE_REPO" worktree add -q --detach "$CASE_WT" main
 CASE_HEAD=$(git -C "$CASE_WT" rev-parse HEAD)
 git -C "$CASE_WT" push -q origin HEAD:refs/heads/detached-clean
-expect_rc "detached worktree with exact remote SHA is quarantined" 3 python3 "$HELPER" \
+expect_rc "detached worktree with exact remote SHA is removed" 0 python3 "$HELPER" \
   --repo "$CASE_REPO" --worktree "$CASE_WT" --remote origin \
   --remote-ref refs/heads/detached-clean --expected-head "$CASE_HEAD"
-claimed_path=$(linked_worktree_path)
-[[ $(git -C "$claimed_path" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "detached quarantine lost expected HEAD"
+[[ ! -e "$CASE_WT" ]] || fail "detached worktree remains on disk"
+[[ -z $(linked_worktree_path) ]] || fail "detached worktree remains registered"
 
 new_case detached-remote-race
 git -C "$CASE_REPO" worktree remove "$CASE_WT"
@@ -250,11 +244,11 @@ RACE_OID=$(git -C "$CASE_REPO" rev-parse HEAD)
 git -C "$CASE_REPO" push -q origin HEAD:refs/heads/race-seed
 rm -f "$TMP/ls-remote-count"
 TEST_MODE=remote-race
-expect_rc "remote move during detached quarantine preserves worktree" 3 run_helper_injected
+expect_rc "remote move during detached cleanup preserves worktree" 3 run_helper_injected
 claimed_path=$(linked_worktree_path)
-[[ -d "$claimed_path" ]] || fail "detached worktree was not quarantined after remote race"
-[[ $(git -C "$claimed_path" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "quarantined worktree lost expected HEAD"
-if git -C "$claimed_path" symbolic-ref -q HEAD >/dev/null; then fail "quarantined worktree is not detached"; fi
+[[ -d "$claimed_path" ]] || fail "detached worktree was not retained after remote race"
+[[ $(git -C "$claimed_path" rev-parse HEAD) == "$CASE_HEAD" ]] || fail "retained worktree lost expected HEAD"
+if git -C "$claimed_path" symbolic-ref -q HEAD >/dev/null; then fail "retained worktree is not detached"; fi
 [[ $(git --git-dir="$CASE_BASE/remote.git" rev-parse refs/heads/feature) == "$RACE_OID" ]] || fail "remote race fixture did not move ref"
 [[ -z $(git -C "$CASE_REPO" for-each-ref refs/nase/worktree-cleanup/) ]] || fail "safety ref remained after restore"
 
@@ -288,20 +282,20 @@ else
   pass "documented consumers contain no force worktree removal"
 fi
 
-if rg -n '"worktree", "remove"' "$HELPER" >"$TMP/remove-call"; then
-  fail "helper still invokes recursive worktree removal: $(tr '\n' ' ' <"$TMP/remove-call")"
+if rg -n -U '"worktree",\s*"remove"' "$HELPER" >"$TMP/remove-call"; then
+  pass "helper uses ordinary worktree removal"
 else
-  pass "helper contains no automatic recursive worktree removal"
+  fail "helper does not invoke ordinary worktree removal"
 fi
 
 if rg -n 'Worktree:[[:space:]]+cleaned up' "$ROOT/.claude/commands/nase/fsd.md" >"$TMP/fsd-worktree"; then
   fail "FSD still reports unconditional worktree cleanup"
 elif ! grep -Fq 'Worktree:    {worktree_report}' "$ROOT/.claude/commands/nase/fsd.md"; then
   fail "FSD report does not render conditional worktree_report"
-elif ! grep -Fq 'quarantined at {exact registered-worktree path}' "$ROOT/.claude/commands/nase/fsd.md"; then
-  fail "FSD does not bind quarantine report to exact returned path"
+elif ! grep -Fq 'retained at {exact returned worktree path}' "$ROOT/.claude/commands/nase/fsd.md"; then
+  fail "FSD does not bind retained report to exact returned path"
 else
-  pass "FSD reports removed, quarantined, retained, or n/a conditionally"
+  pass "FSD reports removed, retained, or n/a conditionally"
 fi
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
