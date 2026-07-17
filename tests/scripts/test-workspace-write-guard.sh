@@ -284,7 +284,7 @@ for name, race, expected_code in (
                 os.replace(foreign, source)
         return original_unlink(path, *unlink_args, **unlink_kwargs)
 
-    def racing_rename(src, dst):
+    def racing_rename(src, dst, *rename_args, **rename_kwargs):
         if race == "destination-at-rollback" and Path(src) == destination:
             os.replace(foreign, destination)
         if race == "destination-at-rollback" and Path(src) == source:
@@ -296,14 +296,16 @@ for name, race, expected_code in (
         if race == "source-type" and Path(src) == source:
             source.unlink()
             source.mkdir()
-        return original_rename(src, dst)
+        return original_rename(src, dst, *rename_args, **rename_kwargs)
 
     module.os.link = racing_link
     module.Path.unlink = racing_unlink
     module.os.rename = racing_rename
+    caught_message = None
     try:
         module.cmd_apply_move(args)
     except module.GuardError as exc:
+        caught_message = str(exc)
         assert exc.code == expected_code
     else:
         raise AssertionError(f"expected {name} destination replacement rejection")
@@ -334,7 +336,9 @@ for name, race, expected_code in (
         assert (source.stat().st_mode & 0o777) == 0o600
         assert not destination.exists()
         rollbacks = list((root / "workspace/tmp").glob("move-rollback-*"))
-        assert any(path.read_text(encoding="utf-8") == "foreign\n" for path in rollbacks)
+        assert any(
+            path.read_text(encoding="utf-8") == "foreign\n" for path in rollbacks
+        ), (race, rollbacks, caught_message)
     else:
         assert source.read_text(encoding="utf-8") == "source\n"
         assert (source.stat().st_mode & 0o777) == 0o600

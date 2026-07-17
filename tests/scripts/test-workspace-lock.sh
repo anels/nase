@@ -140,6 +140,320 @@ for n in 1 2; do
   fi
 done
 
+case_root="$TMPROOT/parent-swap-race"
+outside="$TMPROOT/outside-parent-swap"
+mkdir -p "$case_root/.nase-locks" "$outside"
+printf 'outside sentinel\n' > "$outside/sentinel"
+python3 - "$SCRIPT" "$case_root" "$outside" <<'PY'
+import importlib.util
+import os
+import sys
+from pathlib import Path
+from unittest import mock
+
+script, root, outside = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("workspace_lock", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+real_entry_matches = module._entry_matches
+locks_checks = 0
+
+
+def swap_after_initial_validation(parent_fd, name, expected):
+    global locks_checks
+    if name == module.LOCKS_NAME:
+        locks_checks += 1
+        if locks_checks == 2:
+            os.rename(root / module.LOCKS_NAME, root / ".nase-locks-original")
+            os.symlink(outside, root / module.LOCKS_NAME, target_is_directory=True)
+    return real_entry_matches(parent_fd, name, expected)
+
+
+with mock.patch.object(
+    module, "_entry_matches", side_effect=swap_after_initial_validation
+):
+    try:
+        module.acquire(root, timeout_ms=20, owner_pid=os.getpid())
+    except module.LockError:
+        pass
+    else:
+        raise AssertionError("parent swap was accepted")
+PY
+assert_cmd "parent swap after validation fails closed" test -L "$case_root/.nase-locks"
+assert_cmd "parent swap creates no outside lock" test ! -e "$outside/workspace-mutation.lock"
+assert_cmd "parent swap preserves outside sentinel" grep -qx 'outside sentinel' "$outside/sentinel"
+assert_cmd "parent swap creates no lock in original parent" test ! -e "$case_root/.nase-locks-original/workspace-mutation.lock"
+
+case_root="$TMPROOT/release-lock-swap-race"
+mkdir -p "$case_root"
+python3 - "$SCRIPT" "$case_root" <<'PY'
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+from unittest import mock
+
+script, root = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("workspace_lock", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+lease = module.acquire(root, timeout_ms=20, owner_pid=os.getpid())
+real_rename = os.rename
+real_claim = module._claim_lock
+swapped = False
+
+
+def swap_canonical_during_claim(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+    global swapped
+    if src == module.LOCK_NAME and ".release-" in dst and not swapped:
+        swapped = True
+        real_rename(
+            module.LOCK_NAME,
+            "opened-old-lock",
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+        os.mkdir(module.LOCK_NAME, dir_fd=src_dir_fd)
+        new_lock_fd = os.open(
+            module.LOCK_NAME, module._directory_flags(), dir_fd=src_dir_fd
+        )
+        try:
+            owner_fd = os.open(
+                module.OWNER_NAME,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=new_lock_fd,
+            )
+            with os.fdopen(owner_fd, "w", encoding="utf-8") as handle:
+                json.dump({"nonce": "b" * 32, "pid": os.getpid()}, handle)
+        finally:
+            os.close(new_lock_fd)
+    return real_rename(
+        src,
+        dst,
+        src_dir_fd=src_dir_fd,
+        dst_dir_fd=dst_dir_fd,
+    )
+
+
+def claim_with_swap(locks_fd, expected, tag):
+    with mock.patch.object(
+        module.os, "rename", side_effect=swap_canonical_during_claim
+    ):
+        return real_claim(locks_fd, expected, tag)
+
+
+with mock.patch.object(module, "_claim_lock", side_effect=claim_with_swap):
+    try:
+        module.release(lease)
+    except module.LockError:
+        pass
+    else:
+        raise AssertionError("swapped release claim was accepted")
+PY
+release_claim=$(find "$case_root/.nase-locks" -maxdepth 1 -type d -name 'workspace-mutation.lock.release-*' -print -quit)
+assert_cmd "release swap preserves claimed new live lock" test -n "$release_claim"
+assert_cmd "release swap preserves new owner" grep -q 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$release_claim/owner.json"
+assert_cmd "release swap preserves opened old lock" test -f "$case_root/.nase-locks/opened-old-lock/owner.json"
+assert_cmd "release swap does not report success by deleting canonical" test ! -e "$case_root/.nase-locks/workspace-mutation.lock"
+
+case_root="$TMPROOT/guard-swap-race"
+mkdir -p "$case_root/.nase-locks/workspace-mutation.lock"
+printf '{"pid":99999999,"nonce":"stale"}\n' > "$case_root/.nase-locks/workspace-mutation.lock/owner.json"
+touch -t 202001010000 "$case_root/.nase-locks/workspace-mutation.lock"
+python3 - "$SCRIPT" "$case_root" <<'PY'
+import importlib.util
+import os
+import sys
+from pathlib import Path
+from unittest import mock
+
+script, root = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("workspace_lock", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+real_flock = module.fcntl.flock
+swapped = False
+
+
+def swap_guard_after_flock(descriptor, operation):
+    global swapped
+    result = real_flock(descriptor, operation)
+    if operation & module.fcntl.LOCK_EX and not swapped:
+        swapped = True
+        locks = root / module.LOCKS_NAME
+        os.rename(locks / module.GUARD_NAME, locks / "opened-old-guard")
+        (locks / module.GUARD_NAME).write_text("new guard\n", encoding="utf-8")
+    return result
+
+
+with mock.patch.object(module.fcntl, "flock", side_effect=swap_guard_after_flock):
+    try:
+        module.acquire(root, timeout_ms=20, owner_pid=os.getpid())
+    except module.LockError:
+        pass
+    else:
+        raise AssertionError("swapped recovery guard was accepted")
+PY
+assert_cmd "guard swap preserves new guard" grep -qx 'new guard' "$case_root/.nase-locks/workspace-mutation.recovery.guard"
+assert_cmd "guard swap preserves opened guard" test -f "$case_root/.nase-locks/opened-old-guard"
+assert_cmd "guard swap leaves stale lock untouched" grep -q '"nonce":"stale"' "$case_root/.nase-locks/workspace-mutation.lock/owner.json"
+
+case_root="$TMPROOT/stale-claim-swap-race"
+mkdir -p "$case_root/.nase-locks/workspace-mutation.lock"
+printf '{"pid":99999999,"nonce":"stale"}\n' > "$case_root/.nase-locks/workspace-mutation.lock/owner.json"
+touch -t 202001010000 "$case_root/.nase-locks/workspace-mutation.lock"
+python3 - "$SCRIPT" "$case_root" <<'PY'
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+from unittest import mock
+
+script, root = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("workspace_lock", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+real_claim = module._claim_lock
+real_rename = os.rename
+swapped = False
+
+
+def swap_stale_during_rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+    global swapped
+    if src == module.LOCK_NAME and ".stale-" in dst and not swapped:
+        swapped = True
+        real_rename(
+            module.LOCK_NAME,
+            "opened-old-lock",
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+        os.mkdir(module.LOCK_NAME, dir_fd=src_dir_fd)
+        new_lock_fd = os.open(
+            module.LOCK_NAME, module._directory_flags(), dir_fd=src_dir_fd
+        )
+        try:
+            owner_fd = os.open(
+                module.OWNER_NAME,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=new_lock_fd,
+            )
+            with os.fdopen(owner_fd, "w", encoding="utf-8") as handle:
+                json.dump({"nonce": "c" * 32, "pid": os.getpid()}, handle)
+        finally:
+            os.close(new_lock_fd)
+    return real_rename(
+        src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+    )
+
+
+def claim_with_stale_swap(locks_fd, expected, tag):
+    if tag != "stale":
+        return real_claim(locks_fd, expected, tag)
+    with mock.patch.object(
+        module.os, "rename", side_effect=swap_stale_during_rename
+    ):
+        return real_claim(locks_fd, expected, tag)
+
+
+with mock.patch.object(module, "_claim_lock", side_effect=claim_with_stale_swap):
+    try:
+        module.acquire(root, timeout_ms=20, owner_pid=os.getpid())
+    except module.LockError:
+        pass
+    else:
+        raise AssertionError("swapped stale claim returned a lease")
+PY
+stale_claim=$(find "$case_root/.nase-locks" -maxdepth 1 -type d -name 'workspace-mutation.lock.stale-*' -print -quit)
+assert_cmd "stale swap preserves claimed replacement" test -n "$stale_claim"
+assert_cmd "stale swap preserves replacement owner" grep -q 'cccccccccccccccccccccccccccccccc' "$stale_claim/owner.json"
+assert_cmd "stale swap preserves opened old lock" test -f "$case_root/.nase-locks/opened-old-lock/owner.json"
+assert_cmd "stale swap returns no canonical lease" test ! -e "$case_root/.nase-locks/workspace-mutation.lock"
+
+case_root="$TMPROOT/acquire-cleanup-swap-race"
+mkdir -p "$case_root"
+python3 - "$SCRIPT" "$case_root" <<'PY'
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+from unittest import mock
+
+script, root = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("workspace_lock", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+real_claim = module._claim_lock
+real_rename = os.rename
+swapped = False
+
+
+def swap_cleanup_during_rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+    global swapped
+    if src == module.LOCK_NAME and ".acquire-failed-" in dst and not swapped:
+        swapped = True
+        real_rename(
+            module.LOCK_NAME,
+            "opened-old-lock",
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+        os.mkdir(module.LOCK_NAME, dir_fd=src_dir_fd)
+        new_lock_fd = os.open(
+            module.LOCK_NAME, module._directory_flags(), dir_fd=src_dir_fd
+        )
+        try:
+            owner_fd = os.open(
+                module.OWNER_NAME,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=new_lock_fd,
+            )
+            with os.fdopen(owner_fd, "w", encoding="utf-8") as handle:
+                json.dump({"nonce": "d" * 32, "pid": os.getpid()}, handle)
+        finally:
+            os.close(new_lock_fd)
+    return real_rename(
+        src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+    )
+
+
+def claim_with_cleanup_swap(locks_fd, expected, tag):
+    if tag != "acquire-failed":
+        return real_claim(locks_fd, expected, tag)
+    with mock.patch.object(
+        module.os, "rename", side_effect=swap_cleanup_during_rename
+    ):
+        return real_claim(locks_fd, expected, tag)
+
+
+with (
+    mock.patch.object(module, "_read_owner_at", return_value=None),
+    mock.patch.object(module, "_claim_lock", side_effect=claim_with_cleanup_swap),
+):
+    try:
+        module.acquire(root, timeout_ms=20, owner_pid=os.getpid())
+    except module.LockError:
+        pass
+    else:
+        raise AssertionError("failed acquisition returned a lease")
+PY
+cleanup_claim=$(find "$case_root/.nase-locks" -maxdepth 1 -type d -name 'workspace-mutation.lock.acquire-failed-*' -print -quit)
+assert_cmd "failed acquire preserves claimed replacement" test -n "$cleanup_claim"
+assert_cmd "failed acquire preserves replacement owner" grep -q 'dddddddddddddddddddddddddddddddd' "$cleanup_claim/owner.json"
+assert_cmd "failed acquire preserves opened old lock" test -f "$case_root/.nase-locks/opened-old-lock/owner.json"
+assert_cmd "failed acquire returns no canonical lease" test ! -e "$case_root/.nase-locks/workspace-mutation.lock"
+
 case_root="$TMPROOT/symlink-lock-parent"
 outside="$TMPROOT/outside-lock-parent"
 mkdir -p "$case_root" "$outside"
@@ -237,7 +551,7 @@ sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 identifiers = iter(
     [
-        SimpleNamespace(hex="new-owner"),
+        SimpleNamespace(hex="a" * 32),
         SimpleNamespace(hex="collision"),
         SimpleNamespace(hex="safe-stale"),
     ]
