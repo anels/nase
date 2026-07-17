@@ -35,6 +35,7 @@ class Section:
     date: datetime
     offset: int
     occurrence: int
+    content_occurrence: int
 
 
 def sha256_bytes(content: bytes) -> str:
@@ -46,16 +47,16 @@ def sha256_file(path: Path) -> str:
 
 
 def fsync_dir(path: Path) -> None:
-    try:
-        descriptor = os.open(path, os.O_RDONLY)
-    except OSError:
-        return
+    descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)
-    except OSError:
-        pass
     finally:
         os.close(descriptor)
+
+
+def fsync_file(path: Path) -> None:
+    with path.open("rb") as handle:
+        os.fsync(handle.fileno())
 
 
 def atomic_replace(path: Path, content: bytes, validate) -> None:
@@ -81,40 +82,78 @@ def parse_sections(text: str, pattern: re.Pattern[str]) -> tuple[str, list[Secti
     if not matches:
         return text, []
     sections: list[Section] = []
+    content_counts: dict[str, int] = {}
     for occurrence, match in enumerate(matches):
         end = matches[occurrence + 1].start() if occurrence + 1 < len(matches) else len(text)
+        section_text = text[match.start() : end]
+        section_sha = sha256_bytes(section_text.encode("utf-8"))
+        content_occurrence = content_counts.get(section_sha, 0)
+        content_counts[section_sha] = content_occurrence + 1
         sections.append(
             Section(
-                text=text[match.start() : end],
+                text=section_text,
                 date=datetime.strptime(match.group(1), "%Y-%m-%d"),
                 offset=len(text[: match.start()].encode("utf-8")),
                 occurrence=occurrence,
+                content_occurrence=content_occurrence,
             )
         )
     return text[: matches[0].start()], sections
 
 
 def marker(source_sha: str, section: Section) -> str:
-    transaction = hashlib.sha256(
-        f"{source_sha}:{section.offset}:{section.occurrence}".encode("ascii")
-    ).hexdigest()
     section_sha = sha256_bytes(section.text.encode("utf-8"))
+    transaction = hashlib.sha256(
+        f"{section_sha}:{section.content_occurrence}".encode("ascii")
+    ).hexdigest()
     return (
         f"{MARKER_PREFIX}{transaction} source={source_sha} offset={section.offset} "
-        f"occurrence={section.occurrence} section={section_sha} -->\n"
+        f"occurrence={section.occurrence} content-occurrence={section.content_occurrence} "
+        f"section={section_sha} -->\n"
+    )
+
+
+def marker_identity(value: str) -> str:
+    return value.split(" source=", 1)[0]
+
+
+def entry_is_intact(content: str, value: str, section: Section) -> bool:
+    identity = marker_identity(value)
+    if content.count(identity) != 1:
+        return False
+    marker_start = content.index(identity)
+    marker_end = content.find("\n", marker_start)
+    if marker_end < 0:
+        return False
+    section_sha = sha256_bytes(section.text.encode("utf-8"))
+    expected_suffix = (
+        f"content-occurrence={section.content_occurrence} section={section_sha} -->"
+    )
+    marker_line = content[marker_start:marker_end]
+    return marker_line.endswith(expected_suffix) and content.startswith(
+        section.text, marker_end + 1
     )
 
 
 def append_sections(path: Path, header: str, entries: list[tuple[str, Section]]) -> None:
     original = path.read_text(encoding="utf-8") if path.exists() else header
-    additions = [value + section.text for value, section in entries if value not in original]
+    for value, section in entries:
+        if marker_identity(value) in original and not entry_is_intact(original, value, section):
+            raise ArchiveError(f"archive entry validation failed for {path}")
+    additions = [
+        value + section.text
+        for value, section in entries
+        if marker_identity(value) not in original
+    ]
     if not additions:
+        fsync_file(path)
+        fsync_dir(path.parent)
         return
     content = (original + "".join(additions)).encode("utf-8")
 
     def validate(tmp: Path) -> None:
         written = tmp.read_text(encoding="utf-8")
-        if any(written.count(value) != 1 for value, _ in entries):
+        if any(not entry_is_intact(written, value, section) for value, section in entries):
             raise ArchiveError(f"archive validation failed for {path}")
 
     atomic_replace(path, content, validate)

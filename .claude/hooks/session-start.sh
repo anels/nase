@@ -172,7 +172,7 @@ skill_body_without_frontmatter() {
     if [ -z "$PYTHON" ]; then
       echo "[session-start] WARNING: python3/python not found — tech digest archival skipped (tech-trends.md may grow unbounded)"
     else
-    if ! "$PYTHON" .claude/scripts/workspace-archive.py tech-trends --root "$NASE_ROOT"; then
+    if ! "$PYTHON" "$NASE_ROOT/.claude/scripts/workspace-archive.py" tech-trends --root "$NASE_ROOT"; then
       echo "[session-start] WARNING: tech digest archival failed; source was preserved"
     fi
     fi

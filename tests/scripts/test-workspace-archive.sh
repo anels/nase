@@ -69,21 +69,113 @@ with mock.patch.object(module, "atomic_replace", side_effect=fail_source):
         pass
 archive = fixture / "workspace/tasks/lessons-archive.md"
 assert archive.read_text(encoding="utf-8").count(module.MARKER_PREFIX) == 1
+source.write_text("# Lessons\n\nunrelated preamble edit\n\n" + lesson(), encoding="utf-8")
 module.rotate_lessons(fixture)
 assert archive.read_text(encoding="utf-8").count(module.MARKER_PREFIX) == 1
 assert "## debugging" not in source.read_text(encoding="utf-8")
-print("PASS  retry cleans source without duplicate archive append")
+assert "unrelated preamble edit" in source.read_text(encoding="utf-8")
+print("PASS  retry after source drift cleans without duplicate archive append")
 
-# Identical sections get distinct occurrence markers.
+# A directory-fsync failure never permits source cleanup, and retry proves the
+# already-written archive entry durable before cleaning the source.
+fixture = make_root()
+source = fixture / "workspace/tasks/lessons.md"
+source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
+original = source.read_bytes()
+with mock.patch.object(module, "fsync_dir", side_effect=OSError("fsync failed")):
+    try:
+        module.rotate_lessons(fixture)
+    except OSError:
+        pass
+assert source.read_bytes() == original
+archive = fixture / "workspace/tasks/lessons-archive.md"
+assert archive.read_text(encoding="utf-8").count(module.MARKER_PREFIX) == 1
+module.rotate_lessons(fixture)
+assert archive.read_text(encoding="utf-8").count(module.MARKER_PREFIX) == 1
+assert "## debugging" not in source.read_text(encoding="utf-8")
+print("PASS  directory fsync failure preserves source and retry is durable")
+
+# Retry must prove an existing archive file durable before source cleanup.
+fixture = make_root()
+source = fixture / "workspace/tasks/lessons.md"
+source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
+with mock.patch.object(module, "atomic_replace", side_effect=fail_source):
+    try:
+        module.rotate_lessons(fixture)
+    except OSError:
+        pass
+original = source.read_bytes()
+with mock.patch.object(module, "fsync_file", side_effect=OSError("file fsync failed")):
+    try:
+        module.rotate_lessons(fixture)
+    except OSError:
+        pass
+assert source.read_bytes() == original
+module.rotate_lessons(fixture)
+assert "## debugging" not in source.read_text(encoding="utf-8")
+print("PASS  retry file fsync failure preserves source")
+
+# A marker without its complete section never authorizes source cleanup.
+fixture = make_root()
+source = fixture / "workspace/tasks/lessons.md"
+source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
+with mock.patch.object(module, "atomic_replace", side_effect=fail_source):
+    try:
+        module.rotate_lessons(fixture)
+    except OSError:
+        pass
+archive = fixture / "workspace/tasks/lessons-archive.md"
+archive.write_text(archive.read_text(encoding="utf-8").split("## debugging", 1)[0], encoding="utf-8")
+original = source.read_bytes()
+try:
+    module.rotate_lessons(fixture)
+except module.ArchiveError:
+    pass
+assert source.read_bytes() == original
+print("PASS  incomplete archived section never permits source cleanup")
+
+# Two marker identities cannot claim the same remaining identical section.
 fixture = make_root()
 source = fixture / "workspace/tasks/lessons.md"
 entry = lesson()
 source.write_text("# Lessons\n\n" + entry + entry, encoding="utf-8")
+with mock.patch.object(module, "atomic_replace", side_effect=fail_source):
+    try:
+        module.rotate_lessons(fixture)
+    except OSError:
+        pass
+archive = fixture / "workspace/tasks/lessons-archive.md"
+content = archive.read_text(encoding="utf-8")
+marker_lines = [line for line in content.splitlines() if line.startswith(module.MARKER_PREFIX)]
+header = content.split(module.MARKER_PREFIX, 1)[0]
+archive.write_text(
+    header + marker_lines[0].removesuffix("-->") + marker_lines[1] + "\n" + entry,
+    encoding="utf-8",
+)
+original = source.read_bytes()
+try:
+    module.rotate_lessons(fixture)
+except module.ArchiveError:
+    pass
+assert source.read_bytes() == original
+print("PASS  malformed duplicate markers cannot alias one archived section")
+
+# Identical sections get distinct stable occurrence markers across retry.
+fixture = make_root()
+source = fixture / "workspace/tasks/lessons.md"
+entry = lesson()
+source.write_text("# Lessons\n\n" + entry + entry, encoding="utf-8")
+with mock.patch.object(module, "atomic_replace", side_effect=fail_source):
+    try:
+        module.rotate_lessons(fixture)
+    except OSError:
+        pass
+source.write_text("# Lessons\n\nchanged preamble\n\n" + entry + entry, encoding="utf-8")
 module.rotate_lessons(fixture)
 archived = (fixture / "workspace/tasks/lessons-archive.md").read_text(encoding="utf-8")
 assert archived.count(module.MARKER_PREFIX) == 2
 assert archived.count("same body") == 2
-print("PASS  identical sections preserve both occurrences")
+print("PASS  identical sections preserve multiplicity across retry")
 
 # A multi-year archive failure never rewrites source; retry finishes without duplicates.
 fixture = make_root()

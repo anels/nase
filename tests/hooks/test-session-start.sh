@@ -165,7 +165,7 @@ user-invocable: false
 Delete me.
 SKILL
 
-out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+out=$(cd "$repo/workspace" && bash "$repo/.claude/hooks/session-start.sh")
 rc=$?
 if [ "$rc" -eq 0 ]; then
   printf 'PASS  session-start exits cleanly\n'
