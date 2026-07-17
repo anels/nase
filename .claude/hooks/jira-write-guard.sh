@@ -35,6 +35,7 @@ block_without_log() {
 
 block_format() {
   local reason="$1"
+  local consume_token="${2:-0}"
   {
     echo "BLOCKED by jira-write-guard: $reason."
     echo ""
@@ -48,10 +49,10 @@ block_format() {
     echo "  - Unset contentFormat is rejected — the default path is ambiguous."
   } >&2
   if [ -n "${LOG:-}" ]; then
-    printf '%s BLOCKED %s (%s)\n' "${TS:-unknown-time}" "${TOOL:-unknown-tool}" "$reason" >> "$LOG"
+    printf '%s BLOCKED %s (%s)\n' "${TS:-unknown-time}" "${TOOL:-unknown-tool}" "$reason" >> "$LOG" || true
   fi
-  if [ -n "${TOKEN:-}" ] && [ -f "$TOKEN" ]; then
-    rm -f "$TOKEN"
+  if [ "$consume_token" = "1" ] && [ -n "${TOKEN:-}" ] && [ -f "$TOKEN" ]; then
+    rm -f "$TOKEN" || true
   fi
   exit 2
 }
@@ -79,12 +80,60 @@ esac
 NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo ".")}"
 TOKEN="$NASE_ROOT/workspace/.jira-write-token"
 LOG="$NASE_ROOT/workspace/logs/.jira-writes.log"
-mkdir -p "$NASE_ROOT/workspace/logs"
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+LOCK_HELPER="$SCRIPT_DIR/../scripts/workspace_lock.py"
+mkdir -p "$NASE_ROOT/workspace/logs" \
+  || block_without_log "could not create Jira mutation audit directory"
 
 TS=$(date +%Y-%m-%dT%H:%M:%S)
 
+command -v python3 >/dev/null 2>&1 \
+  || block_without_log "python3 is required to serialize Jira token consumption"
+[ -f "$LOCK_HELPER" ] \
+  || block_without_log "workspace mutation lock helper is missing"
+
+set +e
+LOCK_OUTPUT=$(python3 "$LOCK_HELPER" acquire \
+  --root "$NASE_ROOT" \
+  --timeout-ms 2000 \
+  --owner-pid $$ 2>&1)
+LOCK_RC=$?
+set -e
+if [ "$LOCK_RC" -ne 0 ]; then
+  if [ "$LOCK_OUTPUT" = "workspace mutation lock is busy" ]; then
+    block_without_log "workspace mutation lock is busy; token was not consumed"
+  fi
+  LOCK_ERROR=$(printf '%s' "$LOCK_OUTPUT" | tr '\r\n' ' ' | cut -c1-160)
+  block_without_log "workspace mutation lock is unavailable: ${LOCK_ERROR:-unknown error}; token was not consumed"
+fi
+LOCK_NONCE=$(printf '%s' "$LOCK_OUTPUT" | jq -er '.nonce' 2>/dev/null || echo "")
+if [ -z "$LOCK_NONCE" ]; then
+  LOCK_NONCE=$(jq -er '.nonce' "$NASE_ROOT/.nase-locks/workspace-mutation.lock/owner.json" 2>/dev/null || echo "")
+  if [ -n "$LOCK_NONCE" ]; then
+    python3 "$LOCK_HELPER" release --root "$NASE_ROOT" --nonce "$LOCK_NONCE" >/dev/null 2>&1 || true
+  fi
+  block_without_log "workspace mutation lock returned an invalid lease"
+fi
+
+# shellcheck disable=SC2329 # Invoked by the EXIT trap below.
+release_workspace_lock() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if [ "$status" -ne 0 ]; then
+    status=2
+  fi
+  if ! python3 "$LOCK_HELPER" release --root "$NASE_ROOT" --nonce "$LOCK_NONCE" >/dev/null 2>&1; then
+    echo "BLOCKED by jira-write-guard: could not release workspace mutation lock." >&2
+    status=2
+  fi
+  exit "$status"
+}
+trap release_workspace_lock EXIT
+trap 'exit 2' HUP INT TERM
+
 block() {
   local reason="$1"
+  local consume_token="${2:-1}"
   {
     echo "BLOCKED by jira-write-guard: $reason."
     echo ""
@@ -112,8 +161,10 @@ block() {
     echo ""
     echo "Policy source: .claude/docs/external-mutation-policy.md"
   } >&2
-  printf '%s BLOCKED %s (%s)\n' "$TS" "$TOOL" "$reason" >> "$LOG"
-  [ -f "$TOKEN" ] && rm -f "$TOKEN"
+  printf '%s BLOCKED %s (%s)\n' "$TS" "$TOOL" "$reason" >> "$LOG" || true
+  if [ "$consume_token" = "1" ] && [ -f "$TOKEN" ]; then
+    rm -f "$TOKEN" || true
+  fi
   exit 2
 }
 
@@ -215,12 +266,20 @@ if [ "$IS_BATCH" = "1" ]; then
 
   # Optional tool allowlist. When present the current tool must match (exact
   # name or suffix, to tolerate MCP namespace-prefix differences).
+  TOOLS_VALID=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
+    if has("tools") then
+      if (.tools | type) == "array"
+         and all(.tools[]; type == "string" and length > 0)
+      then "1" else "0" end
+    else "1" end')
+  [ "$TOOLS_VALID" = "1" ] \
+    || block "batch token tools must be an array of non-empty strings"
   TOOLS_LEN=$(printf '%s' "$TOKEN_CONTENT" | jq -r '(.tools // []) | length')
   if [ "$TOOLS_LEN" -gt 0 ]; then
     TOOL_OK=$(printf '%s' "$TOKEN_CONTENT" | jq -r --arg t "$TOOL" '
       if (.tools | map(select(. as $e | ($e == $t) or ($t | endswith($e)))) | length) > 0
       then "1" else "0" end')
-    [ "$TOOL_OK" = "1" ] || block "batch token does not authorize tool $TOOL"
+    [ "$TOOL_OK" = "1" ] || block "batch token does not authorize tool $TOOL" 0
   fi
 
   CREATED_TS=$(parse_epoch "$CREATED_AT")
@@ -243,24 +302,43 @@ if [ "$IS_BATCH" = "1" ]; then
   while IFS= read -r current_issue; do
     [ -z "$current_issue" ] && continue
     issue_in_csv "$current_issue" "$APPROVED_CSV" \
-      || block "batch token issue mismatch: $current_issue not in approved set [$APPROVED_CSV]"
+      || block "batch token issue mismatch: $current_issue not in approved set [$APPROVED_CSV]" 0
   done < <(printf '%s\n' "$CURRENT_ISSUES" | tr ',' '\n')
 
   REMAINING=$((MAX_OPS - 1))
   if [ "$REMAINING" -le 0 ]; then
-    rm -f "$TOKEN"
+    rm -f "$TOKEN" || block "could not consume exhausted batch token"
   else
-    TMP="$TOKEN.tmp.$$"
+    TMP=$(mktemp "${TOKEN}.tmp.XXXXXX") || block "could not create batch token temp file"
     if printf '%s' "$TOKEN_CONTENT" | jq -c --argjson r "$REMAINING" '.max_ops = $r' > "$TMP" 2>/dev/null; then
-      mv "$TMP" "$TOKEN"
+      if ! python3 - "$TMP" "$TOKEN" <<'PY'
+import os
+import sys
+
+temporary, target = sys.argv[1:]
+with open(temporary, "rb") as stream:
+    os.fsync(stream.fileno())
+os.replace(temporary, target)
+directory_fd = os.open(os.path.dirname(target), os.O_RDONLY)
+try:
+    os.fsync(directory_fd)
+finally:
+    os.close(directory_fd)
+PY
+      then
+        rm -f "$TMP"
+        block "could not atomically decrement batch token max_ops"
+      fi
     else
       rm -f "$TMP"
       block "could not decrement batch token max_ops"
     fi
   fi
 
-  printf '%s ALLOWED %s | batch | issue: %s | remaining: %s | summary: %s\n' \
-    "$TS" "$TOOL" "$CURRENT_ISSUES" "$REMAINING" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"
+  if ! printf '%s ALLOWED %s | batch | issue: %s | remaining: %s | summary: %s\n' \
+    "$TS" "$TOOL" "$CURRENT_ISSUES" "$REMAINING" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"; then
+    block "could not write Jira mutation audit log"
+  fi
   exit 0
 fi
 
@@ -289,7 +367,7 @@ EXPECTED_ISSUES=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
 ')
 
 [ -z "$EXPECTED_TOOL" ] && block "token missing tool_name"
-[ "$EXPECTED_TOOL" = "$TOOL" ] || block "token tool mismatch: expected $EXPECTED_TOOL"
+[ "$EXPECTED_TOOL" = "$TOOL" ] || block "token tool mismatch: expected $EXPECTED_TOOL" 0
 [ -z "$CREATED_AT" ] && block "token missing created_at"
 [ -z "$EXPECTED_PAYLOAD_SHA" ] && block "token missing payload_sha256"
 if [ -z "$EXPECTED_ISSUES" ] && [[ "$TOOL" != *__createJiraIssue ]]; then
@@ -300,7 +378,7 @@ CANONICAL_TOOL_INPUT=$(printf '%s' "$INPUT" | jq -cS '.tool_input // {}' 2>/dev/
   || block "could not canonicalize tool_input")
 CURRENT_PAYLOAD_SHA=$(printf '%s\n' "$CANONICAL_TOOL_INPUT" | sha256_hex)
 [ "$EXPECTED_PAYLOAD_SHA" = "$CURRENT_PAYLOAD_SHA" ] \
-  || block "token payload mismatch: expected $EXPECTED_PAYLOAD_SHA, got $CURRENT_PAYLOAD_SHA"
+  || block "token payload mismatch: expected $EXPECTED_PAYLOAD_SHA, got $CURRENT_PAYLOAD_SHA" 0
 
 CREATED_TS=$(parse_epoch "$CREATED_AT")
 [ -z "$CREATED_TS" ] && block "token created_at is not parseable: $CREATED_AT"
@@ -317,7 +395,7 @@ if [ -n "$EXPECTED_ISSUES" ]; then
   while IFS= read -r expected_issue; do
     [ -z "$expected_issue" ] && continue
     issue_in_csv "$expected_issue" "$CURRENT_ISSUES" \
-      || block "token issue mismatch: expected $expected_issue, payload has ${CURRENT_ISSUES:-none}"
+      || block "token issue mismatch: expected $expected_issue, payload has ${CURRENT_ISSUES:-none}" 0
   done <<< "$EXPECTED_ISSUES"
 fi
 
@@ -325,10 +403,13 @@ if [[ "$TOOL" == *__createIssueLink ]]; then
   while IFS= read -r current_issue; do
     [ -z "$current_issue" ] && continue
     issue_in_csv "$current_issue" "$APPROVED_ISSUES_CSV" \
-      || block "token issue mismatch: payload has unapproved $current_issue"
+      || block "token issue mismatch: payload has unapproved $current_issue" 0
   done < <(printf '%s\n' "$CURRENT_ISSUES" | tr ',' '\n')
 fi
 
-rm -f "$TOKEN"
-printf '%s ALLOWED %s | issue: %s | summary: %s\n' "$TS" "$TOOL" "${APPROVED_ISSUES_CSV:-n/a}" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"
+rm -f "$TOKEN" || block "could not consume single-shot token"
+if ! printf '%s ALLOWED %s | issue: %s | summary: %s\n' \
+  "$TS" "$TOOL" "${APPROVED_ISSUES_CSV:-n/a}" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"; then
+  block "could not write Jira mutation audit log"
+fi
 exit 0

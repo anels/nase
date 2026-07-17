@@ -58,7 +58,7 @@ transitionJiraIssue(cloudId, issueIdOrKey, {transition: {id: "<id>"}})
 
 - **Any transition** — require explicit user confirmation before calling `transitionJiraIssue`. Present the ticket key, summary, current status, and target status.
 - **Done / Resolved / Canceled / Closed** — treat as high-risk closure. Never silently close.
-- **Write-token backstop** — every Jira mutation must write a fresh `workspace/.jira-write-token` immediately after the payload-showing `AskUserQuestion` approval and immediately before the MCP call. Follow `.claude/docs/external-mutation-policy.md` for token shape.
+- **Write-token backstop** — every Jira mutation must publish a fresh `workspace/.jira-write-token` immediately after the payload-showing `AskUserQuestion` approval and immediately before the MCP call. Use `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>` so token publication shares the workspace mutation lock with consumption. Follow `.claude/docs/external-mutation-policy.md` for token shape.
 
 For SRE tickets specifically: see KB `workspace/kb/ops/oncall-runbooks.md` → Transition IDs for the known IDs and per-transition confirmation requirements.
 
