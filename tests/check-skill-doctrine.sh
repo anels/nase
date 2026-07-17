@@ -355,6 +355,9 @@ exempt = {
 }
 
 hits = []
+guard_doc = Path(".claude/docs/workspace-write-guard.md").read_text(encoding="utf-8")
+if "--expected-staged-sha256" not in guard_doc:
+    hits.append("  .claude/docs/workspace-write-guard.md: missing staged SHA binding")
 for path in sorted(Path(".claude/commands/nase").glob("*.md")):
     if path.name in exempt or path.parent.name == "workspace":
         continue
