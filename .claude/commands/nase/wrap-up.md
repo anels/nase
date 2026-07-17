@@ -130,7 +130,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
    | SRE-XXXXX | ... | In Progress |
 
 4. Use a single `AskUserQuestion` (batched, per CLAUDE.md skill-output discipline): "Transition these to Done?" with options `all / pick numbers / skip`.
-5. For each confirmed transition, write a fresh one-shot `workspace/.jira-write-token` immediately before calling `transitionJiraIssue`:
+5. For each confirmed transition, save the fresh one-shot token JSON below to a temporary file, then publish it immediately before calling `transitionJiraIssue`:
    ```json
    {
      "tool_name": "{actual transitionJiraIssue tool name}",
@@ -140,7 +140,7 @@ Initialize a tracker: `reflect=skipped`, `learn=skipped`, `extract-skills=skippe
      "payload_sha256": "{sha256 of canonical transitionJiraIssue tool_input}"
    }
    ```
-   One token per Jira tool call; never reuse a token across tickets. Then call `transitionJiraIssue`.
+   Publish with `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>`. One token per Jira tool call; never reuse a token across tickets. Then call `transitionJiraIssue`.
 
 **If not opted in:** skip silently — note `jira-sync` in the status line as `~~jira-sync~~` only if the user supplied the flag and it ran.
 

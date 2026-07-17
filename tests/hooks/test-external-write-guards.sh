@@ -149,7 +149,10 @@ expect_rc "jira malformed JSON blocked" .claude/hooks/jira-write-guard.sh "{" 2 
 created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 jq -n --arg tool "$jira_transition_tool" --arg created "$created" --arg payload_sha "$jira_transition_sha" \
   '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done",payload_sha256:$payload_sha}' \
-  > "$TMP_ROOT/workspace/.jira-write-token"
+  > "$TMP_ROOT/approved-token.json"
+python3 .claude/scripts/jira-write-token.py \
+  --root "$TMP_ROOT" \
+  --content-file "$TMP_ROOT/approved-token.json"
 expect_rc "jira matching token allowed" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
 if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
   report 0 "jira token consumed" "token still exists"
@@ -161,6 +164,11 @@ jq -n --arg tool "$jira_transition_tool" --arg created "$created" --arg payload_
   '{tool_name:$tool,issue_key:"SRE-2",created_at:$created,payload_summary:"SRE-2 -> Done",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue mismatch blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "token issue mismatch"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira mismatched token remains for its approved call"
+else
+  report 0 "jira mismatched token remains for its approved call" "token was consumed"
+fi
 
 jq -n --arg tool "$jira_transition_tool" --arg created "$created" \
   '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"SRE-1 -> Done"}' \
@@ -233,6 +241,15 @@ jq -n --arg created "$batch_created" \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira batch tool not allowed blocked" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "does not authorize tool"
 jq -n --arg created "$batch_created" \
+  '{approved_issues:["SRE-1"],max_ops:2,created_at:$created,tools:"transitionJiraIssue",payload_summary:"malformed tools"}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira malformed tools type blocks" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "array of non-empty strings"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 0 "jira malformed tools token consumed" "token still exists"
+else
+  report 1 "jira malformed tools token consumed"
+fi
+jq -n --arg created "$batch_created" \
   '{approved_issues:["SRE-1"],max_ops:2,created_at:$created,tools:["addCommentToJiraIssue"],payload_summary:"comments only"}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira batch tool suffix-match allowed" .claude/hooks/jira-write-guard.sh "$jira_comment1" 0
@@ -246,21 +263,154 @@ expect_rc "jira adf body under single-shot blocked" .claude/hooks/jira-write-gua
 echo '{}' > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira unset format body blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_unset" 2 "<unset>"
 if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
-  report 0 "jira format block consumes token" "token still exists"
+  report 1 "jira format block preserves token"
 else
-  report 1 "jira format block consumes token"
+  report 0 "jira format block preserves token" "token was consumed"
 fi
 write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira unset format under batch blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_unset" 2 "<unset>"
 if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
-  report 0 "jira batch format block consumes token" "token still exists"
+  report 1 "jira batch format block preserves token"
 else
-  report 1 "jira batch format block consumes token"
+  report 0 "jira batch format block preserves token" "token was consumed"
 fi
 write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira create adf under batch blocked" .claude/hooks/jira-write-guard.sh "$jira_create_adf" 2 "createJiraIssue must use markdown"
 write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira adf body under batch token allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_adf" 0
+
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"audit failure",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+touch "$TMP_ROOT/workspace/logs/.jira-writes.log"
+chmod 400 "$TMP_ROOT/workspace/logs/.jira-writes.log"
+expect_rc "jira audit failure blocks mutation" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "could not write Jira mutation audit log"
+chmod 600 "$TMP_ROOT/workspace/logs/.jira-writes.log"
+
+# --- concurrent token consumption ---
+parallel_jira_calls() {
+  local name="$1" input="$2" count="$3"
+  local output_dir="$TMP_ROOT/parallel-$name"
+  mkdir -p "$output_dir"
+  local index
+  for index in $(seq 1 "$count"); do
+    (
+      set +e
+      printf '%s' "$input" | NASE_ROOT="$TMP_ROOT" bash .claude/hooks/jira-write-guard.sh \
+        > "$output_dir/$index.out" 2>&1
+      printf '%s\n' "$?" > "$output_dir/$index.rc"
+    ) &
+  done
+  wait
+}
+
+count_parallel_rc() {
+  local name="$1" wanted="$2" count=0 rc_file
+  for rc_file in "$TMP_ROOT/parallel-$name"/*.rc; do
+    if [ "$(tr -d '\n' < "$rc_file")" = "$wanted" ]; then
+      count=$((count + 1))
+    fi
+  done
+  printf '%s\n' "$count"
+}
+
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"concurrent single",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+parallel_jira_calls single "$jira_transition" 16
+single_allowed=$(count_parallel_rc single 0)
+if [ "$single_allowed" -eq 1 ] && [ ! -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira concurrent single-shot allows exactly one" "allowed=$single_allowed"
+else
+  report 0 "jira concurrent single-shot allows exactly one" "allowed=$single_allowed token_exists=$([ -f "$TMP_ROOT/workspace/.jira-write-token" ] && echo yes || echo no)"
+fi
+
+write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 3
+parallel_jira_calls batch "$jira_transition" 16
+batch_allowed=$(count_parallel_rc batch 0)
+if [ "$batch_allowed" -eq 3 ] && [ ! -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira concurrent batch respects max_ops" "allowed=$batch_allowed"
+else
+  report 0 "jira concurrent batch respects max_ops" "allowed=$batch_allowed token_exists=$([ -f "$TMP_ROOT/workspace/.jira-write-token" ] && echo yes || echo no)"
+fi
+
+printf '{invalid' > "$TMP_ROOT/workspace/.jira-write-token"
+parallel_jira_calls invalid  "$jira_transition" 16
+invalid_consumers=$(rg -l "invalid token JSON" "$TMP_ROOT/parallel-invalid"/*.out 2>/dev/null | wc -l | tr -d ' ')
+if [ "$invalid_consumers" -eq 1 ] && [ ! -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira invalid token consumed by one process" "consumers=$invalid_consumers"
+else
+  report 0 "jira invalid token consumed by one process" "consumers=$invalid_consumers"
+fi
+
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"live lock",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+live_lease=$(python3 .claude/scripts/workspace_lock.py acquire --root "$TMP_ROOT" --timeout-ms 0 --owner-pid $$)
+live_nonce=$(printf '%s' "$live_lease" | jq -r '.nonce')
+expect_rc "jira live lock fails closed" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "lock is busy"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira live lock preserves token"
+else
+  report 0 "jira live lock preserves token" "token was consumed"
+fi
+set +e
+python3 .claude/scripts/jira-write-token.py \
+  --root "$TMP_ROOT" \
+  --content-file "$TMP_ROOT/approved-token.json" \
+  --timeout-ms 0 > "$TMP_ROOT/token-writer.out" 2> "$TMP_ROOT/token-writer.err"
+token_writer_rc=$?
+set -e
+if [ "$token_writer_rc" -eq 5 ]; then
+  report 1 "jira token publisher shares workspace lock"
+else
+  report 0 "jira token publisher shares workspace lock" "rc=$token_writer_rc"
+fi
+python3 .claude/scripts/workspace_lock.py release --root "$TMP_ROOT" --nonce "$live_nonce"
+
+python3 .claude/scripts/workspace_lock.py acquire --root "$TMP_ROOT" --timeout-ms 0 --owner-pid 2147483647 >/dev/null
+python3 -c 'import os, sys, time; old=time.time()-20; os.utime(sys.argv[1], (old, old))' \
+  "$TMP_ROOT/.nase-locks/workspace-mutation.lock"
+expect_rc "jira stale lock is recovered" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
+
+rm -rf "$TMP_ROOT/.nase-locks"
+ln -s workspace "$TMP_ROOT/.nase-locks"
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"unsafe lock parent",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira unsafe lock parent reports lock failure" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "workspace mutation lock is unavailable: lock parent is not a lexical directory"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "jira unsafe lock parent preserves token"
+else
+  report 0 "jira unsafe lock parent preserves token" "token was consumed"
+fi
+rm -f "$TMP_ROOT/.nase-locks"
+
+setup_root="$TMP_ROOT/setup-failure"
+mkdir -p "$setup_root/workspace"
+printf '{}\n' > "$setup_root/workspace/.jira-write-token"
+chmod 500 "$setup_root/workspace"
+set +e
+setup_output=$(printf '%s' "$jira_transition" | NASE_ROOT="$setup_root" bash .claude/hooks/jira-write-guard.sh 2>&1)
+setup_rc=$?
+set -e
+chmod 700 "$setup_root/workspace"
+if [ "$setup_rc" -eq 2 ] && [[ "$setup_output" == *"could not create Jira mutation audit directory"* ]]; then
+  report 1 "jira setup failure returns blocking status" "rc=$setup_rc"
+else
+  report 0 "jira setup failure returns blocking status" "rc=$setup_rc output=$setup_output"
+fi
+
+printf '{invalid' > "$TMP_ROOT/workspace/.jira-write-token"
+chmod 500 "$TMP_ROOT/workspace"
+run_hook .claude/hooks/jira-write-guard.sh "$jira_transition"
+chmod 700 "$TMP_ROOT/workspace"
+if [ "$RC" -eq 2 ] && [[ "$OUTPUT" == *"invalid token JSON"* ]]; then
+  report 1 "jira token-delete failure returns blocking status" "rc=$RC"
+else
+  report 0 "jira token-delete failure returns blocking status" "rc=$RC output=$OUTPUT"
+fi
+rm -f "$TMP_ROOT/workspace/.jira-write-token"
 
 expect_missing_jq "slack missing jq blocked" .claude/hooks/slack-send-guard.sh "$slack_send"
 expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$jira_transition"

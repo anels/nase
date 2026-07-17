@@ -123,13 +123,21 @@ optional allowlist (exact or suffix match, to tolerate MCP namespace prefixes);
 omit it to allow all gated Jira tools. A non-empty `approved_issues` array is
 what selects batch mode.
 
+Publish tokens with `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>`. Publication, validation, consumption,
+and audit logging share the repo-wide workspace mutation lock. Concurrent calls
+therefore share one atomic approval budget: a single-shot token allows exactly
+one call, and a batch token allows at most `max_ops` calls. If the lock cannot
+be acquired within two seconds, the hook blocks the call and leaves the token
+untouched.
+
 Batch mode trades the exact-payload sha binding for an **issue allowlist + op
 cap + TTL**: a runaway loop still cannot touch a ticket outside the approved set
 or exceed the approved op budget. Use it only for the concrete batch the user
 just approved; for a single irreversible mutation, prefer the single-shot token.
-A failed validation (unapproved issue, disallowed tool, stale TTL) deletes the
-token, forcing re-approval. `createJiraIssue` (no target key) still requires a
-single-shot token.
+A malformed or stale token is deleted. A call that does not match the current
+token leaves it untouched, so an approval for a separate pending mutation is
+not consumed. `createJiraIssue` (no target key) still requires a single-shot
+token.
 
 Size the op budget to cover the planned calls (e.g. 4 tickets × [transition +
 comment + close transition] = 12). The token authorizes mutation *count*, not
