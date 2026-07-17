@@ -67,7 +67,7 @@ Use the persisted agents when a workflow names them; use roles.yaml when a workf
 When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist — `lookup` and `verifier` are read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
 
 ### Bash / Path Rules
-- Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, remove it with `git -C {repo} worktree remove {path} --force`.
+- Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
 
 ### CI Pipeline
 - `.github/workflows/validate.yml` runs on push/PR to `main`.

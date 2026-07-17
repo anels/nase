@@ -243,7 +243,10 @@ Offer `/nase:kb-update` for confirmed non-obvious architectural constraints. Put
 
 ## Phase 11: Cleanup and Report
 
-Remove the worktree only when `worktree_path != repo_path`, then print:
+For a worktree, follow `.claude/docs/worktree-pattern.md -> Cleanup`. Return `3`
+retains it, including verified-clean quarantines, and return `2` stops. Report
+the returned path plus up to 20 dirty items and any omitted-item count.
+Never run cleanup when the workflow used the primary checkout. Then print:
 
 ```
 PR comments addressed ✓
@@ -254,6 +257,7 @@ PR comments addressed ✓
   Replies:         {N} threads
   Resolved:        {total_resolved} / {total_threads}
   Build/test:      passed (iteration {N})
+  Worktree:        {retained path or n/a}
   Slack pings:     {M} drafts staged for {comma-separated logins}   # omit when 0
   Commit:          {short_sha} - {commit_subject}                   # omit when no commit
 ```

@@ -32,7 +32,7 @@ Follow:
 
 Preserve these names across phase documents:
 
-`success_criteria`, `success_criteria_from_design`, `design_constraints`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings`.
+`success_criteria`, `success_criteria_from_design`, `design_constraints`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings`.
 
 ## Phase map
 
@@ -89,19 +89,36 @@ Follow `.claude/docs/effort-lifecycle.md → FSD Update`. If $ARGUMENTS contains
 
 ## Phase 8c: KB Update
 
-Follow `.claude/docs/fsd-delivery-gates.md → Phase 8c`. Persist research and implementation discoveries before cleanup, then remove any team-mode research artifact.
+Follow `.claude/docs/fsd-delivery-gates.md → Phase 8c`. Persist research and
+implementation discoveries before cleanup. Keep any team-mode research artifact
+with a retained worktree; delete it at the start of Phase 10 when no worktree
+was created.
 
 ## Phase 9: Cleanup (if worktree = Yes)
 
-Remove the worktree (safe since the branch is already pushed):
-```bash
-git -C {repo} worktree remove {worktree_path} --force
-```
-Confirm: "Worktree removed."
+Follow `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote
+ref `refs/heads/{branch_name}`, and the full OID from
+`git -C {worktree_path} rev-parse HEAD`.
+
+- Return `3`: keep the retained worktree and both artifacts, report every
+  returned path plus up to 20 dirty items and any omitted-item count, and continue
+  to the final report as a non-failure cleanup result.
+- Return `2`: keep all artifacts, stop, and report the helper error.
+
+Set `worktree_report` for Phase 10 from the actual outcome:
+
+- no worktree flow: `n/a`
+- return `3`: `retained at {exact returned worktree path}`
+
+Never summarize return `3` as removed or cleaned up.
+For a verified-clean worktree, return `3` is the normal locked-quarantine result.
 
 ---
 
 ## Phase 10: Report
+
+For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
+`workspace/tmp/fsd-research-{branch_slug}.md` before reporting.
 
 **First build the Success-Criteria Ledger.** One row per `success_criteria` item (from Phase 2 / the design doc), each mapped to exactly one:
 - `proven` - cite the evidence: a test name, a Phase 8.5 matrix row, or a check run. A green build is not proof a criterion is met.
@@ -123,7 +140,7 @@ FSD {done ✓ | conditional ⚠ | not-closed ✗}
   Branch:      {branch_name}
   Test iters:  {N} (passed on iteration N)
   PR:          {PR URL}   ← or "not opened"
-  Worktree:    cleaned up ← or "n/a"
+  Worktree:    {worktree_report}
 
 Criteria:                                            ← omit block if "Manual verify"
   - {criterion} - proven: {evidence}
