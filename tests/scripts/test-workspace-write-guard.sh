@@ -137,6 +137,41 @@ python3 "$SCRIPT" move-existing \
 assert_cmd "move-existing removes old source" test ! -e "$archive_source"
 assert_cmd "move-existing preserves content" grep -qx 'archive content' "$archive_destination"
 
+symlink_source="$TMPROOT/workspace/efforts/done/symlink.md"
+ln -s archive/2026/archive-me.md "$symlink_source"
+python3 "$SCRIPT" move-existing \
+  --root "$TMPROOT" \
+  --target workspace/efforts/done/symlink.md \
+  --destination workspace/efforts/archive/2026/symlink.md \
+  --older-than-days 60 > "$TMPROOT/symlink.out" 2> "$TMPROOT/symlink.err"
+symlink_rc=$?
+assert_cmd "move-existing rejects lexical source symlink" test "$symlink_rc" = "3"
+assert_cmd "move-existing preserves symlink" test -L "$symlink_source"
+assert_cmd "move-existing symlink creates no destination" test ! -e "$TMPROOT/workspace/efforts/archive/2026/symlink.md"
+
+text_source="$TMPROOT/workspace/efforts/done/archive.txt"
+printf 'text content\n' > "$text_source"
+touch -t 202001010000 "$text_source"
+python3 "$SCRIPT" move-existing \
+  --root "$TMPROOT" \
+  --target workspace/efforts/done/archive.txt \
+  --destination workspace/efforts/archive/2026/archive.txt \
+  --older-than-days 60 > "$TMPROOT/text.out" 2> "$TMPROOT/text.err"
+text_rc=$?
+assert_cmd "move-existing rejects non-md source" test "$text_rc" = "3"
+assert_cmd "move-existing preserves non-md source" grep -qx 'text content' "$text_source"
+
+fifo_source="$TMPROOT/workspace/efforts/done/fifo.md"
+mkfifo "$fifo_source"
+python3 "$SCRIPT" move-existing \
+  --root "$TMPROOT" \
+  --target workspace/efforts/done/fifo.md \
+  --destination workspace/efforts/archive/2026/fifo.md \
+  --older-than-days 60 > "$TMPROOT/fifo.out" 2> "$TMPROOT/fifo.err"
+fifo_rc=$?
+assert_cmd "move-existing rejects non-regular source" test "$fifo_rc" = "3"
+assert_cmd "move-existing preserves fifo" test -p "$fifo_source"
+
 collision_source="$TMPROOT/workspace/efforts/collision.md"
 collision_destination="$TMPROOT/workspace/efforts/done/collision.md"
 printf 'source\n' > "$collision_source"

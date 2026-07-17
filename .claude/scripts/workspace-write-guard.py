@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 import time
 from pathlib import Path
@@ -66,6 +67,15 @@ def resolve_under_root(root: Path, value: str, label: str) -> Path:
     if not resolved.is_relative_to(root):
         die(f"{label} is outside workspace root: {value}")
     return resolved
+
+
+def lexical_under_root(root: Path, value: str, label: str) -> Path:
+    raw = Path(value).expanduser()
+    candidate = raw if raw.is_absolute() else root / raw
+    lexical = Path(os.path.abspath(candidate))
+    if not lexical.is_relative_to(root):
+        die(f"{label} is outside workspace root: {value}")
+    return lexical
 
 
 def validate_target(root: Path, value: str) -> Path:
@@ -510,12 +520,25 @@ def cmd_apply_move(args: argparse.Namespace) -> None:
 
 def cmd_move_existing(args: argparse.Namespace) -> None:
     root = root_path(args.root)
+    lexical_source = lexical_under_root(root, args.target, "target")
     source = validate_target(root, args.target)
     destination = validate_target(root, args.destination)
     try:
         with held(root, timeout_ms=5000):
-            if not source.is_file():
-                die(f"Source is not a regular file: {relpath(source, root)}", code=3)
+            try:
+                source_mode = lexical_source.lstat().st_mode
+            except OSError as exc:
+                die(f"Source cannot be inspected: {relpath(lexical_source, root)}: {exc}", code=3)
+            if (
+                lexical_source != source
+                or not stat.S_ISREG(source_mode)
+                or lexical_source.suffix != ".md"
+            ):
+                die(
+                    "Source must be a lexical regular .md file: "
+                    f"{relpath(lexical_source, root)}",
+                    code=3,
+                )
             age_seconds = time.time() - source.stat().st_mtime
             if age_seconds <= args.older_than_days * 86400:
                 die(f"Source is not older than {args.older_than_days} days", code=3)
