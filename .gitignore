@@ -18,3 +18,5 @@ Thumbs.db
 .playwright-cli/
 .playwright-mcp/
 __pycache__/
+.nase-locks/
+.nase-restore/

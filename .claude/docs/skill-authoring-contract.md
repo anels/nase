@@ -39,8 +39,9 @@ CI check: `tests/check-skill-doctrine.sh → W1`.
 Any skill that writes durable local workspace state MUST reference `.claude/docs/workspace-write-guard.md` near the top and use `.claude/scripts/workspace-write-guard.py` for full-file durable writes unless it is using a documented append-only exception. Follow this flow:
 - Read existing target mtime/hash before drafting
 - Stage the proposed output under `workspace/tmp/`
+- Record the staged SHA-256 returned by the helper
 - Show a diff or planned-path preview before applying
-- Re-check mtime/hash immediately before the write
+- Pass target mtime/hash and staged SHA-256 to the apply command
 - Apply only the documented target
 
 This applies to `workspace/kb/**`, `workspace/tasks/**`, `workspace/skills/**`, `workspace/efforts/**`, `workspace/journals/**`, `workspace/logs/**`, `workspace/context.md`, and `workspace/communication-style.md`. Append-only daily logs, journals, and JSONL stats may use the documented append-only exception, but must still keep writes narrow.

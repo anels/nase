@@ -60,11 +60,13 @@ metadata:
 ```bash
 mtime_ns=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"]["mtime_ns"])' workspace/tmp/write-guard.json)
 sha256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"]["sha256"])' workspace/tmp/write-guard.json)
+staged_sha256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["staged_sha256"])' workspace/tmp/write-guard.json)
 python3 .claude/scripts/workspace-write-guard.py apply \
   --target "$target" \
   --staged "$staged" \
   --expected-mtime-ns "$mtime_ns" \
-  --expected-sha256 "$sha256"
+  --expected-sha256 "$sha256" \
+  --expected-staged-sha256 "$staged_sha256"
 ```
 
 If the target changed, `apply` exits `3` and prints:
@@ -74,9 +76,10 @@ For a guarded rename that also replaces file content, use `apply-move` instead
 of `apply` followed by `mv`. It rechecks the source and atomically refuses an
 existing destination, so a stale `done/{slug}.md` cannot be overwritten. It
 publishes the destination before hiding the source, preserves the source mode,
-and rolls back its own intact destination on a caught failure. If another writer
-replaces a path, it preserves that entry in place or moves it to a unique recovery
-path instead of deleting or overwriting it:
+fsyncs the published file and both affected directories before deleting the
+last original copy, and rolls back its own intact destination on a caught
+failure. If another writer replaces a path, it preserves that entry in place or
+moves it to a unique recovery path instead of deleting or overwriting it:
 
 ```bash
 python3 .claude/scripts/workspace-write-guard.py apply-move \
@@ -84,8 +87,21 @@ python3 .claude/scripts/workspace-write-guard.py apply-move \
   --destination workspace/efforts/done/{slug}.md \
   --staged "$staged" \
   --expected-mtime-ns "$mtime_ns" \
-  --expected-sha256 "$sha256"
+  --expected-sha256 "$sha256" \
+  --expected-staged-sha256 "$staged_sha256"
 ```
+
+Both apply modes acquire the repository workspace-mutation lock. They bind the
+reviewed staged bytes by SHA-256, claim the old target before publishing, and
+refuse to overwrite a target recreated by another writer. Direct durable writes
+that bypass this helper are outside the concurrency contract. The lock anchors
+repository, `.nase-locks`, lock, owner, recovery guard, and quarantine work to
+validated directory file descriptors with no-follow opens and inode checks.
+Release, failed-acquire cleanup, and dead-owner recovery first rename-claim the
+exact opened lock; a mismatched claim is preserved and fails closed.
+The protected apply path requires Unix file locking and no-follow directory-FD
+support. On other platforms, `stage` and `diff` remain available while apply
+commands fail closed rather than use a weaker write path.
 
 Allowed targets are durable workspace paths under `workspace/kb/`,
 `workspace/tasks/`, `workspace/skills/`, `workspace/efforts/`,
