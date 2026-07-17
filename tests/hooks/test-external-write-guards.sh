@@ -262,6 +262,14 @@ expect_rc "jira create adf under batch blocked" .claude/hooks/jira-write-guard.s
 write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira adf body under batch token allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_adf" 0
 
+jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"audit failure",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+touch "$TMP_ROOT/workspace/logs/.jira-writes.log"
+chmod 400 "$TMP_ROOT/workspace/logs/.jira-writes.log"
+expect_rc "jira audit failure blocks mutation" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "could not write Jira mutation audit log"
+chmod 600 "$TMP_ROOT/workspace/logs/.jira-writes.log"
+
 # --- concurrent token consumption ---
 parallel_jira_calls() {
   local name="$1" input="$2" count="$3"

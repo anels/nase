@@ -48,7 +48,7 @@ block_format() {
     echo "  - Unset contentFormat is rejected — the default path is ambiguous."
   } >&2
   if [ -n "${LOG:-}" ]; then
-    printf '%s BLOCKED %s (%s)\n' "${TS:-unknown-time}" "${TOOL:-unknown-tool}" "$reason" >> "$LOG"
+    printf '%s BLOCKED %s (%s)\n' "${TS:-unknown-time}" "${TOOL:-unknown-tool}" "$reason" >> "$LOG" || true
   fi
   if [ -n "${TOKEN:-}" ] && [ -f "$TOKEN" ]; then
     rm -f "$TOKEN"
@@ -102,6 +102,10 @@ if [ "$LOCK_RC" -ne 0 ]; then
 fi
 LOCK_NONCE=$(printf '%s' "$LOCK_OUTPUT" | jq -er '.nonce' 2>/dev/null || echo "")
 if [ -z "$LOCK_NONCE" ]; then
+  LOCK_NONCE=$(jq -er '.nonce' "$NASE_ROOT/.nase-locks/workspace-mutation.lock/owner.json" 2>/dev/null || echo "")
+  if [ -n "$LOCK_NONCE" ]; then
+    python3 "$LOCK_HELPER" release --root "$NASE_ROOT" --nonce "$LOCK_NONCE" >/dev/null 2>&1 || true
+  fi
   block_without_log "workspace mutation lock returned an invalid lease"
 fi
 
@@ -147,7 +151,7 @@ block() {
     echo ""
     echo "Policy source: .claude/docs/external-mutation-policy.md"
   } >&2
-  printf '%s BLOCKED %s (%s)\n' "$TS" "$TOOL" "$reason" >> "$LOG"
+  printf '%s BLOCKED %s (%s)\n' "$TS" "$TOOL" "$reason" >> "$LOG" || true
   [ -f "$TOKEN" ] && rm -f "$TOKEN"
   exit 2
 }
@@ -311,8 +315,10 @@ PY
     fi
   fi
 
-  printf '%s ALLOWED %s | batch | issue: %s | remaining: %s | summary: %s\n' \
-    "$TS" "$TOOL" "$CURRENT_ISSUES" "$REMAINING" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"
+  if ! printf '%s ALLOWED %s | batch | issue: %s | remaining: %s | summary: %s\n' \
+    "$TS" "$TOOL" "$CURRENT_ISSUES" "$REMAINING" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"; then
+    block "could not write Jira mutation audit log"
+  fi
   exit 0
 fi
 
@@ -382,5 +388,8 @@ if [[ "$TOOL" == *__createIssueLink ]]; then
 fi
 
 rm -f "$TOKEN" || block "could not consume single-shot token"
-printf '%s ALLOWED %s | issue: %s | summary: %s\n' "$TS" "$TOOL" "${APPROVED_ISSUES_CSV:-n/a}" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"
+if ! printf '%s ALLOWED %s | issue: %s | summary: %s\n' \
+  "$TS" "$TOOL" "${APPROVED_ISSUES_CSV:-n/a}" "${PAYLOAD_SUMMARY:-n/a}" >> "$LOG"; then
+  block "could not write Jira mutation audit log"
+fi
 exit 0
