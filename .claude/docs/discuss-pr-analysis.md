@@ -1,5 +1,17 @@
 # Discuss PR Analysis
 
+## Contents
+
+- Step 1 - Parse inputs and resolve repo
+- Step 2 - Fetch compact PR context
+- Step 2.5 - Collect context
+- Step 2.6 - Sense Check and Review Frame
+- Step 3 - Build Risk Map, Select Specialists, and Engage Existing Comments
+- Step 4 - Score, tier, and filter (after agents complete)
+- Step 5 - Auto-deep-dive and research
+- Step 5.5 - Test verification recommendation
+- Step 5.7 - Doubt cycle
+
 Read this file only when /nase:discuss-pr begins analysis. It owns Steps 1-5.7: compact context, review framing, risk scoring, specialist investigation, verification recommendations, and the doubt cycle.
 
 ## Step 1 - Parse inputs and resolve repo

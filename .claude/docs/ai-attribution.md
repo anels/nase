@@ -1,5 +1,15 @@
 # AI Attribution — Per-Repo Config
 
+## Contents
+
+- Scope
+- Storage
+- Lookup Algorithm
+- First-Time Prompt
+- What "On" Means
+- Squash + Co-Author Preservation
+- Changing Config Later
+
 How to decide whether commits and PR descriptions include AI co-author trailers (`Co-Authored-By: Claude <noreply@anthropic.com>`, `Generated with Claude Code`, etc.).
 
 Used by `commit-push-pattern.md`, `pr-creation-pattern.md`, `/nase:fsd`, `/nase:prep-merge`, `/nase:address-comments`.

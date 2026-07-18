@@ -1,5 +1,18 @@
 # Discuss PR Output
 
+## Contents
+
+- Step 6 - Present findings and open discussion
+- Sense Check
+- Step 6.5 - Stage 2: automatic additional deep dives
+- Step 7 - Stage 3: draft decision
+- Step 8 - Stage 4: submit the review (gated write)
+- Step 9 - Stage 5: completion message
+- Error Handling
+- Ongoing - KB update (on confirmed findings)
+- Notes
+- Final - Daily Log
+
 Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visible review report, automatic additional deep dives, draft decision, gated review submission, completion message, KB handoff, and daily log. Steps 6-6.5 are investigation-only; all external writes go through the `external-write-action.py` manifest gate per the command's standing invariants.
 
 ## Step 6 - Present findings and open discussion

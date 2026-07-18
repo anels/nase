@@ -1,5 +1,18 @@
 # Review Mode (`/nase:design --review`)
 
+## Contents
+
+- Activation
+- Step 1: Resolve Target Effort Doc
+- Step 1b: Resolve Human Input (if present)
+- Step 2: Gather Current State
+- Step 3: Evaluate Against Quality Criteria
+- Step 3.5: Doc Hygiene Pass (auto-cleanup)
+- Step 4: Verdict
+- Issues found
+- Step 5: Daily Log
+- Notes
+
 Re-evaluate an existing design doc against the current codebase and KB. Verdict: APPROVED, Needs Revision, or Superseded.
 
 ## Activation

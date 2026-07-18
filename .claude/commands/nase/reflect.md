@@ -1,8 +1,7 @@
 ---
 name: nase:reflect
-description: Run a structured post-task reflection to extract learnings and improve future performance. Use after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong. Also triggers on "reflect on this", "what went well", or "post-mortem".
+description: "Reflect on completed work and extract lessons. Use after a feature, bug fix, or debugging session, or for reflect, what went well, or post-mortem."
 argument-hint: "<completed task>"
-when_to_use: "Run a structured post-task reflection to extract learnings and improve future performance. Use after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong. Also triggers on \"reflect on this\", \"what went well\", or \"post-mortem\"."
 pattern: pipeline
 category: Learning & reflection
 ---

@@ -1,5 +1,16 @@
 # FSD Implementation Loop
 
+## Contents
+
+- Engineering Excellence Bar
+- Phase 3.5: Research Gate (external dependencies only)
+- Phase 3.6: Implementation Preflight (all execution modes)
+- Phase 4: Implement (TDD - Red → Green → Refactor)
+- Phase 5: Build & Test Loop (max 5 iterations)
+- Phase 5.25: Optional Post-Edit CLI Gates
+- Phase 5.5: Diff-Size Guardrail (soft gate)
+- Phase 6: Simplify
+
 Read this file only when /nase:fsd enters Phases 3.5-6. It owns research, implementation preflight, implementation, build/test, optional CLI checks, diff sizing, and simplification.
 
 ## Engineering Excellence Bar

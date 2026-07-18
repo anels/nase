@@ -64,6 +64,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-voice-profile-routing.sh
   tests/scripts/test-shared-workflow-extraction.sh
   tests/scripts/test-command-skill-size-budget.sh
+  tests/scripts/test-skill-usage-report.sh
   tests/scripts/test-workspace-write-guard.sh
 )
 

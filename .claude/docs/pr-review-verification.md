@@ -1,5 +1,21 @@
 # PR Review Verification Patterns
 
+## Contents
+
+- 1. AI-reviewer assertion-value guard
+- 2. Diff-scope verification
+- 3. File-vs-description verification
+- 3.5. Taint-to-new-sink verification
+- 4. Resolved-thread HEAD verification
+- 5. Prior-round fix verification
+- 6. Suggestion-block re-derivation
+- 7. AI-reviewer citation + triage verification
+- 8. Comment dossier contract
+- 9. Review-Thread Resolution Gate
+- 10. Review Frame and Specialist Selection
+- 11. Diff-First Investigation
+- 12. Trace-Shape Self-Check
+
 Checks to run before trusting a claim during PR review. Used by `/nase:discuss-pr` (read-only review) and `/nase:address-comments` (write fixes).
 
 Principle: **prose claims are hypotheses, not evidence**. Always diff-confirm against the file at HEAD before acting (resolve a thread, drop a finding, mark something fixed).
@@ -234,7 +250,7 @@ Classification rules:
 
 Ask "Does this look right? Any to change?" Research each 🔍 item before final classification.
 
-Apply `.claude/docs/pr-review-verification.md` §4 and §5 on every classification pass.
+Apply §4 and §5 on every classification pass.
 
 **Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only; do not react, reply, resolve, or post a review.
 

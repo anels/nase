@@ -12,6 +12,7 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - FSD progressive loading: `fsd-intake-and-setup.md` owns Phases 1-3.7; `fsd-implementation-loop.md` owns Phases 3.5-6. The command entrypoint owns the interface, state contract, delivery routing, and final report.
 - Address-comments progressive loading: `address-comments-analysis.md` owns Phases 1-4; `address-comments-delivery.md` owns Phases 5-12. Load delivery only after the user confirms execution.
 - Discuss-pr progressive loading: `discuss-pr-analysis.md` owns Steps 1-5.7; `discuss-pr-output.md` owns Step 6 through final logging (draft decision, gated review submission, completion). Analysis is investigation-only; the review submission and any reactions/replies are gated through `external-write-action.py` after explicit confirmation.
+- Command context budgets: `skill-authoring-contract.md` §12 owns entrypoint, description-catalog, and reference navigation limits; CI enforces them across core and workspace skills.
 - PR next-step handoff: `pr-next-step-handoff.md` owns the explicit follow-on workflow choices after comment resolution.
 - Worktree cleanup: `worktree-pattern.md` owns remote-OID verification and safe retained-worktree behavior; automated workflows never force-remove worktrees.
 

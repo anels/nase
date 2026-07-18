@@ -1,5 +1,23 @@
 # Auto Mode (`/nase:design` default, or explicit `--auto`)
 
+## Contents
+
+- Activation
+- Hard Gate
+- Language preflight (Step 0 - MUST run before Step 1, non-negotiable)
+- No-Ask Contract (mid-pipeline)
+- Execute, Don't Narrate
+- Research Ladder (per open question)
+- Step 1: Deep Context Gathering (Phase 1, expanded)
+- Step 2: Autonomous Design (Phases 2–5, adapted)
+- Step 3: Codebase Grill Pass (mandatory - always runs)
+- Step 4: Auto-Review Loop (max 3 iterations)
+- Step 4.5: Resolve Human Input (the one interactive batch)
+- Step 5: Write Final Effort Doc
+- Human Input Required
+- Step 6: Report
+- Notes
+
 End-to-end research-grill-review loop. From requirement to effort doc without turn-by-turn prompts. Every open question is researched against the codebase, KB, and external docs; questions that still cannot be answered from evidence are collected and asked in **one `AskUserQuestion` batch at the very end** (Step 4.5), before the final report is written. Anything the user defers there stays in `## Human Input Required` in the effort doc.
 
 ## Activation

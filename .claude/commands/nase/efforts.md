@@ -1,6 +1,6 @@
 ---
 name: nase:efforts
-description: "Report active efforts by stage/status, verify live PR/Jira state, sync merged work to awaiting-deploy, and move deployed or abandoned work to done/ (completed/wontfix). Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. Use /nase:stats for activity counts."
+description: "Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on."
 argument-hint: "[--by-scope|--by-repo] [--full]"
 pattern: utility
 category: Reporting

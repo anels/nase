@@ -1,6 +1,6 @@
 ---
 name: nase:fsd
-description: "End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design."
+description: "Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, fire and forget, or feature/fix handoff."
 argument-hint: "<task description or effort doc>"
 pattern: pipeline
 category: Design & implementation

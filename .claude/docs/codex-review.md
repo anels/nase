@@ -1,5 +1,16 @@
 # Codex MCP — Invocation Contract
 
+## Contents
+
+- Why this contract exists
+- Prerequisite: MCP availability check (canonical gate)
+- Invocation contract
+- Threaded invocation contract
+- Modes
+- Output handling
+- Error handling
+- Notes
+
 > Canonical contract for delegating a review / verify / adversary / mutual-grill pass to the Codex MCP (model resolved from runtime config / MCP default; `model_reasoning_effort` set per task) — independent second-model opinion.
 >
 > Reference-only doc. Cited from `/nase:discuss-pr` (review specialist), `/nase:fsd` Phase 6.5 (verify gate), `/nase:address-comments` Phase 3d (comment dossier verifier) and Phase 7.5 (thread-resolution verifier), `/nase:tech-debt-audit` Step 7.5 (audit sanity pass), and `/nase:design --grill` Step 3.5 / 5.5 (mutual grill). Edit here, not in the caller skills.
@@ -21,7 +32,7 @@ A caller may still define a separate mandatory local verifier after the Codex ca
 - keep it outside this Codex contract
 - log it as `fallback-verify`, not `Codex verify`
 
-Callers should reference this section by name (`.claude/docs/codex-review.md → Prerequisite`) rather than restating the gate inline.
+Callers should reference the `Prerequisite` section by name rather than restating the gate inline.
 
 The MCP is added via:
 ```bash

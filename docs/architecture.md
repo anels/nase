@@ -333,6 +333,7 @@ Restore is a directory transaction owned by `.claude/scripts/restore-workspace.p
 
 - Skill source: `.claude/commands/nase/*.md` - one compact entrypoint per command, owning its public interface, state handoffs, and standing safety rules
 - Shared and phase docs: `.claude/docs/*.md` - algorithms loaded only by the workflow phase that needs them
-- Offline evals: `evals/pr-review/` — deterministic output-shape checks for PR/review skills; scorer lives at `.claude/scripts/pr-review-eval.py`
+- Offline evals: `evals/pr-review/` covers PR/review and `evals/core-workflows/` covers high-frequency lifecycle workflows; `.claude/scripts/pr-review-eval.py` validates and scores both schema-v1 sets.
+- Skill context telemetry: `.claude/scripts/skill-usage-report.py` converts activation/outcome JSONL into tier counts and approximate entrypoint context hotspots without treating estimates as billing truth.
 - Hook regression tests: `tests/hooks/` — exercise every block/allow case for `block-dangerous-git.sh`
 - CI gates: `.github/workflows/validate.yml` and `tests/check-all.sh`

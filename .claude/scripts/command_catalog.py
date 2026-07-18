@@ -58,7 +58,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--command-limit", type=int, default=5, help="compact commands per category; 0 = unlimited")
     parser.add_argument("--purpose-chars", type=int, default=180, help="compact description width; 0 = unlimited")
-    parser.add_argument("--check-readme", action="store_true", help="fail when README Available commands drift")
+    readme_mode = parser.add_mutually_exclusive_group()
+    readme_mode.add_argument("--check-readme", action="store_true", help="fail when README Available commands drift")
+    readme_mode.add_argument("--write-readme", action="store_true", help="replace the generated README command section")
     return parser.parse_args()
 
 
@@ -253,6 +255,24 @@ def check_readme(root: Path, expected: str) -> int:
     return 1
 
 
+def write_readme(root: Path, expected: str) -> int:
+    readme = root / "README.md"
+    if not readme.is_file():
+        print("README.md missing", file=sys.stderr)
+        return 1
+
+    text = readme.read_text(encoding="utf-8", errors="replace")
+    start = text.find(f"{README_START}\n")
+    if start < 0:
+        print("README Available commands section missing", file=sys.stderr)
+        return 1
+    rest = text[start:]
+    next_header = re.search(r"\n## [^\n]+", rest[len(README_START) :])
+    end = start + len(README_START) + next_header.start() if next_header else len(text)
+    readme.write_text(f"{text[:start]}{expected}{text[end:]}", encoding="utf-8")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     root = Path(args.root).resolve()
@@ -265,6 +285,8 @@ def main() -> int:
     readme_output = render_readme(commands)
     if args.check_readme:
         return check_readme(root, readme_output)
+    if args.write_readme:
+        return write_readme(root, readme_output)
 
     if args.format == "readme":
         print(readme_output)

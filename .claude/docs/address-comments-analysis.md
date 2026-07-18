@@ -1,5 +1,12 @@
 # Address Comments Analysis
 
+## Contents
+
+- Phase 1: Locate Repo & Fetch Context
+- Phase 2: Fetch Latest & Unresolved Review Threads
+- Phase 3: Build Dossiers, Evaluate, & Present Plan
+- Phase 4: User Override & Confirm Execution
+
 Read this file only when /nase:address-comments enters Phases 1-4. It owns PR resolution, bounded dossiers, evidence-backed classification, and the user execution checkpoint. Return the final dossier/action map to the command entrypoint.
 
 ## Phase 1: Locate Repo & Fetch Context

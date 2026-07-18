@@ -1,5 +1,13 @@
 # KB Teamshare — File Processing Pipeline (Step 4)
 
+## Contents
+
+- 4a: Strip Local Absolute Paths
+- 4b: Fix Internal KB Links
+- 4c: Privacy Classification
+- Privacy Review: {filename}
+- 4d: Translate to Output Language
+
 Apply these four transformations in order to every selected file.
 
 ---

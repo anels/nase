@@ -1,5 +1,14 @@
 # Git Worktree Pattern
 
+## Contents
+
+- Naming Convention
+- Creation
+- Key Rule
+- Recovery: branch already used by another worktree
+- Recovery: a concurrent session moved your worktree
+- Cleanup
+
 Shared worktree creation and cleanup pattern used by nase skills.
 
 ---

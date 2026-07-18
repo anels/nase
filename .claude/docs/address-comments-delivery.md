@@ -1,5 +1,22 @@
 # Address Comments Delivery
 
+## Contents
+
+- Phase 5: Setup Worktree
+- Phase 6: Execute Changes
+- Phase 7: Build & Test (max 5 iterations)
+- Phase 7.25: Optional Post-Edit CLI Gates
+- Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
+- Phase 8: Commit & Push
+- Phase 8b: Update PR Description to Match Template
+- Phase 8.7: PR Gates - Skip
+- Phase 9: Reply & Resolve Comments
+- Phase 9b: Optional Reviewer Ping (Human Reviewers Only)
+- Phase 10: Learn
+- Phase 11: Cleanup and Report
+- Phase 12: Next-step handoff
+- Error handling
+
 Read this file only after the user confirms execution in /nase:address-comments. It owns Phases 5-12: code changes, verification, external-write gates, replies, resolution, reviewer handoff, cleanup, and reporting.
 
 ## Phase 5: Setup Worktree

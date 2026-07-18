@@ -85,6 +85,10 @@ Fixture workspace intro paragraph.
 
 Full hook table text.
 
+## Available commands
+
+stale catalog
+
 ## Other section
 EOF
 
@@ -134,6 +138,18 @@ assert_contains "catalog emits filename-derived command id" "$catalog_json" '"/n
 assert_contains "catalog emits category" "$catalog_json" '"category": "Setup & health"'
 assert_contains "catalog emits Claude-native argument-hint key" "$catalog_json" '"argument-hint":'
 assert_contains "catalog keeps compatible argument_hint key" "$catalog_json" '"argument_hint":'
+
+write_out=$(python3 "$CATALOG" --root "$FIXTURE" --write-readme 2>&1)
+rc=$?
+if [ "$rc" = 0 ] && python3 "$CATALOG" --root "$FIXTURE" --check-readme >/dev/null 2>&1; then
+  pass=$((pass + 1))
+  printf 'PASS  catalog generator rewrites README section\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  catalog generator rewrites README section (got %s)\n%s\n' "$rc" "$write_out" >&2
+fi
+fixture_readme=$(cat "$FIXTURE/README.md")
+assert_contains "catalog generator preserves following README sections" "$fixture_readme" "## Other section"
 
 create_command typo "Git workflows" 9 "invalid category fixture"
 bad_catalog=$(python3 "$CATALOG" --root "$FIXTURE" --format json 2>&1)

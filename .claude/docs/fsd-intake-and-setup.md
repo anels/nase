@@ -1,5 +1,13 @@
 # FSD Intake and Setup
 
+## Contents
+
+- Phase 1: Infer Context (do the homework before asking anything)
+- Phase 1.5: Topology Map (before any code intent is locked in)
+- Phase 2: Upfront Config - single batched AskUserQuestion, then execution
+- Phase 3: Setup
+- Phase 3.7: Task Decomposition (execution_mode = "Direct with Phase isolation" only)
+
 Read this file only when /nase:fsd enters Phases 1-3.7. It owns context inference, topology, upfront options, worktree setup, and phase decomposition. Return the named state to the command entrypoint.
 
 ## Phase 1: Infer Context (do the homework before asking anything)

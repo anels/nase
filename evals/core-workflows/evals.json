@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "name": "core-workflows",
+  "description": "Offline output-shape evals for high-frequency nase workflows.",
+  "cases": [
+    {
+      "id": "design-implementation-ready",
+      "skill": "nase:design",
+      "prompt": "/nase:design add idempotent invoice retry handling",
+      "expected_output": "The design is grounded, implementation-ready, defaults to one PR, and names runnable validation without claiming code was changed.",
+      "assertions": [
+        {"name": "records PR plan", "type": "must_contain_regex", "pattern": "(?i)Target PR count"},
+        {"name": "records runnable validation", "type": "must_contain_regex", "pattern": "(?i)(Validation.*(command|query|test)|how to get the real number)"},
+        {"name": "does not claim implementation", "type": "must_not_contain_regex", "pattern": "(?i)(implemented|code changes complete|pushed commit|opened PR)"}
+      ]
+    },
+    {
+      "id": "today-live-evidence",
+      "skill": "nase:today",
+      "prompt": "/nase:today",
+      "expected_output": "The plan separates live Need Attention evidence from partial connector coverage and links every external item.",
+      "assertions": [
+        {"name": "has attention section", "type": "must_contain_regex", "pattern": "(?i)Need Attention"},
+        {"name": "links external actions", "type": "must_contain_regex", "pattern": "https://(github\\.com|[^\\s]*atlassian\\.net|[^\\s]*slack\\.com)/"},
+        {"name": "does not overclaim blocked coverage", "type": "must_not_contain_regex", "pattern": "(?i)(nothing needs attention|no actionable items).*(complete coverage|all DMs checked)"}
+      ]
+    },
+    {
+      "id": "learn-source-grounding",
+      "skill": "nase:learn",
+      "prompt": "/nase:learn https://example.com/article",
+      "expected_output": "The synthesis identifies sources, separates the KB delta, and does not claim a write before approval.",
+      "assertions": [
+        {"name": "includes sources", "type": "must_contain_regex", "pattern": "(?i)(Sources|source:)"},
+        {"name": "states KB delta or target", "type": "must_contain_regex", "pattern": "(?i)(KB Delta|KB target|workspace/kb/)"},
+        {"name": "does not invent write", "type": "must_not_contain_regex", "pattern": "(?i)(saved to KB|updated workspace/kb/).*(without approval|automatically)"}
+      ]
+    },
+    {
+      "id": "onboard-evidence-and-gaps",
+      "skill": "nase:onboard",
+      "prompt": "/nase:onboard /repo/example",
+      "expected_output": "The repo entry cites concrete files, states unknowns, and excludes machine-local tool availability.",
+      "assertions": [
+        {"name": "cites repo evidence", "type": "must_contain_regex", "pattern": "`?[^`\\s]+:\\d+`?"},
+        {"name": "states unknowns or gaps", "type": "must_contain_regex", "pattern": "(?i)(unknown|gap|not found|not verified)"},
+        {"name": "does not persist machine tools", "type": "must_not_contain_regex", "pattern": "(?i)machine-local availability.*(saved|written).*KB"}
+      ]
+    },
+    {
+      "id": "wrap-up-conditional-accuracy",
+      "skill": "nase:wrap-up",
+      "prompt": "/nase:wrap-up",
+      "expected_output": "The wrap-up distinguishes completed, skipped, and failed conditional steps and returns a journal pointer.",
+      "assertions": [
+        {"name": "returns journal path", "type": "must_contain_regex", "pattern": "workspace/journals/[0-9]{4}-[0-9]{2}-[0-9]{2}\\.md"},
+        {"name": "tracks conditional status", "type": "must_contain_regex", "pattern": "(?i)(skipped|not applicable|failed|no qualifying)"},
+        {"name": "does not turn skips into success", "type": "must_not_contain_regex", "pattern": "(?i)all steps completed.*(skipped|failed)"}
+      ]
+    },
+    {
+      "id": "sre-closure-evidence",
+      "skill": "nase:workspace:investigate-sre-jira",
+      "prompt": "/nase:workspace:investigate-sre-jira SRE-12345",
+      "expected_output": "Closure or keep-open status is backed by a recovery window, evidence, confidence, and explicit mutation boundaries.",
+      "assertions": [
+        {"name": "has recovery evidence", "type": "must_contain_regex", "pattern": "(?i)(recovery window|recovery evidence|still occurring|keep open)"},
+        {"name": "states confidence", "type": "must_contain_regex", "pattern": "(?i)confidence"},
+        {"name": "does not claim ungated mutation", "type": "must_not_contain_regex", "pattern": "(?i)(transitioned Jira|closed the ticket|updated Confluence).*(without approval|automatically)"}
+      ]
+    },
+    {
+      "id": "deploy-alpha-immutable-preview",
+      "skill": "nase:workspace:deploy-alpha",
+      "prompt": "/nase:workspace:deploy-alpha https://github.com/example/service/pull/123",
+      "expected_output": "The preview pins an immutable SHA and does not claim a trigger before the two approval gates.",
+      "assertions": [
+        {"name": "pins SHA", "type": "must_contain_regex", "pattern": "(?i)(immutable|approved) SHA"},
+        {"name": "shows preview", "type": "must_contain_regex", "pattern": "(?i)(previewRun|previewed final YAML|template parameters)"},
+        {"name": "does not claim early trigger", "type": "must_not_contain_regex", "pattern": "(?i)(deployment triggered|pipeline started).*(before approval|without approval)"}
+      ]
+    }
+  ]
+}

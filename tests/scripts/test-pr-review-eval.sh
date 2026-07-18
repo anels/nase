@@ -7,6 +7,7 @@ cd "$ROOT"
 PYTHON_BIN=$(command -v python3)
 SCRIPT=".claude/scripts/pr-review-eval.py"
 EVAL_SET="evals/pr-review/evals.json"
+CORE_EVAL_SET="evals/core-workflows/evals.json"
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
@@ -14,6 +15,7 @@ failures=0
 source "$ROOT/tests/lib/assert.sh"
 
 assert_cmd "eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$EVAL_SET"
+assert_cmd "core workflow eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$CORE_EVAL_SET"
 
 cat > "$TMPDIR_TEST/discuss-ok.txt" <<'TXT'
 Review frame
@@ -80,6 +82,58 @@ Recommended repayment order: P1 x high confidence x S effort x 20 days
 TXT
 "$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case tech-debt-ai-verification-section --output "$TMPDIR_TEST/tech-debt-ai-ok.txt" >/dev/null
 pass "tech-debt AI verification output scores ok"
+
+cat > "$TMPDIR_TEST/design-ok.txt" <<'TXT'
+Target PR count: 1
+Validation - how to get the real number: run `pytest tests/test_invoice_retry.py`.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case design-implementation-ready --output "$TMPDIR_TEST/design-ok.txt" >/dev/null
+pass "design output scores ok"
+
+cat > "$TMPDIR_TEST/sre-ok.txt" <<'TXT'
+Status: keep open - the error is still occurring inside the 30-minute recovery window.
+Recovery evidence: 8 failures in the last 15 minutes.
+Confidence: high.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case sre-closure-evidence --output "$TMPDIR_TEST/sre-ok.txt" >/dev/null
+pass "SRE closure output scores ok"
+
+cat > "$TMPDIR_TEST/today-ok.txt" <<'TXT'
+Need Attention
+- CI failure: https://github.com/example/service/actions/runs/123
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case today-live-evidence --output "$TMPDIR_TEST/today-ok.txt" >/dev/null
+pass "today output scores ok"
+
+cat > "$TMPDIR_TEST/learn-ok.txt" <<'TXT'
+Sources
+- source: https://example.com/article
+KB Delta: workspace/kb/general/example.md
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case learn-source-grounding --output "$TMPDIR_TEST/learn-ok.txt" >/dev/null
+pass "learn output scores ok"
+
+cat > "$TMPDIR_TEST/onboard-ok.txt" <<'TXT'
+Evidence: `src/app.py:12`
+Gap: deployment ownership was not found.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case onboard-evidence-and-gaps --output "$TMPDIR_TEST/onboard-ok.txt" >/dev/null
+pass "onboard output scores ok"
+
+cat > "$TMPDIR_TEST/wrap-up-ok.txt" <<'TXT'
+Journal: workspace/journals/2026-07-17.md
+Skill extraction skipped: no qualifying repeated workflow.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case wrap-up-conditional-accuracy --output "$TMPDIR_TEST/wrap-up-ok.txt" >/dev/null
+pass "wrap-up output scores ok"
+
+cat > "$TMPDIR_TEST/deploy-ok.txt" <<'TXT'
+Approved immutable SHA: abc123
+previewRun: true
+Previewed final YAML and template parameters are ready for approval.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$CORE_EVAL_SET" --case deploy-alpha-immutable-preview --output "$TMPDIR_TEST/deploy-ok.txt" >/dev/null
+pass "deploy-alpha output scores ok"
 
 if [[ "$failures" -eq 0 ]]; then
   printf '\npr-review-eval tests passed.\n'

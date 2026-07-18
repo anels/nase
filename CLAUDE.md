@@ -50,7 +50,7 @@ When compacting, preserve active repo/path/branch, current task/plan, changed fi
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
-- For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` and link checks skip if the tools are missing; CI still runs them).
+- For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` skips if missing; CI still runs it). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
 - If `check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive: inspect it locally, remove or rotate it as appropriate, then rerun. Never stage it or suppress the gate.
 
 ### Logging & External Services
@@ -71,7 +71,7 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 
 ### CI Pipeline
 - `.github/workflows/validate.yml` runs on push/PR to `main`.
-- Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, GitHub Actions lint when `actionlint` exists, hook wiring, command inventory, skill bash checks, hook/script regressions, local sensitive artifact scanning, warn-only workspace quality drift, shared-doc references, and offline markdown links when `lychee` exists.
+- Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, GitHub Actions lint when `actionlint` exists, hook wiring, command inventory, skill bash checks, hook/script regressions, local sensitive artifact scanning, warn-only workspace quality drift, and shared-doc references. `bash tests/check-all.sh --links` runs the optional local `lychee` check.
 
 ### Runtime Dependencies
 - Required: `git`, `gh`, `jq`, `python3`, and `7z` or `zip` + `unzip`.

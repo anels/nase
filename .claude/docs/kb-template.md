@@ -1,5 +1,27 @@
 # KB File Template
 
+## Contents
+
+- Writing Conventions (apply to every KB write)
+- Project KB Structure
+- Overview
+- Architecture Map
+- Data Flow / Architecture
+- Ownership Map
+- Key Files
+- Build & Run Commands
+- Code Standards
+- Critical Constraints
+- Brittle Boundaries
+- Change Playbook
+- Deployment
+- CI/CD Pipelines
+- PR Gates
+- Azure Pipelines
+- Related Repos
+- Cross-Validation Notes
+- Knowledge Hygiene
+
 ## Writing Conventions (apply to every KB write)
 
 Applies to project KBs and general KB entries written by `/nase:learn`, `/nase:kb-update`, `/nase:onboard`. Borrowed from `codealmanac` `.almanac/README.md` notability discipline.
