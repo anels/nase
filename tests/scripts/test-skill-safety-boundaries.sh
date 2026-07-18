@@ -70,6 +70,7 @@ check_absent "deploy does not default CI skips to true" "$deploy" 'CI skips** (a
 
 for mutation_skill in \
   .claude/docs/address-comments-delivery.md \
+  .claude/docs/discuss-pr-output.md \
   .claude/commands/nase/prep-merge.md \
   .claude/docs/github-queries.md
 do
@@ -82,9 +83,12 @@ check_contains "address-comments cleans private PR body files" .claude/docs/addr
 check_contains "prep-merge cleans private PR body files" .claude/commands/nase/prep-merge.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 
 discuss=".claude/commands/nase/discuss-pr.md"
-check_contains "discuss PR declares read-only draft flow" "$discuss" "This command is read-only."
-check_absent "discuss PR does not offer post flow" "$discuss" "Draft + post"
-check_absent "discuss PR has no reaction mutation" "$discuss" "pulls/comments/{comment_id}/reactions"
+discuss_out=".claude/docs/discuss-pr-output.md"
+check_contains "discuss PR routes writes through the manifest gate" "$discuss" "external-write-action.py"
+check_contains "discuss PR keeps analysis investigation-only" "$discuss" "investigation-only"
+check_contains "discuss PR output offers the gated post flow" "$discuss_out" "Draft + post"
+check_contains "discuss PR output submits the review via manifest" "$discuss_out" "pulls/{number}/reviews"
+check_contains "discuss PR output cleans the private review file" "$discuss_out" "trap 'rm -f \"\$REVIEW_FILE\"' EXIT"
 
 sre="workspace/skills/docs/sre-alert-flow.md"
 check_absent "SRE flow does not start web apps" "$sre" "az webapp start"

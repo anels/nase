@@ -1,6 +1,6 @@
 # Discuss PR Output
 
-Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visible review report, optional additional deep dives, draft decision, KB handoff, and daily log. This flow stays read-only.
+Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visible review report, automatic additional deep dives, draft decision, gated review submission, completion message, KB handoff, and daily log. Steps 6-6.5 are investigation-only; all external writes go through the `external-write-action.py` manifest gate per the command's standing invariants.
 
 ## Step 6 - Present findings and open discussion
 
@@ -97,32 +97,22 @@ Steps 6.5 → 7 → 8 → 9 are the fixed handoff sequence. If preconditions do 
 
 All chat in steps 6.5–8 stays in `conversation:` language. Draft and posted GitHub text stays in `output:` language.
 
-## Step 6.5 - Stage 2: ask about additional deep dives
+## Step 6.5 - Stage 2: automatic additional deep dives
+
+Deep diving is automatic - do not ask the user whether to trace. Step 5 already auto-traced the findings whose confidence depends on behavior outside the diff; this step sweeps up the remaining trace-worthy items and resolves them before drafting so the review lands with evidence, not open guesses.
 
 Collect remaining trace-worthy items:
 - Medium-confidence findings (50–79) where more context could move them up or drop them
 - Open questions that COULD be answered by code but weren't critical enough to auto-trace
-- Cross-file consistency checks the user might want validated
+- Cross-file consistency checks worth validating
 
-If none, say "No additional deep-dive candidates - auto-dive covered everything." and skip to Step 7.
+If none, say "No additional deep-dive candidates - auto-dive covered everything." and proceed to Step 7.
 
-Otherwise ask via `AskUserQuestion` (`multiSelect: true`, max 4 options):
-
-```
-Question: "Anything else worth deep-diving before drafting?"
-Header: "Deep dive"
-Options (multiSelect):
-- "[70] Validate caller assumes X" - Trace MyController.cs to confirm
-- "[65] Check downstream consumers of Y" - grep across consuming repos for Y
-- "[62] Verify Z is feature-flagged" - check Confluence + flag config
-- "Skip - proceed to draft" - no further dives
-```
-
-Spawn Explore agents for selected items (same pattern as Step 5b - each spawn prompt carries the inline diff-first directive and the §12 trace-shape self-check). Update findings with evidence. Then proceed to Step 7.
+Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how much a trace could move the verdict and spawn Explore agents for the top items in parallel (cap at 4 to bound cost; if more remain, note the ones you deferred and why). Use the same pattern as Step 5b: each spawn prompt carries the inline diff-first directive and the §12 trace-shape self-check. Update findings with the evidence returned, then proceed to Step 7.
 
 ## Step 7 - Stage 3: draft decision
 
-This command is read-only. Ask whether to return draft comments or end without drafts. Never offer posting from this flow.
+Ask the user how to handle drafting via `AskUserQuestion`. Three options, always in this order, always with these labels. **Default recommendation is "Draft + post"** - the normal outcome of a review is inline comments submitted on GitHub, so lead with it and append `(recommended)`. The other two options stay available for a chat-only draft or nothing at all; the recommendation does not skip the confirmation - the user still actively picks, and Step 8 still asks for the review state before any write.
 
 **Before drafting, run the trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own main-thread investigation (Steps 4–5d): did it narrow before reading, batch discovery, stay diff-anchored, and recover from failed searches without path-guessing? Downgrade any finding that survived only a widen-first / path-guessing trace to WEAK and re-verify it before including it in the draft.
 
@@ -130,17 +120,20 @@ This command is read-only. Ask whether to return draft comments or end without d
 Question: "Draft inline comments now?"
 Header: "Draft choice"
 Options (single-select):
-- "Draft comments (recommended)" - I draft inline comments in chat; nothing is posted
+- "Draft + post (recommended)" - I draft inline comments and proceed to Step 8 to submit the review after you pick the state
+- "Draft + discuss" - I draft inline comments inline in chat; you copy/refine manually, nothing is posted
 - "No draft" - End the flow here, no comments drafted
 ```
 
 Behavior per choice:
 
-**Draft comments** -> produce the drafts below in chat. End with: "Drafts above. Post only after an explicit request through the GitHub mutation workflow."
+**Draft + post** -> produce the drafts (format below), then **immediately enter Step 8** without re-asking the draft question. Mention in the handoff line: "Drafts ready - moving to review-state selection."
 
-**No draft** -> End with: "No drafts produced. Re-invoke if you want to act on these later."
+**Draft + discuss** -> produce the drafts (format below) inline in chat. End the flow with: "Drafts above. Paste or refine manually. To submit via this skill, re-invoke and pick 'Draft + post'." Do NOT enter Step 8.
 
-**Draft format:**
+**No draft** -> End with: "No drafts produced. Re-invoke if you want to act on these later." Do NOT proceed.
+
+**Draft format** (used by Draft + post and Draft + discuss):
 
 - **Voice profile**: before drafting, follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`; read `workspace/communication-style.md` for high-stakes or ambiguous comments. Keep no-blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), and no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` - don't over-escalate severity, prefer measured assessments.
 - **1–2 sentences max** - state the point directly, no preamble or verbose explanation
@@ -154,6 +147,71 @@ Behavior per choice:
 **File:** `path/to/file.ts` line <N>
 <comment text>
 ```
+
+## Step 8 - Stage 4: submit the review (gated write)
+
+Enter this step only when Step 7 = "Draft + post". Otherwise skip it.
+
+**Ownership check:** compare `gh api user --jq .login` against the PR `user.login`. If the PR is not the user's, submitting a review notifies the author - confirm once more before proceeding ("PR is owned by @other-user - submitting a review will notify them. Proceed?").
+
+**Determine the recommended state** (recommend one; the user gets final say):
+
+- `APPROVE` - **default recommendation** whenever no confirmed blocking issue exists. This includes LGTM-with-nits: medium/low findings or open style questions do not downgrade the recommendation. If you would be comfortable merging, recommend `APPROVE` - do not fall back to `COMMENT` just because non-blocking findings remain.
+- `REQUEST_CHANGES` - a confirmed issue that would cause a production incident (data corruption, service crash on deploy, security breach). High bar.
+- `COMMENT` - only when findings genuinely need reviewer attention yet you are not comfortable approving and they do not meet the `REQUEST_CHANGES` bar (e.g. an unresolved open question that blocks a merge verdict). Not the catch-all - prefer `APPROVE` when the PR is mergeable.
+
+Ask via `AskUserQuestion`, recommended option first with `(recommended)` appended:
+
+```
+Question: "Submit review as which state? (recommended: <STATE>)"
+Header: "Review state"
+Options (single-select):
+- "APPROVE" - LGTM / LGTM with nits
+- "COMMENT" - non-blocking review with inline comments
+- "REQUEST_CHANGES" - block merge until fixed
+```
+
+**Submit sequence** once the user picks - one payload-bound `external-write-action.py` manifest for the whole review (a GitHub review with inline comments and a state is a single POST). Never run a raw `gh api` mutation.
+
+- Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`/`REQUEST_CHANGES`, one or two sentences naming the blocking concern.
+- Inline comments: same 1–2 sentence rule as the drafts, `output:` language, voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
+- Build the review payload as a private file, prepare the manifest, show it, get the immediate `AskUserQuestion` approval of that exact manifest, then authorize and execute:
+
+```bash
+REVIEW_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-review-{number}.XXXXXXXX.json")
+chmod 600 "$REVIEW_FILE"
+trap 'rm -f "$REVIEW_FILE"' EXIT
+# Build with jq from the confirmed state, body, and drafted inline comments:
+#   {"event":"APPROVE|COMMENT|REQUEST_CHANGES","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}
+jq -n --arg event "$STATE" --arg body "$REVIEW_BODY" --argjson comments "$INLINE_COMMENTS_JSON" \
+  '{event:$event, body:$body, comments:$comments}' > "$REVIEW_FILE"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "submit {STATE} review on {owner}/{repo}#{number}" -- \
+  gh api "repos/{owner}/{repo}/pulls/{number}/reviews" --method POST --input "$REVIEW_FILE" | jq -r .manifest)
+jq . "$MANIFEST"
+# AskUserQuestion approved this exact manifest. Then:
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+```
+
+- After the review submits, post any Step 3 batched reactions/replies the user agreed to. Each reaction/reply/resolve is its own `external-write-action.py` manifest with its own one-shot token - follow `.claude/docs/github-queries.md -> Resolve Review Threads` for the reply/resolve shapes; reply through the REST endpoint with the integer `databaseId`. Reactions use `gh api "repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions" --method POST --raw-field content="+1"` wrapped in the same manifest gate. Honor the 30-mutation throttle rule in that doc.
+
+## Step 9 - Stage 5: completion message
+
+Reached only after Step 8 submits successfully. Emit a single chat block (labels in `conversation:` language, URL and counts English):
+
+```
+✅ Submitted.
+
+- Review: <full review URL, e.g. https://github.com/owner/repo/pull/N#pullrequestreview-XXXXXX>
+- State: <APPROVE | COMMENT | REQUEST_CHANGES>
+- Inline comments: <N>
+- Reactions: <N>  (omit line if 0)
+- Replies: <N>    (omit line if 0)
+- Daily log: <appended | skipped>
+```
+
+Get the review URL from the execute response (`html_url`, or build `https://github.com/<owner>/<repo>/pull/<N>#pullrequestreview-<id>` from the returned `id`). If a write partially failed (review submitted but a reaction failed), use ⚠️ instead of ✅ and list the failures explicitly.
 
 ## Error Handling
 
@@ -182,6 +240,6 @@ If the user agrees (or proactively says "add this to KB"), run `/nase:kb-update 
 
 ## Final - Daily Log
 
-Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`). Runs at the end of every invocation, including a "No draft" exit.
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`). Runs at the end of every invocation regardless of whether a review was submitted, so a "No draft" or "Draft + discuss" exit still gets a one-line entry. When Step 8 submitted a review, its `Daily log:` field reports the actual outcome (`appended` / `skipped`) and the log line names the state.
 
-Log: `{repo}#{number} - {N} files, {N} issues ({categories}); key: {1-line summary}`
+Log: `{repo}#{number} - {N} files, {N} issues ({categories})[, review: {STATE}]; key: {1-line summary}`

@@ -1,6 +1,6 @@
 ---
 name: nase:discuss-pr
-description: "Read-only PR analysis that finds the product/repo problem, then checks logic, design, simpler options, security, and testability before drafting comments. Use for analyze PR, self-review, prepare review comments, review PR #N, or PR URL + review without posting. Use /nase:address-comments for existing feedback."
+description: "Deep PR review that finds the product/repo problem, auto-traces open questions, then checks logic, design, security, and testability. Drafts inline comments and, after explicit confirmation, submits a GitHub review (Approve/Comment/Request Changes). Use for analyze PR, review PR #N, self-review, or PR URL."
 argument-hint: "<pr-url-or-number>"
 pattern: fan-out
 category: Git workflow
@@ -31,7 +31,7 @@ Fan-out threshold: stay main-thread unless the request spans multiple repos, mor
 
 ## Standing invariants
 
-- This command is read-only. It may draft review comments in chat but never posts, reacts, replies, resolves, edits a PR, or performs another external mutation.
+- Analysis (Steps 1-6.5) is investigation-only and auto-runs deep-dive traces without asking. The only external mutations this command performs are the review submission and any batched reactions/replies the user explicitly approves at Step 7-8. Every GitHub write goes through a payload-bound `external-write-action.py` manifest the user authorizes; never run a raw `gh api` mutation.
 - Keep findings anchored to the stated PR intent and changed code. Drop unrelated pre-existing issues.
 - Fetch existing human and bot comments once, then de-duplicate every candidate against them before presenting.
 - Preserve the KB lookup shape `mentions:<path>` for core changed files.
@@ -63,6 +63,6 @@ Return the complete state contract above. Before Step 6, no user-visible finding
 
 ## Steps 6-Final: Present and hand off
 
-At Step 6, read `.claude/docs/discuss-pr-output.md` once. Follow its exact output order, scorecard, confidence grouping, optional deep dives, draft decision, KB offer, error handling, notes, and daily log.
+At Step 6, read `.claude/docs/discuss-pr-output.md` once. Follow its exact output order, scorecard, confidence grouping, automatic additional deep dives, draft decision, gated review submission, completion message, KB offer, error handling, notes, and daily log.
 
-End after chat drafts or no-draft confirmation. Posting requires a separate explicit GitHub mutation workflow and is never offered by this command.
+The draft decision defaults to drafting inline comments and submitting a GitHub review; the user still actively confirms the draft choice and the review state before any write. All writes go through the `external-write-action.py` manifest gate.

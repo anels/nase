@@ -95,6 +95,8 @@ If there are no code changes after Phase 6:
 - If the final post-Phase-4 dossier/action map has any `accept` threads, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
 - If the final dossier/action map has only `reply-only` / `decline` threads, skip commit and push. Set `no_commit=true`, report `No code changes; proceeding to review replies/resolution only.`, skip Phase 8b, and continue to Phase 9.
 
+**Re-verify worktree HEAD before commit** - a concurrent session can move your branch and drop edits; recover per `worktree-pattern.md`.
+
 Conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope`, no `fixup!`/`squash!`) before committing.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`.

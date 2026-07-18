@@ -16,6 +16,10 @@ For each agent or reviewer finding, verify the flagged line or pattern is genuin
 
 Read the actual file at the referenced line and confirm the reviewer's prose description matches reality. Reviewers (including AI reviewers) misread diffs. If the claim says "missing null check" but the check exists, the suggestion is based on a misread and should be declined regardless of other factors.
 
+## 3.5. Taint-to-new-sink verification
+
+When the diff introduces a **new sink** — a REST path, file read/open, query, or shell argument — fed by an **untrusted field** (a finding's `file`, a webhook value, a user/tenant id), a fresh-context verifier PASS does **not** mean taint-clean. A from-scratch verifier reasons about the slice's stated contract and is blind to taint reaching a sink it authored in the same diff; that is exactly the traversal/injection class it misses. So for any diff that adds a sink: keep authoring and review as separate passes, run the review layer (second reviewer / Copilot / claude) even after a clean verifier, and grep every untrusted field that reaches the new sink for the missing normalization or guard — e.g. `..` surviving `encodeURIComponent` on a contents path, or a file read whose scope falls back to an untrusted value instead of a server-derived one.
+
 ## 4. Resolved-thread HEAD verification
 
 Resolved threads (closed by author or `isResolved: true`) are a hypothesis, not evidence. For each resolved thread that touches code-correctness (not pure style/nit), pull the file at HEAD and grep/read the exact filter, branch, condition, or symbol the thread referenced. If the claimed fix is NOT in HEAD, surface as a new 🔧 needs-fix with note `claimed fixed but not in HEAD`.
