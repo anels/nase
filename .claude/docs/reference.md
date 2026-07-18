@@ -13,6 +13,7 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - Address-comments progressive loading: `address-comments-analysis.md` owns Phases 1-4; `address-comments-delivery.md` owns Phases 5-12. Load delivery only after the user confirms execution.
 - Discuss-pr progressive loading: `discuss-pr-analysis.md` owns Steps 1-5.7; `discuss-pr-output.md` owns Step 6 through final logging. The command remains read-only.
 - PR next-step handoff: `pr-next-step-handoff.md` owns the explicit follow-on workflow choices after comment resolution.
+- Worktree cleanup: `worktree-pattern.md` owns remote-OID verification and safe retained-worktree behavior; automated workflows never force-remove worktrees.
 
 ## Execution Style
 

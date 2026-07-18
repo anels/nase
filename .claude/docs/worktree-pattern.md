@@ -54,12 +54,44 @@ Do **not** switch the main repo off the branch — that touches the user's worki
 
    The lease verifies the remote SHA without needing a local branch ref; `HEAD:{branch}` lands the new commit on the remote branch. The main repo's branch ref auto-updates on next fetch.
 
-4. Cleanup is unchanged (`git worktree remove ... --force`).
+4. Cleanup uses the same remote-OID verification as branch-attached worktrees.
 
 ## Cleanup
 
-After the branch has been pushed (or work is otherwise complete):
+After the branch has been pushed, capture the exact local OID and verify that the
+remote branch still points to it before removing anything:
 
 ```bash
-git -C {repo_path} worktree remove {worktree_path} --force
+NASE_ROOT=$(git rev-parse --show-toplevel)
+EXPECTED_HEAD=$(git -C {worktree_path} rev-parse HEAD)
+python3 "$NASE_ROOT/.claude/scripts/worktree-cleanup.py" \
+  --repo {repo_path} \
+  --worktree {worktree_path} \
+  --remote origin \
+  --remote-ref refs/heads/{branch_name} \
+  --expected-head "$EXPECTED_HEAD"
 ```
+
+The helper refuses the primary or locked worktree, in-progress Git operations,
+remote drift or an unavailable remote, and any tracked, untracked, ignored, or
+recursive submodule content. NUL-delimited index inspection also rejects
+assume-unchanged, skip-worktree, and fsmonitor-valid entries before the claim.
+It never uses `--force`.
+
+The helper uses plain `git worktree move` to claim the clean worktree at a unique
+sibling path and repeats the HEAD, remote, and dirty checks.
+If another process recreates the old path, both the registered worktree and the
+foreign path are preserved. A temporary local safety ref pins HEAD through the
+claim and remote recheck. It then locks and retains the claimed worktree:
+portable Git has no atomic delete-if-clean operation, so a final scan cannot
+prove that another process will not write immediately before deletion. Inspect
+the claimed path manually only after confirming no process can still write to
+it, then explicitly unlock and remove it.
+
+Return codes:
+
+- `3`: safely retained; report every returned path as a non-failure outcome.
+- `2`: invalid input or unparseable Git state; stop the workflow and report the error.
+
+Automated consumers must keep cleanup-only state and research artifacts on
+return `3`.

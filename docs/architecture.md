@@ -81,6 +81,14 @@ Known patterns rejected at the `PreToolUse:Bash` layer before they execute:
 
 The hook parses Bash tool-call JSON with `jq`, splits executable segments on shell separators while ignoring quoted separators, normalizes common launchers/env assignments/absolute git paths/global options, then applies the destructive-git policy. It intentionally covers known patterns only.
 
+Automated worktree cleanup routes through `.claude/scripts/worktree-cleanup.py`.
+It verifies the live remote OID and complete dirty state, refuses primary or
+in-progress worktrees, and rejects index entries hidden by assume-unchanged,
+skip-worktree, or fsmonitor-valid flags. It atomically claims and locks the path
+with `git worktree move`. Portable Git has no atomic delete-if-clean operation,
+so a final scan cannot safely justify automatic removal. A temporary local ref
+pins detached HEAD through the claim.
+
 Regression tests live in `tests/hooks/test-block-dangerous-git.sh`. Add bypass-shaped cases whenever parsing tightens. Missing/unparseable `jq` input blocks the Bash call.
 
 ### `/nase:prep-merge` squash keyword scan
