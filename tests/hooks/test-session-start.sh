@@ -64,11 +64,25 @@ fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 
 repo="$fixture/repo"
-mkdir -p "$repo/.claude/hooks" "$repo/workspace/logs" "$repo/workspace/skills"
+mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" "$repo/workspace/logs" \
+  "$repo/workspace/skills" "$repo/workspace/kb/general"
 git -C "$repo" init -q
 cp "$HOOK" "$repo/.claude/hooks/session-start.sh"
+cp "$ROOT/.claude/scripts/workspace-archive.py" "$ROOT/.claude/scripts/workspace_lock.py" \
+  "$repo/.claude/scripts/"
 printf '%s\n' '2026-05-28T00:00:00 [WARNING] backup target unavailable' > "$repo/workspace/logs/.backup-status"
 printf 'backup-target=%s\n' "$fixture/backups" > "$repo/.local-paths"
+cat > "$repo/workspace/kb/general/tech-trends.md" <<'TRENDS'
+# Tech Trends
+
+## Tech Digest — 2020-01-01
+
+old trend
+
+## Tech Digest — 2099-01-01
+
+future trend
+TRENDS
 
 cat > "$repo/workspace/skills/read-only.md" <<'SKILL'
 ---
@@ -151,7 +165,7 @@ user-invocable: false
 Delete me.
 SKILL
 
-out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+out=$(cd "$repo/workspace" && bash "$repo/.claude/hooks/session-start.sh")
 rc=$?
 if [ "$rc" -eq 0 ]; then
   printf 'PASS  session-start exits cleanly\n'
@@ -251,6 +265,57 @@ fi
 assert_json_reload "reloadSkills true after wrapper sync" "$out"
 assert_contains "warning-only backup status does not abort" "$out" "no successful backup recorded yet"
 assert_contains "backup-target-only local paths does not abort" "$out" "backup target not reachable"
+assert_contains "old tech trend is archived" "$(cat "$repo/workspace/kb/general/tech-trends-archive-2020.md")" "old trend"
+assert_contains "future tech trend stays live" "$(cat "$repo/workspace/kb/general/tech-trends.md")" "future trend"
+
+# A pending journal bypasses the source-exists gate so missing-source recovery
+# is reported instead of silently abandoned.
+python3 - "$repo" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+from unittest import mock
+
+root = Path(sys.argv[1])
+script = root / ".claude/scripts/workspace-archive.py"
+spec = importlib.util.spec_from_file_location("workspace_archive", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+source = root / "workspace/kb/general/tech-trends.md"
+source.write_text(
+    "# Tech Trends\n\n## Tech Digest — 2020-01-01\n\npending missing source\n",
+    encoding="utf-8",
+)
+real_replace = module.atomic_replace
+
+
+def fail_source_replace(path, content, validate, snapshot):
+    if path == source:
+        raise OSError("source replace failed")
+    return real_replace(path, content, validate, snapshot)
+
+
+with mock.patch.object(module, "atomic_replace", side_effect=fail_source_replace):
+    try:
+        module.rotate_tech_trends(root)
+    except OSError:
+        pass
+assert module.journal_path(root, "tech-trends").exists()
+source.unlink()
+PY
+
+pending_out=$(cd "$repo" && bash .claude/hooks/session-start.sh 2>&1)
+assert_contains "pending tech journal bypasses missing source gate" "$pending_out" "tech digest archival failed"
+if [ -f "$repo/.nase-locks/workspace-archive-tech-trends.json" ]; then
+  printf 'PASS  missing source preserves pending tech journal\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  missing source preserves pending tech journal\n' >&2
+  fail=$((fail + 1))
+fi
+rm "$repo/.nase-locks/workspace-archive-tech-trends.json"
+printf '# Tech Trends\n' > "$repo/workspace/kb/general/tech-trends.md"
 
 chmod 0600 "$wrapper"
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)

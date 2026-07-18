@@ -531,7 +531,7 @@ def cmd_move_existing(args: argparse.Namespace) -> None:
     source = validate_target(root, args.target)
     destination = validate_target(root, args.destination)
     try:
-        with held(root, timeout_ms=5000):
+        with held(root, timeout_ms=args.lock_timeout_ms):
             try:
                 source_mode = lexical_source.lstat().st_mode
             except OSError as exc:
@@ -632,6 +632,7 @@ def build_parser() -> argparse.ArgumentParser:
     move_existing.add_argument("--target", required=True)
     move_existing.add_argument("--destination", required=True)
     move_existing.add_argument("--older-than-days", type=positive_int, required=True)
+    move_existing.add_argument("--lock-timeout-ms", type=positive_int, default=5000)
     move_existing.set_defaults(func=cmd_move_existing)
 
     return parser

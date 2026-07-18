@@ -100,6 +100,10 @@ stays active. For terminal transitions, use the guard's `apply-move` operation; 
 run `apply` followed by `mv`. If the source drifts or `done/{slug}.md` already exists,
 preserve the staged draft and leave the source active. Log each applied transition.
 
+Completed effort retention uses `workspace-write-guard.py move-existing` with the
+60-day age gate. The operation refuses an existing archive destination and leaves
+both files unchanged, so a same-name archive is never overwritten.
+
 ## Dependency & Discovery Fields
 
 Two optional frontmatter keys make dependencies first-class instead of prose buried

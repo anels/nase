@@ -72,6 +72,12 @@ python3 .claude/scripts/workspace-write-guard.py apply \
 If the target changed, `apply` exits `3` and prints:
 `Target changed while drafting; staged file preserved at {path}`.
 
+Background completed-effort retention uses `move-existing --older-than-days 60
+--lock-timeout-ms 250`.
+It applies the same repository mutation lock and no-clobber move contract without
+a human review stage. Exit `4` means the archive destination already exists; the
+source and destination are both retained.
+
 For a guarded rename that also replaces file content, use `apply-move` instead
 of `apply` followed by `mv`. It rechecks the source and atomically refuses an
 existing destination, so a stale `done/{slug}.md` cannot be overwritten. It
