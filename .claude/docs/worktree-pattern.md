@@ -56,6 +56,12 @@ Do **not** switch the main repo off the branch — that touches the user's worki
 
 4. Cleanup uses the same remote-OID verification as branch-attached worktrees.
 
+## Recovery: a concurrent session moved your worktree
+
+A concurrent `/nase:address-comments` (or other) session sharing repo state can check out a different branch in your worktree path between phases, silently dropping your uncommitted edits. So re-verify HEAD before commit: confirm `git -C {worktree_path} rev-parse --abbrev-ref HEAD` still equals `{branch}` before staging.
+
+If it moved, do **not** yank the worktree back — the other session may be mid-flight on it. Create a fresh suffixed worktree (e.g. `{suffix}-1`) on `origin/{branch}` and redo the edits. `origin` HEAD is the source of truth and uncommitted edits are cheap to redo.
+
 ## Cleanup
 
 After the branch has been pushed, capture the exact local OID and verify that the
