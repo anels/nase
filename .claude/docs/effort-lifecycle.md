@@ -1,5 +1,19 @@
 # Effort Lifecycle
 
+## Contents
+
+- Stage Classifier
+- Status Vocabulary
+- Drift Auto-Sync
+- Dependency & Discovery Fields
+- PR Reference Resolution
+- Single-File Invariant
+- Design Creation
+- Lifecycle
+- FSD Update
+- Prep-Merge Update
+- Wrap-Up Read Path
+
 Shared rules for `workspace/efforts/{slug}.md` and related `todo.md` entries.
 Callers own inferring the slug; this doc owns status names and lifecycle edits.
 

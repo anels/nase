@@ -1,5 +1,10 @@
 # FSD Phase Decomposition — "Direct with Phase isolation" Algorithm
 
+## Contents
+
+- Phases
+- Completion Log
+
 Full algorithm for Phase 3.7. Only applies when `execution_mode = "Direct with Phase isolation"`.
 
 `/nase:fsd` Phase 3 provides `{branch_name}` plus path-safe `{branch_slug}`.

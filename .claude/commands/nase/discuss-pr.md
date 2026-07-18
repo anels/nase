@@ -1,6 +1,6 @@
 ---
 name: nase:discuss-pr
-description: "Deep PR review that finds the product/repo problem, auto-traces open questions, then checks logic, design, security, and testability. Drafts inline comments and, after explicit confirmation, submits a GitHub review (Approve/Comment/Request Changes). Use for analyze PR, review PR #N, self-review, or PR URL."
+description: "Deeply review a PR and draft evidence-backed inline findings. Use for analyze PR, review PR, self-review, or a PR URL; use /nase:address-comments for existing feedback."
 argument-hint: "<pr-url-or-number>"
 pattern: fan-out
 category: Git workflow

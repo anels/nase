@@ -1,5 +1,25 @@
 # Grill Mode (`/nase:design --grill`)
 
+## Contents
+
+- Activation
+- Step 1: Resolve Target Plan
+- Step 2: Confirm Target Repo
+- Step 2.5: Ground the mechanism premise
+- Step 3: Build Decision Tree
+- Step 3.4: Persona Lenses (multi-perspective grill)
+- Step 3.5: Codex Mutual Grill Round 1 (cross-model questions)
+- Step 4: Grill Loop (frontier rounds)
+- Step 5: Termination
+- Step 5.5: Codex Mutual Grill Round 2 (answer Claude's questions)
+- Step 5.6: Convergence loop
+- Step 6: Write Back to Effort Doc
+- Grill Session - {YYYY-MM-DD}
+- Step 6.5: Doc Hygiene Pass (auto-cleanup)
+- Step 7: Report
+- Step 8: Follow-up Human Grill Recommendation (when applicable)
+- Notes
+
 Stress-test an existing plan via a relentless frontier-round interview. Goal: walk every branch of the decision tree until shared understanding, resolving each round's frontier (facts first, then a batched ask) and recording resolutions back to the effort doc so `/nase:fsd` can pick up the constraints.
 
 ## Activation

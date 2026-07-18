@@ -1,5 +1,16 @@
 # External Mutation Policy — Shared Reference
 
+## Contents
+
+- The rule
+- CLI mutation action contract
+- Hook backstops
+- What this policy is NOT
+- Application checklist for new skills
+- GitHub auth account guard
+- Related memories
+- Reference from skills
+
 Canonical rule for skills that change state in systems outside the local workspace (Slack, Jira, Confluence, GitHub, ADO, cloud resources).
 
 ---
@@ -193,6 +204,6 @@ Skills that should reference this guard: `address-comments`, `prep-merge`, `requ
 ## Reference from skills
 
 Add a one-line pointer near the top of any mutation-capable skill:
-> Follows `.claude/docs/external-mutation-policy.md` — every external write goes through draft-first or `AskUserQuestion`.
+> Follows `.claude/docs/external-mutation-policy.md` - every external write goes through draft-first or `AskUserQuestion`.
 
 Do not re-document the rules per skill. Update the doc here when the policy evolves.

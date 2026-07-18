@@ -1,5 +1,24 @@
 # Skill Authoring Contract — Shared Reference
 
+## Contents
+
+- Scope
+- 1. Language preflight (chat output)
+- 2. External mutation = explicit gate
+- 2.5. Durable workspace writes = staged + drift-checked
+- 3. ADO CLI doctrine
+- 4. Git safety
+- 5. AskUserQuestion discipline
+- 6. Bash hygiene
+- 7. Subagent context isolation
+- 8. Anti-overlap rule ("Saying yes = saying no") + team-architecture pattern
+- 9. Output discipline (delegated)
+- 10. Skill-invocation error handling
+- 11. Authoring self-review: failure modes & invocation cost (advisory)
+- 12. Context budgets and progressive disclosure
+- CI
+- Editing this doc
+
 Hard rules every `/nase:*` (and `/nase:workspace:*`) skill MUST follow. Companion to `.claude/docs/skill-contract.md` (output discipline). This doc covers **behavior**.
 
 Skim once before authoring; treat as binding when editing skill files.
@@ -185,9 +204,27 @@ Completion criteria have two axes: **clarity** (resists premature completion) + 
 
 ---
 
+## 12. Context budgets and progressive disclosure
+
+Treat the command body as a dispatcher: public interface, routing, mandatory safety/quality gates, and completion contract. Put deterministic parsing in scripts and branch-specific procedures, long examples, query recipes, and templates in direct references.
+
+Hard budgets:
+
+- every top-level core or workspace entrypoint: at most 250 lines and 12,000 bytes
+- each description: at most 240 characters; the combined native + workspace catalog: at most 9,000 characters
+- shared references: at most 500 lines; references over 100 lines include `## Contents`
+
+Descriptions state capability plus concrete trigger/exclusion language. Do not summarize the workflow there; workflow summaries can override the more precise body and permanently consume routing context. Omit `when_to_use` when it only repeats `description`.
+
+Keep execution-critical references one level from the entrypoint where practical. Avoid self-references and missing paths. Preserve safety, completion, and behavior gates when moving detail; context reduction is not permission to weaken results.
+
+CI checks: `tests/scripts/test-command-skill-size-budget.sh` and `tests/check-shared-doc-refs.sh`.
+
+---
+
 ## CI
 
-`tests/check-skill-doctrine.sh` enforces sections 1, 2, 2.5, 3, and 8 mechanically, plus archive/import hardening rules. Run via `bash tests/check-all.sh` before pushing any skill change. Section 11 is advisory (no mechanical check).
+`tests/check-skill-doctrine.sh` enforces sections 1, 2, 2.5, 3, and 8 mechanically, plus archive/import hardening rules. The context-budget checks enforce section 12. Run via `bash tests/check-all.sh` before pushing any skill change. Section 11 is advisory.
 
 ## Editing this doc
 

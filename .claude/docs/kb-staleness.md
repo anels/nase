@@ -1,5 +1,16 @@
 # KB Staleness Detection
 
+## Contents
+
+- Inputs
+- Step A: Last-active date per file (dual track)
+- Step B: Classify each file
+- Step C: Orphan and gap scan
+- Step D: Lesson promotion candidates
+- Step D2: Low-value accretion candidates
+- Step E: Temp and outdated artifact scan
+- Output for the caller
+
 > Shared algorithm for surfacing stale, orphaned, and outdated KB content. Referenced from `/nase:kb-review` (Steps 1, 4, 4b) and `/nase:doctor --deep`. Edit here, not in the skills.
 
 ## Inputs

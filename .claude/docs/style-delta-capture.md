@@ -1,5 +1,14 @@
 # Style Delta Capture Protocol
 
+## Contents
+
+- When to capture
+- Daily Log Line Format
+- Inline vs Batch Decision
+- Section Mapping
+- Wrap-up Consolidation (Step 4e)
+- Anti-pollution Guards
+
 Self-triggered learning loop. When the user corrects wording on a draft you produced, log the correction as a pending `[STYLE-DELTA]` line in the daily log. `/nase:wrap-up` Step 4e batches pending deltas into proposed edits to `workspace/communication-style.md` under a Tier B approval gate.
 
 ## When to capture

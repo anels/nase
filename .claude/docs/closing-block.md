@@ -1,5 +1,16 @@
 # Closing Block — Shared Reference
 
+## Contents
+
+- Shape
+- Name resolution
+- Tint: style palette (pick one per run)
+- Tint generation rules
+- TLDR rules
+- `deadpan` style: seed bank
+- Dark / cold tint seed bank
+- EOD tint variant (`/nase:wrap-up` only)
+
 Canonical spec for the compact closing card that ends `/nase:today` and `/nase:wrap-up`. Both skills produce the same shape; only the TLDR source differs.
 
 ---

@@ -1,5 +1,11 @@
 # GitHub Queries — Shared Reference
 
+## Contents
+
+- PR Metadata
+- Unresolved Review Threads
+- Resolve Review Threads
+
 Shared query definitions referenced by nase skills.
 
 Prefer `.claude/scripts/pr-github-helper.py` for standard PR parsing, metadata

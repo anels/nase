@@ -1,8 +1,7 @@
 ---
 name: nase:estimate-eta
-description: Estimate the effort and ETA for a given task or feature request. Use whenever someone asks "how long will this take?", "when can we ship X?", "estimate this", or before committing to a timeline.
+description: "Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, estimate this, or before committing to a timeline."
 argument-hint: "<task-or-feature>"
-when_to_use: "Estimate the effort and ETA for a given task or feature request. Use whenever someone asks \"how long will this take?\", \"when can we ship X?\", \"estimate this\", or before committing to a timeline."
 pattern: utility
 category: Reporting
 ---

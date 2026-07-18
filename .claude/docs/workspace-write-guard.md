@@ -1,5 +1,12 @@
 # Workspace Write Guard
 
+## Contents
+
+- Default Flow
+- Helper Usage
+- Append-Only Exceptions
+- Auto-Accept Rules
+
 Shared guard for skills that write durable workspace files such as `workspace/kb/**`,
 `workspace/tasks/**`, `workspace/skills/**`, or other allowed targets listed below.
 Temporary reports under `workspace/tmp/` can skip the mtime gate, but still should use

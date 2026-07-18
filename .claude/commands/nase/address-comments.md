@@ -1,6 +1,6 @@
 ---
 name: nase:address-comments
-description: "Act on unresolved PR review comments with per-thread dossiers, code fixes or replies, push when code changed, and resolve approved threads. Use for address comments, fix review comments, handle PR feedback, resolve comments, or respond to reviewer. For first-pass review, use /nase:discuss-pr."
+description: "Resolve existing PR review feedback with fixes or replies. Use for address comments, fix review comments, handle PR feedback, or resolve threads."
 argument-hint: "<pr-url-or-number>"
 pattern: pipeline
 category: Git workflow

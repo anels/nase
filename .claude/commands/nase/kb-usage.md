@@ -1,6 +1,6 @@
 ---
 name: nase:kb-usage
-description: "Read-only KB observability report: shows which skills used which KB files, top files/skills, access-source breakdown, and mapped KB files with no recent usage. Supports --window N|all, --top N, and --verbose."
+description: "Report which skills use which KB files and which mapped files are unused. Use for KB usage, KB observability, top KB files, or unused KB entries."
 argument-hint: "[--skill name|--days N]"
 pattern: utility
 category: Reporting

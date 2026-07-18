@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and score offline PR/review skill eval cases."""
+"""Validate and score offline skill output eval cases."""
 
 from __future__ import annotations
 

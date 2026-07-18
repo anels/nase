@@ -1,5 +1,19 @@
 # Confluence ADF Pattern — Shared Reference
 
+## Contents
+
+- Always write with `contentFormat: "adf"`
+- Update vs Create
+- Full Body Requirement
+- Jira Links: always `inlineCard`
+- GitHub & other external links
+- People mentions: `mention` node
+- Draft Pages
+- Preserve Existing Content
+- Batch All Changes
+- Runbook Search Pattern
+- ADF Format Details
+
 Shared rules for reading and writing Confluence pages via Atlassian MCP. Referenced by skills that touch Confluence pages (runbook-from-incident, kb-teamshare, investigate-sre-jira, alert-rule-quality-checker).
 
 ---

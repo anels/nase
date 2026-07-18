@@ -127,16 +127,17 @@ hooks gate risky tool calls, scripts provide deterministic checks, and
 - **30+ Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
 - **Lifecycle hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
 - **Evidence loops** — PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and optional read-only Codex checks when configured.
-- **Offline PR evals** — `evals/pr-review/` contains deterministic output-shape checks for high-frequency PR/review and audit workflows.
+- **Offline skill evals** - `evals/pr-review/` covers PR/review flows; `evals/core-workflows/` covers design, daily, learning, onboarding, incident, and deployment flows.
 
 `workspace/` content persists locally and is auto-backed-up. The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) lives in git; your content stays local.
 
 Architecture details live in [`docs/architecture.md`](docs/architecture.md).
 
-Run the PR/review eval schema check locally:
+Run the offline eval schema checks locally:
 
 ```bash
 python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
+python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.json
 ```
 
 ### Design principles
@@ -237,78 +238,77 @@ python3 .claude/scripts/pr-review-eval.py validate evals/pr-review/evals.json
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:doctor` | Run a self-diagnostic check to verify the workspace is properly configured and healthy. Use when something feels off — hooks not firing, backup warnings, after a migration, or proactively before a new sprint. Triggers: 'doctor', 'check workspace', 'diagnose nase', 'verify config', 'health check', 'workspace doctor', 'is nase healthy'. |
-| `/nase:help` | Display a usage guide for this AI engineer workspace. Use when asked "what commands are available?", "how does nase work?", "help", "show commands", "what can you do?", "what skills do you have?", or for an overview of skills and hooks. |
-| `/nase:init` | Initialize or reconfigure the nase workspace. Use for first-time setup, after cloning on a new machine, or when workspace/config.md is missing. Safe to re-run — idempotent. Triggers: 'init nase', 'setup workspace', 'configure nase', 'first-time setup', 'reconfigure workspace', 'bootstrap nase'. |
+| `/nase:doctor` | Diagnose nase workspace configuration, hooks, backups, tools, and skill sync. Use for doctor, health check, hooks not firing, backup warnings, or after migration. |
+| `/nase:help` | Show the nase command and hook guide. Use for help, show commands, what can you do, what skills are available, or how does nase work. |
+| `/nase:init` | Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing workspace/config.md, init nase, configure, or bootstrap. |
 
 ### Knowledge base
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:kb-gap-detect` | Scan daily logs and lessons for missing KB topics, cluster gaps, and propose additions. Use for knowledge gap, find KB holes, or what should I document. Read-only by default; complements /nase:kb-review, which finds stale or duplicate entries. |
-| `/nase:kb-merge` | Import and merge a teammate's shared knowledge base into your own workspace KB — intelligently merges overlapping files, shows a diff preview before writing, and updates the domain map. Use when asked "import KB", "merge KB", "import knowledge base", "merge shared KB", or after receiving a KB export from /nase:kb-teamshare. |
-| `/nase:kb-review` | Review, organize, consolidate KB files — dedup, cross-ref, surface stale content, promote lessons. Use weekly/monthly as KB hygiene, when KB feels messy, or after several /nase:learn entries. Triggers: 'review KB', 'organize notes', 'clean up KB', 'what's in my KB'. |
-| `/nase:kb-search` | Search all KB files for a topic, keyword, or pattern. Use to find documented context, verify whether something is already in the KB, or discover related entries. Triggers: search KB, find in KB, or is X in the KB. Read-only; use /nase:kb-update or /nase:learn to add entries. |
-| `/nase:kb-teamshare` | Export KB files or learned workspace skills for teammates with sanitization and portable links. Use for share my KB, export KB, export knowledge base, share skills, or packaging content for /nase:kb-merge. |
-| `/nase:kb-update` | Persist durable repo-specific knowledge — architecture, constraints, API contracts, naming conventions tied to one codebase. Example: 'the Insights repo requires OrderBy before Skip in EF queries' → /kb-update. For general or cross-project patterns, use /nase:learn instead. Triggers: 'update KB', 'add to knowledge base', 'document this pattern'. |
-| `/nase:onboard` | Onboard or refresh project repos in the workspace knowledge base. Without arguments, refreshes ALL already-onboarded repos from workspace/context.md. With a repo path or GitHub URL, onboards or refreshes that single repo. Run before EVERY work session. Use when starting work on any repo, or when asked to "onboard", "refresh KB", "refresh all repos", "add repo", or "update knowledge base". |
-| `/nase:tech-digest` | Fetch and summarize latest tech news from configured sources, filtered to workspace topics, with source links, caching, actionable adoption notes, and concrete follow-up actions when useful. Supports --force, --dry-run, --since, --section, and --sources. Triggers: 'tech news', 'tech digest', 'what's new', 'morning digest', 'tech roundup', 'latest in AI', 'today's news'. |
+| `/nase:kb-gap-detect` | Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries. |
+| `/nase:kb-merge` | Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export. |
+| `/nase:kb-review` | Audit and organize KB files for duplicates, links, staleness, and lesson promotion. Use for review KB, organize notes, clean up KB, or periodic KB hygiene. |
+| `/nase:kb-search` | Search KB files for topics, keywords, patterns, and related entries. Use for search KB, find in KB, or is X documented; use /nase:kb-update or /nase:learn to write. |
+| `/nase:kb-teamshare` | Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, share skills, or package content for /nase:kb-merge. |
+| `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns. |
+| `/nase:onboard` | Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL. |
+| `/nase:tech-digest` | Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, tech digest, what's new, latest in AI, morning digest, or tech roundup. |
 
 ### Learning & reflection
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:extract-skills` | Analyze the current session and extract reusable problem-solving patterns as new nase skills. Run at the end of any session where you solved a non-trivial problem or found a useful technique. Also triggers on "extract pattern", "save technique", "capture workflow". |
-| `/nase:learn` | Deep-dive a tip, URL, repo, or cross-project pattern into structured KB knowledge. Use for remember this, save this tip, learn from this, deep dive on X, article URL, or general programming insights. For one-repo constraints, API contracts, or naming rules, use /nase:kb-update. |
-| `/nase:reflect` | Run a structured post-task reflection to extract learnings and improve future performance. Use after completing a feature, fixing a bug, or finishing a debugging session — especially when something surprised you or went wrong. Also triggers on "reflect on this", "what went well", or "post-mortem". |
-| `/nase:today` | Plan today's work — quick morning kickoff focused on what to do today, with proactive Need Attention items (live status-checked — PR review/CI state, Slack replies/reactions, Confluence page activity) and optional concrete next actions from KB, logs, tasks, Jira, Slack, and Confluence. Use at the start of each work session, or when asked "what should I work on?", "morning kickoff", "morning standup", "daily plan", "what's my plan for today?", "start of day", or "daily kickoff". |
-| `/nase:wrap-up` | Run at end of day to capture reflection, lessons, KB updates, and a journal entry in one pass. Use when the user says "wrap up", "end of day", "EOD", "done for today", "closing out", or wants to summarize today's work. |
+| `/nase:extract-skills` | Extract reusable problem-solving patterns from the current session into nase skills. Use after non-trivial work or for extract pattern, save technique, or capture workflow. |
+| `/nase:learn` | Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, deep dive, or article URL. |
+| `/nase:reflect` | Reflect on completed work and extract lessons. Use after a feature, bug fix, or debugging session, or for reflect, what went well, or post-mortem. |
+| `/nase:today` | Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context. Use for today, morning kickoff, daily plan, standup, or what should I work on. |
+| `/nase:wrap-up` | Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, EOD, done for today, closing out, or summarize today. |
 
 ### Design & implementation
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:design` | KB-aware design — researches context (codebase, KB, official docs, dependency source, forums), explores 2-3 approaches with tradeoffs, writes a tracked, junior-implementable effort doc with a built-in ETA estimate. Design only, no code (use /nase:fsd to implement). Defaults to an end-to-end auto pass that asks any genuine human-input questions at the end. Supports `--interactive` (turn-by-turn flow), `--grill` (multi-persona stress-test), `--review` (re-evaluate), `--auto` (explicit auto pass). Triggers: 'design', 'brainstorm', 'plan feature', 'kickoff', 'I want to build', 'grill plan', 'auto design'. |
-| `/nase:fsd` | End-to-end task workflow from plan to merged-ready draft PR; writes and pushes code after upfront options are confirmed. Use for fsd, full self-develop, just do it, run it autonomously, fire and forget, or feature/fix handoff. For design-only planning, use /nase:design. |
+| `/nase:design` | Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill plan, or review a design. |
+| `/nase:fsd` | Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, fire and forget, or feature/fix handoff. |
 
 ### Git workflow
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:address-comments` | Act on unresolved PR review comments with per-thread dossiers, code fixes or replies, push when code changed, and resolve approved threads. Use for address comments, fix review comments, handle PR feedback, resolve comments, or respond to reviewer. For first-pass review, use /nase:discuss-pr. |
-| `/nase:discuss-pr` | Deep PR review that finds the product/repo problem, auto-traces open questions, then checks logic, design, security, and testability. Drafts inline comments and, after explicit confirmation, submits a GitHub review (Approve/Comment/Request Changes). Use for analyze PR, review PR #N, self-review, or PR URL. |
-| `/nase:improve-commit-message` | Analyze the last commit and rewrite its message following conventional commits / commitlint rules. Always invoke before git push — part of the standard commit sequence. Use when asked to "improve commit", "fix commit message", "amend commit", "clean up commit", "before push", or after committing code. Also invoked automatically by /nase:fsd and /nase:prep-merge. |
-| `/nase:prep-merge` | Prepare a PR for merge — verify all comments resolved, squash commits, force-push, and update PR title/description. Use when given a PR URL and asked to prepare, clean up, squash, finalize, or get a PR merge-ready. Also triggers on "prep merge", "squash and push", "clean up PR", "ready to merge", "finalize PR", or any request to tidy a PR's commit history before merging. |
-| `/nase:request-review` | Find PR reviewers and stage Slack DM drafts. Use with one or more PR URLs when asked to notify reviewers, request approval, or ping code owners. Reads CODEOWNERS and KB context, groups cherry-pick PRs per reviewer, and confirms before staging messages. |
-| `/nase:simplify` | Simplify recently-modified code and remove AI-shaped slop while preserving behavior. Part of the standard commit sequence before /nase:improve-commit-message. Use when asked to "simplify", "clean up code", "refactor for clarity", "tidy up", "deslop", "anti-slop", or before any commit. Also invoked by /nase:fsd Phase 6. |
+| `/nase:address-comments` | Resolve existing PR review feedback with fixes or replies. Use for address comments, fix review comments, handle PR feedback, or resolve threads. |
+| `/nase:discuss-pr` | Deeply review a PR and draft evidence-backed inline findings. Use for analyze PR, review PR, self-review, or a PR URL; use /nase:address-comments for existing feedback. |
+| `/nase:improve-commit-message` | Rewrite the latest commit message to match repo conventions. Use after committing, before push, or for improve commit, fix commit message, amend commit, or clean up commit. |
+| `/nase:prep-merge` | Prepare a PR for merge by checking threads, history, verification, and metadata. Use with a PR URL only for explicit prep merge, squash and push, clean up, ready-to-merge, or finalize intent. |
+| `/nase:request-review` | Find appropriate PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, request approval, notify reviewers, or ping code owners. |
+| `/nase:simplify` | Simplify recently modified code without changing behavior. Use before commit or for simplify, clean up code, refactor for clarity, tidy up, deslop, or anti-slop. |
 
 ### Reporting
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:effort-rollup` | Generate a monthly delivered-work report from completed efforts, reconciled against live GitHub PR state and Jira status, with before→after impact metrics and a self-contained HTML report artifact. Use for monthly report, month in review, what did I ship in <month>, effort rollup, monthly retrospective, impact report, or 'make me that report again'. Distinct from /nase:efforts (present-tense active inventory), /nase:recap (prose narrative), and /nase:stats (activity counts) — this one pulls live PR/Jira data, splits delivered vs closed-without-delivery, and produces a visual report. |
-| `/nase:efforts` | Report active efforts by stage/status, verify live PR/Jira state, sync merged work to awaiting-deploy, and move deployed or abandoned work to done/ (completed/wontfix). Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. Use /nase:stats for activity counts. |
-| `/nase:estimate-eta` | Estimate the effort and ETA for a given task or feature request. Use whenever someone asks "how long will this take?", "when can we ship X?", "estimate this", or before committing to a timeline. |
-| `/nase:kb-usage` | Read-only KB observability report: shows which skills used which KB files, top files/skills, access-source breakdown, and mapped KB files with no recent usage. Supports --window N\|all, --top N, and --verbose. |
-| `/nase:recap` | Generate a structured recap of completed work plus actionable improvement suggestions. Use when asked to "recap", "review my work", "review progress", "summarize", "what did I do", or "show my progress" for a week or month. Prompts for period if not specified. Always ends with concrete next-period suggestions. |
-| `/nase:skill-usage` | Report /nase:* skill usage from workspace/stats/skill-usage.jsonl with total, 30/7-day windows, last-used date, and deprecation candidates. Use for which skills do I use, skill stats, or deprecate skills. Read-only; writes a stats report. |
-| `/nase:stats` | Display workspace usage statistics inline (no report file) — vertical column chart (per-day ≤14d, per-week >14d), tiered skill usage, and summary counters. For a structured narrative recap of completed work, use /nase:recap instead. Use when asked "show stats", "how active am I", "productivity", "how much have I done", or to review activity patterns over 7/30/all-time windows. |
+| `/nase:effort-rollup` | Build a monthly delivery report from live PR and Jira state. Use for effort rollup, impact report, month in review, or what did I ship. |
+| `/nase:efforts` | Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. |
+| `/nase:estimate-eta` | Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, estimate this, or before committing to a timeline. |
+| `/nase:kb-usage` | Report which skills use which KB files and which mapped files are unused. Use for KB usage, KB observability, top KB files, or unused KB entries. |
+| `/nase:recap` | Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, review progress, what did I do, or summarize a period. |
+| `/nase:skill-usage` | Report skill usage, outcomes, context hotspots, and deprecation candidates. Use for which skills do I use, skill stats, skill token cost, context hotspots, or deprecate skills. |
+| `/nase:stats` | Display workspace activity counts and charts inline. Use for show stats, how active am I, productivity, or 7/30/all-time activity; use /nase:recap for narrative. |
 
 ### Security & maintenance
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:skill-audit` | Scan skill files for security risks — command injection, data exfiltration, prompt injection, unsafe file ops, supply chain threats, and credential exposure. Use before importing external skills, after /nase:kb-merge, or periodically as security hygiene. Triggers on: 'audit skills', 'scan skills', 'skill security', 'check skills for safety', or when importing untrusted skill files. |
-| `/nase:tech-debt-audit` | Audit a repo for tech debt, architecture health, best-practice gaps, modernization options, and AI verification debt. Use during onboarding, before planning, or for what tech debt do we have, architecture review, best practices, AI verification debt, or modernization. |
+| `/nase:skill-audit` | Scan skills for injection, exfiltration, unsafe operations, supply-chain, and credential risks. Use for audit skills, skill security, or imported skills. |
+| `/nase:tech-debt-audit` | Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for tech debt audit, architecture review, or modernization. |
 
 ### Backup & restore
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:restore` | Restore workspace/ from a zip backup. Use after a machine migration, accidental deletion, when workspace/ is out of sync with the backup, or when asked to "sync workspace/", "recover workspace", "restore from backup", or "pull backup". |
+| `/nase:restore` | Restore workspace/ from a backup. Use after migration or deletion, when local state is out of sync, or for sync workspace, recover workspace, restore backup, or pull backup. |
 
 ---
-
 ## Hooks at a glance
 
 Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destructive git patterns before execution: direct or wrapped `git reset --hard`, `clean -f`, `branch -D`, unsafe alias injection, hook/signing bypass flags, protected-branch pushes to any remote, and remote branch deletion. This is defense-in-depth, not a full shell sandbox.

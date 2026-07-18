@@ -1,5 +1,17 @@
 # MS Learn Grounding — Shared Reference
 
+## Contents
+
+- Server
+- When to Invoke
+- What to Ground
+- Algorithm
+- Failure Modes
+- Out of Scope
+- Audit Trail
+- MS Learn Grounding
+- Relation to Other Validation
+
 Read-only verification step that grounds KB claims about Azure / .NET / Microsoft SDK behavior against authoritative Microsoft Learn documentation.
 
 Used by `/nase:onboard` Step 3j and any future skill that writes durable claims about Microsoft technology surfaces.

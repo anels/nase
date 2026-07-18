@@ -1,5 +1,11 @@
 # Design Research & Plan Gates — Shared Reference
 
+## Contents
+
+- Part A: External Research
+- Part B: Plan-Phase Gates
+- Part C: Implementation-Readiness Spec
+
 Used by `/nase:design` (Phase 1–4), `/nase:fsd` Phase 3.5, `design-auto-mode.md`, and `design-grill-mode.md`.
 Three parts: **A. External Research** (look outward before designing), **B. Plan-Phase Gates** (what to prove before committing to an approach), **C. Implementation-Readiness Spec** (what makes a plan junior-implementable). Apply only the parts that fit the scope — a quick-fix touches A lightly and skips most of B.
 
