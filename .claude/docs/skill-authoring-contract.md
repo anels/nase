@@ -198,6 +198,16 @@ Six failure modes to scan a draft for:
 5. **No-op** — a line the model already obeys by default. Test: *does it change behavior vs default?* "Be thorough" is a no-op; replace with a stronger leading word ("relentless"). Prune with the no-op test **per sentence in isolation — delete the whole sentence when it fails**, not trim words. Be aggressive.
 6. **Negation** — a bare prohibition backfires ("don't think of an elephant"). Prompt the *positive* target instead; keep a ban only when the target is unphraseable positively, and still pair it with what-to-do.
 
+### Read-tax discipline
+
+A skill's resident cost is driven by which reference files it re-reads every run, not only by its body length. Three rules:
+
+- **Inline the always-read core.** The minimal shapes/recipes nearly every run reads belong in the entrypoint body (or one `core-recipes.md` loaded once up front), not in per-topic files opened separately each run.
+- **Lazy-gate heavyweights behind explicit triggers.** Large templates and phase-specific docs load only when a named condition holds (e.g. "target file absent"), never by default.
+- **Read each reference at most once per run.** Do not re-open a recipe already applied.
+
+When a skill or its shared docs grow expensive, measure Read% (reads / total tool calls) before trimming prose. The fix is usually inlining the hot core plus gating the cold tail, not word-trimming (cross-check the sprawl failure mode above).
+
 Completion criteria have two axes: **clarity** (resists premature completion) + **demand** (sets legwork depth — an exhaustive "every modified model accounted for" beats "produce a change list"). Strongest criteria are both checkable and exhaustive.
 
 **Invocation-by-cost** (reinforces §8 pattern + the two-tier taxonomy in `workflow.md`): model-invoked keeps a `description` and pays permanent **context load** (it sits in the window every turn) — pick it only when the agent or another skill must reach the skill on its own. User-invoked (`disable-model-invocation: true`) is zero context load but spends human **cognitive load** (someone must remember it exists). When user-invoked skills outgrow memory, add one router skill that names the others.
@@ -219,8 +229,6 @@ Descriptions state capability plus concrete trigger/exclusion language. Do not s
 Keep execution-critical references one level from the entrypoint where practical. Avoid self-references and missing paths. Preserve safety, completion, and behavior gates when moving detail; context reduction is not permission to weaken results.
 
 CI checks: `tests/scripts/test-command-skill-size-budget.sh` and `tests/check-shared-doc-refs.sh`.
-
----
 
 ## CI
 
