@@ -22,13 +22,13 @@ Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visib
 **Output discipline:** chat only, no file write. Narrative uses `conversation:`; GitHub drafts/posts use `output:`. Keep paths, lines, symbols, identifiers in English.
 
 Order in chat:
-1. Summary line - counts per tier + dropped count
+1. Summary line - counts per severity/disposition + dropped count
 2. Problem framing table with rows: `Problem`, `Larger context`, `Core change`, `Verdict`
 3. **Sense Check block** (from Step 2.6) - four-pillar table
 4. Risk map - selected specialist list + one-line reason for any skipped optional specialist
 5. **Verification block** (from Step 5.5) - recommended bar + PR-description plan status
 6. PR Quality Scorecard (table below)
-7. Findings grouped by confidence tier (Critical / High / Medium)
+7. Findings grouped by severity/disposition; confidence remains a separate evidence score
 8. Triage classifications from Step 3 - if any unresolved comments existed
 9. Inline open questions - one bullet each for domain inputs code tracing cannot answer.
 
@@ -77,32 +77,40 @@ Score guide: 5 exemplary, 4 solid, 3 adequate, 2 needs work, 1 significant gaps.
 
 ---
 
-**Summary line** - one line showing the count per tier and how many were dropped:
+**Summary line** - one line showing severity/disposition counts and how many were dropped:
 ```
-Found: {N} critical, {N} high, {N} medium ({N} dropped below threshold)
-```
-
-**Findings - group by confidence tier**, not just severity category. Within each tier, order by category: bugs → security → architecture → testability → other.
-
-```
-### Critical (90-100)
-- [95] **Bug** · `path/to/file.ts:42` - description...
-- [92] **Security** · `path/to/api.ts:18` - description...
-
-### High (80-89)
-- [85] **Architecture** · `path/to/service.ts:100` - description...
-
-### Medium (50-79) - discussion only, no inline drafts
-- [62] **Testability** · `path/to/handler.ts:55` - description...
+Found: {N} critical, {N} high, {N} medium, {N} low; {N} blocking, {N} non-blocking, {N} needs-answer ({N} dropped)
 ```
 
-For each issue include:
-- Confidence score in brackets: `[87]`
+**Findings - group by severity/disposition.** Confidence is displayed separately and never determines the group. Within a severity group, order by category: bugs → security → architecture → testability → other. Put optional comments in their own section so a confidence-95 nit never appears as Critical.
+
+```
+### Critical
+- [confidence 95] **Bug** · `issue (blocking)` · `path/to/file.ts:42` - description...
+
+### High
+- [confidence 85] **Security** · `issue (blocking)` · `path/to/api.ts:18` - description...
+
+### Medium / Low
+- [confidence 87] **Architecture** · `issue (non-blocking)` · `path/to/service.ts:100` - description...
+
+### Needs answer
+- [confidence 72] **Question** · `question (needs-answer)` · `path/to/handler.ts:55` - description...
+
+### Suggestions and nits (non-blocking)
+- [confidence 94] **Nit** · `nit (non-blocking)` · `path/to/model.ts:12` - description...
+```
+
+For each candidate include:
+- Confidence score as evidence certainty: `[confidence 87]`
+- Severity, kind, and disposition from the private outgoing-comment record
 - Category tag in bold: `**Bug**`, `**Security**`, `**Architecture**`, `**Testability**`
 - File and approximate line (English, paste-ready)
 - One-sentence description (in `conversation:` language) with consequence if unfixed
 - Evidence source (e.g. "confirmed via code trace through DashboardService.cs:332", "confirmed via Confluence AS tracker", "introduced in {pr_ref}")
 - For deep-dived findings: a brief summary of what was traced and what was found (1-2 sentences - enough to show the work, not a full report)
+- For `nit (non-blocking)`: safe, concise summaries of PR introduction, project authority or concrete benefit, and the formatter/linter check.
+- For `issue (blocking)`: safe, concise `Concrete failure:` and `Why merge must wait:` summaries. Keep the rest of the private record private.
 
 ---
 
@@ -115,7 +123,8 @@ All chat in steps 6.5–8 stays in `conversation:` language. Draft and posted Gi
 Deep diving is automatic - do not ask the user whether to trace. Step 5 already auto-traced the findings whose confidence depends on behavior outside the diff; this step sweeps up the remaining trace-worthy items and resolves them before drafting so the review lands with evidence, not open guesses.
 
 Collect remaining trace-worthy items:
-- Medium-confidence findings (50–79) where more context could move them up or drop them
+- Confidence 50-79 candidates where more context could confirm or drop them
+- `needs-answer` questions that code, tests, config, history, or available docs may still answer
 - Open questions that COULD be answered by code but weren't critical enough to auto-trace
 - Cross-file consistency checks worth validating
 
@@ -128,6 +137,8 @@ Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how
 Ask the user how to handle drafting via `AskUserQuestion`. Three options, always in this order, always with these labels. **Default recommendation is "Draft + post"** - the normal outcome of a review is inline comments submitted on GitHub, so lead with it and append `(recommended)`. The other two options stay available for a chat-only draft or nothing at all; the recommendation does not skip the confirmation - the user still actively picks, and Step 8 still asks for the review state before any write.
 
 **Before drafting, run the trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own main-thread investigation (Steps 4–5d): did it narrow before reading, batch discovery, stay diff-anchored, and recover from failed searches without path-guessing? Downgrade any finding that survived only a widen-first / path-guessing trace to WEAK and re-verify it before including it in the draft.
+
+Then enforce the outgoing-comment research gate from Step 4c. Every draft must have a complete private record, a current diff coordinate, and a `Publish decision: draft`. Drop candidates with missing evidence, unresolved coordinates, duplicate root causes, sensitive evidence that cannot be safely summarized, or a kind-specific gate failure.
 
 ```
 Question: "Draft inline comments now?"
@@ -153,6 +164,9 @@ Behavior per choice:
 - Conversational peer tone - not formal or gatekeeper
 - Lead with the specific concern
 - Include the fix direction only if unambiguous
+- Prefix every comment with exactly one intent label: `issue (blocking):`, `issue (non-blocking):`, `suggestion (non-blocking):`, `nit (non-blocking):`, `question (non-blocking):`, or `question (needs-answer):`
+- `nit` is always non-blocking. Cluster repeated instances into one representative comment and mention sibling occurrences briefly.
+- Keep the private record private. Include only the minimum safe evidence needed for the author; never include secrets, credentials, unredacted scanner matches, private document excerpts, or unnecessary internal URLs.
 - For findings that went through `pr-review-verification.md` §7 (citation/triage verification of a bot claim): append one short line with the verification command + result (e.g. `shellcheck exited 0 on this file`) so the author can audit instead of re-litigating
 - **Language:** `output:` value from `workspace/config.md` (drafts are paste-ready for GitHub)
 
@@ -165,28 +179,40 @@ Behavior per choice:
 
 Enter this step only when Step 7 = "Draft + post". Otherwise skip it.
 
-**Ownership check:** compare `gh api user --jq .login` against the PR `user.login`. If the PR is not the user's, submitting a review notifies the author - confirm once more before proceeding ("PR is owned by @other-user - submitting a review will notify them. Proceed?").
+**Ownership check:** compare `gh api user --jq .login` against the PR `user.login`.
 
-**Determine the recommended state** (recommend one; the user gets final say):
+- If the PR is not the user's, submitting a review notifies the author - confirm once more before proceeding ("PR is owned by @other-user - submitting a review will notify them. Proceed?").
+- If the PR is self-authored, GitHub does not allow the author to approve it. Never recommend or submit `APPROVE`; publish only as `COMMENT`, or keep the result in `Draft + discuss`. State the hypothetical merge verdict in chat instead of trying to encode it as an approval. Source: [GitHub required-review documentation](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
 
-- `APPROVE` - **default recommendation** whenever no confirmed blocking issue exists. This includes LGTM-with-nits: medium/low findings or open style questions do not downgrade the recommendation. If you would be comfortable merging, recommend `APPROVE` - do not fall back to `COMMENT` just because non-blocking findings remain.
-- `REQUEST_CHANGES` - a confirmed issue that would cause a production incident (data corruption, service crash on deploy, security breach). High bar.
-- `COMMENT` - only when findings genuinely need reviewer attention yet you are not comfortable approving and they do not meet the `REQUEST_CHANGES` bar (e.g. an unresolved open question that blocks a merge verdict). Not the catch-all - prefer `APPROVE` when the PR is mergeable.
+**Determine the recommended state** for a non-owned PR mechanically:
 
-Ask via `AskUserQuestion`, recommended option first with `(recommended)` appended:
+| Condition | Recommended state |
+|---|---|
+| No blocking issue and no `needs-answer`; non-blocking issues, suggestions, or nits may remain | `APPROVE` |
+| A material `question (needs-answer)` prevents an approval verdict, but no must-not-merge issue is confirmed | `COMMENT` |
+| At least one confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer | `REQUEST_CHANGES` |
+
+`APPROVE` remains the default when the PR is mergeable, including LGTM-with-nits. Required-check failures alone do not create an inline comment or change the review state; branch protection owns that gate unless the failure exposes a separate validated code defect.
+
+`REQUEST_CHANGES` is exceptional. It requires a PR-introduced issue with confidence ≥ 80, a concrete failure or binding-policy violation, no safe follow-up path, and an explicit must-not-merge reason. It is not limited to already-observed production incidents: confirmed acceptance-criteria failure, compile/build break, security/privacy/data-integrity violation, public-contract break, or unsafe deploy/migration/rollback may qualify. Missing tests alone do not.
+
+Ask via `AskUserQuestion`, recommended option first with `(recommended)` appended. Build the options from eligible states only:
 
 ```
 Question: "Submit review as which state? (recommended: <STATE>)"
 Header: "Review state"
-Options (single-select):
-- "APPROVE" - LGTM / LGTM with nits
-- "COMMENT" - non-blocking review with inline comments
-- "REQUEST_CHANGES" - block merge until fixed
+Eligible options (single-select):
+- "APPROVE" - include only when there is no blocking issue and no `needs-answer`
+- "COMMENT" - include only when there is no blocking issue
+- "REQUEST_CHANGES" - include only when a confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer
 ```
+
+For a non-owned PR with a confirmed blocking issue, `REQUEST_CHANGES` is the only submission state. The user may instead return to Step 7 and choose `Draft + discuss` or `No draft`. For a self-authored PR, omit `APPROVE` and `REQUEST_CHANGES`; submit as `COMMENT` only.
 
 **Submit sequence** once the user picks - one payload-bound `external-write-action.py` manifest for the whole review (a GitHub review with inline comments and a state is a single POST). Never run a raw `gh api` mutation.
 
-- Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`/`REQUEST_CHANGES`, one or two sentences naming the blocking concern.
+- Recompute state eligibility from the confirmed findings immediately before manifest creation. If the selected state is no longer eligible, do not build or authorize a manifest; return to review-state selection with the changed evidence.
+- Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`, name the unresolved question, missing domain evidence, or self-review verdict without calling it blocking. For `REQUEST_CHANGES`, name the confirmed must-not-merge concern in one or two sentences.
 - Inline comments: same 1–2 sentence rule as the drafts, `output:` language, voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
 - Build the review payload as a private file, prepare the manifest, show it, get the immediate `AskUserQuestion` approval of that exact manifest, then authorize and execute:
 

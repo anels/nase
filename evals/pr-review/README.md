@@ -12,6 +12,7 @@ python3 .claude/scripts/pr-review-eval.py score --eval-set evals/pr-review/evals
 
 The assertions check observable output shape: problem framing before findings,
 file:line evidence, safe external-mutation language, reviewer classification,
-deep-dive comment dossiers, explicit-only AI verification-debt reporting, and
-concise Slack review-request drafts. They do not replace human review of the
-finding quality.
+deep-dive comment dossiers, explicit non-blocking nits, needs-answer questions,
+must-not-merge review states, self-review constraints, explicit-only AI
+verification-debt reporting, and concise Slack review-request drafts. They do
+not replace human review of finding quality.

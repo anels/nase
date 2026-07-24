@@ -195,14 +195,15 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 - Loads repo KB, Confluence context, and git history before drafting comments.
 - Runs architecture, bugs, security, testability, and DRY/KISS passes, then synthesizes findings.
-- Confirmed findings can be captured into KB. Inline comments are drafts until you ask to post.
+- Research-gates every inline comment, allows explicit non-blocking nits when project evidence supports them, and reserves request-changes for must-not-merge issues.
+- Confirmed findings can be captured into KB. Inline comments stay private until the draft and review state are confirmed.
 
 ```
 /nase:onboard <repo>           # ensure KB is fresh for this repo
-/nase:discuss-pr <PR-URL>      # deep analysis — architecture, bugs, security, patterns
-                               #   produces inline comment drafts in chat
+/nase:discuss-pr <PR-URL>      # deep analysis: architecture, bugs, security, patterns
+                               #   drafts researched issues and non-blocking nits
   review and edit drafts         # discuss findings, adjust comments
-  post to GitHub when ready      # nase posts only on your explicit instruction
+  post to GitHub when ready      # submit only after draft/state confirmation
 ```
 
 ### Build and share knowledge
