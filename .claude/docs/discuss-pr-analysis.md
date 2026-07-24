@@ -7,7 +7,7 @@
 - Step 2.5 - Collect context
 - Step 2.6 - Sense Check and Review Frame
 - Step 3 - Build Risk Map, Select Specialists, and Engage Existing Comments
-- Step 4 - Score, tier, and filter (after agents complete)
+- Step 4 - Classify and filter (after agents complete)
 - Step 5 - Auto-deep-dive and research
 - Step 5.5 - Test verification recommendation
 - Step 5.7 - Doubt cycle
@@ -100,32 +100,81 @@ Follow `.claude/docs/pr-review-verification.md → Review Frame and Specialist S
 
 Continue the same shared workflow. It owns pipeline-touch handling, self-authored AI-slop review, conditional Codex review, and read-only triage of existing comments.
 
-## Step 4 - Score, tier, and filter (after agents complete)
+## Step 4 - Classify and filter (after agents complete)
 
 **4a. Diff-scope verification:** apply `.claude/docs/pr-review-verification.md` §2. Drop pre-existing issues silently (score < 50) - common false alarm: flagging a shared helper's side effects when the PR only touched an unrelated code path.
 
 **4b. Verify code matches description:** apply `.claude/docs/pr-review-verification.md` §3. Drop or downgrade findings where the agent's prose does not match the file at the referenced line.
 
-**4c. Assign confidence scores:**
-For each issue, assign a confidence score 0–100:
-- **< 50**: pre-existing, false positive, or nitpick - drop silently
-- **50–79**: worth mentioning in discussion but skip inline comment draft
-- **≥ 80**: confirmed issue - include in final output and draft a comment
+### 4c. Build the private outgoing-comment record
 
-Scoring emphasis:
-- Confirmed logic bugs, contract violations, data loss, auth gaps, or rollout hazards are high or critical.
-- A PR that does not solve its stated problem, or solves only a side symptom, is high confidence when the code path is verified.
-- Missing problem framing or verification for a non-trivial PR is medium unless it hides production/data risk.
-- Design improvements are medium by default; raise only when the design creates concrete correctness, scalability, ownership, or future-change risk.
+Every candidate that might become a GitHub inline draft gets one compact private record:
 
-**Confidence tiers** (used in Step 6 output):
-| Tier | Range | Label |
-|------|-------|-------|
-| Critical | 90–100 | `[CRIT]` |
-| High | 80–89 | `[HIGH]` |
-| Medium | 50–79 | `[MED]` |
+```text
+Claim:
+Diff evidence:
+Introduced by this PR:
+Why / consequence:
+Authority:
+Caller / dependency impact:
+Verification performed:
+Existing-comment dedupe:
+Confidence:
+Severity:
+Kind:
+Disposition:
+safe_defer:
+must_not_merge_reason:
+Publish decision:
+```
 
-Track a drop count for items scoring < 50 - reported in the summary line.
+Use `not applicable` when a field genuinely does not apply; never invent caller impact, a project rule, or verification. The record stays private. GitHub text receives only the minimum non-sensitive evidence needed to explain the claim. Never copy tokens, credentials, secret values, unredacted scanner matches, private Confluence excerpts, or unnecessary internal URLs into a draft.
+
+Authority order has two layers:
+
+1. **Binding behavior and facts:** acceptance criteria; security, privacy, correctness, data, and public-contract invariants; exact-version API/platform behavior; executable compiler, linter, formatter, and schema rules.
+2. **Style and design guidance:** explicit review focus; mandatory repo instructions and documented project conventions; relevant adjacent patterns and KB decisions; official general best practice; reviewer preference.
+
+Binding behavior wins over style guidance. Within style/design, repo authority and relevant local patterns win over general guidance; personal preference never produces a comment. General best-practice sources can support only `suggestion (non-blocking)` or `nit (non-blocking)` and must still pass the kind-specific gate; they never justify a blocking issue. Policy basis: [Google review comments](https://google.github.io/eng-practices/review/reviewer/comments.html), [Google review standard](https://google.github.io/eng-practices/review/reviewer/standard.html), [GitLab code review guidelines](https://docs.gitlab.com/development/code_review/), and [Conventional Comments](https://conventionalcomments.org/).
+
+### 4d. Classify independent axes
+
+Keep these independent:
+
+- `confidence`: evidence certainty, 0-100.
+  - **< 50:** false positive, pre-existing, unsupported, or preference-only - drop.
+  - **50-79:** discussion only, or `question (needs-answer)` after the research ladder is exhausted. Do not draft an assertion.
+  - **≥ 80:** assertion is eligible for a draft only after the kind-specific gate below passes.
+- `severity`: impact, one of `critical | high | medium | low`.
+- `kind`: `issue | suggestion | nit | question`.
+- `disposition`: `blocking | non-blocking | needs-answer`.
+
+High confidence does not raise severity. A confidence-95 nit is still low-severity and non-blocking. Only `issue` may be blocking.
+
+Apply explicit review focus before the kind gates. `focus on bugs only` permits GitHub drafts only for `issue` candidates that assert a concrete behavior defect after research; suppress `suggestion`, `nit`, and `question` drafts. A material unresolved question may remain in chat and still affect the verdict, but does not become a GitHub draft. `skip nitpicks` suppresses all nit drafts.
+
+An `issue (blocking)` requires every condition below:
+
+- introduced by this PR
+- confidence ≥ 80
+- concrete failure mode or binding-policy violation
+- `safe_defer: no` with evidence
+- explicit `must_not_merge_reason`
+
+Confirmed build/compile failure, broken required acceptance criteria, security/privacy/data-integrity violation, public-contract break, or unsafe deploy/migration/rollback can qualify. Missing tests alone cannot; it becomes blocking only when a risky behavior lacks the minimum evidence required to merge safely.
+
+A `nit (non-blocking)` requires every condition below:
+
+- explicit focus does not say `focus on bugs only` or `skip nitpicks`
+- introduced by this PR and anchored to a changed line
+- confidence ≥ 80 and low severity
+- repo authority, a relevant adjacent pattern, or a concrete readability/maintainability benefit
+- not already caught by an available formatter/linter
+- local and cheap to fix, not a disguised refactor or personal preference
+
+A `question` is allowed only after code, tests, config, history, and available docs cannot answer a verified premise. Use `question (needs-answer)` when the answer affects the merge verdict; otherwise use `question (non-blocking)`.
+
+Collapse the same root cause or repeated nit pattern into one representative comment and name sibling occurrences briefly. Track dropped candidates for the Step 6 summary.
 
 ## Step 5 - Auto-deep-dive and research
 
@@ -133,7 +182,7 @@ Before presenting findings, proactively trace anything whose confidence depends 
 
 ### 5a. Identify deep-dive candidates
 
-Scan the scored findings (from Step 4) and flag any that meet these criteria:
+Scan the classified candidates (from Step 4) and flag any that meet these criteria:
 - **Opaque handoff**: the diff passes a value to a service, library, or repository method whose behavior for the new input is unknown from the diff alone (e.g., a string that used to be an enum value is now passed as a free-form name - does the callee handle it?)
 - **Cross-boundary assumption**: the finding assumes something about a caller, downstream consumer, or deployment environment that isn't visible in the diff
 - **Pattern divergence**: the diff follows a pattern from another controller/service but omits a step that the reference implementation includes (e.g., a validation, a Content check, a type conversion) - unclear if the omission is intentional or a gap
@@ -156,11 +205,11 @@ Run traces in parallel. If source is unavailable, keep as "ask the author" and s
 ### 5c. Update findings with evidence
 
 For each deep-dive result:
-- **Confirmed bug**: upgrade the confidence score (often from medium → critical/high), add the evidence trail
+- **Confirmed bug**: raise confidence and severity independently when the evidence supports each, then add the evidence trail
 - **Refuted concern**: drop it (score < 50) or downgrade to informational
-- **New finding discovered during trace**: add it as a new finding with its own confidence score
-- **Inconclusive** (no source available): keep the original score but mark as "ask the author" with context on what was checked and what couldn't be verified
-- **Requires domain knowledge**: keep as open question for product/deployment/business intent.
+- **New finding discovered during trace**: add it as a new candidate with its own outgoing-comment record
+- **Inconclusive** (no source available): mark it `question (needs-answer)` only when the answer affects the verdict; otherwise keep it in chat as non-blocking or drop it
+- **Requires domain knowledge**: keep as a `question` for product/deployment/business intent
 
 ### 5d. Research remaining open questions
 
@@ -175,14 +224,14 @@ Follow the matrix algorithm in `.claude/docs/verification-matrix.md` - context d
 
 Skill-specific outputs:
 - Render the resulting matrix + critical-layer + caveat + plan-status as the **Verification block** in Step 6 (right after the summary line, before the scorecard).
-- If §4 reports "no plan at all" for any non-trivial change: emit a `[MED]` finding under Testability tagged `Verification gap`, with the full matrix pasted into the inline-comment draft so the author can lift it into the PR body verbatim.
-- Strictness ceiling: `[MED]`. Always informational - never block-before-merge. Reviewers decide whether to gate.
+- If §4 reports "no plan at all" for any non-trivial change: emit a medium-severity `suggestion (non-blocking)` under Testability tagged `Verification gap`, with the full matrix pasted into the inline-comment draft so the author can lift it into the PR body verbatim.
+- Strictness ceiling: medium severity and non-blocking. Reviewers decide whether to gate.
 
-**Rewrite-of-correctness-critical-impl flag (differential-oracle gate):** when the PR *replaces* an existing correctness-critical implementation (parser, query translator, serializer, EF-query builder, aggregation/pricing fn, protocol codec) - especially AI-authored or a port across languages - new unit tests are not a sufficient bar. Ask: "where is the differential oracle?" If the legacy impl still exists and the PR does not diff new-vs-old over a generated/replayed corpus (and, for high-traffic read paths, run shadow-mode with a zero-divergence gate before cutover), emit a `[MED]` Testability finding tagged `Verification gap (no differential oracle)`. Source: `workspace/kb/general/llm.md §2026-06-24 - Differential-oracle harness`. Strictness ceiling stays `[MED]`, informational.
+**Rewrite-of-correctness-critical-impl flag (differential-oracle gate):** when the PR *replaces* an existing correctness-critical implementation (parser, query translator, serializer, EF-query builder, aggregation/pricing fn, protocol codec) - especially AI-authored or a port across languages - new unit tests are not a sufficient bar. Ask: "where is the differential oracle?" If the legacy impl still exists and the PR does not diff new-vs-old over a generated/replayed corpus (and, for high-traffic read paths, run shadow-mode with a zero-divergence gate before cutover), emit a medium-severity `suggestion (non-blocking)` under Testability tagged `Verification gap (no differential oracle)`. Source: `workspace/kb/general/llm.md §2026-06-24 - Differential-oracle harness`. The strictness ceiling stays medium severity and non-blocking.
 
 ## Step 5.7 - Doubt cycle
 
-Run a bounded fresh-context review for non-obvious correctness, incompletely traced cross-boundary behavior, irreversible blast radius, or a severity upgrade based on inference. Skip style nits, mechanical edits, and claims already fully grounded in the diff.
+Run a bounded fresh-context review for every blocking candidate plus non-obvious correctness, incompletely traced cross-boundary behavior, irreversible blast radius, or a severity upgrade based on inference. Skip style nits, mechanical edits, and claims already fully grounded in the diff.
 
 For each in-scope finding:
 

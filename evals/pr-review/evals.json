@@ -43,15 +43,146 @@
           "pattern": "(?i)(confidence|dropped|false positive|pre-existing)"
         },
         {
-          "name": "caps nit language",
+          "name": "omits optional draft labels when bugs-only is requested",
           "type": "max_count_regex",
-          "pattern": "(?i)\\bnit\\b",
-          "count": 2
+          "pattern": "(?is)(?:(?:comment|GitHub) draft[^\\n]*|\\*\\*File:\\*\\*[^\\n]*\\n[^\\n]*)\\b(nit|suggestion|question) \\((non-blocking|needs-answer)\\)",
+          "count": 0
         },
         {
           "name": "does not use unsupported certainty",
           "type": "must_not_contain_regex",
           "pattern": "(?i)(obviously|clearly broken without evidence|definitely exploitable)"
+        }
+      ]
+    },
+    {
+      "id": "discuss-pr-verified-nit",
+      "skill": "nase:discuss-pr",
+      "title": "Verified nit stays explicit and non-blocking",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/131 include worthwhile nits",
+      "expected_output": "A high-confidence, PR-introduced nit cites project authority or a concrete benefit, stays non-blocking, and does not prevent approval.",
+      "assertions": [
+        {
+          "name": "labels the nit as non-blocking",
+          "type": "must_contain_regex",
+          "pattern": "(?i)nit \\(non-blocking\\)"
+        },
+        {
+          "name": "shows high confidence",
+          "type": "must_contain_regex",
+          "pattern": "(?i)\\[confidence (8[0-9]|9[0-9]|100)\\]"
+        },
+        {
+          "name": "states PR introduction",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(introduced (in|by) (this )?PR|PR-introduced)"
+        },
+        {
+          "name": "shows authority or concrete benefit",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(repo rule|project convention|adjacent pattern|concrete (readability|maintainability) benefit)"
+        },
+        {
+          "name": "shows formatter or linter check",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(formatter|linter) check:\\s*\\S"
+        },
+        {
+          "name": "recommends approval",
+          "type": "must_contain_regex",
+          "pattern": "(?i)recommended state:\\s*APPROVE"
+        },
+        {
+          "name": "does not request changes",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)recommended state:\\s*REQUEST_CHANGES"
+        }
+      ]
+    },
+    {
+      "id": "discuss-pr-needs-answer",
+      "skill": "nase:discuss-pr",
+      "title": "Material unresolved question uses COMMENT",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/132",
+      "expected_output": "A material question that remains after research and prevents a merge verdict is labeled needs-answer and recommends COMMENT without claiming a blocker.",
+      "assertions": [
+        {
+          "name": "labels the question as needs-answer",
+          "type": "must_contain_regex",
+          "pattern": "(?i)question \\(needs-answer\\)"
+        },
+        {
+          "name": "recommends comment",
+          "type": "must_contain_regex",
+          "pattern": "(?i)recommended state:\\s*COMMENT"
+        },
+        {
+          "name": "does not request changes",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(recommended state:\\s*REQUEST_CHANGES|confirmed must-not-merge)"
+        }
+      ]
+    },
+    {
+      "id": "discuss-pr-must-not-merge",
+      "skill": "nase:discuss-pr",
+      "title": "Request changes requires a must-not-merge issue",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/133",
+      "expected_output": "REQUEST_CHANGES is recommended only for a PR-introduced, high-confidence blocking issue with a concrete failure and explicit must-not-merge reason.",
+      "assertions": [
+        {
+          "name": "labels a blocking issue",
+          "type": "must_contain_regex",
+          "pattern": "(?i)issue \\(blocking\\)"
+        },
+        {
+          "name": "shows high confidence",
+          "type": "must_contain_regex",
+          "pattern": "(?i)\\[confidence (8[0-9]|9[0-9]|100)\\]"
+        },
+        {
+          "name": "states PR introduction",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(introduced (in|by) (this )?PR|PR-introduced)"
+        },
+        {
+          "name": "states concrete failure",
+          "type": "must_contain_regex",
+          "pattern": "(?i)Concrete failure:\\s*\\S"
+        },
+        {
+          "name": "states explicit must-not-merge rationale",
+          "type": "must_contain_regex",
+          "pattern": "(?i)Why merge must wait:\\s*\\S"
+        },
+        {
+          "name": "recommends request changes",
+          "type": "must_contain_regex",
+          "pattern": "(?i)recommended state:\\s*REQUEST_CHANGES"
+        }
+      ]
+    },
+    {
+      "id": "discuss-pr-self-review",
+      "skill": "nase:discuss-pr",
+      "title": "Self-authored PR review uses COMMENT",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/134",
+      "expected_output": "A self-authored PR can publish review comments but never recommends APPROVE or REQUEST_CHANGES.",
+      "assertions": [
+        {
+          "name": "identifies self review",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(self-authored|self review|author matches reviewer)"
+        },
+        {
+          "name": "recommends comment",
+          "type": "must_contain_regex",
+          "pattern": "(?i)recommended state:\\s*COMMENT"
+        },
+        {
+          "name": "does not recommend unavailable states",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(recommended state:\\s*(APPROVE|REQUEST_CHANGES)|submitted(?: review)?(?: as|:)\\s*(APPROVE|REQUEST_CHANGES)|review state:\\s*(APPROVE|REQUEST_CHANGES)|\"event\"\\s*:\\s*\"(APPROVE|REQUEST_CHANGES)\")"
         }
       ]
     },

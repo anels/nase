@@ -35,13 +35,15 @@ Fan-out threshold: stay main-thread unless the request spans multiple repos, mor
 - Keep findings anchored to the stated PR intent and changed code. Drop unrelated pre-existing issues.
 - Fetch existing human and bot comments once, then de-duplicate every candidate against them before presenting.
 - Preserve the KB lookup shape `mentions:<path>` for core changed files.
-- Confidence tiers remain: Critical 90-100, High 80-89, Medium 50-79 for discussion only, and below 50 dropped.
+- Keep `confidence` (evidence certainty), `severity` (impact), `kind` (`issue | suggestion | nit | question`), and `disposition` (`blocking | non-blocking | needs-answer`) independent. High confidence never makes a nit severe or blocking.
+- Every GitHub-bound inline draft must pass the private outgoing-comment research gate. Keep private or sensitive evidence out of GitHub text.
+- A nit may be drafted only when it is high-confidence, PR-introduced, changed-line anchored, not formatter-detectable, and supported by repo authority or a concrete maintainability benefit. Nits are always non-blocking.
 - Diff-first investigation and the trace-shape self-check must run at the actual investigation and classification call sites.
 - Narrative uses `conversation:`; GitHub-bound drafts use `output:`. Structural skeleton, paths, symbols, IDs, and command output stay English.
 
 ## State contract
 
-Preserve normalized `owner`, `repo`, `number`, `pr_ref`, `repo_path`, compact PR metadata, changed files, existing comment set, review frame, risk map, selected specialists, candidate findings, confidence scores, verification matrix, doubt-cycle results, de-duplicated findings, draft choice, and final counts.
+Preserve normalized `owner`, `repo`, `number`, `pr_ref`, `repo_path`, compact PR metadata, changed files, existing comment set, review frame, risk map, selected specialists, candidate findings, private outgoing-comment records, confidence, severity, kind, disposition, authority, `safe_defer`, `must_not_merge_reason`, verification matrix, doubt-cycle results, de-duplicated findings, draft choice, and final counts.
 
 ## Phase map
 
@@ -63,6 +65,6 @@ Return the complete state contract above. Before Step 6, no user-visible finding
 
 ## Steps 6-Final: Present and hand off
 
-At Step 6, read `.claude/docs/discuss-pr-output.md` once. Follow its exact output order, scorecard, confidence grouping, automatic additional deep dives, draft decision, gated review submission, completion message, KB offer, error handling, notes, and daily log.
+At Step 6, read `.claude/docs/discuss-pr-output.md` once. Follow its exact output order, scorecard, severity/disposition grouping, automatic additional deep dives, draft decision, gated review submission, completion message, KB offer, error handling, notes, and daily log.
 
 The draft decision defaults to drafting inline comments and submitting a GitHub review; the user still actively confirms the draft choice and the review state before any write. All writes go through the `external-write-action.py` manifest gate.

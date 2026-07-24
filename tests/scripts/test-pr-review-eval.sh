@@ -22,7 +22,7 @@ Review frame
 Problem: this PR fixes stale cache invalidation for dashboard refreshes.
 
 Confirmed findings
-[HIGH] src/cache.ts:42 - The fallback never updates the timestamp.
+[confidence 85] issue (non-blocking): src/cache.ts:42 - The fallback never updates the timestamp.
 Comment draft: use the same invalidation path as the existing refresh worker.
 TXT
 
@@ -42,6 +42,75 @@ Findings:
 Looks fine.
 TXT
 assert_cmd "bad output fails scoring" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-problem-first --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-bad.txt"
+
+cat > "$TMPDIR_TEST/discuss-bugs-only-ok.txt" <<'TXT'
+Confidence: 91
+Confirmed issue: src/cache.ts:42 drops the invalidation timestamp.
+Chat-only open question: question (needs-answer) about the legacy rollout contract.
+Dropped: 2 pre-existing candidates.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-false-positive-filter --output "$TMPDIR_TEST/discuss-bugs-only-ok.txt" >/dev/null
+pass "bugs-only output omits nits"
+
+cat > "$TMPDIR_TEST/discuss-bugs-only-bad.txt" <<'TXT'
+Confidence: 91
+**File:** `src/model.ts` line 12
+nit (non-blocking): rename the local variable.
+TXT
+assert_cmd "bugs-only output rejects optional drafts" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-false-positive-filter --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-bugs-only-bad.txt"
+
+cat > "$TMPDIR_TEST/discuss-nit-ok.txt" <<'TXT'
+[confidence 94] nit (non-blocking): src/model.ts:12 duplicates the adjacent pattern.
+Introduced by this PR. Authority: repo rule in CLAUDE.md; concrete maintainability benefit.
+Formatter check: no available rule catches this naming convention.
+Recommended state: APPROVE
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-verified-nit --output "$TMPDIR_TEST/discuss-nit-ok.txt" >/dev/null
+pass "verified nit stays non-blocking"
+
+cat > "$TMPDIR_TEST/discuss-nit-bad.txt" <<'TXT'
+nit (non-blocking): src/model.ts:12 duplicates a pattern.
+Authority: personal preference.
+Recommended state: APPROVE
+TXT
+assert_cmd "nit requires confidence, PR introduction, authority, and formatter check" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-verified-nit --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-nit-bad.txt"
+
+cat > "$TMPDIR_TEST/discuss-question-ok.txt" <<'TXT'
+question (needs-answer): src/deploy.ts:88 cannot be resolved from code or docs.
+Recommended state: COMMENT
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-needs-answer --output "$TMPDIR_TEST/discuss-question-ok.txt" >/dev/null
+pass "needs-answer question recommends COMMENT"
+
+cat > "$TMPDIR_TEST/discuss-blocking-ok.txt" <<'TXT'
+[confidence 96] issue (blocking): src/migrate.ts:71 can delete the active schema.
+This is introduced by this PR.
+Concrete failure: deployment deletes active records before the replacement is available.
+Why merge must wait: rollback cannot restore deleted records.
+Recommended state: REQUEST_CHANGES
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-must-not-merge --output "$TMPDIR_TEST/discuss-blocking-ok.txt" >/dev/null
+pass "must-not-merge issue recommends REQUEST_CHANGES"
+
+cat > "$TMPDIR_TEST/discuss-blocking-bad.txt" <<'TXT'
+[confidence 96] issue (blocking): src/migrate.ts:71 is introduced by this PR and might be risky.
+Recommended state: REQUEST_CHANGES
+TXT
+assert_cmd "request changes requires concrete failure and must-wait reason" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-must-not-merge --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-blocking-bad.txt"
+
+cat > "$TMPDIR_TEST/discuss-self-review-ok.txt" <<'TXT'
+Self-authored PR: author matches reviewer.
+Recommended state: COMMENT
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-self-review --output "$TMPDIR_TEST/discuss-self-review-ok.txt" >/dev/null
+pass "self review recommends COMMENT"
+
+cat > "$TMPDIR_TEST/discuss-self-review-bad.txt" <<'TXT'
+Self-authored PR: author matches reviewer.
+Recommended state: COMMENT
+Submitted review as APPROVE
+TXT
+assert_cmd "self review rejects submitted APPROVE" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-self-review --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-self-review-bad.txt"
 
 cat > "$TMPDIR_TEST/request-ok.txt" <<'TXT'
 Candidate reviewers:

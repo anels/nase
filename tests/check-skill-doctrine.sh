@@ -23,6 +23,8 @@
 #   D17. command frontmatter descriptions contain CJK trigger terms
 #   D18. core command frontmatter misses bounded Claude-native metadata
 #   D19. allowed-tools is described as a security boundary
+#   D20. review skills lose diff-first investigation or trace-shape checks
+#   D21. discuss-pr loses outgoing-comment quality or review-state gates
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -790,6 +792,70 @@ if [[ -n "$d20_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': diff-first directive + trace-shape self-check wired into discuss-pr and address-comments\n'
+fi
+
+# ---------- D21: discuss-pr comment quality and review-state gates ----------
+section "D21: discuss-pr comment quality + review-state gates"
+d21_hits=$(python3 - <<'PY'
+from pathlib import Path
+
+required = {
+    ".claude/commands/nase/discuss-pr.md": [
+        "private outgoing-comment research gate",
+        "confidence",
+        "severity",
+        "kind",
+        "disposition",
+        "Nits are always non-blocking",
+    ],
+    ".claude/docs/discuss-pr-analysis.md": [
+        "Build the private outgoing-comment record",
+        "High confidence does not raise severity",
+        "Only `issue` may be blocking",
+        "Binding behavior wins over style guidance",
+        "repo authority and relevant local patterns win over general guidance",
+        "personal preference never produces a comment",
+        "not already caught by an available formatter/linter",
+        "question (needs-answer)",
+        "General best-practice sources",
+        "focus on bugs only",
+        "safe_defer: no",
+        "must_not_merge_reason",
+        "Collapse the same root cause or repeated nit pattern",
+    ],
+    ".claude/docs/discuss-pr-output.md": [
+        "nit (non-blocking):",
+        "question (needs-answer):",
+        "Keep the private record private",
+        "Required-check failures alone",
+        "must_not_merge_reason",
+        "Never recommend or submit `APPROVE`",
+        "Build the options from eligible states only",
+        "Recompute state eligibility",
+        "`REQUEST_CHANGES` is the only submission state",
+    ],
+}
+
+hits = []
+for filename, tokens in required.items():
+    path = Path(filename)
+    if not path.exists():
+        hits.append(f"  {path}: missing")
+        continue
+    text = path.read_text(encoding="utf-8")
+    for token in tokens:
+        if token not in text:
+            hits.append(f"  {path}: missing required comment-quality token: {token!r}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d21_hits" ]]; then
+  red "FAIL"; printf ': discuss-pr must preserve researched comments, explicit nits, and exceptional request-changes behavior:\n'
+  printf '%s\n' "$d21_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': discuss-pr comment-quality and review-state gates are wired\n'
 fi
 
 # ---------- Result ---------------------------------------------------------
