@@ -8,8 +8,8 @@
 - No-Ask Contract (mid-pipeline)
 - Execute, Don't Narrate
 - Research Ladder (per open question)
-- Step 1: Deep Context Gathering (Phase 1, expanded)
-- Step 2: Autonomous Design (Phases 2–5, adapted)
+- Step 1: Deep Context Gathering
+- Step 2: Autonomous Design
 - Step 3: Codebase Grill Pass (mandatory - always runs)
 - Step 4: Auto-Review Loop (max 3 iterations)
 - Step 4.5: Resolve Human Input (the one interactive batch)
@@ -67,11 +67,11 @@ After all 6: if still no signal, classify as unknowable. When forced to choose b
 
 ---
 
-## Step 1: Deep Context Gathering (Phase 1, expanded)
+## Step 1: Deep Context Gathering
 
-Run Phase 1 from the base skill, with additional parallel research:
+Run the base command's interactive workflow Steps 1-2 without user interaction, then add the research below.
 
-**1a–1e** from base (parse idea, KB lookup, repo state, existing efforts, Jira context) — run as written.
+Resolve the repo and KB, then gather repo state, active efforts, Jira context, relevant callers/tests/history, and applicable plan-gate evidence. Use `.claude/docs/design-research.md` for external research and implementation-readiness checks.
 
 **Additional parallel research:**
 
@@ -95,33 +95,35 @@ After gathering: synthesize context internally. No user interaction — proceed 
 
 ---
 
-## Step 2: Autonomous Design (Phases 2–5, adapted)
+## Step 2: Autonomous Design
 
-Run Phases 2–5 from the base skill with these adaptations:
+Follow the base command's interactive workflow Steps 3-5 with these adaptations:
 
-**Phase 2c** — instead of `AskUserQuestion`: run the Research Ladder. If still unknowable after the full ladder, add to `human_input_queue` and use the most KB-aligned option as a default assumption. Log: "Auto-assumption: {X} — based on {source}. Queued for Step 4.5 human input."
+**Approach selection** - do not ask mid-pipeline. Run the Research Ladder. If a decision is still unknowable, add it to `human_input_queue`, use the most KB-aligned default assumption, and log its evidence.
 
-**Phase 2e gates / 2f PR Packaging** — run the base skill's Phase 2e plan-phase gates and Phase 2f PR Packaging Analysis. Auto mode must still write the junior-implementable `### Implementation Plan` (per-step files/tests/done + dependency graph, base skill Phase 4 / `design-research.md` Part C) and `### PR Plan` with `Target PR count: 1` unless a documented split criterion is met. If more than one PR is proposed, run the Research Ladder against the split boundary and include why one coherent PR is worse for review or merge safety.
+**Plan gates and PR packaging** - run `.claude/docs/design-research.md` Parts B-C. Write a junior-implementable `### Implementation Plan` with per-step files, tests, done conditions, and dependency graph. Write `### PR Plan` with `Target PR count: 1` unless a Core Contract split boundary applies. If more than one PR is proposed, run the Research Ladder against the split boundary and explain why one coherent PR is worse for review or merge safety.
 
-**Phase 3, Step 5** — instead of `AskUserQuestion`: auto-select the recommended option (first in the list). Log internally: "Auto-selected: Option {N} — {rationale}." If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
+**Recommendation** - auto-select the best evidenced option. If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
 
-**Phase 5c** — skip. Do not create a Jira ticket in auto mode.
+**External writes** - skip Jira creation in auto mode.
 
-**Phase 5d** — after writing the effort doc, proceed directly to Step 3 (Codebase Grill Pass). Do not stop here.
+Keep the complete effort-doc draft in memory and proceed directly to Step 3. Do not stage, apply, report, or create a todo yet.
 
 ---
 
 ## Step 3: Codebase Grill Pass (mandatory — always runs)
 
-This step runs unconditionally after the effort doc is first written. It does not depend on review scores. Even if Phase 4b self-review gave all PASS, the grill still runs.
+This step runs unconditionally after the effort-doc draft is prepared in memory. It does not depend on review scores. Even if the initial self-review gave all PASS, the grill still runs.
 
 **Purpose:** actively resolve every open question and design ambiguity through tool execution before submitting the doc for review. This is not a reasoning exercise — it is a research execution phase.
+
+Before collecting branches, follow `.claude/docs/open-work-freshness.md` for every proposed implementation-plan item and success criterion. Consume `freshness_outcome` in the shared order: on `blocked`, discard the in-memory draft without staging it and report the missing evidence; on `already_shipped`, discard the draft, report the shipping evidence, and create no todo or FSD handoff; on `continue`, remove any `already_done` scope from the in-memory draft before writing.
 
 ### 3a. Collect all branches
 
 Gather every item that needs investigation:
 - All items in `## Open Questions` in the effort doc
-- Any ambiguous wording spotted during Phase 4b ("we could", "either X or Y", "TBD", "later")
+- Any ambiguous wording spotted during the initial self-review ("we could", "either X or Y", "TBD", "later")
 - Missing invariants the design asserts without specifying: error modes, retry semantics, idempotency, ordering, concurrency, rollout, observability
 - **Persona-lens questions** — walk the design through the five lenses + pre-mortem in `.claude/docs/design-grill-mode.md → Persona Lenses` (architect / PM / senior-eng / SRE / security) and add the sharpest unanswered questions, tagged with their persona
 
@@ -133,11 +135,11 @@ Cap at 15 branches. Prioritize by load-bearingness: security, data-loss risk, ir
 
 Classify each branch:
 
-**codebase-answerable** → execute immediately:
+**codebase-answerable** → execute immediately against `fresh_default_oid`:
 ```
-grep -r "{keyword}" {repo_path} --include="*.{ext}" -l
+git -C {repo_path} grep -n -E -e "{keyword}" "{fresh_default_oid}" -- "{target_path}"
 ```
-Then read the relevant files. Extract the concrete answer. Apply it to the design. Log what file:line resolved it.
+Then read the relevant files from that same commit with `git show`. Extract the concrete answer, apply it to the design, and log what file:line resolved it.
 
 **config-answerable** → execute immediately:
 Read the relevant KB section, `CLAUDE.md`, or Confluence runbook. Extract the constraint. Apply it to the design.
@@ -157,10 +159,10 @@ default_assumption: "{Conservative default applied in the design}"
 design_section: "{Which section this affects}"
 ```
 
-### 3c. Update the effort doc
+### 3c. Update the effort-doc draft
 
 After working through all branches:
-- Apply all resolutions to the relevant design sections in-place
+- Apply all resolutions to the relevant in-memory design sections
 - Remove resolved items from `## Open Questions` and note what resolved each one (e.g., "Resolved via `src/api/routes.ts:42` — existing pattern uses pagination")
 - Items moved to `human_input_queue` stay in `## Open Questions` with the note: "→ Queued for Step 4.5 human input"
 
@@ -170,11 +172,11 @@ Proceed to Step 4.
 
 ## Step 4: Auto-Review Loop (max 3 iterations)
 
-Runs on the effort doc updated by the Codebase Grill Pass.
+Runs on the in-memory effort-doc draft updated by the Codebase Grill Pass.
 
 ### 4a. Score the design
 
-Score via the fresh-context subagent defined in the base skill's Phase 4b (read-only `verifier`; gets the draft + criteria table + cited references only, never your reasoning). For each FAIL or WEAK, record the specific gap.
+Score via a fresh-context, read-only `verifier` from `.claude/roles.yaml`. Give it only the draft, criteria table, and cited references, never the authoring reasoning. For each FAIL or WEAK, record the specific gap.
 
 Also check: has any codebase or KB data gathered in Steps 1–3 revealed assumptions in the design that don't hold?
 
@@ -216,7 +218,7 @@ This replaces the old "queue everything to the doc and tell the user to run `--r
 
 ### 5a. Apply all revisions
 
-Finalize the effort doc with all in-place changes from Steps 3–4.5. Write (or overwrite) `workspace/efforts/{slug}.md`.
+Finalize the in-memory effort doc with all changes from Steps 3-4.5. Follow `.claude/docs/workspace-write-guard.md`: stage the final content, show its diff, and apply it with the fresh guard metadata to `workspace/efforts/{slug}.md`. Do not write or overwrite the target directly.
 
 ### 5b. Append `## Human Input Required`
 

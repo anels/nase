@@ -173,7 +173,7 @@ than reconstructing intent from a pile of stale siblings.
 
 ## Design Creation
 
-Used by `/nase:design` Phase 5.
+Used when `/nase:design` saves the approved effort doc.
 
 Create `workspace/efforts/{slug}.md` with:
 

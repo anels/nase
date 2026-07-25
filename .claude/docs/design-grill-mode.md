@@ -24,7 +24,7 @@ Stress-test an existing plan via a relentless frontier-round interview. Goal: wa
 
 ## Activation
 
-Trigger: `$ARGUMENTS` contains `--grill` (anywhere in the args). Strip `--grill` from `$ARGUMENTS` before parsing the rest. Skip the normal `/nase:design` Phase 1–5 flow and follow this algorithm instead.
+Trigger: `$ARGUMENTS` contains `--grill` (anywhere in the args). Strip `--grill` from `$ARGUMENTS` before parsing the rest. Skip the base interactive workflow and follow this algorithm instead.
 
 ## Step 1: Resolve Target Plan
 
@@ -54,7 +54,9 @@ Hold the resolved absolute path as `repo_path`. All codebase exploration in Step
 
 Before building the decision tree, verify the plan's **load-bearing mechanism premise** — the 1-2 assumptions about how an external repo, pipeline, or system actually works that the plan's core approach rests on (e.g. "the cert job is separate", "AppGw config is imperative az", "this pipeline stage runs before that gate"). Fetch + grep the authority repo/pipeline (`repo_path` or the external source named in the plan) for those specific decision points and confirm each holds. If a premise is wrong, correct the plan body first, then build the tree.
 
-A grill run on an ungrounded premise multiplies the wrong model across every branch — the whole tree, and the rounds spent resolving it, are wasted when the premise flips only late (the failure this guards against). Step 4b resolves per-branch questions but does **not** re-validate the shared premise the tree is built from, so it must be grounded here. Keep this scoped to the load-bearing premise only — this is not a full re-research of the design (the main `/nase:design` flow's Phase 2b does that); a grill just cannot afford to skip the one check its entire tree depends on.
+A grill run on an ungrounded premise multiplies the wrong model across every branch — the whole tree, and the rounds spent resolving it, are wasted when the premise flips only late (the failure this guards against). Step 4b resolves per-branch questions but does **not** re-validate the shared premise the tree is built from, so it must be grounded here. Keep this scoped to the load-bearing premise only — this is not a full re-research of the design; the base `/nase:design` workflow Steps 1-2 own that.
+
+Remaining work is also a load-bearing premise. Follow `.claude/docs/open-work-freshness.md` before ranking any item as open. Use the fetched-ref implementation and test mechanism, not the current checkout or a name-only grep. Consume `freshness_outcome` before building the decision tree: on `blocked`, skip the tree, carry the missing evidence into **Open after grill**, and do not suggest FSD; on `already_shipped`, skip the tree, report the shipping evidence, and do not suggest FSD; on `continue`, exclude `already_done` items from the tree and retain their shipping evidence for Step 6.5.
 
 ## Step 3: Build Decision Tree
 
@@ -333,7 +335,7 @@ Report to the user (conversation language):
 - Number of branches walked + lookups + auto-resolutions
 - Codex mutual grill status: skipped / {N} rounds / converged / cap reached, plus unresolved human-input count
 - 1-line summary of the most load-bearing constraint added
-- Suggest next step: `/nase:fsd {slug}` if user is ready to implement, else "Park it — surfaces in /nase:today."
+- Only suggest `/nase:fsd {slug}` when `freshness_outcome = continue`; otherwise report the blocker or shipped evidence and no implementation handoff.
 
 Daily log entry per `.claude/docs/daily-log-format.md` (tag: `grill` — ad-hoc, not in canonical tag table; add to that table if grill becomes a regular workflow):
 `grilled {slug} — {N} branches, {top constraint} → effort doc updated`
