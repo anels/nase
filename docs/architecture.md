@@ -105,9 +105,9 @@ Halts and warns if any match, since squashing would flatten a postmortem breadcr
 
 Scans skill files for command injection, prompt injection, data exfiltration, credential exposure, and unsafe file ops. Returns OK / WARN / FAIL per file. Auto-runs during `/nase:kb-merge` whenever a teammate's KB / skills are imported.
 
-### `/nase:design` Phase 2d telemetry blast-radius check
+### `/nase:design` telemetry blast-radius check
 
-`design.md` Phase 2d: if the design touches AppInsights / Azure Functions telemetry surfaces (`host.json` sampling, `TelemetryProcessor`, etc.), requires a Mitigation section in the design doc.
+`.claude/docs/design-research.md` Part B requires AppInsights and Azure Functions telemetry designs to enumerate affected alert families and include a dedicated risk and mitigation.
 
 ---
 

@@ -5,6 +5,7 @@
 - Activation
 - Step 1: Resolve Target Effort Doc
 - Step 1b: Resolve Human Input (if present)
+- Step 1.5: Resolve Target Repo
 - Step 2: Gather Current State
 - Step 3: Evaluate Against Quality Criteria
 - Step 3.5: Doc Hygiene Pass (auto-cleanup)
@@ -13,11 +14,11 @@
 - Step 5: Daily Log
 - Notes
 
-Re-evaluate an existing design doc against the current codebase and KB. Verdict: APPROVED, Needs Revision, or Superseded.
+Re-evaluate an existing design doc against the current codebase and KB. Verdict: ALREADY SHIPPED, APPROVED, Needs Revision, or Superseded.
 
 ## Activation
 
-Trigger: `$ARGUMENTS` contains `--review` (anywhere in the args), OR auto-detected when a slug in `$ARGUMENTS` already exists as `workspace/efforts/{slug}.md`. Strip `--review` from `$ARGUMENTS` before parsing the rest. Skip the normal `/nase:design` Phase 1–5 flow and follow this algorithm instead.
+Trigger: `$ARGUMENTS` contains `--review` (anywhere in the args), OR auto-detected when a slug in `$ARGUMENTS` already exists as `workspace/efforts/{slug}.md`. Strip `--review` from `$ARGUMENTS` before parsing the rest. Skip the base interactive workflow and follow this algorithm instead.
 
 ## Step 1: Resolve Target Effort Doc
 
@@ -59,13 +60,19 @@ When every H-row is resolved:
 
 Then proceed to Step 2. If the section is absent or empty, skip this step entirely.
 
+## Step 1.5: Resolve Target Repo
+
+Read the effort doc's frontmatter `repo:` field and resolve it through `.claude/docs/repo-resolution.md` Part 1. If it is absent or `multiple`, ask the user to choose from `workspace/context.md`. Hold the absolute path as `repo_path`; stop if it is not a Git repository.
+
 ## Step 2: Gather Current State
+
+First follow `.claude/docs/open-work-freshness.md`. It resolves and fetches `default_branch`, reads implementation and tests at the verified remote ref, repairs `already_done` scope through the workspace write guard, and returns `freshness_outcome`. On `blocked`, skip scoring and continue to **Needs Revision**. On `already_shipped`, skip scoring and continue to **ALREADY SHIPPED**. On `continue`, score the repaired effort doc.
 
 Run in parallel:
 
 - **Git log** — changes in the target repo since the effort doc's `created:` date:
   ```bash
-  git -C {repo} log --oneline --since="{created-date}" -- {relevant paths}
+  git -C {repo_path} log --oneline --since="{created_date}" "{fresh_default_oid}" -- "{relevant_path}"
   ```
 - **KB delta** — re-read the domain KB file(s) relevant to this effort. Note any constraints added or changed since design was written.
 - **Open questions** — scan the effort doc's `## Open Questions` section for unresolved items.
@@ -86,23 +93,27 @@ Score every criterion from the Quality Criteria table (in `/nase:design`):
 | Elegance | |
 | Reviewability | |
 
-Also check for **staleness**: has the codebase or KB changed in ways that invalidate assumptions in the design?
+Also check for **unresolved staleness**: after the Step 2 repair, does the codebase or KB still invalidate an assumption in the design? A repaired already-shipped item remains in the audit evidence but is not reopened.
 
 ## Step 3.5: Doc Hygiene Pass (auto-cleanup)
 
 A doc reaching review has usually been through several edit rounds and carries cruft — duplicated claims across sections, session-process artifacts, wording superseded by a prior grill, value drifts (two lines stating different numbers for the same thing). Clean it before rendering the verdict so the verdict scores the durable spec, not the accretion. This runs regardless of verdict (an APPROVED doc still benefits). It edits only the design doc (within review mode's allowed scope) and goes through the workspace-write-guard diff, so it is reviewable.
 
-Apply the **same policy as `design-grill-mode.md` → Step 6.5** (auto-remove superseded wording / exact duplicates / session artifacts / dead-duplicate links / resolved `[NEEDS CLARIFICATION]`; list-only for judgment calls; never touch a MUST/constraint/SC/Risk/citation; flag value drifts rather than silently picking). The staleness findings from Step 3 feed this: a claim invalidated by codebase/KB change that a resolution already superseded is an auto-remove; one with no recorded replacement is a Step 4 issue, not a cleanup.
+Apply the **same policy as `design-grill-mode.md` → Step 6.5** (auto-remove superseded wording / exact duplicates / session artifacts / dead-duplicate links / resolved `[NEEDS CLARIFICATION]`; list-only for judgment calls; never touch a MUST/constraint/SC/Risk/citation; flag value drifts rather than silently picking). Freshness repairs from Step 2 stay resolved. A separate stale claim with no evidence-backed replacement is a Step 4 issue, not cleanup.
 
 Record the count in the Step 5 daily-log line and, if any judgment-call collapses were flagged, list them in the Step 4 output so the user can act on them.
 
 ## Step 4: Verdict
 
-Determine one of three verdicts:
+Determine one of four verdicts:
+
+### ALREADY SHIPPED
+
+Report the pinned default-branch OID, shipping commit, merged PR, and path-level implementation evidence for each requirement. Do not offer **Start implementation** or suggest FSD. Stop.
 
 ### APPROVED
 
-All criteria PASS or at most 1 WEAK, and no staleness issues. The design holds.
+All criteria PASS or at most 1 WEAK, and no unresolved staleness or freshness blocker remains. The design holds.
 
 Present the scorecard to the user, then ask via `AskUserQuestion`:
 
@@ -117,7 +128,7 @@ options:
 
 ### Needs Revision
 
-Any FAIL, or 2+ WEAK, or staleness detected. List specific issues:
+Any FAIL, 2+ WEAK, unresolved staleness, or freshness blocker. List specific issues:
 
 ```markdown
 ## Issues found

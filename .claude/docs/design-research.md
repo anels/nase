@@ -6,7 +6,7 @@
 - Part B: Plan-Phase Gates
 - Part C: Implementation-Readiness Spec
 
-Used by `/nase:design` (Phase 1–4), `/nase:fsd` Phase 3.5, `design-auto-mode.md`, and `design-grill-mode.md`.
+Used by `/nase:design` interactive Steps 1-6, `/nase:fsd` Phase 3.5, `design-auto-mode.md`, and `design-grill-mode.md`.
 Three parts: **A. External Research** (look outward before designing), **B. Plan-Phase Gates** (what to prove before committing to an approach), **C. Implementation-Readiness Spec** (what makes a plan junior-implementable). Apply only the parts that fit the scope — a quick-fix touches A lightly and skips most of B.
 
 The contract throughout: **execute, don't narrate. Every technical claim cites a path, URL, or command output — never memory.** A claim you cannot restate in your own words does not enter the design (comprehension gate).
@@ -15,7 +15,7 @@ The contract throughout: **execute, don't narrate. Every technical claim cites a
 
 ## Part A: External Research
 
-The base skill already gathers internal context (codebase, KB, Jira). This part adds the **outward** look the user asked for: official docs, dependency source, issue trackers, forums, blogs, best practices. Run it in Phase 1 after internal context, scaled to scope.
+The base command already gathers internal context (codebase, KB, Jira). This part adds the **outward** look the user asked for: official docs, dependency source, issue trackers, forums, blogs, best practices. Run it after internal context and before approach selection, scaled to scope.
 
 ### When to run
 
@@ -53,7 +53,7 @@ A short **research log** folded into the design's grounding (not a separate arti
 
 ## Part B: Plan-Phase Gates
 
-Before presenting options (Phase 3) and before committing to a design (Phase 4), run the gates that fit the work. Each gate is "prove it, or explicitly flag that you couldn't." Skipping a gate silently is the failure mode.
+Before presenting options (base Step 4) and before finalizing the design (base Step 5), run the gates that fit the work. Each gate is "prove it, or explicitly flag that you couldn't." Skipping a gate silently is the failure mode.
 
 ### B1. Bug-repro gate (bug-shaped work only)
 
@@ -79,7 +79,7 @@ Decide, explicitly, whether this design needs evidence from production before co
 - Ask: does the design rest on an assumption about **scale, usage, traffic shape, or current behavior**? If yes, validate against telemetry / logs / metrics (App Insights, Kusto, dashboards, prod queries) before locking the approach.
 - Confirm the assumed consumer/usage actually exists. "In use" ≠ "needs this change" — a feature may be live yet have no real consumer for your specific change.
 - If no data is available, **flag the assumption** (`[NEEDS CLARIFICATION]` or a Risk) rather than designing on a guess.
-- For telemetry/sampling-touching designs, also run the AppInsights pre-merge protocol the base skill's Phase 2d already names.
+- For AppInsights or Azure Functions telemetry changes, enumerate affected alert families and add a dedicated risk and mitigation to the design. This applies to `ExcludedTypes`, `SamplingPercentage`, `AdaptiveSamplingTelemetryProcessor`, `host.json` telemetry settings, `TelemetryProcessor` pipeline changes, `ApplicationInsightsServiceOptions`, `TelemetryConfiguration`, and changes to `customMetrics`, `requests`, or `exceptions` volume.
 
 ### B4. Unit-test-gap analysis
 

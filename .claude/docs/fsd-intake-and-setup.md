@@ -33,6 +33,8 @@ python3 .claude/scripts/fsd-preflight.py --repo "{repo}" --task "$ARGUMENTS" --k
 
 Use `repo`, `moduleInventory`, `kbMentionCandidates`, `toolAvailability`, and `claudeRunSkills` from `$TMPDIR/fsd-preflight.json`. The helper output is bounded and deterministic; do not repeat the git-status/default-branch/tool-availability/run-skill probes by hand unless it failed.
 
+**Freshness check for effort-doc work:** when a slug matched, follow `.claude/docs/open-work-freshness.md` now, using the resolved repo and the effort doc's `created:` date. Apply any `already_done` evidence through the workspace write guard, then re-read the effort doc and refresh every extracted design field. Consume `freshness_outcome` in the shared order: on `blocked`, stop and report the missing evidence; on `already_shipped`, stop before Phase 2, branch creation, or worktree creation and report the shipping evidence; on `continue`, proceed with only the repaired `still_open` scope.
+
 **Load the PR gate profile.** Follow `.claude/docs/pr-gates-consumption.md` §1–2 to read the repo's `## PR Gates` KB section (with the live-fetch fallback when it is stale/empty) into `gate_profile`. This carries the repo's commit-format, PR-title, required-body-section, size, and local-lint rules so Phases 5.25/7/8 satisfy them before push instead of after a CI rejection. Skip only when the repo has no discoverable gates (`gate_profile = generic`).
 
 **If repo cannot be inferred with confidence**, use AskUserQuestion immediately:
