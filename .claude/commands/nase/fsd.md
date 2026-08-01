@@ -79,7 +79,7 @@ Follow `.claude/docs/fsd-delivery-gates.md → Phase 8`. It owns template and ga
 
 ## Phase 8.5: Verification Matrix
 
-Follow `.claude/docs/fsd-delivery-gates.md → Phase 8`. It owns local execution, evidence recording, and the separately approved PR-body update.
+Follow `.claude/docs/fsd-delivery-gates.md → Phase 8.5`. It owns local execution, evidence recording, and the separately approved PR-body update.
 
 ---
 

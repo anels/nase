@@ -17,8 +17,13 @@ Canonical spec for the compact closing card that ends `/nase:today` and `/nase:w
 
 ## Shape
 
-Seven plain lines, blank line above to separate from the previous section. This card is the **last visible content** in the command output or journal file. Nothing follows it: no status line, reminder, or extra note.
+Seven plain lines, blank line above to separate from the previous section. This card is the **last visible content** the user sees. Nothing follows it: no status line, reminder, or extra note.
 
+**Where it renders.** A skill that produces its result in chat (`/nase:today`) ends its chat reply with the card. A skill that writes its result to a file (`/nase:wrap-up`) puts the card at the end of that file **and** echoes it as the final block of its chat reply — the journal path plus highlights come first, the card comes last. Writing the card only into the file is a bug: the user closing the day never opens the file, so the card never shows.
+
+**Render inside a fenced code block.** Emit the seven lines wrapped in a ```` ``` ```` fence. Rendered as prose, a Markdown viewer treats each `│` rail as its own paragraph and blows the card open with blank lines between every row; the fence keeps the box tight and monospaced so the rails line up.
+
+````
 ```
 ╭─ {Name}
 │
@@ -28,6 +33,7 @@ Seven plain lines, blank line above to separate from the previous section. This 
 │
 ╰─
 ```
+````
 
 1. **`╭─ {Name}`** — opener line. NOT wrapped in `**...**`.
 2. **`│`** — blank rail line.

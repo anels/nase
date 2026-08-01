@@ -21,8 +21,8 @@ Close the day in one bounded pass. Run `.claude/docs/language-config.md`, `.clau
 9. Run `.claude/scripts/today-stats.py` for skill/activity counts. Missing telemetry is `no data`, not zero work.
 10. Consolidate pending style deltas through `.claude/docs/style-delta-capture.md`; never write the style profile from inference.
 11. Calibrate review findings from local evidence. GitHub stays read-only unless separately authorized.
-12. Build the journal with outcomes, reflection, lessons, KB/style changes, blockers, and stats. Render the final card from `.claude/docs/closing-block.md`.
+12. Build the journal with outcomes, reflection, lessons, KB/style changes, blockers, and stats. Render the final card from `.claude/docs/closing-block.md` at the end of the journal file.
 13. Stage the complete journal with `python3 .claude/scripts/workspace-write-guard.py stage`, show the diff, then run `workspace-write-guard.py apply` with recorded mtime/hash/staged hash. The main thread owns the write.
-14. Append one self-log line and return the journal path plus up to five highlights.
+14. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, and the closing card as the final visible block — echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
 
 Chained skill failures are recorded once and do not erase successful sibling steps. Never convert a skipped conditional step into a completion claim.

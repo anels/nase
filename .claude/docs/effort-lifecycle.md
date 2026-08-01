@@ -67,7 +67,7 @@ effort moves to `done/` + `completed` only after deploy validation passes.
 
 ## Drift Auto-Sync
 
-The deterministic lifecycle rule, applied by **both** `/nase:today` (Step 1b-v)
+The deterministic lifecycle rule, applied by **both** `/nase:today` (Step 1, Live status sync)
 and `/nase:efforts` (Step 3). Both callers keep delivery, report-only, and dependency
 PR sets separate, use *PR Reference Resolution* only to normalize/query each set, then
 pass the live delivery states to `effort-state.py`. The helper output is the executable

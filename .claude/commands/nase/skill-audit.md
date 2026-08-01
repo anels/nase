@@ -11,7 +11,7 @@ Scan skill files for security risks before they can cause damage. Returns PASS/W
 **Input:** $ARGUMENTS — one of:
 - A file path: scan that single file
 - A directory path: scan all `.md` files in it
-- `all`: scan `workspace/skills/` + `.claude/commands/nase/workspace/`
+- `all`: scan `workspace/skills/` + `.claude/commands/nase/` + `.claude/commands/nase/workspace/`
 - Empty: same as `all`
 
 ## Step 0 — Language preflight (MUST run first, non-negotiable)

@@ -55,7 +55,7 @@ After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecy
 - Treat free-text blockers and unreadable PR/Jira blockers as unresolved. Name the skipped check in the blocked reason.
 - Everything else active is *unblocked*. This is the "what can I actually pick up right now" set; it sits beside the stage classifier and does not replace it.
 
-Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`. Apply its `transition` output exactly. This documented auto-write uses the workspace write guard's normal `apply` or collision-safe `apply-move` path with no per-item human prompt, matching `/nase:today` 1b-v.
+Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`. Apply its `transition` output exactly. This documented auto-write uses the workspace write guard's normal `apply` or collision-safe `apply-move` path with no per-item human prompt, matching `/nase:today` Step 1 (Live status sync).
 
 Record each transition applied for the Step 5 report. Report-only signals (no mutation):
 - effort with **no PR and no mtime change in 14+ days** → **stalled**, may need attention or a `/nase:design --review {slug}` pass.
