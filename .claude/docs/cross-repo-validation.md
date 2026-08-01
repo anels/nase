@@ -117,6 +117,7 @@ If applied, update `<!-- Last updated: ... -->` on the tracker.
 - Preserve any section in the tracker that has `<!-- manual: keep -->` directly above it — do not rewrite.
 - Preserve external links and prose commentary that don't appear in per-repo KBs.
 - If the tracker has no `## Master Matrix` heading, skip the auto-update silently (tracker is freeform; user-owned).
+- **No symmetry-from-a-shared-flag.** Every per-repo behavioral cell/contrast row must be HEAD-grounded in *that* repo's own source (a `path:line`), not inferred by analogy from a shared config/flag name that the repos happen to have in common (e.g. all three declaring `Snowflake:UseKeyPairAuth` does not mean one fails fast while others fall back). If a per-repo value is unverifiable, record only the shared fact and mark the per-repo behavior `unverified` — never write an A-vs-B contrast you did not confirm in each repo.
 
 ---
 

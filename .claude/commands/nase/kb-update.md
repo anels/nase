@@ -9,7 +9,7 @@ category: Knowledge base
 The KB is the workspace's long-term memory — it outlives individual sessions.
 
 **Decision rule:** follow `.claude/docs/kb-write-routing.md` — repo-internal facts (API contract, migration constraint, naming convention, architectural decision) belong here; general patterns / web-sourced articles belong in `/nase:learn`; cross-service contracts go in `workspace/kb/cross-project/`; ops/runbooks go in `workspace/kb/ops/`.
-Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-map.md`, cross-reference edits, and split/move operations. Use `python3 .claude/scripts/workspace-write-guard.py stage` for every full-file durable write.
+Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-map.md`, cross-reference edits, and split/move operations. Use `python3 .claude/scripts/workspace-write-guard.py stage` for every full-file durable write. Format entries per `.claude/docs/kb-template.md → Writing Conventions`.
 
 **Input:** $ARGUMENTS
 (If empty, reflect on recent work and identify what's worth capturing.)

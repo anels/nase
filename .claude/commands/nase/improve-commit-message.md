@@ -29,7 +29,7 @@ Never assume repository state — check it with git commands first.
 
 ### 1. Detect commitlint config
 
-Use Glob to find config files (`.commitlintrc.json`, `.commitlintrc.js`, `.commitlintrc.yml`, `commitlint.config.js`) in the repo root.
+Use Glob to find config files (`.commitlintrc.json`, `.commitlintrc.js`, `.commitlintrc.yml`, `commitlint.config.js`, `commitlint.config.mjs`, `commitlint.config.cjs`, `commitlint.config.ts`) in the repo root. Multiple may exist — the one CI loads wins, not the first found. Confirm against the `configFile:` line in the commitlint CI job log when a run exists.
 If a JSON config exists, use Read to parse it directly — extract:
 - `header-max-length` (validation limit; display target is always **80 chars**)
 - `type-enum` (allowed types)
@@ -89,6 +89,7 @@ Rules:
   - Default to one body paragraph, one blank line, then footer trailers (`Co-Authored-By:`, `Closes #N`, `Signed-off-by:`).
   - If multiple body paragraphs are necessary, keep trailers flush after the last paragraph with exactly one blank-line separator.
   - Do not leave extra blank lines between body paragraphs and trailers; commitlint can mis-split body/footer and fail even when the trailer is well-formed.
+  - Do not start a body or bullet line with `Identifier:` (e.g. `- LookerDashboardEditJob: ...`); commitlint's parser reads a leading `token: value` as a footer trailer, mis-splits body/footer, and fails `footer-leading-blank`. Reword to prose (`- the LookerDashboardEditJob path ...`).
 
 ### 6. Show comparison and amend
 
@@ -181,5 +182,5 @@ fix(auth): handle null tokens from expired sessions
 ## Config Priority
 
 1. `.commitlintrc.json` in repo root
-2. `.commitlintrc.js`, `.commitlintrc.yml`, `commitlint.config.js`
+2. `.commitlintrc.js`, `.commitlintrc.yml`, `commitlint.config.js`, `commitlint.config.mjs`, `commitlint.config.cjs`, `commitlint.config.ts`
 3. Standard conventional commits defaults
