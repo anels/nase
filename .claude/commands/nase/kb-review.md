@@ -14,7 +14,7 @@ Audit KB health first, then apply only approved changes. Run `.claude/docs/langu
 1. Resolve `$ARGUMENTS` to all KB, one domain, or one bounded path. Reject targets outside `workspace/kb/`.
 2. Run `.claude/scripts/kb-hygiene-scan.py` and index headings, explicit links, domain-map entries, age, size, and lesson candidates.
 3. For broad reviews, dispatch read-only `nase-context-kb-researcher` slices for disjoint domains. The main thread owns KB edits and report writes.
-4. Classify findings as contradictions, duplicates, healthy overlaps, missing cross-references, stale content, orphans, sparse files, temporary artifacts, and lesson-promotion candidates.
+4. Classify findings as contradictions, duplicates, healthy overlaps, missing cross-references, stale content, orphans, sparse files, temporary artifacts, one-sided entries (a trigger with no boundary/counter-example), low-signal platitudes (fail `.claude/docs/kb-template.md → Verification triad` V2/V3), and lesson-promotion candidates. One-sided and platitude findings are rewrite/prune candidates, not silent deletes; surface them for approval like any other change.
 5. Use `.claude/docs/kb-relationship-graph.md` for relationship checks and `.claude/docs/kb-staleness.md` for staleness. Do not treat age alone as proof that a fact is obsolete.
 6. For full scope, audit explicit Markdown links, domain-map integrity, effort references, todo hygiene, and entry consistency. Separate broken links from inert code-span references.
 7. Write the complete health report to `workspace/recaps/kb-review-{YYYY-MM-DD}.md`; chat gets the pointer and top findings.

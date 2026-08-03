@@ -43,6 +43,13 @@ Applies to project KBs and general KB entries written by `/nase:learn`, `/nase:k
 
 **Do not** restate what code already says. **Silence is acceptable** — if nothing meets the bar, write nothing.
 
+**Verification triad: apply before writing, re-check in `/nase:kb-review`.** Adapt the three questions from [kangarooking/cangjie-skill's RIA-TV++ triple verification](https://github.com/kangarooking/cangjie-skill/blob/55e4b7059c423534f94cfbdeb0a4ee34f3ba6182/README.en.md) to nase's existing confidence model: V2 and V3 are admission gates; V1 sets confidence.
+- **V1 Corroboration:** Two independent sources, or one authoritative primary source plus your own verification (a diff, a repro, or a run), supports the default high confidence. A single sourced claim gets `**Confidence:** medium`; an unverified hypothesis gets `**Confidence:** low` or is dropped. Never state weak evidence as fact.
+- **V2 Predictive power:** The entry lets you answer a question you could not answer before. If it only restates what is obvious once named, do not write it.
+- **V3 Non-obviousness:** The entry is not a common-sense platitude. If a competent engineer would already do this without the note, do not write it.
+
+**State the boundary for actionable guidance.** Say when the guidance does *not* apply and name any blind spot in the source, not only when to apply it. A trigger without a boundary is incomplete; `/nase:kb-review` flags it. This adapts the same source's RIA++ **B (Boundary)** field: the counter-example is often the load-bearing half.
+
 **Page shapes** — use as section types within KB files:
 - **Entity** — a stable named thing (a library, subsystem, third-party service)
 - **Decision** — "why we chose X" — include rejected alternatives and their cost
