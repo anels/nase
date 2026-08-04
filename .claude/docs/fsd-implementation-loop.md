@@ -6,12 +6,11 @@
 - Phase 3.5: Research Gate (external dependencies only)
 - Phase 3.6: Implementation Preflight (all execution modes)
 - Phase 4: Implement (TDD - Red → Green → Refactor)
-- Phase 5: Build & Test Loop (max 5 iterations)
-- Phase 5.25: Optional Post-Edit CLI Gates
-- Phase 5.5: Diff-Size Guardrail (soft gate)
+- Phase 5: Initial Build & Test Loop (shared max 5 iterations)
 - Phase 6: Simplify
+- Phase 6.1: Post-Edit Deterministic Gates and Candidate Bundle
 
-Read this file only when /nase:fsd enters Phases 3.5-6. It owns research, implementation preflight, implementation, build/test, optional CLI checks, diff sizing, and simplification.
+Read this file only when /nase:fsd enters Phases 3.5-6.1. It owns research, implementation preflight, implementation, build/test, simplification, final CLI checks, diff sizing, and candidate creation.
 
 ## Engineering Excellence Bar
 
@@ -22,7 +21,7 @@ This is the one sanctioned exception to `CLAUDE.md`'s "while we're at it" reject
 **Attribute, then fix - both, not either:**
 - First attribute. Is this a regression my diff introduced, or pre-existing / upstream? Per `feedback_ci-unrelated-test-check-develop-first.md`, run `git log --since='48 hours ago' origin/{default_branch} -- <test-path>` and rebase onto current default before debugging. Attribution tells you *what kind* of failure it is; it never tells you to skip the fix.
 - A regression you introduced → fix inline; it is part of this change.
-- Pre-existing / upstream that survives the rebase → still fix it. **Default: fix inline in this branch and call it out in the Phase 10 report.** Isolate into a separate commit/PR (or escalate to the owning team) *only* when the fix crosses a repo or owner boundary, or would materially balloon the diff past the Phase 5.5 guardrail - but never leave the gate red to keep the diff small.
+- Pre-existing / upstream that survives the rebase → still fix it. **Default: fix inline in this branch and call it out in the Phase 10 report.** Isolate into a separate commit/PR (or escalate to the owning team) *only* when the fix crosses a repo or owner boundary, or would materially balloon the diff past the Phase 6.1 guardrail - but never leave the gate red to keep the diff small.
 
 **Flakiness is a defect, not noise.** A test that passes only on re-run is broken - fix the root cause (test isolation, async/timing, shared state). Do not paper over it with retries, sleeps, or a `cy.wait` on a deduped fetch (`feedback_swr-cywait-alias-flake.md`) - that deepens the flake. If the true fix is genuinely out of scope for this branch, quarantine the test explicitly (skip + a tracked follow-up), never re-run until it happens to go green.
 
@@ -81,7 +80,7 @@ Carry `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findi
 Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present - implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
 If `design_pr_plan` exists, preserve it unless the diff-size hard gate, repo boundary, release boundary, or a reviewer-owner boundary clearly forces a split. Implementation phases are not PR boundaries by themselves.
 
-**Comments - write sparingly.** Default to none (`CLAUDE.md → Code Quality`; `workspace/kb/general/clean-code.md`). Add a comment only when the logic is genuinely non-obvious, and then explain the *why* (the invariant, the bug a workaround references) - never restate what the code already says. Comments that narrate the obvious are AI-slop the Phase 5.75 review will flag.
+**Comments - write sparingly.** Default to none (`CLAUDE.md → Code Quality`; `workspace/kb/general/clean-code.md`). Add a comment only when the logic is genuinely non-obvious, and then explain the *why* (the invariant, the bug a workaround references) - never restate what the code already says. Comments that narrate the obvious are AI-slop the final quality review will flag.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**
@@ -129,39 +128,63 @@ For each behavior, do one full Red→Green cycle before starting the next:
 
 ---
 
-## Phase 5: Build & Test Loop (max 5 iterations)
+## Phase 5: Initial Build & Test Loop (shared max 5 iterations)
 
-Get configured build/lint/typecheck/test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. The exit condition is the **Engineering Excellence Bar** above: green build/lint/test and zero flakes - *including* pre-existing or upstream failures and flakes the run surfaces. Attribute (rebase-check), then fix; do not proceed past a red or flaky gate, and do not burn the 5-iteration budget re-running a flake instead of root-causing it. After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff (skip it when tdd_mode = true - RED gate already covers it).
+Get configured build, lint, typecheck, and test commands from KB or `CLAUDE.md`. Follow `.claude/docs/build-test-loop.md`; every configured gate must pass, and missing gates need documented absence. The exit condition is the **Engineering Excellence Bar** above: green build/lint/test and zero flakes, including pre-existing or upstream failures and flakes the run surfaces. Attribute with the default-branch check, then fix. The five-iteration budget is cumulative for the whole FSD run. QA rounds and Phase 6 restarts never reset it.
 
-If `claudeRunSkills.recipes` from preflight is non-empty and this task changes runtime behavior, prefer Claude Code `/verify` as the first behavioral smoke check after local build/test gates. Use the matching `/run` recipe context surfaced by preflight; record `/verify` output as evidence. If no recipe exists, or the change is docs/config-only, keep the existing local gate flow and note that `/verify` was not applicable.
+After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff. Skip it when `tdd_mode = true` because the RED gate already covers it.
 
-**Dependency-bump consumer fixes:** when fixing a consumer-side break from a breaking dependency bump, build the full solution, including `*Tests.csproj`, and run affected suites. CI stops at the first failing project, so a single-project or Release-only build can hide test-project Moq `Setup`/`Verify`, typed `Callback<>`, and ctor-arity breaks. Compile-clean on the main project is not enough.
-On success: proceed to Phase 5.5.
+If `claudeRunSkills.recipes` from preflight is non-empty and this task changes runtime behavior, prefer Claude Code `/verify` as the first behavioral smoke check after local gates. Record the exact command result as preliminary evidence. If no recipe exists, or the change is docs/config-only, record why `/verify` was not applicable.
 
----
+**Dependency-bump consumer fixes:** build the full solution, including `*Tests.csproj`, and run affected suites. A single-project or Release-only build is insufficient because CI may stop before compiling test consumers.
 
-## Phase 5.25: Optional Post-Edit CLI Gates
-
-Follow `.claude/docs/cli-tooling.md`. Probe local optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`, then run only the gates that match changed files. Missing optional tools are warning-only and must not block a working implementation unless the current task explicitly depends on that evidence.
-
-Use the same merge-base command shown in Phase 5.5 to classify changed files:
-
-- Shell files (`*.sh`, hooks, script snippets promoted to files): run `shellcheck` when available; run `shfmt -d` when available and either apply the formatting or report why it was skipped.
-- GitHub Actions workflows (`.github/workflows/*.{yml,yaml}`): run `actionlint` when available.
-- Dockerfiles: run `hadolint` when available.
-- Secret-risk changes: run `gitleaks detect --redact --report-format json --report-path -` when available, keeping any findings redacted.
-- YAML / TOML / XML / HCL / JSON config edited by the task: use `yq` when available to parse or extract the exact fields the implementation depends on.
-- Repeated structural code edits: use `ast-grep` when available to verify the pattern across all touched call sites.
-
-Treat every optional gate result as a candidate signal. Verify findings against the changed source lines before changing code, and include skipped gates only when the skip affects confidence.
-
-If `gate_profile.lint_gates` (Phase 1) names a repo-specific linter/formatter that maps to a locally runnable command, run it against the changed files here - clearing it now avoids a post-push CI rejection from that exact gate.
+On success, proceed to Phase 6.
 
 ---
 
-## Phase 5.5: Diff-Size Guardrail (soft gate)
+## Phase 6: Simplify
 
-Measure the diff against the base branch:
+Run `/nase:simplify` on changed files. It uses `code-simplifier` when installed and self-reviews otherwise. Apply improvements before final verification. Do not skip because the change seems small; invoke the skill and let it decide.
+
+Any edit after this point, including an autofix, formatter write, test correction, or commit-tree mismatch, invalidates the candidate bundle and all review results. Restart at Phase 6 so simplification and every final gate run against one final candidate.
+
+---
+
+## Phase 6.1: Post-Edit Deterministic Gates and Candidate Bundle
+
+Run these steps in order. Any candidate write restarts Phase 6. A read-only failure uses the remaining shared build/test iteration budget, fixes the root cause, then restarts Phase 6.
+
+### 1. CLI and formatter gates
+
+Follow `.claude/docs/cli-tooling.md`. Probe optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`, then run only gates matching changed files:
+
+- shell: `shellcheck` and `shfmt -d` when available
+- GitHub Actions: `actionlint`
+- Dockerfiles: `hadolint`
+- secret-risk changes: redacted `gitleaks detect`
+- edited YAML, TOML, XML, HCL, or JSON: parse the exact depended-on fields with an available native or repo tool
+- repeated structural edits: `ast-grep` when available
+- repo-specific gates named by `gate_profile.lint_gates`
+
+Missing optional tools are warning-only unless the task explicitly depends on their evidence. Verify tool findings against the changed source before editing.
+
+### 2. Freeze the tested candidate
+
+Resolve `tested_candidate_tree_oid` with `codex-verify-bundle.py --candidate-tree-only`. This uses the same temporary-index algorithm as the final bundle and performs the redacted candidate secret preflight. An unresolved secret match stops before any reviewer payload is written.
+
+### 3. Focused behavioral evidence
+
+Run the smallest regression test for every changed user path or reported bug, plus the original reproduction or strict-TDD RED evidence when available. For a bug fix without captured RED evidence, record the smallest plausible mutation the regression test would reject. Do not delete, weaken, or rewrite an assertion merely to make an existing failing test green. Adding or strengthening tests for the real contract is allowed.
+
+Use scoped mutation, property, or fuzz evidence only when the target repository already configures the tool and the changed risk surface clearly fits it. Never install a new tool for FSD.
+
+### 4. Canonical gates and flake evidence
+
+Rerun the complete build, lint, typecheck, and test command set after the last edit. Then run the repo's documented flake or repeat strategy. Record command, exit code, and a bounded normalized result in canonical JSON. All evidence must come from after the last modification.
+
+### 5. Final diff-size guard
+
+Resolve the commit base and measure the complete candidate, including untracked text:
 
 ```bash
 BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
@@ -169,34 +192,34 @@ git -C {worktree_or_repo} diff --stat "$BASE" | tail -1
 git -C {worktree_or_repo} ls-files --others --exclude-standard
 ```
 
-`total_lines_changed` = tracked insertions + deletions + line count of untracked text files. List binary untracked files but do not count lines.
-
-Reference: Google eng-practices change-sizing - review quality degrades sharply past ~100 lines; >250 lines cuts defect-detection rate roughly in half. See `workspace/kb/general/claude-prompting.md §2026-06-10` for the source-of-truth framing.
+`total_lines_changed` is tracked insertions plus deletions plus lines in untracked text. List binary untracked files without counting their lines.
 
 | Bucket | Action |
-|--------|--------|
-| ≤ 100 lines | sweet spot - proceed to Phase 6 silently |
-| 101-250 lines | advisory: print one-line: `Diff is {N} lines - past the ~100-line sweet spot; continuing with the design PR plan unless a real split boundary exists.` Continue without asking. |
-| 251-500 lines | caution: print `Diff is {N} lines - review quality drops sharply past 250 lines. Continue with the design PR plan; add a review guide rather than splitting unless a split criterion is met.` Render `git diff --stat`. Continue without asking. |
-| 501-1500 lines | strong caution: print `Diff is {N} lines - past the 500-line single-PR guidance from Google eng-practices. Keeping one PR is acceptable only when the design PR plan is single-PR and the diff is one coherent vertical slice.` Continue without asking, but **mark `large-diff` for Phase 10 daily log automatically.** |
-| > 1500 lines | **pause** - present `git diff --stat` and ask via `AskUserQuestion`: |
+|---|---|
+| <= 100 | Proceed silently. |
+| 101-250 | Report the advisory and continue. |
+| 251-500 | Report the caution with `git diff --stat` and continue. |
+| 501-1500 | Report strong caution, continue only for one coherent design slice, and add `large-diff` to Phase 10. |
+| > 1500 | Preserve the existing explicit human gate: show the stat and ask whether to split, proceed as one PR, or show the file list. |
 
+### 6. Freeze inventory and build the candidate bundle
+
+Build `canonical_task_spec` from the original task plus every Phase 2/design success criterion and constraint. Derive a non-empty fixed inventory from that complete source as canonical JSON with `ref`, `id`, and exact `summary` for every requirement. Write command evidence with exact keys `candidate_tree_oid` and `commands`; every command record has `command`, zero `exit_code`, and bounded `summary`. Bind it to `tested_candidate_tree_oid`.
+
+Resolve the candidate tree again and require exact equality with `tested_candidate_tree_oid`. A test, build, formatter, or tool that changed candidate content invalidates its own evidence; restart Phase 6. Keep inventory, evidence, result, state, and bundle under `workspace/tmp/`, outside the target repository.
+
+```bash
+python3 .claude/scripts/codex-verify-bundle.py \
+  --repo "{worktree_or_repo}" \
+  --base "$BASE" \
+  --task "$canonical_task_spec" \
+  --inventory-file "{inventory_json}" \
+  --evidence-file "{command_evidence_json}" \
+  --reviewer-identity-output "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-r{qa_round}-identity.json" \
+  --output "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-r{qa_round}.md"
 ```
-question: "Diff is {N} lines - past the 1500-line ceiling for a single PR. How to proceed?"
-header: "Diff Size"
-options:
-  - label: "Split into smaller PRs"   , description: "Stop here; I'll guide you on a split plan and you re-run fsd per slice"
-  - label: "Proceed - single PR"      , description: "Force-continue. Logged so we can audit how often this happens."
-  - label: "Show me the file list"    , description: "Render the per-file breakdown before deciding"
-```
 
-On "Split": stop and suggest the minimum PR count from the design PR plan, topology clusters, and `git diff --stat`. On "Proceed": add `large-diff` tag to Phase 10 daily log.
-
----
-
-## Phase 6: Simplify
-
-Run `/nase:simplify` on changed files (after the self-review loop is clean); it uses `code-simplifier` when installed and self-reviews otherwise. Apply improvements before commit. Do not skip because the change seems small; invoke the skill and let it decide.
+The helper rejects stale evidence, secret-like candidate/evidence content, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.25 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
 
 ### Anti-rationalization gate (apply before deciding to skip any sub-step in Phases 5–7)
 
@@ -207,6 +230,6 @@ Run `/nase:simplify` on changed files (after the self-review loop is clean); it 
 | "This comment / TODO is obvious - Phase 6 doesn't need to touch it." | Code/comment drift is the #1 source of stale review-cycles. If the comment no longer matches the post-Phase-4 code, fix it now - the reviewer will catch it and you'll re-push anyway. |
 | "Simplifier didn't find anything - diff is already clean." | Verify by reading the simplifier's output, not by inferring from silence. If the run produced no diff, log `simplify: no changes` once and proceed. Skipping the invocation is not equivalent. |
 | "I already squashed once today, second prep-merge can reuse." | Per `feedback_prep-merge-upstream-check.md`: `git log origin/{default}..HEAD` first. Base may have shifted; refresh PR body if so. |
-| "I'm confident the change is small enough to skip Phase 6.5 verify." | Follow `.claude/docs/fsd-delivery-gates.md`; its Codex MCP check skips cleanly to the fresh-context fallback when unavailable. |
+| "I'm confident the change is small enough to skip final QA." | Follow `.claude/docs/fsd-delivery-gates.md`; both final reviews are mandatory and bind to the candidate tree. |
 
 ---

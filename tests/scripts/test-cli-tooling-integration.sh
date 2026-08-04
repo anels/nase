@@ -9,7 +9,7 @@ source "$ROOT/tests/lib/assert.sh"
 
 assert_contains "fsd has post-edit tool gate" \
   ".claude/docs/fsd-implementation-loop.md" \
-  "Phase 5.25: Optional Post-Edit CLI Gates"
+  "Phase 6.1: Post-Edit Deterministic Gates and Candidate Bundle"
 
 assert_contains "address-comments has post-edit tool gate" \
   ".claude/docs/address-comments-delivery.md" \

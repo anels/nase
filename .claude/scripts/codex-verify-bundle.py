@@ -1,118 +1,792 @@
 #!/usr/bin/env python3
-"""Build the markdown bundle used by the Codex pre-push verification gate."""
+"""Build a tree-bound markdown bundle for the FSD verification gates."""
 
 from __future__ import annotations
 
 import argparse
+import codecs
+import hashlib
+import json
+import os
+import posixpath
+import re
 import subprocess
+import tempfile
+import unicodedata
 from pathlib import Path
+from typing import Any
 
 
 GENERATED_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".lock")
+ITEM_LIMIT = 64 * 1024
+CONTEXT_LIMIT = 256 * 1024
+BUNDLE_LIMIT = 512 * 1024
+JSON_INPUT_LIMIT = 512 * 1024
+FULL_DIFF_BYTE_LIMIT = 128 * 1024
+SCAN_CHUNK = 64 * 1024
+SCAN_OVERLAP = 4 * 1024
+SECRET_PATTERNS = (
+    ("private-key", re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
+    ("bearer-token", re.compile(rb"(?i)\bauthorization\s*:\s*bearer\s+[a-z0-9._~+/=-]{8,}")),
+    (
+        "known-token",
+        re.compile(
+            rb"\b(?:AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})\b"
+        ),
+    ),
+    (
+        "credential-assignment",
+        re.compile(
+            rb"(?i)\b(?:password|passwd|pwd|api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|secret)\b\s*[:=]\s*[\"']?[A-Za-z0-9._~+/@!#$%^&*=-]{8,}"
+        ),
+    ),
+)
+PLACEHOLDER_MARKERS = (b"example", b"dummy", b"placeholder", b"redacted", b"changeme")
 
 
-def run_git(repo: Path, *args: str, check: bool = True) -> str:
+def git(
+    repo: Path,
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> bytes:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
     result = subprocess.run(
         ["git", "-C", str(repo), *args],
         check=False,
-        text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=merged_env,
     )
     if check and result.returncode != 0:
-        raise SystemExit(result.stderr.strip() or f"git {' '.join(args)} failed")
+        message = result.stderr.decode("utf-8", "replace").strip()
+        raise SystemExit(message or f"git {' '.join(args)} failed")
     return result.stdout
 
 
-def changed_lines(repo: Path, base: str) -> tuple[int, list[tuple[int, str]]]:
+def git_text(repo: Path, *args: str, **kwargs: Any) -> str:
+    return git(repo, *args, **kwargs).decode("utf-8", "strict")
+
+
+def canonical_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def load_json(path: str | None, default: Any) -> Any:
+    if not path:
+        return default
+    try:
+        source = Path(path)
+        if source.stat().st_size > JSON_INPUT_LIMIT:
+            raise SystemExit(f"JSON input exceeds 512 KiB: {path}")
+        return json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid JSON file {path}: {exc}") from exc
+
+
+def normalize_path(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("path must be a string")
+    path = unicodedata.normalize("NFC", value).replace("\\", "/")
+    if "\0" in path or path.startswith("/"):
+        raise ValueError("path must be a relative UTF-8 repository path")
+    while path.startswith("./"):
+        path = path[2:]
+    if not path or any(part == ".." for part in path.split("/")):
+        raise ValueError("path must not be empty or traverse parents")
+    path = posixpath.normpath(path)
+    if path in ("", ".") or path.startswith("../"):
+        raise ValueError("path must name a repository file")
+    return path
+
+
+def candidate_tree(repo: Path) -> tuple[str, str]:
+    head_oid = git_text(repo, "rev-parse", "HEAD^{commit}").strip()
+    with tempfile.TemporaryDirectory(prefix="fsd-index-") as temp_dir:
+        index = str(Path(temp_dir) / "index")
+        env = {"GIT_INDEX_FILE": index}
+        git(repo, "read-tree", "HEAD", env=env)
+        git(repo, "add", "-A", "--", ".", env=env)
+        tree_oid = git_text(repo, "write-tree", env=env).strip()
+    return head_oid, tree_oid
+
+
+def changed_lines(repo: Path, base_oid: str, tree_oid: str) -> tuple[int, list[dict[str, Any]]]:
     total = 0
-    per_file: list[tuple[int, str]] = []
-    for line in run_git(repo, "diff", "--numstat", base).splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or parts[0] == "-" or parts[1] == "-":
-            continue
-        count = int(parts[0]) + int(parts[1])
+    per_file: list[dict[str, Any]] = []
+    fields = git(repo, "diff", "--numstat", "-z", base_oid, tree_oid).split(b"\0")
+    index = 0
+    while index < len(fields) - 1:
+        header = fields[index]
+        index += 1
+        added, deleted, path_bytes = header.split(b"\t", 2)
+        if path_bytes:
+            source = destination = path_bytes.decode("utf-8", "strict")
+        else:
+            source = fields[index].decode("utf-8", "strict")
+            destination = fields[index + 1].decode("utf-8", "strict")
+            index += 2
+        binary = added == b"-" or deleted == b"-"
+        count = 0 if binary else int(added) + int(deleted)
         total += count
-        per_file.append((count, parts[2]))
-    per_file.sort(reverse=True)
+        per_file.append(
+            {
+                "binary": binary,
+                "count": count,
+                "display": destination if source == destination else f"{source} -> {destination}",
+                "path": destination,
+                "source_path": source,
+            }
+        )
+    per_file.sort(key=lambda item: (item["count"], item["path"]), reverse=True)
     return total, per_file
 
 
-def fenced(label: str, content: str, language: str = "") -> str:
-    content = content.rstrip("\n")
-    return f"### {label}\n\n```{language}\n{content}\n```\n"
+def changed_paths(repo: Path, base_oid: str, tree_oid: str) -> list[str]:
+    raw = git(repo, "diff", "--name-only", "-z", base_oid, tree_oid)
+    return [item.decode("utf-8", "strict") for item in raw.split(b"\0") if item]
+
+
+def tree_entry(repo: Path, tree_oid: str, path: str) -> dict[str, str] | None:
+    raw = git(repo, "ls-tree", "-z", tree_oid, "--", f":(literal){path}")
+    if not raw:
+        return None
+    header, actual_path = raw.split(b"\t", 1)
+    mode, kind, oid = header.decode("ascii").split(" ")
+    return {
+        "mode": mode,
+        "type": kind,
+        "oid": oid,
+        "path": actual_path.rstrip(b"\0").decode("utf-8", "strict"),
+    }
+
+
+def blob_size(repo: Path, entry: dict[str, str] | None) -> int:
+    if not entry or entry["type"] != "blob":
+        return 0
+    raw = git(repo, "cat-file", "-s", entry["oid"], check=False).strip()
+    return int(raw) if raw.isdigit() else 0
+
+
+def path_metadata(
+    repo: Path, base_oid: str, tree_oid: str, source_path: str, destination_path: str
+) -> dict[str, Any]:
+    result: dict[str, Any] = {"path": destination_path}
+    for label, oid, path in (
+        ("base", base_oid, source_path),
+        ("candidate", tree_oid, destination_path),
+    ):
+        entry = tree_entry(repo, oid, path)
+        result[label] = None if entry is None else {
+            "mode": entry["mode"],
+            "type": entry["type"],
+            "oid": entry["oid"],
+            "byte_count": blob_size(repo, entry),
+        }
+    return result
+
+
+def secret_match(data: bytes) -> tuple[str, int] | None:
+    for name, pattern in SECRET_PATTERNS:
+        match = pattern.search(data)
+        if match and not any(marker in match.group(0).lower() for marker in PLACEHOLDER_MARKERS):
+            return name, match.start()
+    return None
+
+
+def secret_kind(data: bytes) -> str | None:
+    match = secret_match(data)
+    return match[0] if match else None
+
+
+def scan_stream_for_secret(stream: Any) -> tuple[str, int] | None:
+    carry = b""
+    processed = 0
+    while chunk := stream.read(SCAN_CHUNK):
+        data = carry + chunk
+        match = secret_match(data)
+        if match:
+            kind, offset = match
+            return kind, max(0, processed - len(carry) + offset)
+        processed += len(chunk)
+        carry = data[-SCAN_OVERLAP:]
+    return None
+
+
+def scan_blob_for_secret(repo: Path, oid: str) -> tuple[str, int] | None:
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), "cat-file", "blob", oid],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    assert process.stdout is not None
+    try:
+        return scan_stream_for_secret(process.stdout)
+    finally:
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+    return None
+
+
+def secret_preflight(
+    repo: Path,
+    base_oid: str,
+    tree_oid: str,
+    paths: list[str],
+    task: str,
+    inventory: Any,
+    evidence: Any,
+) -> None:
+    for label, data in (
+        ("task", task.encode("utf-8")),
+        ("inventory", canonical_bytes(inventory)),
+        ("evidence", canonical_bytes(evidence)),
+    ):
+        kind = secret_kind(data)
+        if kind:
+            raise SystemExit(f"possible {kind} secret in {label}; bundle was not written")
+    for path in paths:
+        entry = tree_entry(repo, tree_oid, path)
+        if not entry or entry["type"] != "blob":
+            continue
+        hit = scan_blob_for_secret(repo, entry["oid"])
+        if hit:
+            kind, byte_offset = hit
+            raise SystemExit(
+                f"possible {kind} secret in CANDIDATE:{path} near byte {byte_offset}; bundle was not written"
+            )
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), "diff", "--no-ext-diff", base_oid, tree_oid],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    assert process.stdout is not None
+    try:
+        hit = scan_stream_for_secret(process.stdout)
+        if hit:
+            kind, byte_offset = hit
+            raise SystemExit(
+                f"possible {kind} secret in candidate diff near byte {byte_offset}; bundle was not written"
+            )
+    finally:
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+
+
+def context_secret_preflight(contexts: list[dict[str, Any]]) -> None:
+    for item in contexts:
+        content = item.get("content")
+        if content is None:
+            continue
+        kind = secret_kind(content.encode("utf-8"))
+        if kind:
+            raise SystemExit(
+                f"possible {kind} secret in {item['tree']}:{item['path']}; bundle was not written"
+            )
+
+
+def validate_evidence(value: Any, tree_oid: str, supplied: bool) -> dict[str, Any]:
+    if not supplied:
+        return {"candidate_tree_oid": tree_oid, "commands": []}
+    if not isinstance(value, dict) or set(value) != {"candidate_tree_oid", "commands"}:
+        raise SystemExit("evidence must contain exactly candidate_tree_oid and commands")
+    if value["candidate_tree_oid"] != tree_oid:
+        raise SystemExit("evidence candidate_tree_oid does not match the bundled candidate tree")
+    commands = value["commands"]
+    if not isinstance(commands, list) or not commands:
+        raise SystemExit("evidence commands must be a non-empty array")
+    for index, command in enumerate(commands):
+        if not isinstance(command, dict) or set(command) != {"command", "exit_code", "summary"}:
+            raise SystemExit(f"evidence commands[{index}] has invalid keys")
+        if not isinstance(command["command"], str) or not command["command"].strip():
+            raise SystemExit(f"evidence commands[{index}].command must be non-empty")
+        if type(command["exit_code"]) is not int:
+            raise SystemExit(f"evidence commands[{index}].exit_code must be an integer")
+        if command["exit_code"] != 0:
+            raise SystemExit(f"evidence commands[{index}].exit_code must be zero")
+        if not isinstance(command["summary"], str) or not command["summary"].strip():
+            raise SystemExit(f"evidence commands[{index}].summary must be non-empty")
+    try:
+        canonical_bytes(value)
+    except UnicodeEncodeError as exc:
+        raise SystemExit("evidence must be valid UTF-8") from exc
+    return value
+
+
+def project_payload(data: bytes, limit: int = ITEM_LIMIT) -> dict[str, Any]:
+    result: dict[str, Any] = {"byte_count": len(data), "sha256": sha256(data)}
+    try:
+        text = data.decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        result.update({"encoding": "binary", "truncated": True, "content": None})
+        return result
+    result["encoding"] = "utf-8"
+    if limit <= 0:
+        result.update({"truncated": bool(data), "content": None})
+    elif len(data) <= limit:
+        result.update({"truncated": False, "content": text})
+    else:
+        marker = "\n... truncated ...\n"
+        available = max(0, limit - len(marker.encode("utf-8")))
+        head_bytes = available // 2
+        tail_bytes = available - head_bytes
+        head = data[:head_bytes].decode("utf-8", "ignore")
+        tail = data[-tail_bytes:].decode("utf-8", "ignore") if tail_bytes else ""
+        result.update({"truncated": True, "content": f"{head}{marker}{tail}"})
+    return result
+
+
+def project_blob(
+    repo: Path, entry: dict[str, str], limit: int = ITEM_LIMIT
+) -> dict[str, Any]:
+    """Project a Git blob without buffering untrusted blob contents in memory."""
+    byte_count = blob_size(repo, entry)
+    marker = b"\n... truncated ...\n"
+    available = max(0, limit - len(marker)) if limit >= len(marker) else 0
+    head_limit = available // 2
+    tail_limit = available - head_limit
+    keep_full = limit > 0 and byte_count <= limit
+    full = bytearray()
+    head = bytearray()
+    tail = bytearray()
+    digest = hashlib.sha256()
+    decoder = codecs.getincrementaldecoder("utf-8")("strict")
+    utf8 = True
+    actual_count = 0
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), "cat-file", "blob", entry["oid"]],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    while chunk := process.stdout.read(SCAN_CHUNK):
+        actual_count += len(chunk)
+        digest.update(chunk)
+        if utf8:
+            try:
+                decoder.decode(chunk, final=False)
+            except UnicodeDecodeError:
+                utf8 = False
+        if keep_full:
+            full.extend(chunk)
+        else:
+            if len(head) < head_limit:
+                head.extend(chunk[: head_limit - len(head)])
+            if tail_limit:
+                tail.extend(chunk)
+                del tail[:-tail_limit]
+    process.stdout.close()
+    stderr = process.stderr.read() if process.stderr is not None else b""
+    returncode = process.wait()
+    if returncode or actual_count != byte_count:
+        message = stderr.decode("utf-8", "replace").strip()
+        raise SystemExit(message or f"failed to read Git blob {entry['oid']}")
+    if utf8:
+        try:
+            decoder.decode(b"", final=True)
+        except UnicodeDecodeError:
+            utf8 = False
+    result: dict[str, Any] = {
+        "byte_count": byte_count,
+        "sha256": digest.hexdigest(),
+        "encoding": "utf-8" if utf8 else "binary",
+    }
+    if not utf8:
+        result.update({"truncated": True, "content": None})
+    elif keep_full:
+        result.update({"truncated": False, "content": bytes(full).decode("utf-8")})
+    elif limit < len(marker):
+        result.update({"truncated": bool(byte_count), "content": None})
+    else:
+        result.update(
+            {
+                "truncated": byte_count > limit,
+                "content": (bytes(head) + marker + bytes(tail)).decode("utf-8", "ignore"),
+            }
+        )
+    return result
+
+
+def collect_changed_path_gaps(repo: Path, tree_oid: str, paths: list[str]) -> list[dict[str, str]]:
+    gaps: list[dict[str, str]] = []
+    for path in paths:
+        entry = tree_entry(repo, tree_oid, path)
+        if entry is None:
+            continue
+        if entry["mode"] == "120000":
+            gaps.append({"path": path, "reason": "symlink", "tree": "CANDIDATE"})
+        elif entry["mode"] == "160000":
+            status = git_text(repo, "status", "--porcelain", "--ignore-submodules=none", "--", path)
+            reason = "dirty_submodule" if status.strip() else "gitlink"
+            gaps.append({"path": path, "reason": reason, "tree": "CANDIDATE"})
+        elif git(repo, "cat-file", "-t", entry["oid"], check=False).strip() != b"blob":
+            gaps.append({"path": path, "reason": "missing_blob", "tree": "CANDIDATE"})
+    return gaps
+
+
+def dirty_submodule_gaps(repo: Path, tree_oid: str) -> list[dict[str, str]]:
+    gaps: list[dict[str, str]] = []
+    for line in git_text(repo, "submodule", "status", "--recursive", check=False).splitlines():
+        parts = line.lstrip("-+U ").split()
+        if len(parts) < 2:
+            continue
+        path = parts[1]
+        entry = tree_entry(repo, tree_oid, path)
+        status = git_text(repo, "status", "--porcelain", "--ignore-submodules=none", "--", path)
+        if entry and entry["mode"] == "160000" and status.strip():
+            gaps.append({"path": path, "reason": "dirty_submodule", "tree": "CANDIDATE"})
+    return gaps
+
+
+def unique_gaps(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in items:
+        key = (item["tree"], item["path"], item["reason"])
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
+
+
+def load_context_requests(
+    path: str | None,
+) -> tuple[list[dict[str, Any]], str | None, str | None, str | None]:
+    if not path:
+        return [], None, None, None
+    document = load_json(path, {})
+    if not isinstance(document, dict):
+        raise SystemExit("context request file must be a reducer result object")
+    for key in ("candidate_tree_oid", "base_oid", "contract_inventory_sha256", "context_requests"):
+        if key not in document:
+            raise SystemExit(f"context request file is missing {key}")
+    bound_tree = document["candidate_tree_oid"]
+    bound_base = document["base_oid"]
+    inventory_sha = document["contract_inventory_sha256"]
+    value = document["context_requests"]
+    if not isinstance(value, list):
+        raise SystemExit("context_requests must be a list")
+    for name, oid in (("candidate_tree_oid", bound_tree), ("base_oid", bound_base)):
+        if (
+            not isinstance(oid, str)
+            or len(oid) not in (40, 64)
+            or any(character not in "0123456789abcdef" for character in oid)
+        ):
+            raise SystemExit(f"context request {name} is invalid")
+    if (
+        not isinstance(inventory_sha, str)
+        or len(inventory_sha) != 64
+        or any(character not in "0123456789abcdef" for character in inventory_sha)
+    ):
+        raise SystemExit("context request contract_inventory_sha256 is invalid")
+    return value, bound_tree, bound_base, inventory_sha
+
+
+def resolve_contexts(
+    repo: Path,
+    base_oid: str,
+    tree_oid: str,
+    requests: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    contexts: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    embedded = 0
+    for request in requests:
+        try:
+            selector = request["tree"]
+            path = normalize_path(request["path"])
+        except (KeyError, ValueError) as exc:
+            raise SystemExit(f"invalid context request: {exc}") from exc
+        if selector not in ("BASE", "CANDIDATE"):
+            raise SystemExit("context tree must be BASE or CANDIDATE")
+        key = (selector, path)
+        if key in seen:
+            continue
+        seen.add(key)
+        bound_oid = base_oid if selector == "BASE" else tree_oid
+        entry = tree_entry(repo, bound_oid, path)
+        item: dict[str, Any] = {"tree": selector, "tree_oid": bound_oid, "path": path}
+        if entry is None:
+            item["evidence_gap"] = "missing_path"
+        elif entry["mode"] == "120000":
+            item.update(entry, evidence_gap="symlink")
+        elif entry["mode"] == "160000":
+            item.update(entry, evidence_gap="gitlink")
+        elif entry["type"] != "blob":
+            item.update(entry, evidence_gap="special_file")
+        else:
+            object_type = git(repo, "cat-file", "-t", entry["oid"], check=False).strip()
+            if object_type != b"blob":
+                item.update(entry, evidence_gap="missing_blob")
+            else:
+                remaining = max(0, CONTEXT_LIMIT - embedded)
+                projection = project_blob(repo, entry, min(ITEM_LIMIT, remaining))
+                content = projection.get("content")
+                if content is not None:
+                    embedded += len(content.encode("utf-8"))
+                item.update(entry, **projection)
+                if projection["encoding"] == "binary":
+                    item["evidence_gap"] = "non_utf8_blob"
+                elif remaining == 0 or (content is None and projection["byte_count"]):
+                    item["evidence_gap"] = "context_total_limit"
+        contexts.append(item)
+    return contexts
 
 
 def should_inline(path: str) -> bool:
     return not path.lower().endswith(GENERATED_SUFFIXES)
 
 
-def build_bundle(args: argparse.Namespace) -> str:
-    repo = Path(args.repo).resolve()
-    base = args.base
-    total, per_file = changed_lines(repo, base)
-    stat = run_git(repo, "diff", "--stat", base)
-    name_status = run_git(repo, "diff", "--name-status", base)
-    untracked = run_git(repo, "ls-files", "--others", "--exclude-standard")
+def limited_diff(
+    repo: Path, base_oid: str, tree_oid: str, source_path: str, destination_path: str
+) -> str:
+    pathspecs = [f":(literal){source_path}"]
+    if destination_path != source_path:
+        pathspecs.append(f":(literal){destination_path}")
+    process = subprocess.Popen(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            base_oid,
+            tree_oid,
+            "--",
+            *pathspecs,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    data = process.stdout.read(ITEM_LIMIT + 1)
+    truncated = len(data) > ITEM_LIMIT
+    if truncated:
+        process.kill()
+        data = data[:ITEM_LIMIT]
+    _, stderr = process.communicate()
+    if not truncated and process.returncode:
+        raise SystemExit(stderr.decode("utf-8", "replace").strip() or "git diff failed")
+    try:
+        text = data.decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        return "(non-UTF-8 diff omitted)"
+    return text + ("\n... diff truncated at 64 KiB ...\n" if truncated else "")
 
+
+def fenced(label: str, content: str, language: str = "") -> str:
+    return f"### {label}\n\n```{language}\n{content.rstrip()}\n```\n"
+
+
+def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
+    repo = Path(args.repo).resolve()
+    current_base_oid = git_text(repo, "rev-parse", f"{args.base}^{{commit}}").strip()
+    head_oid, current_tree_oid = candidate_tree(repo)
+    inventory = load_json(args.inventory_file, [])
+    raw_evidence = load_json(args.evidence_file, {})
+    requests, bound_tree_oid, bound_base_oid, bound_inventory_sha = load_context_requests(
+        args.context_request_file
+    )
+    inventory_sha = sha256(canonical_bytes(inventory))
+    if bound_inventory_sha is not None and bound_inventory_sha != inventory_sha:
+        raise SystemExit("context request inventory does not match --inventory-file")
+    tree_oid = bound_tree_oid or current_tree_oid
+    base_oid = bound_base_oid or current_base_oid
+    if git(repo, "cat-file", "-t", tree_oid, check=False).strip() != b"tree":
+        raise SystemExit("bound candidate tree is not available in the repository")
+    if git(repo, "cat-file", "-t", base_oid, check=False).strip() != b"commit":
+        raise SystemExit("bound base commit is not available in the repository")
+    paths = changed_paths(repo, base_oid, tree_oid)
+    evidence = validate_evidence(raw_evidence, tree_oid, args.evidence_file is not None)
+    task = args.task or ""
+    try:
+        task_bytes = task.encode("utf-8", "strict")
+    except UnicodeEncodeError as exc:
+        raise SystemExit("task must be valid UTF-8") from exc
+    if len(task_bytes) > ITEM_LIMIT:
+        raise SystemExit("task exceeds the 64 KiB bundle item limit")
+    secret_preflight(repo, base_oid, tree_oid, paths, task, inventory, evidence)
+    contexts = resolve_contexts(
+        repo,
+        base_oid,
+        tree_oid,
+        requests,
+    )
+    context_secret_preflight(contexts)
+    evidence_projection = project_payload(canonical_bytes(evidence))
+    metadata = {
+        "schema_version": 1,
+        "base_oid": base_oid,
+        "current_base_oid": current_base_oid,
+        "head_oid": head_oid,
+        "candidate_tree_oid": tree_oid,
+        "contract_inventory_sha256": inventory_sha,
+        "current_candidate_tree_oid": current_tree_oid,
+        "changed_path_count": len(paths),
+        "changed_paths_sha256": sha256(canonical_bytes(paths)),
+        "evidence_candidate_tree_oid": evidence["candidate_tree_oid"],
+        "evidence": {key: value for key, value in evidence_projection.items() if key != "content"},
+        "context_blob_metadata": [
+            {key: value for key, value in item.items() if key != "content"} for item in contexts
+        ],
+        "evidence_gaps": unique_gaps(
+            collect_changed_path_gaps(repo, tree_oid, paths) + dirty_submodule_gaps(repo, tree_oid)
+        ),
+        "binary_path_metadata": [],
+    }
+    return metadata, {
+        "repo": repo,
+        "base_oid": base_oid,
+        "tree_oid": tree_oid,
+        "paths": paths,
+        "evidence": evidence_projection,
+        "contexts": contexts,
+    }
+
+
+def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[str, Any]) -> str:
+    repo = data["repo"]
+    base_oid = data["base_oid"]
+    tree_oid = data["tree_oid"]
+    total, per_file = changed_lines(repo, base_oid, tree_oid)
+    binary_files = [item for item in per_file if item["binary"]]
+    metadata["binary_path_metadata"] = [
+        path_metadata(repo, base_oid, tree_oid, item["source_path"], item["path"])
+        for item in binary_files
+    ]
+    stat = git_text(repo, "diff", "--stat", base_oid, tree_oid)
+    name_status = git_text(repo, "diff", "--name-status", "--find-renames", base_oid, tree_oid)
+    untracked = git_text(repo, "ls-files", "--others", "--exclude-standard")
     lines = [
+        f"<!-- fsd-artifact: {canonical_bytes(metadata).decode('utf-8')} -->",
         "# Codex Verification Bundle",
         "",
         f"Repo: `{repo}`",
-        f"Base: `{base}`",
+        f"Base OID: `{base_oid}`",
+        f"Candidate tree OID: `{tree_oid}`",
+        f"Contract inventory SHA-256: `{metadata['contract_inventory_sha256']}`",
         f"Changed lines: {total}",
         "",
         "## Task Spec",
         "",
         args.task.strip() or "(no task spec provided)",
         "",
+        "## Deterministic Verification Evidence",
+        "",
+        "```json",
+        json.dumps(data["evidence"], ensure_ascii=False, sort_keys=True, indent=2),
+        "```",
+        "",
+        "## Bound Context Blobs",
+        "",
+        "```json",
+        json.dumps(data["contexts"], ensure_ascii=False, sort_keys=True, indent=2),
+        "```",
+        "",
+        "## Evidence Gaps",
+        "",
+        "```json",
+        json.dumps(metadata["evidence_gaps"], ensure_ascii=False, sort_keys=True, indent=2),
+        "```",
+        "",
+        "## Binary Path Metadata",
+        "",
+        "```json",
+        json.dumps(metadata["binary_path_metadata"], ensure_ascii=False, sort_keys=True, indent=2),
+        "```",
+        "",
         "## Diff Stat",
         "",
         "```",
-        stat.rstrip("\n"),
+        stat.rstrip(),
         "```",
         "",
         "## Name Status",
         "",
         "```",
-        name_status.rstrip("\n"),
+        name_status.rstrip(),
         "```",
         "",
         "## Untracked Files",
         "",
         "```",
-        untracked.rstrip("\n") or "(none)",
+        untracked.rstrip() or "(none)",
         "```",
         "",
     ]
-
-    if total <= args.max_full_diff_lines:
-        lines.append("## Full Diff")
-        lines.append("")
-        lines.append("```diff")
-        lines.append(run_git(repo, "diff", "--no-ext-diff", base).rstrip("\n"))
-        lines.append("```")
-        lines.append("")
-    else:
-        lines.append("## Large Diff Sample")
-        lines.append("")
-        lines.append(
-            "Full diff omitted because it exceeds the inline threshold. "
-            "The most changed non-generated files are included below."
+    changed_blob_bytes = sum(
+        blob_size(repo, tree_entry(repo, tree_oid, path))
+        + blob_size(repo, tree_entry(repo, base_oid, path))
+        for path in data["paths"]
+    )
+    if not binary_files and total <= args.max_full_diff_lines and changed_blob_bytes <= FULL_DIFF_BYTE_LIMIT:
+        lines.extend(
+            [
+                "## Full Diff",
+                "",
+                "```diff",
+                git_text(repo, "diff", "--no-ext-diff", base_oid, tree_oid).rstrip(),
+                "```",
+                "",
+            ]
         )
-        lines.append("")
-        for _count, path in [item for item in per_file if should_inline(item[1])][: args.max_files]:
-            lines.append(fenced(path, run_git(repo, "diff", "--no-ext-diff", base, "--", path), "diff"))
-
-    return "\n".join(lines)
+    else:
+        lines.extend(
+            [
+                "## Large Diff Sample",
+                "",
+                "Full diff omitted because it exceeds the inline threshold.",
+                "",
+            ]
+        )
+        for item in [
+            candidate
+            for candidate in per_file
+            if not candidate["binary"] and should_inline(candidate["path"])
+        ][: args.max_files]:
+            projection = limited_diff(
+                repo, base_oid, tree_oid, item["source_path"], item["path"]
+            )
+            lines.append(
+                fenced(
+                    item["display"],
+                    projection,
+                    "diff",
+                )
+            )
+    bundle = "\n".join(lines)
+    if len(bundle.encode("utf-8")) > BUNDLE_LIMIT:
+        raise SystemExit("bundle exceeds the 512 KiB total limit")
+    return bundle
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--base", required=True)
-    parser.add_argument("--task", required=True)
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--task")
+    parser.add_argument("--output")
+    parser.add_argument("--inventory-file")
+    parser.add_argument("--evidence-file")
+    parser.add_argument("--context-request-file")
+    parser.add_argument("--reviewer-identity-output")
+    parser.add_argument("--candidate-tree-only", action="store_true")
     parser.add_argument("--max-full-diff-lines", type=int, default=2000)
     parser.add_argument("--max-files", type=int, default=5)
     return parser
@@ -120,9 +794,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    metadata, data = build_artifact(args)
+    if args.candidate_tree_only:
+        print(canonical_bytes(metadata).decode("utf-8"))
+        return 0
+    if args.task is None or args.output is None:
+        raise SystemExit("--task and --output are required unless --candidate-tree-only is used")
+    bundle = build_bundle(args, metadata, data)
+    bundle_bytes = bundle.encode("utf-8")
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(build_bundle(args), encoding="utf-8")
+    output.write_bytes(bundle_bytes)
+    if args.reviewer_identity_output:
+        identity = {
+            "base_oid": metadata["base_oid"],
+            "candidate_tree_oid": metadata["candidate_tree_oid"],
+            "bundle_sha256": sha256(bundle_bytes),
+            "contract_inventory_sha256": metadata["contract_inventory_sha256"],
+        }
+        identity_output = Path(args.reviewer_identity_output)
+        identity_output.parent.mkdir(parents=True, exist_ok=True)
+        identity_output.write_bytes(canonical_bytes(identity))
     print(output)
     return 0
 
