@@ -45,7 +45,7 @@ Preserve these names across phase documents:
 | 7 | This entrypoint plus `commit-push-pattern.md`. |
 | 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. |
 | 8b | `effort-lifecycle.md -> FSD Update`. |
-| 9-10 | This entrypoint: cleanup, closure ledger, report, and logging. |
+| 9-10 | This entrypoint owns Phase 9 worktree cleanup; the already-loaded `fsd-delivery-gates.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. |
 
 ## Phase 0: Input Guard
 
@@ -129,83 +129,8 @@ For a verified-clean worktree, return `3` is the normal locked-quarantine result
 
 ---
 
-## Phase 10: Report
+## Phase 10: Report and Error Handling
 
-For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
-`workspace/tmp/fsd-research-{branch_slug}.md` before reporting.
-
-**First build the Success-Criteria Ledger.** One row per `success_criteria` item (from Phase 2 / the design doc), each mapped to exactly one:
-- `proven` - cite the evidence: a test name, a Phase 8.5 matrix row, or a check run. A green build is not proof a criterion is met.
-- `waived` - recorded reason.
-- `blocked` - named blocker.
-
-Derive `closure_state`:
-- `done` - every required criterion is `proven`; quality and spec are `PROCEED` for the same final candidate and bundle; the staged and committed trees equal `approved_candidate_tree_oid`; and final command evidence is newer than the last modification.
-- `conditional` - every required criterion `proven` or `waived`, with waiver reasons named.
-- `not-closed` - any required criterion `blocked` or unproven.
-
-Never print `done ✓` when a criterion or final QA condition is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger, but still require the quality/spec and tree-binding conditions. Note only the user-facing verification deferral.
-
-Print a concise summary:
-```
-FSD {done ✓ | conditional ⚠ | not-closed ✗}
-
-  Repo:        {repo_name}
-  Branch:      {branch_name}
-  Test iters:  {N} (passed on iteration N)
-  QA rounds:   {qa_round}/3
-  Candidate:   {approved_candidate_tree_oid}
-  Bundle SHA:  {bundle_sha256}
-  Quality:     {quality_action}
-  Spec:        {spec_action}
-  Tests:       {focused and canonical command evidence}
-  QA fixes:    {P0/P1 auto-fixed count}; {P2 deferred count} P2 deferred
-  Context:     {context batch count}
-  QA blocker:  {infrastructure/evidence blocker or "none"}
-  PR:          {PR URL}   ← or "not opened"
-  Worktree:    {worktree_report}
-
-Criteria:                                            ← omit block if "Manual verify"
-  - {criterion} - proven: {evidence}
-  - {criterion} - waived: {reason}                   ← or blocked: {blocker}
-
-Verification before promote (full matrix appended to PR body):
-  🔥 Critical:  {critical layer label} - {why}     ← omit line if no critical row
-  Caveat:      {coverage caveat}                   ← omit line if none
-  Required:    {list required rows by short label}
-  Recommended: {list recommended rows by short label}  ← omit line if none
-
-Next: open the draft PR, run the Verification matrix, then promote to "ready for review".
-```
-
-If Phase 8.5 produced no rows (pure docs / comments change), omit the entire "Verification before promote" block.
-
-If the Phase 1 gate-profile load used the live-fetch fallback, add the stale-KB note from `.claude/docs/pr-gates-consumption.md` §2 (`Run /nase:onboard {repo} to persist`).
-
-Append to daily log following `.claude/docs/daily-log-format.md` (tag: `fsd`; add `large-diff` too if Phase 6.1 marked it).
-Log: `{one-line task summary} → \`{branch_name}\` [{PR URL or "no PR"}]`
-
-If the run had a surprise/non-obvious win (novel approach, avoided near-miss, build iters > 1, ambiguous requirement resolved), append to `workspace/journals/{YYYY-MM-DD}.md`:
-```
-### fsd: {one-line task summary}
-- **Approach**: {Direct / Team / Phase-isolated} - {why it fit this task}
-- **What worked**: {key decision or technique that made implementation smooth}
-- **Build iters**: {N}/5
-- **Gotchas**: {any surprise or near-miss}
-```
-Skip failed or routine no-surprise runs; routine wins dilute downstream skill-optimization signal.
-
----
-
-## Error Handling
-
-<error_handling>
-
-- **Continue after Phase 2** - ordinary build, test, quality, and spec failures are automatically repaired and reverified. Ask only for an approved human blocker, the existing external mutation gates, >1500-line scope choice, or secret uncertainty.
-- **Protected branches** - never commit directly to `main`, `master`, `develop`, or `release/*`. FSD always works on a feature branch.
-- **Worktree path** - always create it as a sibling to the repo (not inside it) to avoid git nesting issues.
-- **Secrets** - if unsure about a file during the staging scan, stop and ask rather than committing and reverting later.
-- **Test loop bound** - 5 cumulative iterations is a hard cap and QA rounds do not reset it. Exhaust automatic repairs before surfacing `QA_REPAIR_EXHAUSTED` or an evidence/infrastructure terminal state.
-- **PR is always draft** - FSD never opens a ready-for-review PR. Promotion is a human decision.
-
-</error_handling>
+Follow `.claude/docs/fsd-delivery-gates.md -> Phase 10`. It owns no-worktree
+artifact cleanup, the closure ledger, final report, daily log, optional journal,
+and terminal error handling.

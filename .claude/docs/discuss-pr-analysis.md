@@ -99,6 +99,7 @@ Follow `.claude/docs/pr-review-verification.md → Review Frame and Specialist S
 ## Step 3 - Build Risk Map, Select Specialists, and Engage Existing Comments
 
 Continue the same shared workflow. It owns pipeline-touch handling, self-authored AI-slop review, conditional Codex review, and read-only triage of existing comments.
+When the risk map selects Security, apply `.claude/docs/pr-review-verification.md → Security Specialist Contract`; do not route to a duplicate standalone security-review skill.
 
 ## Step 4 - Classify and filter (after agents complete)
 

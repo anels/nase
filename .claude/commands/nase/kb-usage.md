@@ -1,7 +1,7 @@
 ---
 name: nase:kb-usage
 description: "Report which skills use which KB files and which mapped files are unused. Use for KB usage, KB observability, top KB files, or unused KB entries."
-argument-hint: "[--skill name|--days N]"
+argument-hint: "[--window N|all] [--top N] [--verbose]"
 pattern: utility
 category: Reporting
 ---
@@ -23,49 +23,22 @@ Read `workspace/config.md` for `conversation:` and `output:` values before produ
 
 ## Run
 
-Parse flags conservatively, then write the dated report:
+Treat `$ARGUMENTS` as command input, not shell source. Accept only the flags documented above and forward each recognized flag and value as a separately shell-quoted argument to the existing Python helper. Never interpolate the raw argument string into a shell command. Let `kb-usage-report.py` parse and validate those arguments.
+
+Append `--output "workspace/stats/kb-usage-$(date +%F).md"` and run the resulting command. For example, the default invocation is:
 
 ```bash
-window=30
-top=10
-verbose=0
-
-set -- $ARGUMENTS
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --window)
-      shift
-      window="${1:-30}"
-      ;;
-    --window=*)
-      window="${1#--window=}"
-      ;;
-    --top)
-      shift
-      top="${1:-10}"
-      ;;
-    --top=*)
-      top="${1#--top=}"
-      ;;
-    --verbose)
-      verbose=1
-      ;;
-    *)
-      echo "Usage: /nase:kb-usage [--window N|all] [--top N] [--verbose]"
-      exit 1
-      ;;
-  esac
-  shift
-done
-
 today=$(date +%F)
 report="workspace/stats/kb-usage-${today}.md"
+python3 .claude/scripts/kb-usage-report.py --output "$report"
+```
 
-if [ "$verbose" -eq 1 ]; then
-  python3 .claude/scripts/kb-usage-report.py --window "$window" --top "$top" --output "$report" --verbose
-else
-  python3 .claude/scripts/kb-usage-report.py --window "$window" --top "$top" --output "$report"
-fi
+For `--window 7 --top 5 --verbose`, invoke:
+
+```bash
+today=$(date +%F)
+report="workspace/stats/kb-usage-${today}.md"
+python3 .claude/scripts/kb-usage-report.py --window "7" --top "5" --verbose --output "$report"
 ```
 
 ## Output

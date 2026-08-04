@@ -61,7 +61,7 @@ impact.
 | `fsd` / `address-comments` | Run optional post-edit gates by changed file type: shell -> `shellcheck` and optional `shfmt`; GitHub Actions -> `actionlint` only when installed; secret-risk or staged diff -> `gitleaks`; YAML/config -> `yq`; repeated code-pattern edits -> `ast-grep`; Dockerfile -> `hadolint` only when already installed. |
 | `onboard` | Use `rg`/`fd` for inventory, `rga` only for docs-heavy repos or archives, `just` only when a Justfile exists, optional `ctags` only for very large or unfamiliar repos where symbol inventory would reduce later searches, and `yq` for config/pipeline parsing. Do not write local tool availability into repo KB. |
 | `tech-debt-audit` | Optional `semgrep`, `trivy`, and `gitleaks` passes can seed candidates, but verified evidence remains required. Use `actionlint` only for GitHub Actions-heavy repos and `hadolint` only for Dockerfile-heavy repos when already installed. |
-| `skill-audit` | Native pattern scan stays canonical; `semgrep` may supplement injection or exfiltration checks when installed. |
+| `skill-audit` | The stdlib `skill-audit-scan.py` pattern scan stays canonical; `semgrep` may supplement injection or exfiltration checks when installed. |
 | `stats` / `recap` | Prefer `duckdb` for large JSONL/CSV/log aggregation, use `qsv` for quick CSV sampling, and use `ccusage` for coding-agent token/cost summaries. Return compact summaries only. |
 
 ## Integration Contracts

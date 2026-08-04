@@ -558,7 +558,6 @@ targets = [
     "workspace/skills/investigate-sre-jira.md",
     "workspace/skills/handle-support-question.md",
     "workspace/skills/deploy-alpha.md",
-    "workspace/skills/security-pr-review.md",
 ]
 
 hits = []

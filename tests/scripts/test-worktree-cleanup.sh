@@ -319,14 +319,14 @@ else
   pass "helper never automatically removes a worktree after a scan"
 fi
 
-if rg -n 'Worktree:[[:space:]]+cleaned up' "$ROOT/.claude/commands/nase/fsd.md" >"$TMP/fsd-worktree"; then
+if rg -n 'Worktree:[[:space:]]+cleaned up' "$ROOT/.claude/docs/fsd-delivery-gates.md" >"$TMP/fsd-worktree"; then
   fail "FSD still reports unconditional worktree cleanup"
-elif ! grep -Fq 'Worktree:    {worktree_report}' "$ROOT/.claude/commands/nase/fsd.md"; then
+elif ! grep -Fq 'Worktree:    {worktree_report}' "$ROOT/.claude/docs/fsd-delivery-gates.md"; then
   fail "FSD report does not render conditional worktree_report"
 elif ! grep -Fq 'retained at {exact returned worktree path}' "$ROOT/.claude/commands/nase/fsd.md"; then
   fail "FSD does not bind retained report to exact returned path"
 elif ! grep -Fq 'For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and' \
-  "$ROOT/.claude/commands/nase/fsd.md"; then
+  "$ROOT/.claude/docs/fsd-delivery-gates.md"; then
   fail "FSD leaves team research artifacts behind for no-worktree flows"
 else
   pass "FSD retains worktree artifacts and cleans no-worktree artifacts"

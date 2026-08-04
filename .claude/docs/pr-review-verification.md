@@ -13,6 +13,7 @@
 - 8. Comment dossier contract
 - 9. Review-Thread Resolution Gate
 - 10. Review Frame and Specialist Selection
+- 10.5. Security Specialist Contract
 - 11. Diff-First Investigation
 - 12. Trace-Shape Self-Check
 
@@ -257,6 +258,49 @@ Apply §4 and §5 on every classification pass.
 **Duplicate-of-N reframe check:** when a candidate finding would be dismissed as "duplicate of PR #N" or "superseded by #N", open #N's body + commits first. If #N explicitly defers the surface now being changed (`This PR does NOT change X`, unchecked `[ ]` items, "follow-up planned"), the PRs are complementary, not duplicate — the finding stands.
 
 Collect the final classifications. This skill never posts reactions, replies, resolves, or reviews.
+
+## 10.5. Security Specialist Contract
+
+Use this contract when the risk map selects Security. It is a specialist lens
+inside `/nase:discuss-pr`, not a separate review workflow.
+
+Classify changed files before reading beyond the diff:
+
+| Risk | Signals | Required checks |
+|------|---------|-----------------|
+| Critical | auth middleware, token/session handling, RBAC | bypass, privilege escalation, token leakage |
+| High | tenant scoping, data export, telemetry routing | cross-tenant access, PII routing, redaction |
+| Medium | endpoints, serialization, outbound requests | injection, SSRF, mass assignment, resource bounds |
+| Low | config, CI, tests, docs | secrets, unsafe fixtures, weakened defaults |
+
+For Critical and High paths, trace flag-bypass paths first. Search changed entry
+points for `bypass`, `skip.*auth`, `isAdmin`, `override.*tenant`, and equivalent
+flags. Prove that request-controlled values reach an organization-admin or
+system-admin authorization check before they can relax access. Treat an
+unguarded bypass as privilege escalation.
+
+For each removed composite security header such as CSP, Permissions-Policy, or
+Feature-Policy, enumerate every load-bearing directive and
+verify an equivalent standalone defense remains. For example, removing
+`frame-ancestors` requires proving an equivalent clickjacking defense such as
+`X-Frame-Options`; do not accept the revert based only on application startup or
+tests.
+
+For new or changed backend endpoints, check the touched trust boundary for:
+
+- authentication and object-level authorization, including tenant filters;
+- request size and rate limits for unauthenticated or expensive paths;
+- CORS credentials without a wildcard origin;
+- outbound request validation against loopback, private, link-local, and cloud
+  metadata destinations, repeated on every redirect hop;
+- explicit JWT algorithm, issuer, and audience constraints;
+- secret, PII, and telemetry redaction before logs or export;
+- untrusted model or serialized output reaching shell, SQL, HTML, or file paths.
+
+Use scanners only to generate leads. Verify the exact changed file, line,
+reachability, and PR introduction before reporting a finding. Keep severity,
+confidence, and blocking disposition independent, and keep all findings anchored
+to the PR intent and changed code.
 
 ## 11. Diff-First Investigation
 
