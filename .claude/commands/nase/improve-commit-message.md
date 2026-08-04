@@ -1,7 +1,7 @@
 ---
 name: nase:improve-commit-message
 description: "Rewrite the latest commit message to match repo conventions. Use after committing, before push, or for improve commit, fix commit message, amend commit, or clean up commit."
-argument-hint: "[commit-ish]"
+argument-hint: "[--auto-accept]"
 pattern: utility
 category: Git workflow
 ---
@@ -16,7 +16,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ## Flags
 
-- `--auto-accept` — skip the confirmation prompt and amend immediately with the proposed message. Use this when called from automated workflows (e.g., `/nase:fsd`) that should not pause for user input. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+- `--auto-accept` - skip confirmation and amend immediately only when `PUSH_STATE=not-pushed`. A pushed HEAD, or a HEAD whose remote freshness cannot be established, still requires the exact approval in Step 6. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
@@ -40,18 +40,29 @@ If no config found, use defaults: max 72, lowercase, no period, standard types.
 
 ### 2. Get commit info + check safety
 
-<parallel>
+Capture the full HEAD message and parent count. Then refresh every configured remote head before deciding whether HEAD is already published:
 
-```
-git log -1 --format="%H%n%s%n%n%b"          # hash, subject, body
-git branch -r --contains HEAD 2>/dev/null    # check if pushed (any remote contains HEAD)
-git log -1 --format="%P" | tr ' ' '\n' | wc -l  # parent count (merge check)
-```
+```bash
+git log -1 --format="%H%n%s%n%n%b"
+git log -1 --format="%P" | tr ' ' '\n' | wc -l
 
-</parallel>
+PUSH_STATE=not-pushed
+REMOTES=$(git remote)
+if [ -n "$REMOTES" ]; then
+  FETCH_OK=true
+  for remote in $REMOTES; do
+    git fetch --prune "$remote" "+refs/heads/*:refs/remotes/$remote/*" || FETCH_OK=false
+  done
+  if [ "$FETCH_OK" != true ]; then
+    PUSH_STATE=unknown
+  elif git branch -r --contains HEAD | grep -q .; then
+    PUSH_STATE=pushed
+  fi
+fi
+```
 
 - If merge commit (>1 parent): abort — do not amend merge commits.
-- Compute `IS_PUSHED`: true when the second command output is non-empty (at least one remote branch contains HEAD). This determines the Step 6 branch.
+- Compute `IS_PUSHED=true` when `PUSH_STATE` is `pushed` or `unknown`; only a successful refresh followed by no containing remote branch yields `IS_PUSHED=false`. This fail-closed value determines the Step 6 branch.
 
 ### 3. Analyze changes (diff-first strategy)
 
@@ -93,54 +104,45 @@ Rules:
 
 ### 6. Show comparison and amend
 
-**If `--auto-accept` flag is present in $ARGUMENTS:**
-- If current message equals proposed message: output "Commit message already well-formed." and stop.
-- Otherwise: display the current vs proposed message for visibility, then amend immediately — no confirmation prompt.
-- When `IS_PUSHED=true`: amend still proceeds in `--auto-accept` mode, but emit a loud final line: `WARN: HEAD already pushed — your next 'git push' must use --force-with-lease, otherwise the remote will reject the rewritten history.` The caller (`/nase:fsd`, `/nase:prep-merge`) is expected to surface this to the user.
+If current message equals proposed message, output "Commit message already well-formed." and stop.
 
-**Otherwise (interactive mode, default):**
+Use this amend operation after the applicable approval branch below:
 
-When `IS_PUSHED=true`, the "Yes — amend" path is destructive on shared history. Add a single distinct AskUserQuestion BEFORE the regular confirmation:
-
-```
-question: "HEAD ({short_sha}) is already on a remote branch. Amending rewrites history — your next push must use --force-with-lease. Proceed?"
-header: "Already-Pushed Amend"
-options:
-  - label: "Proceed with amend"          , description: "I understand the next push needs --force-with-lease"
-  - label: "Skip"                         , description: "Keep the original message"
-```
-
-If "Skip": output "Keeping original message (HEAD pushed; aborted to avoid forced-push surprise)." and stop.
-If "Proceed with amend": fall through to the regular confirmation below.
-
-Then display the current vs proposed message, confirm using AskUserQuestion:
-```
-question: "Current: {current subject}\nProposed: {proposed subject}"
-header: "Amend Commit Message"
-options:
-  - label: "Yes — amend"   , description: "Rewrite the commit message"
-  - label: "Edit"           , description: "Adjust the proposed message first"
-  - label: "Skip"           , description: "Keep the original message"
-```
-
-**After receiving the selection, immediately act on it — do not wait for further user input:**
-- **Yes — amend**: run `git commit --amend` immediately
-- **Edit**: ask a single follow-up question about what to change, then re-propose and re-confirm
-- **Skip**: output "Keeping original message." and stop
-
-Amend:
 ```
 git commit --amend -m "type(scope): subject"
 ```
 
-After the amend completes, if `IS_PUSHED=true`, emit the final line:
+For multi-line messages, use `-m "subject" -m "body paragraph"`.
+
+When `IS_PUSHED=true`, `--auto-accept` does not authorize the amend. Approval cannot be inherited from a caller flag or earlier workflow confirmation. Display the full current and proposed messages, rerun `git log -1 --format=%H`, and require its output to equal the captured `{full_sha}`. Set `{history_status}` to `pushed` when `PUSH_STATE=pushed`, or `possibly pushed because remote freshness failed` when `PUSH_STATE=unknown`. Then ask this exact approval question immediately before the amend:
+
 ```
-WARN: HEAD was already pushed before amend. Your next 'git push' must use --force-with-lease.
+question: "Approve amending {history_status} HEAD ({full_sha}) from exactly:\n{current full message}\n\nto exactly:\n{proposed full message}\n\nThis rewrites history and the next push must use --force-with-lease."
+header: "Already-Pushed Amend"
+options:
+  - label: "Approve exact amend"          , description: "Amend this exact HEAD to this exact message"
+  - label: "Skip"                         , description: "Keep the original message"
 ```
 
+If "Skip", output "Keeping original message ({history_status} HEAD; aborted to avoid forced-push surprise)." and stop. If HEAD or the proposed message changes after approval, discard the approval and ask again with the new exact values. If "Approve exact amend", run the amend immediately with no intervening prompt or action, emit `WARN: HEAD was {history_status} before amend. Your next 'git push' must use --force-with-lease.`, and stop.
+
+When `PUSH_STATE=not-pushed` and `--auto-accept` is present, display the current vs proposed message, amend immediately, and stop.
+
+Otherwise, display the comparison and confirm using AskUserQuestion:
+
+```
+question: "Current: {current subject}\nProposed: {proposed subject}"
+header: "Amend Commit Message"
+options:
+  - label: "Yes - amend"   , description: "Rewrite the commit message"
+  - label: "Edit"          , description: "Adjust the proposed message first"
+  - label: "Skip"          , description: "Keep the original message"
+```
+
+After receiving the selection, act immediately: amend and stop on "Yes - amend", ask one focused follow-up and re-confirm on "Edit", or keep the original message and stop on "Skip".
+
 Important:
-- `--amend` preserves original author and timestamp automatically
-- For multi-line messages, use `-m "subject" -m "body paragraph"`
+- `--amend` preserves the original author and author date unless explicitly reset; the replacement commit gets a new committer timestamp
 - This skill never pushes; the caller (or user) runs `git push --force-with-lease` after the amend
 
 </workflow>
@@ -171,7 +173,7 @@ fix(auth): handle null tokens from expired sessions
 
 <error_handling>
 
-- **Already pushed**: detected via `git branch -r --contains HEAD` in Step 2 → `IS_PUSHED=true`. Step 6 branches on this: interactive mode adds a distinct pre-confirmation prompt; auto-accept mode proceeds but emits a `WARN:` line so the caller surfaces the `--force-with-lease` requirement. Skill never pushes itself.
+- **Pushed or freshness unknown**: after the mandatory remote refresh, either a containing remote branch or a refresh failure sets `IS_PUSHED=true`. Step 6 always requires exact immediate approval for the final HEAD and message, including in `--auto-accept` mode. Skill never pushes itself.
 - **Merge commit**: Skip — do not amend
 - **No parent** (initial commit): Use `git show HEAD --format="" --patch` (as in Step 3)
 - **Multiple scopes**: Use the most significant scope; mention others in body
