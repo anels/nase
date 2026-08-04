@@ -60,6 +60,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-pr-github-helper.sh
   tests/scripts/test-statusline-context.sh
   tests/scripts/test-fsd-preflight.sh
+  tests/scripts/test-fsd-review-gate.sh
   tests/scripts/test-pr-review-eval.sh
   tests/scripts/test-voice-profile-routing.sh
   tests/scripts/test-shared-workflow-extraction.sh

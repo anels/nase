@@ -4,119 +4,143 @@ This reference owns the conditional delivery controls used by `/nase:fsd`. It pr
 
 ## Contents
 
-- [Phase 5.75: Pre-Commit Deep-Dive Self-Review](#phase-575-pre-commit-deep-dive-self-review-loop-fresh-context-until-clean)
-- [Phase 6.5: Pre-Push Verification](#phase-65-pre-push-verification-gate-codex-with-single-model-fallback)
+- [Phase 6.25: Candidate Quality Review](#phase-625-candidate-quality-review)
+- [Phase 6.5: Candidate Spec Review](#phase-65-candidate-spec-review)
+- [Shared QA State Machine](#shared-qa-state-machine)
 - [Phase 8: Draft Pull Request and Verification Matrix](#phase-8-pull-request-if-pr--yes)
 - [Phase 8c: KB Update](#phase-8c-kb-update)
 
-## Phase 5.75: Pre-Commit Deep-Dive Self-Review Loop (fresh-context, until clean)
+## Phase 6.25: Candidate Quality Review
 
-Before simplifying or committing, the diff gets a real review at the depth of `/nase:discuss-pr`, and each finding is acted on with the discipline of `/nase:address-comments` — adapted to a pre-push local diff. There is no GitHub PR yet, so nothing here posts, replies, or resolves threads; the borrowed structure is the *method* (deep multi-lens analysis, then a per-finding accept/decline/fix loop), not the GitHub plumbing. The point is to catch correctness and maintainability defects while they're cheap, on the actual diff, before `/nase:simplify` reshapes it and before the cross-model spec check in Phase 6.5. AI-written diffs carry materially more defects than they appear to (`workspace/kb/general/llm.md` — "confidently incomplete"), so this pass is mandatory, not optional.
+This is the single authoritative code-quality review. It runs after simplification, formatters, focused tests, canonical tests, flake checks, and the final size guard. Do not retain or reuse any earlier quality verdict.
 
-**Reviewer is fresh-context, never the implementing context.** Scoring your own diff in the context that wrote it is self-approval — the blind spot that produced a bug scores right past it (`CLAUDE.md → Code Review`; `feedback_ai-code-comprehension-gate.md`). Spawn a read-only subagent (role `verifier` per `.claude/roles.yaml`, tools Read/Grep/Glob/Bash — no Edit/Write). Give it only: the task spec from `$ARGUMENTS` plus any `success_criteria_from_design` / `design_constraints` from Phase 1 (the contract), the merge-base diff, and `{work_root}`. Do not hand it your reasoning or a verdict.
+### Fresh reviewer and exact contract
 
-### Review depth — full `discuss-pr` lens set, every run
-
-The reviewer applies the `/nase:discuss-pr` review stance, in order: (1) what problem is this solving, for whom, and why now; (2) does the implementation actually satisfy that intent across every changed path; (3) does the design fit the larger system boundaries, ownership, and adjacent patterns; (4) is there a simpler, more elegant implementation that cuts risk or maintenance; (5) are tests, security, and hygiene sufficient for the risk. Run **all** of these lenses on every run regardless of diff size — problem fit, logic correctness, design/elegance + active simpler-option search, architecture, security, testability, and code-comment accuracy. Judge design and elegance through the principle ordering captured in Phase 3.6 and the design-time decision values (`/nase:design` → *What a technical decision optimizes for*): quality, simplicity, robustness, scalability, elegance, maintainability — not build speed.
-
-For any **non-trivial finding** (a non-obvious correctness claim, a cross-boundary assumption the diff alone can't settle, or a severity upgrade resting on inferred rather than observed behavior), run the `/nase:discuss-pr` doubt cycle: hand a fresh reviewer `ARTIFACT + CONTRACT` only — never your CLAIM — let it judge independently, then reconcile each result as contract-misread / valid / valid-trade-off / noise. This kills plausible-but-wrong findings before they cost a fix. Skip the doubt cycle only for mechanical nits already 100% grounded in the diff.
-
-### Severity rubric
-
-Reuse the existing ladder (`workspace/kb/general/clean-code.md` severity ladder; `CLAUDE.md → Code Review`) — don't invent a parallel scheme. Map to gate tiers:
-
-| Tier | = ladder | What counts | Gate? |
-|------|----------|-------------|-------|
-| **P0** | blocking | correctness bug, security / tenant-isolation / secret leak, data loss, broken behavior, diff contradicts the spec | **must fix before commit** |
-| **P1** | blocking/suggestion | real maintainability or UX defect, a fixed bug with no regression test (Beyoncé rule), code you cannot restate in your own words (comprehension gap), premature abstraction that should be cut | **must fix before commit** |
-| **P2** | nit/suggestion | style, naming, polish | record as follow-up; do **not** gate |
-
-Don't over-escalate (`CLAUDE.md`): `P0` needs concrete evidence the code is broken or exploitable, not a preference.
-
-### Structured fix — per finding, `address-comments` discipline
-
-Treat each surviving finding like an unresolved review thread you own:
-
-1. **Dossier + verify.** One line per finding: file:line, the concrete defect, and the evidence (the diff hunk plus any cross-boundary code traced during the doubt cycle). Verify the finding against the actual line per `.claude/docs/pr-review-verification.md` §3 — if the claim doesn't match the file at that line, drop it.
-2. **Classify** (don't reflexively patch every comment): **accept** (real defect → fix it), **decline** (current code is already correct, or the finding misread context → record the one-line reason, change nothing), or **middle-ground** (a narrower fix now, or a tracked follow-up for an out-of-scope part). Probe for the middle ground before committing to a binary accept/decline.
-3. **Fix accepts.** Apply the minimal change for every accepted P0 and P1 in `{work_root}`. If a fix alters logic or fixes a bug, add or update the test that covers it (Beyoncé rule). P2s become Phase 10 follow-up notes.
-
-### Scope discipline (so the loop converges)
-
-Review the **diff**, not the whole repo. For a *code-quality* finding, grep whether the pattern is **pre-existing** (`workspace/kb/general/workflow.md` § pre-existing-pattern check) - if this change didn't introduce it, log it as a follow-up; don't fix unrelated code smells here (`CLAUDE.md` "while we're at it" rejection). **Exception:** lint errors, test failures, and test flakiness follow `.claude/docs/fsd-implementation-loop.md -> Engineering Excellence Bar`; fix them even when pre-existing. A stray code smell may be deferred, but a red or flaky gate may not.
-
-### Loop
-
-1. Reviewer returns findings (full lens set + doubt cycle on non-trivial ones), each tagged P0/P1/P2 with file:line, the concrete problem, and its classification.
-2. Fix **every accepted P0 and P1** in `{work_root}` (respecting scope discipline). Record declines with their one-line reason. P2s become Phase 10 follow-up notes.
-3. **Re-spawn a fresh reviewer** on the updated diff. Confirm each prior fix actually landed at HEAD (`feedback_verify-claimed-fix-vs-head.md` — a claimed fix is a hypothesis until diff-confirmed) and that no new P0/P1 appeared.
-4. Repeat until a pass returns zero accepted P0/P1, or **3 iterations**. If iteration 3 still has open P0/P1: stop, do **not** commit, present the remaining findings via `AskUserQuestion` (Fix more / Override with reason / Cancel). An honest stop beats pushing a known-broken diff.
-
-Log one line: `self-review: {N} iters, {X} P0/P1 fixed, {Y} declined, {Z} P2 deferred`.
-
-This is correctness/quality review; Phase 6.5 (Codex) is the independent cross-model spec-vs-diff check. They're complementary — keep both.
-
-## Phase 6.5: Pre-Push Verification Gate (Codex, with single-model fallback)
-
-Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is not loaded, skip cleanly past only the Codex invocation.
-
-Do NOT skip this gate: run the single-model fallback below instead. The verification step is mandatory; only the cross-model variant is optional.
-
-If tempted to skip or self-approve, see `.claude/docs/anti-rationalization.md → /nase:fsd`.
-
-**Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
-- the original task spec from `$ARGUMENTS` verbatim (the CONTRACT)
-- the verification bundle path (or the merge-base diff) and `{work_root}` (the ARTIFACT)
-- the instruction to answer in the exact `VERDICT: PASS | FAIL | NEEDS-HUMAN` shape below
-
-Do NOT include your own assessment, implementation reasoning, or expected verdict. The subagent must judge spec-vs-diff independently, following the same principle as the `discuss-pr` doubt cycle: hand it the artifact and contract, not your conclusion.
-
-Parse its output with the same decision tree as Codex. Log `verify: single-model fallback (Codex unavailable)` and use tag `fallback-verify` instead of `codex-override` for overrides. A fallback PASS is weaker evidence than a cross-model PASS; note that in the Phase 10 report line.
-
-Build the verification bundle per `.claude/docs/codex-verification-bundle.md`:
+Generate the reviewer contract from the parser that will reduce the result:
 
 ```bash
-BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
-python3 .claude/scripts/codex-verify-bundle.py \
+python3 .claude/scripts/fsd-review-gate.py contract --kind quality \
+  > "{nase_workspace}/workspace/tmp/fsd-quality-contract.json"
+```
+
+Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context, read-only `verifier` with Read/Grep/Glob/Bash and no Edit/Write. Give either reviewer only:
+
+- the generated quality contract
+- the trusted artifact identity JSON generated with the bundle; instruct the reviewer to copy it exactly into `result.artifact`
+- the exact candidate bundle from Phase 6.1
+- the instruction to return one JSON object matching the contract, without Markdown fences
+
+Do not include implementation reasoning, a proposed verdict, or prior reviewer text. Persist the returned bytes as the round result. Missing or malformed output is a reducer input failure, not a product decision.
+
+### Review depth
+
+Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design search, architecture boundaries, security/privacy, reliability/data integrity, concurrency, compatibility/migration, performance, UI/accessibility, deployment/operability, testability, and comment accuracy. P0 and P1 need concrete evidence. P2 is deferred and does not gate.
+
+The `test_quality` axis is blocking. It must judge observable behavioral contracts, plausible failure power or a mutation seam, risk-appropriate positive/negative/boundary/error paths, regression fidelity, concrete assertions over values/state/side effects/absence, isolation of nondeterministic inputs, mock fidelity, retry/order/concurrency/locale/timezone determinism, and whether parameterized cases add distinct behavior. Source-text grep, incidental snapshots, test count, and line coverage cannot alone prove behavior.
+
+For bug fixes, reuse strict-TDD RED evidence or the original reproduction. Without that evidence, the reviewer must name the smallest plausible mutation the test would reject. Mutation, property, and fuzz tools may run only when already configured in the target repository and clearly relevant. Never install them for FSD.
+
+### Deterministic reduction
+
+```bash
+python3 .claude/scripts/fsd-review-gate.py reduce \
+  --kind quality --round "{qa_round}" \
   --repo "{worktree_or_repo}" \
-  --base "$BASE" \
-  --task "$ARGUMENTS" \
-  --output "{nase_workspace}/workspace/tmp/codex-verify-{short_sha}.md"
+  --inventory "{inventory_json}" \
+  --bundle "{bundle_path}" \
+  --expected-bundle-sha256 "{captured_bundle_sha256}" \
+  --expected-base-oid "$BASE" \
+  --result "{quality_result_json}" \
+  --state "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-state.json" \
+  > "{quality_decision_json}"
 ```
 
-Invoke the Codex MCP with the `verify` mode contract from `.claude/docs/codex-review.md`:
+The reducer rejects unknown keys, invalid enum values, contradictory axis/finding states, unsafe paths, stale artifact identity, a bundle that differs from the SHA-256 captured before review, and a result that does not echo that exact hash. Required axes are `correctness`, `test_quality`, and `verification_evidence`. Conditional axes are emitted by `contract` and must be assessed or explicitly marked `NOT_APPLICABLE` with a reason. The generated `lens_coverage` contract also makes problem fit, simple design, architecture boundaries, and comment accuracy explicit instead of relying on free-form reviewer prose.
 
-- `cwd` = `{worktree_path}` (or `{repo}` if worktree = No)
-- `prompt` = the original task spec from `$ARGUMENTS` verbatim, the bundle path, merge base, changed-file count, and the insufficient-manifest instruction from `.claude/docs/codex-verification-bundle.md`
-- `developer-instructions` = the `verify` template verbatim
-- `sandbox` = `read-only`
+Only a quality `PROCEED` result may advance to Phase 6.5 on the same bundle.
 
-Parse `content`. Expected shape:
-```
-VERDICT: PASS | FAIL | NEEDS-HUMAN
-SPEC ITEMS NOT ADDRESSED: ...
-SCOPE CREEP: ...
-REASONING: ...
+## Phase 6.5: Candidate Spec Review
+
+Generate the spec contract from the same reducer:
+
+```bash
+python3 .claude/scripts/fsd-review-gate.py contract --kind spec \
+  > "{nase_workspace}/workspace/tmp/fsd-spec-contract.json"
 ```
 
-**Decision tree:**
+Run a new fresh-context, read-only reviewer. Give it only the spec contract, trusted artifact identity JSON, exact requirement inventory, and the same candidate bundle already approved by Phase 6.25. Instruct it to copy the trusted identity exactly into `result.artifact`. The bundle's canonical task must include the original request and every Phase 2/design criterion used to derive the inventory. Require raw JSON matching the contract.
 
-- **PASS** → log one line (`Codex verify: PASS`) and proceed to Phase 7. No user prompt.
-- **NEEDS-HUMAN** → write the full Codex output next to the bundle as `codex-verify-{short_sha}-result.md`, then present only `VERDICT`, missing context/files, and the top 5 requested follow-ups via `AskUserQuestion`:
-  - Q: "Codex flagged ambiguity — proceed to push or revise first?"
-  - Options: `Proceed — push anyway` / `Revise — pause for me to look` / `Show me the diff side-by-side first`
-  - Honor the user's choice.
-- **FAIL** → do NOT push. Write the full Codex output next to the bundle as `codex-verify-{short_sha}-result.md`, then present only `VERDICT`, top 5 failures, and the result path. Ask via `AskUserQuestion`:
-  - Q: "Codex says the diff doesn't match the spec. What now?"
-  - Options: `Fix it` / `Override — Codex is wrong, push anyway` / `Cancel — abandon this run`
-  - On "Fix it": re-enter Phase 3.7 for phase-isolated runs or Phase 4 otherwise, then rerun verifier.
-  - On "Override": log reason to daily log with tag `codex-override`.
+The reviewer first audits the canonical task/design criteria against the inventory through `inventory_assessment`. An omitted criterion is `INCOMPLETE` and blocks even when every submitted requirement is satisfied. It then returns every requirement in the inventory. The reducer compares count, order, `ref`, `id`, and `summary` exactly. Omission, duplicate, rewrite, reorder, or addition is `INVALID`. `SATISFIED` needs evidence. `MISSING` must be autofixable or carry an allowed human blocker. `UNVERIFIABLE` must carry an exact linked context request or allowed human blocker. Scope-creep items use the same evidence and repair rules.
 
-**Malformed output** (no `VERDICT:` line) → write raw `content` next to the bundle as `codex-verify-{short_sha}-result.md`, treat as `NEEDS-HUMAN`, present a short malformed-output note plus the result path, and ask the user.
+Reduce it with the same state file:
 
-If Codex explicitly reports missing context that is available locally, read only those requested files or hunks, update the bundle, and rerun the verifier once. Do not loop beyond one context-completion rerun without asking the user.
+```bash
+python3 .claude/scripts/fsd-review-gate.py reduce \
+  --kind spec --round "{qa_round}" \
+  --repo "{worktree_or_repo}" \
+  --inventory "{inventory_json}" \
+  --bundle "{bundle_path}" \
+  --expected-bundle-sha256 "{captured_bundle_sha256}" \
+  --expected-base-oid "$BASE" \
+  --result "{spec_result_json}" \
+  --state "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-state.json" \
+  > "{spec_decision_json}"
+```
 
-Codex reviews the code Claude wrote; do not self-approve in the same active context.
+Set `approved_candidate_tree_oid` only when both reducers return `PROCEED` for the same `candidate_tree_oid`, `bundle_sha256`, and `contract_inventory_sha256`.
+
+## Shared QA State Machine
+
+Quality and spec share one `qa_round` budget of 1 through 3. They do not each receive three rounds.
+
+The state file enforces the sequence: quality round 1 starts the machine, spec may run only after quality `PROCEED` in the same round and on the same artifact, and any non-proceed review advances the next attempt to quality in the next round. A terminal result or completed spec review rejects further reducer calls.
+
+### Actions
+
+The reducer emits `PROCEED`, `AUTOFIX`, `NEEDS_HUMAN`, `STALE`, `INVALID`, or internal `CONTEXT`.
+
+| Action | FSD behavior |
+|---|---|
+| `PROCEED` | Quality advances to spec. Spec approves this candidate. |
+| `AUTOFIX` | Apply every bounded P0/P1, missing-requirement, or scope repair after the round. Do not ask the user. Then increment the shared round and restart at Phase 6. |
+| `CONTEXT` | Deduplicate requests and automatic bundle gaps by bound tree and canonical path. Build the next bundle with `--context-request-file "{reducer_output_json}"` when requests exist, increment the shared round, and restart at Phase 6. |
+| `NEEDS_HUMAN` | Stop only for the allowed blocker named by the reducer. |
+| `STALE` or reducer-input `INVALID` | Consume the round. Do not reinterpret it as a product choice. Retry the finalization chain with a fresh provider result when a round remains. A call rejected before a valid state transition does not start or consume a round. |
+
+Any code edit, test edit, formatter write, staging mismatch, commit-tree mismatch, or new context bundle makes all previous results stale. Never reuse a PASS for a similar diff or descendant commit.
+
+The reducer owns no-progress identity. Reviewer finding refs, summaries, or paraphrases cannot change it. If `no_progress` or `no_change` is non-empty, do not repeat the same repair strategy. A malformed, stale, missing-provider-result, no-result, or no-change attempt still consumes the shared round. The five-iteration build/test budget remains cumulative and is not reset.
+
+Context is always read from the bound Git tree. `codex-verify-bundle.py` resolves the requested path with `git ls-tree` against `base_oid` or `candidate_tree_oid`, then reads the exact resolved blob OID with `git cat-file`; it never reads the live worktree. Symlinks, gitlinks, missing blobs, special files, non-UTF-8 blobs, and context-cap exhaustion become evidence gaps. Bundle-declared gaps enter `CONTEXT` even when the reviewer did not request them. The reducer accepts at most 64 requests per result before any Git lookup. Each payload is capped at 64 KiB and total context at 256 KiB, with byte count and SHA-256 retained.
+
+### Round 3 terminal behavior
+
+Round 3 must not modify code or tests. Its reducer result closes the run as follows:
+
+- verified remaining P0/P1, missing requirement, or scope defect: `NEEDS_HUMAN` with `QA_REPAIR_EXHAUSTED`
+- explicit allowed human blocker: `NEEDS_HUMAN` with that blocker
+- remaining context or non-blob evidence gap: `blocked-evidence`
+- invalid, stale, provider/tool failure, or no result: `blocked-infrastructure`
+- P2 only: `PROCEED` and defer it
+
+This prevents a last-round edit from creating an unreviewed candidate.
+
+### Human blocker taxonomy
+
+The only reducer-approved human blockers are:
+
+- `PRODUCT_DECISION`
+- `CONTRACT_CONFLICT`
+- `CREDENTIAL_OR_PERMISSION`
+- `EXTERNAL_OR_CROSS_OWNER`
+- `DESTRUCTIVE_OR_IRREVERSIBLE`
+- `SECRET_UNCERTAINTY`
+- `TEST_ORACLE_AMBIGUITY`
+- `QA_REPAIR_EXHAUSTED`
+
+Ordinary quality or spec failure is never an `AskUserQuestion`. Existing external mutation gates, the >1500-line scope decision, and secret uncertainty remain explicit human checkpoints.
+
+After a human resolves a `NEEDS_HUMAN` blocker, record the decision, discard the terminal state and every prior review result, create a fresh QA state, and restart Phase 6 at `qa_round=1`. The cumulative five-iteration build/test budget does not reset.
 
 ---
 
@@ -168,7 +192,7 @@ Report the PR URL.
 
 Build a verification matrix so the reviewer knows what to run before promoting the draft PR.
 
-Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 because fsd is producing the plan. Phase 5 unit tests become the Unit `✅ done` row.
+Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 because fsd is producing the plan. Phase 6.1 final canonical test evidence becomes the Unit `✅ done` row.
 
 **Execute before rendering:** a matrix fsd only writes is a promise; a matrix fsd partially ran is evidence. Before rendering:
 - Attempt every `required` row whose `command` runs locally inside `{work_root}`: local builds, env-var-switched `dotnet run`/`npm start` smoke checks, dry-run commands.

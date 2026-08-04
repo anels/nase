@@ -32,7 +32,7 @@ Follow:
 
 Preserve these names across phase documents:
 
-`success_criteria`, `success_criteria_from_design`, `design_constraints`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings`.
+`success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `qa_round`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `bundle_sha256`, `contract_inventory_sha256`, `quality_action`, `spec_action`, and `approved_candidate_tree_oid`.
 
 ## Phase map
 
@@ -40,8 +40,8 @@ Preserve these names across phase documents:
 |---|---|
 | 0 | This entrypoint: validate input. |
 | 1-3 and 3.7 | Read `.claude/docs/fsd-intake-and-setup.md` when entering Phase 1. |
-| 3.5-6 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. |
-| 5.75 and 6.5 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 5.75 and follow the named sections. |
+| 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. |
+| 6.25 and 6.5 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.25 and follow the named sections. |
 | 7 | This entrypoint plus `commit-push-pattern.md`. |
 | 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. |
 | 8b | `effort-lifecycle.md -> FSD Update`. |
@@ -57,17 +57,31 @@ Read `.claude/docs/fsd-intake-and-setup.md` once, then execute its phases in ord
 
 Before Phase 3.5, confirm that the applicable state above is populated. If phase isolation completes implementation, skip Phase 4 as directed by that document.
 
-## Phases 3.5-6: Implementation loop
+## Phases 3.5-6.5: Implementation and final QA
 
-At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its research, preflight, Direct/Team/TDD implementation, build/test loop, optional CLI gates, diff guard, and simplification rules in order.
+At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its research, preflight, Direct/Team/TDD implementation, initial build/test loop, simplification, post-edit deterministic gates, final size guard, and candidate bundle rules in order.
 
-At Phase 5.75, read `.claude/docs/fsd-delivery-gates.md` and run its mandatory fresh-context self-review. Resume Phase 6 only after zero accepted P0/P1 findings. At Phase 6.5, run the mandatory pre-push gate from the same document.
+At Phase 6.25, read `.claude/docs/fsd-delivery-gates.md`. Run its fresh independent quality review and deterministic reducer, then the independent spec review on the same bundle. Quality and spec share three total QA rounds. A local, reversible, bounded failure is autofixed without asking, then the full finalization chain restarts at Phase 6. Only reducer-approved human blockers or terminal infrastructure/evidence states interrupt the user.
 
 ## Phase 7: Commit & Push
 
 Before committing, conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope` set, no `fixup!`/`squash!`). Pass those constraints into `/nase:improve-commit-message` so the polished subject still clears the repo's commit-lint gate.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`. Deviation: use `push -u origin {branch_name}` on first push (sets upstream tracking).
+
+After its explicit-file staging step and before commit, assert the real index matches the reviewed tree:
+
+```bash
+test "$(git -C {worktree_or_repo} write-tree)" = "$approved_candidate_tree_oid"
+```
+
+After the initial commit and again after `/nase:improve-commit-message`, assert:
+
+```bash
+test "$(git -C {worktree_or_repo} rev-parse 'HEAD^{tree}')" = "$approved_candidate_tree_oid"
+```
+
+Any mismatch invalidates `quality_action`, `spec_action`, and the approved tree. Do not push. Restart at Phase 6 and repeat deterministic gates plus both fresh reviews.
 
 ---
 
@@ -126,11 +140,11 @@ For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
 - `blocked` - named blocker.
 
 Derive `closure_state`:
-- `done` - every required criterion `proven`.
+- `done` - every required criterion is `proven`; quality and spec are `PROCEED` for the same final candidate and bundle; the staged and committed trees equal `approved_candidate_tree_oid`; and final command evidence is newer than the last modification.
 - `conditional` - every required criterion `proven` or `waived`, with waiver reasons named.
 - `not-closed` - any required criterion `blocked` or unproven.
 
-Never print `done ✓` when a criterion is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger and print `done ✓` as before, noting verification is deferred to the user.
+Never print `done ✓` when a criterion or final QA condition is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger, but still require the quality/spec and tree-binding conditions. Note only the user-facing verification deferral.
 
 Print a concise summary:
 ```
@@ -139,6 +153,15 @@ FSD {done ✓ | conditional ⚠ | not-closed ✗}
   Repo:        {repo_name}
   Branch:      {branch_name}
   Test iters:  {N} (passed on iteration N)
+  QA rounds:   {qa_round}/3
+  Candidate:   {approved_candidate_tree_oid}
+  Bundle SHA:  {bundle_sha256}
+  Quality:     {quality_action}
+  Spec:        {spec_action}
+  Tests:       {focused and canonical command evidence}
+  QA fixes:    {P0/P1 auto-fixed count}; {P2 deferred count} P2 deferred
+  Context:     {context batch count}
+  QA blocker:  {infrastructure/evidence blocker or "none"}
   PR:          {PR URL}   ← or "not opened"
   Worktree:    {worktree_report}
 
@@ -159,7 +182,7 @@ If Phase 8.5 produced no rows (pure docs / comments change), omit the entire "Ve
 
 If the Phase 1 gate-profile load used the live-fetch fallback, add the stale-KB note from `.claude/docs/pr-gates-consumption.md` §2 (`Run /nase:onboard {repo} to persist`).
 
-Append to daily log following `.claude/docs/daily-log-format.md` (tag: `fsd`; add `large-diff` too if Phase 5.5 marked it).
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `fsd`; add `large-diff` too if Phase 6.1 marked it).
 Log: `{one-line task summary} → \`{branch_name}\` [{PR URL or "no PR"}]`
 
 If the run had a surprise/non-obvious win (novel approach, avoided near-miss, build iters > 1, ambiguous requirement resolved), append to `workspace/journals/{YYYY-MM-DD}.md`:
@@ -178,11 +201,11 @@ Skip failed or routine no-surprise runs; routine wins dilute downstream skill-op
 
 <error_handling>
 
-- **Continue after Phase 2** - do not pause unless blocked. For sub-skill prompts, reuse captured options for mechanical choices and Phase 2 preferences for design/scope; ask only when uncovered.
+- **Continue after Phase 2** - ordinary build, test, quality, and spec failures are automatically repaired and reverified. Ask only for an approved human blocker, the existing external mutation gates, >1500-line scope choice, or secret uncertainty.
 - **Protected branches** - never commit directly to `main`, `master`, `develop`, or `release/*`. FSD always works on a feature branch.
 - **Worktree path** - always create it as a sibling to the repo (not inside it) to avoid git nesting issues.
 - **Secrets** - if unsure about a file during the staging scan, stop and ask rather than committing and reverting later.
-- **Test loop bound** - 5 iterations is a hard cap. Reporting an honest failure is better than an infinite loop.
+- **Test loop bound** - 5 cumulative iterations is a hard cap and QA rounds do not reset it. Exhaust automatic repairs before surfacing `QA_REPAIR_EXHAUSTED` or an evidence/infrastructure terminal state.
 - **PR is always draft** - FSD never opens a ready-for-review PR. Promotion is a human decision.
 
 </error_handling>

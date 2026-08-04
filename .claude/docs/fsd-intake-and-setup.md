@@ -72,7 +72,7 @@ topology:
 
 If topology exists, Phase 4 edits only `affected_files`; add files by re-entering Phase 3 finalization. If skipped, rely on Phase 4 greps.
 
-**Early size signal:** if `affected_files` already exceeds ~15 files, say so now and name the natural split seams - cheaper to scope down before code intent locks in than at the Phase 5.5 diff measurement.
+**Early size signal:** if `affected_files` already exceeds ~15 files, say so now and name the natural split seams - cheaper to scope down before code intent locks in than at the Phase 6.1 final diff measurement.
 
 ## Phase 2: Upfront Config - single batched AskUserQuestion, then execution
 
@@ -80,7 +80,7 @@ Ask all 5 config decisions in one `AskUserQuestion` `questions` array, then cont
 
 **If `success_criteria_from_design` exists** (Phase 1 effort-doc intake): drop Q0 from the batched call, set `success_criteria` = the design doc's Success Criteria, and say one line: `Done-definition taken from workspace/efforts/{slug}.md Success Criteria.` Ask only Q1–Q4.
 
-Store answers: `success_criteria` = Q0 answer (or the design doc's criteria), `execution_mode` = Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR"), `tdd_mode` = (Q4 = "Yes").
+Store answers: `success_criteria` = Q0 answer (or the design doc's criteria), `execution_mode` = Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR"), `tdd_mode` = (Q4 = "Yes"). After any Q0 follow-up, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.5; the final inventory and spec review audit against this complete source.
 
 **Single batched call:**
 

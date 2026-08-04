@@ -79,6 +79,121 @@
         {"name": "shows preview", "type": "must_contain_regex", "pattern": "(?i)(previewRun|previewed final YAML|template parameters)"},
         {"name": "does not claim early trigger", "type": "must_not_contain_regex", "pattern": "(?i)(deployment triggered|pipeline started).*(before approval|without approval)"}
       ]
+    },
+    {
+      "id": "fsd-rejects-vacuous-test-evidence",
+      "skill": "nase:fsd",
+      "prompt": "/nase:fsd add a parser guard; the only new test greps the implementation source for the guard string",
+      "expected_output": "FSD marks test quality as failing until an observable behavior test proves failure power.",
+      "assertions": [
+        {
+          "name": "blocks vacuous test",
+          "type": "must_contain_regex",
+          "pattern": "(?i)test_quality.*FAIL"
+        },
+        {
+          "name": "requires behavior or mutation seam",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(observable behavioral contract|plausible mutation|failure power)"
+        },
+        {
+          "name": "does not accept grep alone",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(source-text grep|coverage percentage).*(is sufficient|proves behavior|PASS)"
+        }
+      ]
+    },
+    {
+      "id": "fsd-autofixes-test-quality",
+      "skill": "nase:fsd",
+      "prompt": "/nase:fsd implement a retry fix; quality review finds the regression test cannot fail on the old behavior",
+      "expected_output": "A fixable test-quality finding is automatically repaired, then the finalization chain and both reviews rerun.",
+      "assertions": [
+        {
+          "name": "chooses autofix",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(AUTOFIX|auto.?fix)"
+        },
+        {
+          "name": "restarts finalization",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(restart.*Phase 6|rerun.*(focused|canonical).*(quality|spec))"
+        },
+        {
+          "name": "does not ask on fixable failure",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(AskUserQuestion|what should I do|push anyway)"
+        }
+      ]
+    },
+    {
+      "id": "fsd-bound-tree-context",
+      "skill": "nase:fsd",
+      "prompt": "/nase:fsd reviewer requests one locally available file after the candidate bundle was frozen",
+      "expected_output": "FSD batches the context request and resolves the blob from the frozen Git tree rather than the live worktree.",
+      "assertions": [
+        {
+          "name": "uses bound tree",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(bound.*(candidate|base).*tree|git (ls-tree|cat-file))"
+        },
+        {
+          "name": "batches context",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(deduplicat|context batch|CONTEXT)"
+        },
+        {
+          "name": "does not use live file",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(read|copy).*(current|live) worktree.*as evidence"
+        }
+      ]
+    },
+    {
+      "id": "fsd-human-only-for-real-ambiguity",
+      "skill": "nase:fsd",
+      "prompt": "/nase:fsd tests expose two incompatible product interpretations and no repository contract selects one",
+      "expected_output": "FSD asks for the unresolved product or test-oracle decision and names the allowed human blocker.",
+      "assertions": [
+        {
+          "name": "names approved blocker",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(PRODUCT_DECISION|CONTRACT_CONFLICT|TEST_ORACLE_AMBIGUITY)"
+        },
+        {
+          "name": "states precise ambiguity",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(incompatible|ambiguous|contract conflict)"
+        },
+        {
+          "name": "does not disguise infrastructure",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)(provider|tool|malformed output).*PRODUCT_DECISION"
+        }
+      ]
+    },
+    {
+      "id": "fsd-completion-binds-final-candidate",
+      "skill": "nase:fsd",
+      "prompt": "/nase:fsd report completion after an autofix changed the implementation",
+      "expected_output": "Completion cites the final candidate tree, exact bundle, fresh tests, both review actions, and tree assertions.",
+      "assertions": [
+        {
+          "name": "reports final identity",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(candidate tree|Candidate:).*[0-9a-f]{40}"
+        },
+        {
+          "name": "reports fresh evidence",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(focused|canonical).*(test|evidence)"
+        },
+        {
+          "name": "requires both gates",
+          "type": "must_contain_regex",
+          "pattern": "(?is)Quality:.*PROCEED.*Spec:.*PROCEED"
+        }
+      ]
     }
   ]
 }
