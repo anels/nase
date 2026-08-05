@@ -45,7 +45,7 @@ When compacting, preserve active repo/path/branch, current task/plan, changed fi
 
 ### Repo & KB Workflow
 - Before repo work, run `/nase:onboard <path-or-url>` or `/nase:onboard`, then read the repo KB via `workspace/kb/.domain-map.md`. Load only relevant KB files.
-- KB writes follow `.claude/docs/kb-template.md → Writing Conventions`; silence is acceptable. After repo work, update that repo's `CLAUDE.md` with durable discoveries.
+- KB writes follow `.claude/docs/kb-template.md → Writing Conventions`; silence is acceptable. After repo work, record durable discoveries in KB. Update a target repo's `CLAUDE.md` only when documentation is in scope or after the user approves the proposed diff.
 
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
@@ -74,7 +74,7 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 - Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, GitHub Actions lint when `actionlint` exists, hook wiring, command inventory, skill bash checks, an advisory skill trigger-overlap scan, hook/script regressions, local sensitive artifact scanning, warn-only workspace quality drift, and shared-doc references. `bash tests/check-all.sh --links` runs the optional local `lychee` check.
 
 ### Runtime Dependencies
-- Required: `git`, `gh`, `jq`, `python3`, and `7z` or `zip` + `unzip`.
+- Required: `git`, `gh`, `jq`, and `python3`. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.
 - Optional agent tools are warning-only. Use `/nase:doctor` for the baseline set, `/nase:doctor --deep` for the full probe, and `.claude/docs/cli-tooling.md` before adding new tool-dependent skill behavior.
 - `.local-paths` lives at repo root, is not backed up, and stores `backup-target=` plus `RepoName=/absolute/path` entries managed by `/nase:init` and `/nase:onboard`.
 
@@ -126,9 +126,9 @@ When the user corrects wording/tone on an external draft I produced (Slack, PR d
 - **"While we're at it" rejection**: drive-by improvements you noticed while doing the assigned task default to rejected. Flag them as a follow-up at the end (filename + one-line description) so the user can choose; never bundle them silently. The exception: a one-line typo fix in code you already had to touch for the actual task.
 - **No comments by default**: unless the user asks or the logic is genuinely non-obvious
 - **Check dependencies first**: verify in the project's dependency file before using a library
-- **Never modify tests to make them pass**: fix the production code
-- **No preamble or postamble**: after completing a task, stop — do not summarize what you just did unless asked
-- **Verify before done**: run the repo's lint and typecheck commands after code changes; if unknown, ask the user and save them to that repo's `CLAUDE.md`
+- **Do not weaken tests to hide failures**: fix production defects; update or add tests when intended behavior or contracts change
+- **Keep handoffs brief**: report requested results, verification commands, and unresolved blockers
+- **Verify before done**: run the repo's lint and typecheck commands after code changes; discover them from repo docs and CI first, and ask if they remain unknown. Propose any target repo `CLAUDE.md` update separately
 
 ## Skill Output Discipline
 

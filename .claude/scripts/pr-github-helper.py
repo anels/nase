@@ -214,7 +214,9 @@ def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
         "pr": pr,
         "metadata": gh_metadata_args(pr, variant),
         "diff_full": ["gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"]],
-        "diff_stat": ["gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"], "--stat"],
+        "diff_names": [
+            "gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"], "--name-only",
+        ],
         "review_comments": gh_review_comments_args(pr),
         "reviews": gh_reviews_args(pr),
         "review_threads": gh_threads_args(pr),
@@ -349,6 +351,58 @@ def changed_file_paths(metadata: dict[str, Any]) -> list[str]:
     return paths
 
 
+def render_diff_stat(metadata: dict[str, Any]) -> str:
+    """Render a git-style stat block from PR file metadata.
+
+    `gh pr diff --stat` was removed from the gh CLI, so derive the stat from the
+    `files` field the metadata call already returns instead of shelling out again.
+    """
+    files = metadata.get("files") or []
+    rows: list[str] = []
+    total_additions = 0
+    total_deletions = 0
+    if isinstance(files, list):
+        for item in files:
+            if not isinstance(item, dict):
+                path = str(item)
+                additions = deletions = None
+            else:
+                path = item.get("path") or item.get("filename")
+                additions = item.get("additions")
+                deletions = item.get("deletions")
+            if not path:
+                continue
+            if additions is None and deletions is None:
+                rows.append(f" {path}")
+                continue
+            additions = int(additions or 0)
+            deletions = int(deletions or 0)
+            total_additions += additions
+            total_deletions += deletions
+            rows.append(f" {path} | {additions + deletions} +{additions} -{deletions}")
+
+    file_count = int(metadata["changedFiles"]) if metadata.get("changedFiles") is not None else len(rows)
+    if not rows and file_count == 0:
+        return ""
+
+    if metadata.get("additions") is not None:
+        total_additions = int(metadata.get("additions") or 0)
+    if metadata.get("deletions") is not None:
+        total_deletions = int(metadata.get("deletions") or 0)
+
+    if file_count > len(rows):
+        omitted = file_count - len(rows)
+        omitted_word = "file" if omitted == 1 else "files"
+        rows.append(f" ... {omitted} more {omitted_word} omitted by gh pr view")
+
+    file_word = "file" if file_count == 1 else "files"
+    rows.append(
+        f" {file_count} {file_word} changed, "
+        f"{total_additions} insertions(+), {total_deletions} deletions(-)"
+    )
+    return "\n".join(rows)
+
+
 def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, Any]]:
     if max_paths <= 0:
         return []
@@ -428,15 +482,16 @@ def thread_dossier(
 def review_context(pr: dict[str, Any], max_body_chars: int, max_kb_paths: int) -> dict[str, Any]:
     metadata = json.loads(run_gh(gh_metadata_args(pr, "light")))
     paths = changed_file_paths(metadata)
+    file_count = int(metadata["changedFiles"]) if metadata.get("changedFiles") is not None else len(paths)
     comments = flatten_json_items(run_gh(gh_review_comments_args(pr)))
     reviews = flatten_json_items(run_gh(gh_reviews_args(pr)))
-    diff_stat = run_gh(["gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"], "--stat"])
     return {
         "pr": pr,
         "metadata": metadata,
         "sizeGate": size_gate(metadata, 1500, 1500),
         "changedFiles": paths,
-        "diffStat": diff_stat.strip(),
+        "changedFilesOmitted": max(0, file_count - len(paths)),
+        "diffStat": render_diff_stat(metadata),
         "reviewComments": [summarize_comment(item, max_body_chars) for item in comments],
         "reviews": [summarize_review(item, max_body_chars) for item in reviews],
         "kbMentions": kb_mentions_for_paths(paths, max_kb_paths),

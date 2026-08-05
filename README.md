@@ -108,8 +108,8 @@ in `.claude/docs/cli-tooling.md`.
 
 | MCP | Used for | Setup |
 |-----|----------|-------|
-| **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian MCP](https://github.com/atlassian/mcp-atlassian) |
-| **Slack** | `/nase:request-review` — resolves GitHub handles to Slack users and stages DM drafts; direct sends are blocked by a hook | [Slack MCP](https://github.com/modelcontextprotocol/servers/tree/main/src/slack) |
+| **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian Rovo MCP Server](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/use-atlassian-rovo-mcp-server/) |
+| **Slack** | `/nase:request-review` - resolves GitHub handles to Slack users and stages DM drafts; direct sends are blocked by a hook | [Slack MCP Server](https://docs.slack.dev/ai/slack-mcp-server/) |
 | **Codex** | Optional read-only second-opinion gates; skipped cleanly when unavailable | `claude mcp add codex --scope user -- /Applications/Codex.app/Contents/Resources/codex mcp-server` |
 
 Configure MCP servers in your Claude Code `settings.json` (or `settings.local.json`) under `mcpServers`. GitHub workflows use `gh` CLI by default.

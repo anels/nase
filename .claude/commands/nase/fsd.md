@@ -63,6 +63,8 @@ At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its r
 
 At Phase 6.25, read `.claude/docs/fsd-delivery-gates.md`. Run its fresh independent quality review and deterministic reducer, then the independent spec review on the same bundle. Quality and spec share three total QA rounds. A local, reversible, bounded failure is autofixed without asking, then the full finalization chain restarts at Phase 6. Only reducer-approved human blockers or terminal infrastructure/evidence states interrupt the user.
 
+Run the operator preflight in that document before every reducer call. If the preflight finds a malformed inventory, reviewer result, or bundle hash, fix the input and re-request from the provider before calling `reduce`. Once invoked, reducer-input `INVALID` follows the shared state machine and may consume the round.
+
 ## Phase 7: Commit & Push
 
 Before committing, conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope` set, no `fixup!`/`squash!`). Pass those constraints into `/nase:improve-commit-message` so the polished subject still clears the repo's commit-lint gate.
