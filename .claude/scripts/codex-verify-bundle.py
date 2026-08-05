@@ -42,6 +42,9 @@ SECRET_PATTERNS = (
     ),
 )
 PLACEHOLDER_MARKERS = (b"example", b"dummy", b"placeholder", b"redacted", b"changeme")
+IDENTIFIER_ECHO = re.compile(
+    rb"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(?P<value>[A-Za-z_][A-Za-z0-9_]*)$"
+)
 
 
 def git(
@@ -197,10 +200,23 @@ def path_metadata(
     return result
 
 
+def is_identifier_echo(matched: bytes) -> bool:
+    """Return whether a non-password credential field references the same identifier."""
+    echo = IDENTIFIER_ECHO.match(matched.strip())
+    if not echo:
+        return False
+    key = echo.group("key").lower()
+    return key == echo.group("value").lower() and key != b"password"
+
+
 def secret_match(data: bytes) -> tuple[str, int] | None:
     for name, pattern in SECRET_PATTERNS:
-        match = pattern.search(data)
-        if match and not any(marker in match.group(0).lower() for marker in PLACEHOLDER_MARKERS):
+        for match in pattern.finditer(data):
+            matched = match.group(0)
+            if any(marker in matched.lower() for marker in PLACEHOLDER_MARKERS):
+                continue
+            if is_identifier_echo(matched):
+                continue
             return name, match.start()
     return None
 
