@@ -52,6 +52,8 @@ assert "reviewDecision" in fields
 assert "isDraft" in fields
 assert data["review_threads"][0:3] == ["gh", "api", "graphql"]
 assert "pageInfo" in data["review_threads"][-1]
+assert data["diff_names"][-1] == "--name-only"
+assert "--stat" not in data["diff_names"]
 PY
 
 assert_cmd "size gate keeps its boundaries" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
@@ -72,6 +74,63 @@ for metadata, total, mode, warned in (
     assert result["total_lines"] == total
     assert result["diff_mode"] == mode
     assert result["review_warning"] is warned
+PY
+
+assert_cmd "diff stat renders from metadata without gh pr diff" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+# No files at all -> empty string, so callers can treat it as "no delta".
+assert module.render_diff_stat({"files": []}) == ""
+assert module.render_diff_stat({}) == ""
+
+# Per-file counts present: rows carry them and the summary sums them.
+counted = module.render_diff_stat({
+    "additions": 7,
+    "deletions": 1,
+    "files": [
+        {"path": "src/a.ts", "additions": 3, "deletions": 1},
+        {"path": "src/b.ts", "additions": 4, "deletions": 0},
+    ],
+})
+assert counted.splitlines() == [
+    " src/a.ts | 4 +3 -1",
+    " src/b.ts | 4 +4 -0",
+    " 2 files changed, 7 insertions(+), 1 deletions(-)",
+], counted
+
+# Per-file counts absent: fall back to the PR-level totals rather than reporting zeros.
+uncounted = module.render_diff_stat({
+    "additions": 12,
+    "deletions": 5,
+    "files": [{"path": "src/a.ts"}],
+})
+assert uncounted.splitlines() == [
+    " src/a.ts",
+    " 1 file changed, 12 insertions(+), 5 deletions(-)",
+], uncounted
+
+# gh pr view returns at most 100 file rows. Keep the PR-level totals accurate and
+# make the omitted rows explicit instead of silently under-reporting a large PR.
+truncated = module.render_diff_stat({
+    "changedFiles": 3,
+    "additions": 12,
+    "deletions": 5,
+    "files": [
+        {"path": "src/a.ts", "additions": 3, "deletions": 1},
+        {"path": "src/b.ts", "additions": 4, "deletions": 0},
+    ],
+})
+assert truncated.splitlines() == [
+    " src/a.ts | 4 +3 -1",
+    " src/b.ts | 4 +4 -0",
+    " ... 1 more file omitted by gh pr view",
+    " 3 files changed, 12 insertions(+), 5 deletions(-)",
+], truncated
 PY
 
 mkdir -p "$TMPDIR_TEST/bin"
@@ -169,11 +228,14 @@ args="$*"
 case "$args" in
   *"pr view 42"*)
     cat <<JSON
-{"number":42,"title":"Fix widgets","url":"https://github.com/acme/widgets/pull/42","body":"body text","state":"OPEN","isDraft":true,"headRefOid":"${PR_HEAD_SHA:-missing}","headRefName":"feature/pr","baseRefName":"main","createdAt":"2026-01-01T00:00:00Z","additions":1200,"deletions":400,"changedFiles":2,"files":[{"path":"src/a.ts"},{"path":"src/c.ts"}],"commits":[{"oid":"${PR_HEAD_SHA:-missing}"}],"reviewDecision":"REVIEW_REQUIRED"}
+{"number":42,"title":"Fix widgets","url":"https://github.com/acme/widgets/pull/42","body":"body text","state":"OPEN","isDraft":true,"headRefOid":"${PR_HEAD_SHA:-missing}","headRefName":"feature/pr","baseRefName":"main","createdAt":"2026-01-01T00:00:00Z","additions":1200,"deletions":400,"changedFiles":3,"files":[{"path":"src/a.ts","additions":800,"deletions":300,"changeType":"MODIFIED"},{"path":"src/c.ts","additions":400,"deletions":100,"changeType":"ADDED"}],"commits":[{"oid":"${PR_HEAD_SHA:-missing}"}],"reviewDecision":"REVIEW_REQUIRED"}
 JSON
     ;;
-  *"pr diff 42"*"--stat"*)
-    printf ' src/a.ts | 2 +-\n src/c.ts | 1 +\n 2 files changed, 2 insertions(+), 1 deletion(-)\n'
+  # No `gh pr diff --stat` arm on purpose: that flag was removed from gh, and mocking it
+  # is what let the real breakage pass. review-context must derive the stat from metadata.
+  *"pr diff 42"*)
+    echo "unknown flag" >&2
+    exit 1
     ;;
   *"repos/acme/widgets/pulls/42/comments"*)
     cat <<'JSON'
@@ -213,7 +275,10 @@ data = json.load(open(sys.argv[1], encoding="utf-8"))
 assert data["sizeGate"]["total_lines"] == 1600
 assert data["sizeGate"]["diff_mode"] == "stat"
 assert data["changedFiles"] == ["src/a.ts", "src/c.ts"]
-assert "2 files changed" in data["diffStat"]
+assert data["changedFilesOmitted"] == 1
+assert " src/a.ts | 1100 +800 -300" in data["diffStat"]
+assert " ... 1 more file omitted by gh pr view" in data["diffStat"]
+assert data["diffStat"].endswith(" 3 files changed, 1200 insertions(+), 400 deletions(-)")
 assert data["reviewComments"][0]["body"].endswith("...")
 assert data["reviewComments"][0]["path"] == "src/a.ts"
 assert data["reviewComments"][0]["line"] == 2

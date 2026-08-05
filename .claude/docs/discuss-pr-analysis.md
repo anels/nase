@@ -46,7 +46,7 @@ Use the shared helper to collect the first-pass GitHub context and KB path menti
 python3 .claude/scripts/pr-github-helper.py review-context "$PR_URL" --max-body-chars 600 --max-kb-paths 10 > "$TMPDIR/pr-review-context.json"
 ```
 
-Use `pr`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `reviewComments`, `reviews`, and `kbMentions` from that JSON. The helper intentionally truncates bodies/excerpts and never emits a full diff.
+Use `pr`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `changedFilesOmitted`, `reviewComments`, `reviews`, and `kbMentions` from that JSON. The helper intentionally truncates bodies/excerpts and never emits a full diff. If `changedFilesOmitted` is greater than zero, fetch the paginated path list with `gh api "repos/{owner}/{repo}/pulls/{number}/files" --paginate --jq '.[].filename'` before selecting files to review. If its count still differs from `metadata.changedFiles`, report partial coverage and do not claim a full-file review.
 
 Use `sizeGate.total_lines` and `sizeGate.diff_mode` before fetching the diff:
 
@@ -55,7 +55,7 @@ Use `sizeGate.total_lines` and `sizeGate.diff_mode` before fetching the diff:
 
 **PR size gate:** if `sizeGate.review_warning` is true, warn: "This PR is {N} lines - single-pass review reliability drops significantly. Consider splitting by concern before deep review." User decides whether to proceed.
 
-**Fan-out fail-fast (validate the review target before Step 3).** A bad base ref or empty diff should fail *here*, not inside parallel specialists (adapted from `mattpocock/skills → code-review`; see `workspace/kb/general/workflow.md 2026-07-10`). Before launching any specialist: confirm `pr.baseRefName`/`headRefName` resolved and `diffStat.total_lines > 0` (or `changedFiles` non-empty). If the diff is empty, the PR is already merged/closed with no delta, or the base is unresolved → stop and report the exact state (e.g. "0-line diff - PR already merged or base/head mismatch"); do not spawn specialists against nothing.
+**Fan-out fail-fast (validate the review target before Step 3).** A bad base ref or empty diff should fail here, not inside parallel specialists (adapted from `mattpocock/skills -> code-review`; see `workspace/kb/general/workflow.md 2026-07-10`). Before launching any specialist, confirm `pr.baseRefName`/`headRefName` resolved and `sizeGate.total_lines > 0` (or `changedFiles` is non-empty). If the diff is empty, the PR is already merged/closed with no delta, or the base is unresolved. Stop and report the exact state, such as `0-line diff - PR already merged or base/head mismatch`; do not spawn specialists against nothing.
 
 ## Step 2.5 - Collect context
 

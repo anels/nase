@@ -24,6 +24,16 @@ python3 .claude/scripts/fsd-review-gate.py contract --kind quality \
   > "{nase_workspace}/workspace/tmp/fsd-quality-contract.json"
 ```
 
+### Operator preflight - run before every reducer call
+
+Prevent malformed operator input from reaching the reducer. Validate locally first; only call `reduce` once these hold:
+
+- **Inventory shape**: `ref` values are `REQ-001`, `REQ-002`, ... in exact order, `id` values unique, every `summary` non-empty. The reducer rejects anything else outright.
+- **Reviewer result shape**: parses as one JSON object and `artifact` echoes the four identity fields verbatim. For quality, every contract-declared axis and lens is present, and every `FAIL` axis or lens has a linked `P0`/`P1` finding. For spec, the inventory assessment and requirement rows match the exact inventory. `UNVERIFIABLE` needs a linked context request or an allowed human blocker.
+- **Bundle binding**: `expected-bundle-sha256` equals `shasum -a 256` of the bundle file you are passing, and the result's `bundle_sha256` equals it too.
+
+If a local check fails, fix the input and re-request from the provider without calling `reduce` or incrementing `qa_round`. Record it as `operator-retry: {what was malformed}`. Cap these pre-reducer retries at 3 per round, then stop as `blocked-infrastructure`. If `reduce` is called and returns `INVALID`, follow the shared state machine below; that attempt consumes the round.
+
 Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context, read-only `verifier` with Read/Grep/Glob/Bash and no Edit/Write. Give either reviewer only:
 
 - the generated quality contract
@@ -69,7 +79,9 @@ python3 .claude/scripts/fsd-review-gate.py contract --kind spec \
   > "{nase_workspace}/workspace/tmp/fsd-spec-contract.json"
 ```
 
-Run a new fresh-context, read-only reviewer. Give it only the spec contract, trusted artifact identity JSON, exact requirement inventory, and the same candidate bundle already approved by Phase 6.25. Instruct it to copy the trusted identity exactly into `result.artifact`. The bundle's canonical task must include the original request and every Phase 2/design criterion used to derive the inventory. Require raw JSON matching the contract.
+Run a new fresh-context, read-only reviewer. Give it exactly **four** inputs: the spec contract, the trusted artifact identity JSON, **the requirement inventory as its own file**, and the same candidate bundle already approved by Phase 6.25.
+
+`codex-verify-bundle.py` does **not** render `--inventory-file` into the bundle - it only binds it through `contract_inventory_sha256`. A spec reviewer told the inventory is "in the bundle" will correctly return `INCOMPLETE` and burn a round. Name the inventory file in the reviewer's read-list. Instruct it to copy the trusted identity exactly into `result.artifact`. The bundle's canonical task must include the original request and every Phase 2/design criterion used to derive the inventory. Require raw JSON matching the contract.
 
 The reviewer first audits the canonical task/design criteria against the inventory through `inventory_assessment`. An omitted criterion is `INCOMPLETE` and blocks even when every submitted requirement is satisfied. It then returns every requirement in the inventory. The reducer compares count, order, `ref`, `id`, and `summary` exactly. Omission, duplicate, rewrite, reorder, or addition is `INVALID`. `SATISFIED` needs evidence. `MISSING` must be autofixable or carry an allowed human blocker. `UNVERIFIABLE` must carry an exact linked context request or allowed human blocker. Scope-creep items use the same evidence and repair rules.
 
@@ -103,7 +115,7 @@ The reducer emits `PROCEED`, `AUTOFIX`, `NEEDS_HUMAN`, `STALE`, `INVALID`, or in
 | Action | FSD behavior |
 |---|---|
 | `PROCEED` | Quality advances to spec. Spec approves this candidate. |
-| `AUTOFIX` | Apply every bounded P0/P1, missing-requirement, or scope repair after the round. Do not ask the user. Then increment the shared round and restart at Phase 6. |
+| `AUTOFIX` | Apply every bounded P0/P1, missing-requirement, or scope repair after the round. Do not ask the user, and do not report the finding as a blocker - repair it and keep going. Then increment the shared round and restart at Phase 6. |
 | `CONTEXT` | Deduplicate requests and automatic bundle gaps by bound tree and canonical path. Build the next bundle with `--context-request-file "{reducer_output_json}"` when requests exist, increment the shared round, and restart at Phase 6. |
 | `NEEDS_HUMAN` | Stop only for the allowed blocker named by the reducer. |
 | `STALE` or reducer-input `INVALID` | Consume the round. Do not reinterpret it as a product choice. Retry the finalization chain with a fresh provider result when a round remains. A call rejected before a valid state transition does not start or consume a round. |
