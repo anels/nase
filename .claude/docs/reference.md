@@ -15,6 +15,8 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - Command context budgets: `skill-authoring-contract.md` §12 owns entrypoint, description-catalog, and reference navigation limits; CI enforces them across core and workspace skills.
 - PR next-step handoff: `pr-next-step-handoff.md` owns the explicit follow-on workflow choices after comment resolution.
 - Worktree cleanup: `worktree-pattern.md` owns remote-OID verification and safe retained-worktree behavior; automated workflows never force-remove worktrees.
+- Context moves: `context-boundary.md` owns the phase-boundary tree (continue → clear → hand off → subagent → compact); `CLAUDE.md → Compact instructions` owns what a compaction must preserve.
+- Canonical pointer wording: `language-config.md → Canonical pointer` owns the language-preflight spelling every skill copies verbatim; `tests/check-canonical-pointers.sh` fails on any reworded or inlined copy.
 
 ## Execution Style
 

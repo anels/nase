@@ -9,11 +9,20 @@ Do not treat hardcoded company IDs, project names, page IDs, model names, or
 tool names as the source of truth. They are examples or fallbacks only.
 
 Before using any drift-prone value, read `workspace/config.md` and any
-skill-specific registry section first. Recommended keys:
+skill-specific registry section first. GitHub identity keys are top-level because
+the pre-mutation guard reads that exact placement:
+
+```markdown
+github_org:
+gh_account:
+work_gh_account:
+personal_gh_account:
+```
+
+Other recommended runtime keys:
 
 ```markdown
 ## Runtime
-- github_org:
 - ado_org_url:
 - ado_project:
 - jira_project:
@@ -24,6 +33,12 @@ skill-specific registry section first. Recommended keys:
 - codex_review_model:
 - claude_ultrareview_command:
 ```
+
+For GitHub mutations, `github_org` maps that organization owner to
+`work_gh_account`; a repository owner matching `personal_gh_account` maps to the
+personal identity. `gh_account` is a legacy fallback for `work_gh_account`, not a
+workspace-global actor. An unmapped owner fails closed. Configure missing mappings
+with `/nase:init --reconfigure`.
 
 If a key is missing:
 

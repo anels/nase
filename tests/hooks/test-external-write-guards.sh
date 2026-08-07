@@ -127,7 +127,7 @@ expect_rc "Azure read operand named import allowed" .claude/hooks/external-cli-w
 expect_rc "unknown Azure global option fails closed" .claude/hooks/external-cli-write-guard.sh "$azure_unknown_global" 2 "unrecognized external CLI"
 expect_rc "raw Terraform mutation blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_write" 2 "raw external mutation"
 expect_rc "raw Terraform import with global option blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_import_write" 2 "raw external mutation"
-expect_rc "Terraform output named import allowed" .claude/hooks/external-cli-write-guard.sh "$terraform_import_named_read" 0
+expect_rc "Terraform output is blocked as credential-bearing" .claude/hooks/external-cli-write-guard.sh "$terraform_import_named_read" 2 "unrecognized external CLI"
 expect_rc "raw GitHub workflow mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_workflow_write" 2 "raw external mutation"
 expect_rc "raw GitHub comment mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_comment_write" 2 "raw external mutation"
 expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"

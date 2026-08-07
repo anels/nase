@@ -16,6 +16,8 @@ Guidance for Claude Code when working in this repository.
 
 When compacting, preserve active repo/path/branch, current task/plan, changed files, verification run, and failing output. Drop raw logs, full diffs, broad search dumps, and superseded reasoning.
 
+Compacting is the last of five context moves, not the first reach. At a phase boundary, work `.claude/docs/context-boundary.md` top to bottom: continue → clear → hand off → subagent → compact.
+
 ## Architecture Stance
 
 - Treat this repo as a Claude Code workspace kit, not a product repo: commands, hooks, shared docs, tests, and `workspace/` state are the product surface.
@@ -132,4 +134,4 @@ When the user corrects wording/tone on an external draft I produced (Slack, PR d
 
 ## Skill Output Discipline
 
-Canonical rules live in `.claude/docs/skill-contract.md`. Summary: full artifact → file; chat → pointer + ≤ 5-line summary; `--verbose` opt-in for inline dump; batch `AskUserQuestion` calls. New skills inherit automatically — do not re-document per skill.
+Canonical rules live in `.claude/docs/skill-contract.md`. Summary: full artifact → file; chat → pointer + ≤ 5-line summary; `--verbose` opt-in for inline dump; batch `AskUserQuestion` calls; redact secrets before any command, output, or artifact reaches chat or a draft. New skills inherit automatically — do not re-document per skill.

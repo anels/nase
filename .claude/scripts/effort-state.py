@@ -21,6 +21,55 @@ CHECKBOX_RE = re.compile(r"^\s*-\s*\[([ xX])\]\s+(.+?)\s*$")
 PR_REFERENCE_RE = re.compile(
     r"https://github\.com/[^/\s]+/[^/\s]+/pull/\d+|\b[^/\s]+/[^#\s]+#\d+"
 )
+TARGET_PR_COUNT_RE = re.compile(
+    r"(?i)(?:\*\*)?Target PR count(?:\*\*)?\s*:\s*(\d+)\b"
+)
+LIFECYCLE_HEADING_RE = re.compile(r"^(#{2,6})\s+Lifecycle\s*$", re.IGNORECASE)
+HEADING_RE = re.compile(r"^(#{1,6})\s+\S")
+
+# An unchecked row inside ## Lifecycle usually means "this deliverable is still
+# owed". These status/bookkeeping rows do not describe another delivery PR, so
+# they must not block the transition to `awaiting-deploy`.
+#
+# Anchored at the start of the row on purpose: matching these words anywhere would
+# swallow real deliverables whose prose happens to contain them - "revert the
+# CI-verified-only exclusion" names an unopened PR, not a completed verification.
+BENIGN_LIFECYCLE_RE = re.compile(
+    r"""(?ix)
+    ^(?:
+        deployed\b                        # Deployed / Deployed to alpha / Deployed (if applicable)
+      | merged\b                          # merged-but-unticked is drift, not undelivered work
+      | review\s+passed\b
+      | effort\s+doc\s+moved\b
+    )
+    """
+)
+
+# These rows also do not represent another delivery PR, but once `Deployed` is
+# checked they must remain visible so the effort cannot move to `completed`
+# before its post-deploy validation is checked off.
+POST_DEPLOY_LIFECYCLE_RE = re.compile(
+    r"""(?ix)
+    ^(?:
+        outcome\s*:
+      | verified\b
+      | validated\b
+      | verification\s+(?:complete|completed|passed)\b
+      | validation\s+(?:complete|completed|passed)\b
+      | post-?deploy\b
+      | (?:alpha|beta|staging|prod(?:uction)?|sc\d+)\s+validation\s+(?:complete|completed|passed)\b
+      | (?:(?:alpha|beta|staging|prod(?:uction)?|sc\d+)\s+)?(?:deploy|soak|bake)\s+(?:window|observation|verification)\b
+    )
+    """
+)
+
+# Authors of multi-PR efforts often record the outstanding PRs as a trailing
+# clause on the *checked* `PR opened` row ("PR-1 #173 (draft); PR-1b + PR-2 still
+# pending") instead of giving each one its own row. The row is checked, so the
+# unchecked-row scan cannot see it, yet it says plainly that delivery is partial.
+OUTSTANDING_CLAUSE_RE = re.compile(
+    r"(?i)\b(?:still\s+pending|not\s+(?:yet\s+)?started|remain(?:s|ing)?\s+pending|yet\s+to\s+be\s+opened)\b"
+)
 
 
 def frontmatter_status(text: str) -> str:
@@ -61,13 +110,46 @@ def stage_from_status(status: str, text: str) -> str:
     return "planning"
 
 
+def lifecycle_line_ranges(lines: list[str]) -> list[tuple[int, int]]:
+    """1-indexed [start, end) spans of every `## Lifecycle` section."""
+    ranges: list[tuple[int, int]] = []
+    for index, line in enumerate(lines, 1):
+        match = LIFECYCLE_HEADING_RE.match(line)
+        if not match:
+            continue
+        start = index + 1
+        lifecycle_level = len(match.group(1))
+        end = len(lines) + 1
+        for next_index in range(start, len(lines) + 1):
+            heading = HEADING_RE.match(lines[next_index - 1])
+            if heading and len(heading.group(1)) <= lifecycle_level:
+                end = next_index
+                break
+        ranges.append((start, end))
+    return ranges
+
+
+def strip_emphasis(label: str) -> str:
+    return label.lstrip("*_ ").strip()
+
+
 def classify(text: str) -> dict[str, object]:
     status = frontmatter_status(text)
     checked: set[str] = set()
     evidence: list[dict[str, object]] = []
+    undelivered: list[dict[str, object]] = []
+    pending_postdeploy_validation: list[dict[str, object]] = []
     pending_followups = 0
 
-    for line_number, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+    lifecycle_ranges = lifecycle_line_ranges(lines)
+    target_pr_counts = [
+        {"count": int(match.group(1)), "line": line_number, "text": line.strip()}
+        for line_number, line in enumerate(lines, 1)
+        if (match := TARGET_PR_COUNT_RE.search(line))
+    ]
+
+    for line_number, line in enumerate(lines, 1):
         match = CHECKBOX_RE.match(line)
         if not match:
             continue
@@ -77,8 +159,25 @@ def classify(text: str) -> dict[str, object]:
         if canonical and is_checked:
             checked.add(canonical)
             evidence.append({"label": canonical, "line": line_number, "text": label})
+            if canonical in {"PR opened", "Merged"} and OUTSTANDING_CLAUSE_RE.search(label):
+                undelivered.append({"line": line_number, "text": label})
         if not is_checked and label.lower().startswith("follow-up:"):
             pending_followups += 1
+        in_lifecycle = any(
+            start <= line_number < end for start, end in lifecycle_ranges
+        )
+        if not is_checked and in_lifecycle and not label.lower().startswith("follow-up:"):
+            plain_label = strip_emphasis(label)
+            if POST_DEPLOY_LIFECYCLE_RE.search(plain_label):
+                pending_postdeploy_validation.append(
+                    {"line": line_number, "text": label}
+                )
+            # An unchecked, non-benign row inside `## Lifecycle` is the author
+            # saying "there is still a deliverable owed here". Later PRs in a
+            # multi-PR plan have no delivery-PR entry to be seen by, so this row
+            # is the only signal that the effort is not actually deployable yet.
+            elif not BENIGN_LIFECYCLE_RE.search(plain_label):
+                undelivered.append({"line": line_number, "text": label})
 
     if "Deployed" in checked and pending_followups:
         stage = "follow_up_only"
@@ -107,6 +206,9 @@ def classify(text: str) -> dict[str, object]:
         "evidence": evidence,
         "pending_followups": pending_followups,
         "needs_live_verification": needs_live_verification,
+        "undelivered": undelivered,
+        "pending_postdeploy_validation": pending_postdeploy_validation,
+        "target_pr_counts": target_pr_counts,
     }
 
 
@@ -126,12 +228,50 @@ def transition(
         return {"action": "none", "status": None, "reason": "unresolved-blocker"}
     if "OPEN" in delivery_pr_states:
         return {"action": "none", "status": None, "reason": "open-delivery-pr"}
+    # A multi-PR effort whose first PR merged is not deployable: the PRs nobody has
+    # opened yet cannot appear in delivery_pr_states, so the states alone read as
+    # "everything shipped" and would archive live work. This sits ahead of both
+    # terminal paths on purpose — a plan whose first PR was *closed* is no more
+    # `wontfix` than one whose first PR merged is `awaiting-deploy`. Name the rows
+    # that held it, so a stale row gets fixed instead of silently suppressing every
+    # future transition.
+    undelivered = list(classification.get("undelivered") or [])
+    target_pr_counts = classification.get("target_pr_counts") or []
+    expected_pr_count = max(
+        (entry["count"] for entry in target_pr_counts),
+        default=0,
+    )
+    if expected_pr_count > len(delivery_pr_states):
+        undelivered.extend(
+            {"line": entry["line"], "text": entry["text"]}
+            for entry in target_pr_counts
+            if entry["count"] == expected_pr_count
+        )
+    if undelivered:
+        return {
+            "action": "none",
+            "status": None,
+            "reason": "undelivered-lifecycle-rows",
+            "undelivered": undelivered,
+        }
     if "MERGED" in delivery_pr_states:
         if jira_state == "not-done":
             return {"action": "none", "status": None, "reason": "jira-not-done"}
         deployed = any(
             evidence["label"] == "Deployed" for evidence in classification["evidence"]
         )
+        if deployed and classification["pending_postdeploy_validation"]:
+            if classification["status"] == "awaiting-deploy":
+                return {
+                    "action": "none",
+                    "status": None,
+                    "reason": "pending-postdeploy-validation",
+                }
+            return {
+                "action": "update",
+                "status": "awaiting-deploy",
+                "reason": "pending-postdeploy-validation",
+            }
         if deployed and classification["pending_followups"] == 0:
             return {"action": "move", "status": "completed", "reason": "deployed"}
         if classification["status"] == "awaiting-deploy":

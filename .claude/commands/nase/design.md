@@ -13,7 +13,7 @@ Follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/effort-lifecycle.m
 
 ## Core contract
 
-1. Run `.claude/docs/language-config.md` first. Use `conversation:` for chat and `output:` for the effort doc.
+1. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for the effort doc.
 2. Apply `.claude/docs/design-principles.md`. Choose the simplest high-quality long-term shape. Development cost informs ETA, not design selection.
 3. Default to one PR. Split into multiple PRs only when a repo, compatibility/rollout, mechanical-noise, 1500-line review, or distinct-owner boundary makes one PR harder to review safely.
 4. Record `Target PR count`, dependency order for a split, `Reviewability`, and `Validation - how to get the real number`.

@@ -6,7 +6,7 @@ pattern: pipeline
 category: Knowledge base
 ---
 
-Import untrusted shared KB content through reviewable, path-bounded writes. Run `.claude/docs/language-config.md` first and follow `.claude/docs/workspace-write-guard.md`.
+Import untrusted shared KB content through reviewable, path-bounded writes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/workspace-write-guard.md`.
 
 ## Import Path Hardening
 

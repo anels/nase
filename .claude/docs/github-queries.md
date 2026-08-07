@@ -86,7 +86,8 @@ QUERY_FILE=$(mktemp "${TMPDIR:-/tmp}/resolve-review-thread.XXXXXXXX.json")
 chmod 600 "$QUERY_FILE"
 jq -n --arg thread "{thread_graphql_id}" '{query:"mutation($thread:ID!) { resolveReviewThread(input:{threadId:$thread}) { thread { isResolved } } }", variables:{thread:$thread}}' > "$QUERY_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
-  --system github --summary "resolve review thread {thread_graphql_id}" -- \
+  --system github --github-owner "{owner}" \
+  --summary "resolve review thread {thread_graphql_id}" -- \
   gh api graphql --input "$QUERY_FILE" | jq -r .manifest)
 jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
@@ -108,7 +109,8 @@ chmod 600 "$BATCH_FILE"
 # Build the aliases and IDs from the reviewed batch, then write one JSON request.
 printf '%s\n' '{"query":"mutation { r0: resolveReviewThread(input:{threadId:\"<id0>\"}){thread{id}} ... }"}' > "$BATCH_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
-  --system github --summary "resolve reviewed bot-declined threads" -- \
+  --system github --github-owner "{owner}" \
+  --summary "resolve reviewed bot-declined threads" -- \
   gh api graphql --input "$BATCH_FILE" | jq -r .manifest)
 jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:

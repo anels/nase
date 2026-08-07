@@ -33,6 +33,20 @@ Safety and mutation approval gates are the exception. Follow `.claude/docs/exter
 
 Attribution: push-right / brief vocabulary from mattpocock/skills `loop-me` — see `workspace/kb/general/workflow.md → §2026-07-16`.
 
+## Redact before you show
+
+Applies to **every** skill, not only artifact-producing ones: any command you show, any output you paste into chat, any evidence you quote into a file, a PR body, a review comment, or a Slack draft.
+
+- **Redaction is the first move on the material, not a review pass at the end.** Write `<REDACTED>` in place of the value before the text reaches chat or a draft. A secret that reaches chat has already leaked into the transcript; deleting it from the final artifact does not unsend it.
+- **Build the command against the environment, so the credential never enters what you show.** `curl -H "Authorization: Bearer $TOKEN"`, `az ... --query`, `gh api` with the token in the environment - show the invocation with the variable name, never the expanded value. The same rule kills `echo $TOKEN`-style verification steps: prove the variable exists without reading it, or report only its length.
+- **Quote only the signal-carrying lines of a captured artifact.** HAR files, `az` JSON, request dumps, and CI logs carry auth headers, connection strings, and cookies far from the line you actually need. Quote the shortest decisive line, never the whole capture.
+- **If the redacted evidence is no longer enough to make the point, say so and ask the user** — do not quietly widen what you paste to make the argument land.
+- Tool-level scanning stays where it already is (`gitleaks detect --redact`, `.claude/docs/kb-teamshare-file-processing.md`, `tests/check-local-sensitive-artifacts.sh`). Those catch what reaches a file; this rule governs what reaches the screen, which is earlier.
+
+`[CONFIDENTIAL]` handling is a separate axis — see `.claude/docs/confidential-marker.md`. A line can be non-confidential and still carry a token.
+
+Attribution: redact-first from mattpocock/skills `diagnosing-bugs` — see `workspace/kb/general/workflow.md → §2026-08-06`.
+
 ## Rationale
 
 - Output tokens are the most expensive surface in a long session.
@@ -52,6 +66,7 @@ New skills inherit this contract automatically — they do not need to restate i
 - [ ] Any user-facing decision points use a batched `AskUserQuestion`.
 - [ ] Checkpoints are pushed right — evidence/codebase/KB lookups exhausted before the user is asked; nothing the codebase can answer becomes a checkpoint.
 - [ ] Checkpoints present a decision-ready brief (what + why + link down), never the raw draft.
+- [ ] Every shown command, pasted output, and quoted artifact is redacted before it reaches chat or a draft; loops run against environment variables rather than literal credentials.
 - [ ] Cross-doc pointers into `workspace/...` use code-spans (`` `workspace/kb/general/workflow.md → Section` ``), not markdown links. Lychee CI runs with `--exclude-path workspace`, so md-links from `.claude/`, `CLAUDE.md`, or `README.md` into `workspace/` fail as "Cannot find file". Code-spans are inert for lychee. Pattern surfaced in a prior PR.
 
 ## Examples in the catalog

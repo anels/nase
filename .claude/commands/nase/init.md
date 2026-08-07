@@ -8,10 +8,12 @@ category: Setup & health
 
 Initialize only this checkout's ignored workspace state. Existing values are defaults; reruns must be idempotent.
 
+Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
+
 ## Workflow
 
 1. Inspect `workspace/config.md`, `.local-paths`, backup target, and existing workspace content. Without `--reconfigure`, ask only for missing required values.
-2. Batch the required inputs: AI name, workspace name, backup target, retention, `conversation:` language, and `output:` language. Keep GitHub work/personal accounts optional.
+2. Batch the required inputs: AI name, workspace name, backup target, retention, `conversation:` language, and `output:` language. If GitHub mutation workflows should be enabled, collect the exact top-level owner mapping: `github_org` with `work_gh_account`, plus `personal_gh_account` when personal repositories are in scope. Unmapped owners fail closed. Preserve legacy `gh_account` only as the work-account fallback.
 3. If Jira or Slack configuration is requested, collect identifiers only. Never request or persist passwords, PATs, OAuth tokens, client secrets, or cookies.
 4. For a fresh workspace with backup content, inspect available archives and show the exact candidate. Require explicit confirmation before `/nase:restore`; never merge an archive blindly.
 5. Verify hook wiring and executable bits. Report changes needed outside the repo instead of silently editing user-level Claude configuration.
@@ -22,7 +24,7 @@ mkdir -p workspace/kb/projects workspace/kb/general workspace/kb/people workspac
 ```
 
 7. Write only missing stubs and preserve existing content. Create `workspace/config.md`, `workspace/context.md`, `workspace/kb/.domain-map.md`, task/log directories, and `.local-paths` entries needed on this machine.
-8. Follow `.claude/docs/workspace-runtime-config.md` for key names and `.claude/docs/language-config.md` for language behavior. Machine-specific paths stay in `.local-paths`, never tracked docs.
+8. Follow `.claude/docs/workspace-runtime-config.md` for key names and language-key placement. Machine-specific paths stay in `.local-paths`, never tracked docs.
 9. Run `/nase:doctor`. Treat failed required checks as incomplete initialization.
 10. Offer the optional repository star only after setup succeeds and only with an explicit GitHub confirmation.
 

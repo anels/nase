@@ -6,7 +6,7 @@ pattern: expert-pool
 category: Knowledge base
 ---
 
-Build a current, source-linked digest only when requested. Run `.claude/docs/language-config.md`, `.claude/docs/skill-contract.md`, and `.claude/docs/content-hash-cache.md` first.
+Build a current, source-linked digest only when requested. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/content-hash-cache.md`.
 
 ## Arguments
 

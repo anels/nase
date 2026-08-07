@@ -7,7 +7,7 @@ category: Knowledge base
 sub-patterns: [fan-out]
 ---
 
-Audit KB health first, then apply only approved changes. Run `.claude/docs/language-config.md` first, follow `.claude/docs/skill-contract.md`, and route durable writes through `.claude/docs/workspace-write-guard.md`.
+Audit KB health first, then apply only approved changes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md`, and route durable writes through `.claude/docs/workspace-write-guard.md`.
 
 ## Workflow
 

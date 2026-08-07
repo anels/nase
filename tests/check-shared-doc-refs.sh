@@ -62,7 +62,15 @@ for base in (Path(".claude/docs"), Path("workspace/skills/docs")):
             failures.append(f"OVERSIZE {path}: {lines} lines > 500")
         if lines > 100 and "## Contents" not in text:
             failures.append(f"NO_TOC   {path}: {lines} lines without ## Contents")
-        refs = re.findall(r"(?:\.claude/docs|workspace/skills/docs)/[A-Za-z0-9_-]+\.md", text)
+        # A <canonical-block> declares the exact pointer consumers copy, so it
+        # legitimately names its own file; exclude it from the self-ref scan.
+        scanned = re.sub(
+            r"<canonical-block name=\"[^\"]+\">.*?</canonical-block>",
+            "",
+            text,
+            flags=re.DOTALL,
+        )
+        refs = re.findall(r"(?:\.claude/docs|workspace/skills/docs)/[A-Za-z0-9_-]+\.md", scanned)
         if path.as_posix() in refs and path.as_posix() != ".claude/docs/external-mutation-policy.md":
             failures.append(f"SELF_REF {path} -> {path}")
 

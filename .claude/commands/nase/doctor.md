@@ -6,7 +6,7 @@ pattern: utility
 category: Setup & health
 ---
 
-Run a read-only workspace health check. Run `.claude/docs/language-config.md` first and keep diagnostics in `conversation:`.
+Run a read-only workspace health check. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Keep diagnostics in `conversation:`.
 
 ## Checks
 

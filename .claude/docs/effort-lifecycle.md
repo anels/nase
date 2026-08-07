@@ -5,6 +5,7 @@
 - Stage Classifier
 - Status Vocabulary
 - Drift Auto-Sync
+- Multi-Deliverable Efforts
 - Dependency & Discovery Fields
 - PR Reference Resolution
 - Single-File Invariant
@@ -98,12 +99,21 @@ After the live reads, per active effort:
   it stays active and is reported as unresolved.
 - Any unresolved `blocked-by` referent → no lifecycle transition.
 - Any delivery PR still `OPEN` → no change.
+- **Any undelivered `## Lifecycle` row → no change** (`reason: undelivered-lifecycle-rows`).
+  A PR that was planned but never opened has no entry in the delivery set, so merged
+  evidence alone would read "everything shipped" and archive live work. The classifier
+  reports the offending rows in `undelivered`; the caller
+  names them in its report so a stale plan row gets corrected rather than silently
+  suppressing every future transition. See *Multi-Deliverable Efforts* below.
 - With no open delivery PR, at least one `MERGED` delivery PR, and Jira (if tracked)
   `Done`, use the merged path; closed superseded siblings do not block it:
-  - deploy validation incomplete → set `status: awaiting-deploy` if needed and
+  - unchecked post-deploy validation or outcome rows do not count as undelivered
+    PR work, but they block completion after `Deployed` is checked.
+  - deploy validation incomplete -> set `status: awaiting-deploy` if needed and
     leave the file active.
   - canonical classifier reports checked `Deployed` evidence with no pending
-    follow-up → set `status: completed` and move to `workspace/efforts/done/`.
+    follow-up or post-deploy validation -> set `status: completed` and move to
+    `workspace/efforts/done/`.
 - If all readable delivery PRs are `CLOSED`-not-merged, set `status: wontfix` and
   move to `workspace/efforts/done/`.
 
@@ -117,6 +127,50 @@ preserve the staged draft and leave the source active. Log each applied transiti
 Completed effort retention uses `workspace-write-guard.py move-existing` with the
 60-day age gate. The operation refuses an existing archive destination and leaves
 both files unchanged, so a same-name archive is never overwritten.
+
+## Multi-Deliverable Efforts
+
+Most efforts ship as one PR, and the delivery-PR set describes them completely. An
+effort that plans several PRs does not have that property: until PR 2 is opened it
+may exist only as prose (`Target PR count: 3`, an SE/phase table). The classifier
+compares the highest declared `Target PR count` with the live structured delivery-PR
+set so legacy docs fail closed instead of reading "1 of 1 merged" when the truth is
+"1 of 3".
+
+**Give every planned deliverable its own unchecked `## Lifecycle` row.** That row is
+the only thing standing between a half-finished initiative and the `done/` pile:
+
+```markdown
+## Lifecycle
+- [x] Design approved - 2026-01-15
+- [x] Implementation started - 2026-01-16 (PR1 only)
+- [x] PR opened - PR1 https://github.com/acme/platform/pull/101
+- [ ] PR2 - cache the health probe
+- [ ] PR3 - add deployment verification
+- [ ] Investigation - identify the remaining caller (no PR)
+- [ ] Deployed (if applicable)
+```
+
+Tick each row as its PR lands. `effort-state.py` treats a remaining unchecked row as
+an owed deliverable and refuses the `awaiting-deploy` transition.
+
+Rows that stay unchecked *because* the effort is waiting on a deploy do not count, or
+nothing could ever transition: `Deployed...`, `Merged`, `Review passed`, `Outcome: ...`,
+`Effort doc moved...`, `Follow-up: ...` (which has its own `pending_followups` path),
+and explicit status rows beginning with `Post-deploy`, `Verified`, `Validated`,
+`Validation complete`, or an environment plus `validation complete`. Checkboxes
+**outside** every `## Lifecycle` section are implementation-plan steps that
+authors routinely leave unticked after the work lands, so they are ignored entirely.
+
+A trailing clause on a *checked* row (`PR opened — PR-1 #173; PR-1b + PR-2 still
+pending`) is also honoured, since older docs record outstanding work that way. Prefer
+separate rows — the clause match only covers a few phrasings ("still pending", "not
+started", "remains pending", "yet to be opened") and a novel wording will slip past it.
+
+**When the gate fires on a row that is not actually owed** — a plan step that drifted
+into `## Lifecycle`, or a row nobody ticked after the work shipped — fix the document:
+tick it, reword it, or move it out of the section. Do not work around the gate; the
+row is the contract, and a wrong row will mislead the next reader too.
 
 ## Dependency & Discovery Fields
 
@@ -197,6 +251,11 @@ Initial lifecycle:
 - [ ] Merged
 - [ ] Deployed (if applicable)
 ```
+
+When the design plans more than one deliverable — any `Target PR count` above 1, or a
+phased/SE-numbered plan — add one unchecked row per planned PR (and per no-PR
+investigation) right after `PR opened`, naming what each covers. Those rows are what
+keeps a half-delivered plan out of `done/`; see *Multi-Deliverable Efforts*.
 
 Append a matching pending task to `workspace/tasks/todo.md`:
 

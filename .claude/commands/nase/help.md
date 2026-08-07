@@ -12,7 +12,7 @@ Runs `.claude/scripts/help-summary.py` so command catalog rendering, command cap
 
 ## Language
 
-Read `workspace/config.md` → `## Language` for the `conversation:` value. Translate every user-facing prose string in the helper output to that language; retain command names, paths, hook labels, and other protocol-fixed identifiers verbatim. If config is missing or has no `## Language` section, default English.
+Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Translate every user-facing prose string in the helper output to `conversation:`; command names, paths, and hook labels are protocol-fixed identifiers and stay verbatim.
 
 ## Steps
 
@@ -39,4 +39,3 @@ Read `workspace/config.md` → `## Language` for the `conversation:` value. Tran
 - Do not hardcode the KB layout — helper scans `workspace/kb/` so it reflects current structure
 - Keep default help to a screenful; `--verbose` preserves the old full-section behavior
 - If README.md is missing, the helper still renders commands from `.claude/commands/nase/` filenames
-- Follow `.claude/docs/language-config.md` for conversation vs output language.

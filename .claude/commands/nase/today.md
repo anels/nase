@@ -7,7 +7,7 @@ category: Learning & reflection
 sub-patterns: [fan-out]
 ---
 
-Create a concise daily plan from current evidence. Run `.claude/docs/language-config.md` first and use `.claude/docs/closing-block.md` for the final card.
+Create a concise daily plan from current evidence. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `.claude/docs/closing-block.md` for the final card.
 
 ## Steps
 
