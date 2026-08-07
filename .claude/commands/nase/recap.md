@@ -7,7 +7,7 @@ category: Reporting
 sub-patterns: [fan-out]
 ---
 
-Create a sourced recap from bounded workspace data. Run `.claude/docs/language-config.md`, `.claude/docs/confidential-marker.md`, and `.claude/docs/skill-contract.md` first.
+Create a sourced recap from bounded workspace data. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
 
 ## Workflow
 

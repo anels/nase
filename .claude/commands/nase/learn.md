@@ -6,7 +6,7 @@ pattern: expert-pool
 category: Learning & reflection
 ---
 
-Turn one input into sourced, reusable KB knowledge. Run `.claude/docs/language-config.md` first and check `.claude/docs/confidential-marker.md` before loading session material.
+Turn one input into sourced, reusable KB knowledge. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then check `.claude/docs/confidential-marker.md` before loading session material.
 
 ## Workflow
 

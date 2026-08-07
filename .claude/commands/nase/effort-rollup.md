@@ -6,7 +6,7 @@ pattern: utility
 category: Reporting
 ---
 
-Generate an evidence-backed monthly delivery report. Run `.claude/docs/language-config.md` first and follow `.claude/docs/skill-contract.md`.
+Generate an evidence-backed monthly delivery report. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md`.
 
 ## Workflow
 

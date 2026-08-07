@@ -7,7 +7,7 @@ category: Knowledge base
 sub-patterns: [fan-out]
 ---
 
-Build or refresh compact repo knowledge without dumping the repository into context. Follow `.claude/docs/language-config.md`, `.claude/docs/workspace-write-guard.md`, and `.claude/docs/kb-template.md`.
+Build or refresh compact repo knowledge without dumping the repository into context. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/kb-template.md`.
 
 ## Mode
 

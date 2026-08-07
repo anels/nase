@@ -6,7 +6,7 @@ pattern: pipeline
 category: Git workflow
 ---
 
-Prepare one PR without merging it. Run `.claude/docs/language-config.md` first. Follow `.claude/docs/pr-input-guard.md`, `.claude/docs/repo-task-flow.md`, `.claude/docs/external-mutation-policy.md`, and `.claude/docs/effort-lifecycle.md`.
+Prepare one PR without merging it. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/pr-input-guard.md`, `.claude/docs/repo-task-flow.md`, `.claude/docs/external-mutation-policy.md`, and `.claude/docs/effort-lifecycle.md`.
 
 ## Gates
 

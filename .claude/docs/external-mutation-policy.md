@@ -180,20 +180,40 @@ If any answer is no, the skill is non-compliant — fix before merging.
 
 ## GitHub auth account guard
 
-Workspaces that ship multi-account `gh` setups (e.g. personal + work accounts) hit an intermittent failure where `gh auth switch --user <work>` does not persist across long gaps, MCP calls, or other non-`gh` tool calls. The first failure presents as `GraphQL: Could not resolve to a Repository with the name '{ProtectedOrg}/{Repo}'` — misleading, since the repo exists.
+Workspaces with multiple `gh` accounts can lose the intended active account between
+commands. Every GitHub mutation therefore runs through
+`.claude/scripts/external-write-action.py`. `prepare` resolves the target owner and
+maps it through top-level `workspace/config.md`: `github_org` selects
+`work_gh_account`, while an owner matching `personal_gh_account` selects the personal
+identity. It binds both owner and account into the hashed action. `execute` re-reads
+the mapping, loads that account's credential with `gh auth token --user`, verifies the
+token actor with `gh api user`, and passes `GH_TOKEN` only to the mutation subprocess.
+It never changes shared `gh` account state. A missing, changed, unreadable, unmapped,
+unselectable, or actor-mismatched account blocks the write and consumes the one-shot
+token.
 
-Before any `gh` mutation against the protected org, ensure the active account matches the configured expected account from `workspace/config.md → gh_account:`. If the field is absent, the snippet is a no-op (no account switch ever runs with an empty arg).
+The helper derives owners from `-R`/`--repo`, `--org`/`--owner`, REST API paths,
+repo positional targets, PR or issue URLs, or the current `origin`. Opaque
+API/GraphQL, PR or issue URL, repo positional, gist, and user-scoped mutations must
+also pass `prepare --github-owner <owner>`; that value must match any owner encoded
+in the command or current `origin`.
+GitHub writes are restricted and manifest-bound to `github.com`; enterprise hosts,
+environment host overrides, and duplicate target selectors fail closed.
+Execution clears `GH_REPO` and token environment overrides so they cannot redirect
+the approved target or actor before it selects the manifest-bound token.
 
-```bash
-EXPECTED_GH=$(awk -F': ' '/^gh_account:/{print $2}' workspace/config.md 2>/dev/null || true)
-if [ -n "$EXPECTED_GH" ] && ! gh auth status --active 2>&1 | grep -q "Active account: $EXPECTED_GH"; then
-  gh auth switch --user "$EXPECTED_GH"
-fi
-```
+Raw `gh auth token`, `login`, `logout`, `refresh`, and `switch` commands are blocked.
+Only `gh auth status` without `-t`/`--show-token` may run outside the helper.
+Raw Azure access-token output and login/logout commands are also blocked; ordinary
+read-only account inspection remains allowed.
+Credential-bearing Azure reads, Kubernetes Secret/raw-config reads, and Terraform
+output/state reads fail closed so secret values cannot enter command output.
 
-Run this snippet immediately before each `gh` mutation block (PR edit, comment reply, thread resolve, reviewer assign, PR create, `pr ready`). Skip cleanly when `gh_account:` is unset.
+The selected token is captured, never printed or stored in the manifest, and scoped to
+the exact `gh` subprocess. Mutation skills reference the shared helper; they do not
+copy token-selection snippets.
 
-Skills that should reference this guard: `address-comments`, `prep-merge`, `request-review`, `fsd`. Read-only `gh` calls (`gh pr view`, `gh pr diff`, `gh api .../comments` GET) do not need the guard — only mutations.
+Skills that should reference this guard: `address-comments`, `prep-merge`, `request-review`, `fsd`. Read-only `gh` calls (`gh pr view`, `gh pr diff`, `gh api .../comments` GET) do not need the guard - only mutations.
 
 ## Related memories
 

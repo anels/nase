@@ -10,7 +10,7 @@ Generate a read-only KB usage telemetry report from `workspace/stats/kb-usage.js
 
 ## Language
 
-Read `workspace/config.md` for `conversation:` and `output:` values before producing text. Keep command names, file paths, and table labels in English.
+Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Command names, file paths, and table labels stay English.
 
 ## Input
 

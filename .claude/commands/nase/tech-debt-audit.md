@@ -6,7 +6,7 @@ pattern: pipeline
 category: Security & maintenance
 ---
 
-Produce an evidence-backed audit without editing the target repository. Run `.claude/docs/language-config.md`, `.claude/docs/confidential-marker.md`, and `.claude/docs/skill-contract.md` first.
+Produce an evidence-backed audit without editing the target repository. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
 
 ## Workflow
 

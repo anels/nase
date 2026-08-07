@@ -6,7 +6,7 @@ pattern: pipeline
 category: Knowledge base
 ---
 
-Create a portable, sanitized export without changing source KB or skills. Run `.claude/docs/language-config.md` first.
+Create a portable, sanitized export without changing source KB or skills. Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 
 ## Workflow
 

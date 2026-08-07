@@ -33,6 +33,45 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIsNone(module.secret_kind(source))
 
+    def test_camel_cased_variable_echo_is_not_a_credential(self):
+        # A named argument whose value is a differently named variable carries no literal either.
+        for source in (
+            b"                    accessToken: userAccessToken,\n",
+            b"client_secret: lookerClientSecret",
+            b"api_key = apiKeyFromConfig",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_unquoted_literal_containing_the_key_word_stays_flagged(self):
+        # Lower-case containment is not a camel hump: this is a literal, not a variable reference.
+        for source in (
+            b"secret" + b"=mysecretvalue1234",
+            b"api_key" + b"=myapikeyvalue123",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_camel_echo_does_not_mask_a_later_secret(self):
+        source = b"accessToken: userAccessToken,\n" + b"client_secret" + b"=abcdefgh12345678\n"
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_bound_test_fixture_marker_suppresses(self):
+        for source in (
+            b"public const string AccessToken = " + b'"test-access-token";',
+            b"api_key" + b' = "test_api_key_value"',
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_unbound_test_substring_still_flagged(self):
+        for source in (
+            b"client_secret" + b' = "attestationKeyABC123"',
+            b"client_secret" + b' = "prod-test-secret-ABC123"',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_common_default_password_stays_flagged(self):
         key = b"password"
         self.assertEqual(module.secret_kind(key + b"=" + key), "credential-assignment")

@@ -6,7 +6,7 @@ pattern: pipeline
 category: Learning & reflection
 ---
 
-Close the day in one bounded pass. Run `.claude/docs/language-config.md`, `.claude/docs/confidential-marker.md`, and `.claude/docs/skill-contract.md` first.
+Close the day in one bounded pass. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
 
 ## Workflow
 

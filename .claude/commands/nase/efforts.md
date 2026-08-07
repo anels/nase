@@ -59,6 +59,7 @@ Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the
 
 Record each transition applied for the Step 5 report. Report-only signals (no mutation):
 - effort with **no PR and no mtime change in 14+ days** → **stalled**, may need attention or a `/nase:design --review {slug}` pass.
+- transition `reason: undelivered-lifecycle-rows` → **held back**. No delivery PR remains open, but the doc still owes deliverables. Report each `transition.undelivered` row verbatim with its line number so the reader can act on it directly: if the row is a real outstanding PR the effort correctly stayed active, and if it is a stale plan row or something nobody ticked, the fix is to edit that row (see `.claude/docs/effort-lifecycle.md → Multi-Deliverable Efforts`). Do not paraphrase the rows away - an unexplained hold looks like a bug and gets worked around.
 
 ### Step 4: Count
 
@@ -67,7 +68,7 @@ Count **after** the Step 3 transitions so active/`done/` totals reflect post-syn
 - By stage (Planning / Implementing / In review / Awaiting deploy / Follow-up).
 - By raw frontmatter `status:` value (shows vocabulary spread).
 - Unblocked vs blocked (from Step 3): count of unblocked active efforts and the list of blocked ones with their blocker.
-- Totals: active count, `done/` count, transitioned-this-run count, stalled count.
+- Totals: active count, `done/` count, transitioned-this-run count, held-back count, stalled count.
 - If `$ARGUMENTS` has `--by-scope` or `--by-repo`, add a count grouped by that frontmatter field.
 
 ### Step 5: Write report + chat summary
@@ -83,6 +84,10 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 ## Transitioned this run   ← omit section if none
 - {effort} — {evidence} → status: {awaiting-deploy|completed|wontfix}{; moved to done/ if terminal}
 
+## Held back - no open delivery PR, but deliverables still owed   ← omit section if none
+- {effort} — stays `{status}`; {N} unchecked Lifecycle row(s):
+  - L{line}: {row text}
+
 ## Attention
 - {effort} — {stalled, awaiting-deploy, or unresolved-read reason} → {recommended action}
 
@@ -97,7 +102,7 @@ Per `.claude/docs/skill-contract.md`, the chat reply is pointer + bounded summar
 ```
 Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
 Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M}
-Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Stalled: {S}
+Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Held back: {H} · Stalled: {S}
 ```
 With `--full`, also echo the per-effort table inline (otherwise it lives only in the file).
 
@@ -105,7 +110,7 @@ With `--full`, also echo the per-effort table inline (otherwise it lives only in
 
 Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-format.md`:
 ```
-- {HH:MM} | efforts: {N} active, {K} transitions applied
+- {HH:MM} | efforts: {N} active, {K} transitions applied, {H} held back
 ```
 
 </workflow>

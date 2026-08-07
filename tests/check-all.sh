@@ -68,6 +68,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-skill-usage-report.sh
   tests/scripts/test-workspace-write-guard.sh
   tests/scripts/test-skill-overlap.sh
+  tests/scripts/test-canonical-pointers.sh
 )
 
 section() {
@@ -136,7 +137,7 @@ Major gate groups:
   lint: shellcheck when installed, actionlint when installed
   catalog: command_catalog.py --check-readme
   wiring: hook registrations and workspace validation
-  docs: shared-doc reference integrity, skill doctrine, and advisory skill trigger overlap
+  docs: shared-doc reference integrity, canonical pointer wording, skill doctrine, and advisory skill trigger overlap
   regressions: hook tests and script tests
   links: lychee markdown link check, only in --links
 EOF
@@ -290,6 +291,11 @@ run_shared_doc_refs() {
   run_gate "check-shared-doc-refs.sh" bash tests/check-shared-doc-refs.sh
 }
 
+run_canonical_pointers() {
+  section "canonical shared-doc pointers"
+  run_gate "check-canonical-pointers.sh" bash tests/check-canonical-pointers.sh
+}
+
 run_skill_doctrine() {
   section "skill doctrine"
   run_gate "check-skill-doctrine.sh" bash tests/check-skill-doctrine.sh
@@ -363,6 +369,9 @@ run_changed_extras() {
   if printf '%s\n' "$changed" | grep -qE '^\.claude/docs/[^/]+\.md$'; then
     run_shared_doc_bash_blocks
   fi
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$'; then
+    run_canonical_pointers
+  fi
   if printf '%s\n' "$changed" | grep -qE '^(evals/pr-review/|\.claude/scripts/pr-review-eval\.py|tests/scripts/test-pr-review-eval\.sh)'; then
     run_evals
   fi
@@ -386,6 +395,7 @@ run_fast() {
   run_hook_wiring
   run_command_catalog
   run_shared_doc_refs
+  run_canonical_pointers
   run_skill_doctrine
   run_skill_overlap
   run_fast_script_tests
@@ -406,6 +416,7 @@ run_full() {
   run_local_sensitive_scan
   run_script_tests
   run_shared_doc_refs
+  run_canonical_pointers
   run_skill_doctrine
   run_skill_overlap
 }

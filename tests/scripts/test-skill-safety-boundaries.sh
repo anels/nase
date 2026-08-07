@@ -30,7 +30,7 @@ check_contains() {
   if ! check_file_available "$name" "$file"; then
     return
   fi
-  if rg -q --fixed-strings "$pattern" "$file"; then
+  if rg -q --fixed-strings -- "$pattern" "$file"; then
     printf 'PASS  %s\n' "$name"
   else
     printf 'FAIL  %s\n' "$name" >&2
@@ -44,7 +44,7 @@ check_absent() {
   if ! check_file_available "$name" "$file"; then
     return
   fi
-  if rg -q --fixed-strings "$pattern" "$file"; then
+  if rg -q --fixed-strings -- "$pattern" "$file"; then
     printf 'FAIL  %s\n' "$name" >&2
     fail=$((fail + 1))
   else
@@ -76,6 +76,12 @@ for mutation_skill in \
 do
   check_contains "${mutation_skill} uses payload-bound GitHub actions" "$mutation_skill" "external-write-action.py"
 done
+check_contains "runtime config defines owner-mapped GitHub mutation accounts" .claude/docs/workspace-runtime-config.md '`github_org` maps that organization owner'
+check_contains "init collects the GitHub owner mapping" .claude/commands/nase/init.md 'collect the exact top-level owner mapping'
+check_contains "GitHub mutation binds the target-mapped account" .claude/scripts/external-write-action.py 'action["github_account"] = configured_github_account(root, owner)'
+check_contains "GitHub mutation selects the manifest-bound token" .claude/scripts/external-write-action.py 'token = github_account_token(executable, host, approved)'
+check_contains "GitHub mutation verifies the token actor" .claude/scripts/external-write-action.py 'github_token_actor(executable, root, host, token)'
+check_contains "opaque GitHub mutations require an explicit owner" .claude/docs/github-queries.md '--github-owner "{owner}"'
 check_contains "FSD uses delivery gate guard" .claude/commands/nase/fsd.md "fsd-delivery-gates.md"
 check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-delivery-gates.md "external-write-action.py"
 check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-delivery-gates.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"

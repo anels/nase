@@ -16,7 +16,7 @@ Follow:
 
 ## Phase 0: Language preflight
 
-Follow `.claude/docs/language-config.md` minimum Step 0. Use `conversation:` for chat/prompts and `output:` for GitHub text.
+Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat/prompts and `output:` for GitHub text.
 
 ## Phase 0.5: Input Guard
 

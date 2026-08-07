@@ -31,11 +31,11 @@ This contract applies to nase **slash-commands** (`.claude/commands/nase/*.md`, 
 
 ## 1. Language preflight (chat output)
 
-Every chat-producing skill MUST start with a Step 0 language-preflight block. Use the canonical snippet in `.claude/docs/language-config.md → Minimum Step 0 block`. CLAUDE.md inheritance alone is **not** sufficient — auto-drift to English has been observed.
+Every chat-producing skill MUST start with a Step 0 language-preflight block. Copy the pointer verbatim from `.claude/docs/language-config.md → Canonical pointer`; never reword it and never restate the preflight rules inline. CLAUDE.md inheritance alone is **not** sufficient — auto-drift to English has been observed.
 
 Skills that also write to external systems (PR / Slack / Jira / Confluence) read **both** `conversation:` AND `output:` and route per channel.
 
-CI check: `tests/check-skill-doctrine.sh → D4` (hard fail).
+CI checks: `tests/check-canonical-pointers.sh` (exact pointer wording, hard fail) and `tests/check-skill-doctrine.sh → D4` (a preflight of some shape exists, hard fail).
 
 ---
 

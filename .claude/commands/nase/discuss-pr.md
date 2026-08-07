@@ -8,7 +8,7 @@ category: Git workflow
 
 ## Language
 
-Read `workspace/config.md` for `conversation:` and `output:` values before producing any text.
+Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 
 **Discipline (read once; apply everywhere below):**
 - **Narrative prose** - Review Frame paragraphs, Sense Check evidence cells, Risk map reasons, Scorecard justifications, summary line phrasing, finding descriptions, open-question explanations, AskUserQuestion option labels/descriptions, handoff confirmations → write in the `conversation:` value.

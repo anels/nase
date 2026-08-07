@@ -42,6 +42,7 @@ SECRET_PATTERNS = (
     ),
 )
 PLACEHOLDER_MARKERS = (b"example", b"dummy", b"placeholder", b"redacted", b"changeme")
+TEST_PLACEHOLDER_VALUE = re.compile(rb"(?i)[:=]\s*[\"']?test[-_]")
 IDENTIFIER_ECHO = re.compile(
     rb"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(?P<value>[A-Za-z_][A-Za-z0-9_]*)$"
 )
@@ -201,12 +202,29 @@ def path_metadata(
 
 
 def is_identifier_echo(matched: bytes) -> bool:
-    """Return whether a non-password credential field references the same identifier."""
+    """Return whether a non-password credential field references an identifier, not a literal.
+
+    Covers the exact echo (``accessToken: accessToken``) and the camel-cased variable echo that a
+    named argument produces constantly (``accessToken: userAccessToken``). Both camel forms are
+    matched case-sensitively, so an unquoted literal that merely contains the key word in lower
+    case stays flagged.
+    """
     echo = IDENTIFIER_ECHO.match(matched.strip())
     if not echo:
         return False
     key = echo.group("key").lower()
-    return key == echo.group("value").lower() and key != b"password"
+    if key == b"password":
+        return False
+    value = echo.group("value")
+    if key == value.lower():
+        return True
+
+    words = [word for word in re.split(rb"[_-]|(?=[A-Z])", echo.group("key")) if word]
+    upper_camel = b"".join(word[:1].upper() + word[1:].lower() for word in words)
+    lower_camel = upper_camel[:1].lower() + upper_camel[1:]
+    if upper_camel in value:
+        return True
+    return value.startswith(lower_camel) and value[len(lower_camel):][:1].isupper()
 
 
 def secret_match(data: bytes) -> tuple[str, int] | None:
@@ -214,6 +232,10 @@ def secret_match(data: bytes) -> tuple[str, int] | None:
         for match in pattern.finditer(data):
             matched = match.group(0)
             if any(marker in matched.lower() for marker in PLACEHOLDER_MARKERS):
+                continue
+            # The fixture convention is value-prefix-bound. A real value that merely
+            # contains `-test-` must still be reported.
+            if TEST_PLACEHOLDER_VALUE.search(matched):
                 continue
             if is_identifier_echo(matched):
                 continue

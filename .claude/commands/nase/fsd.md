@@ -17,7 +17,7 @@ Follow:
 - `.claude/docs/workspace-write-guard.md` for effort, topology, lifecycle, and KB writes.
 - `.claude/docs/repo-task-flow.md` for repo resolution, branch/worktree setup, build/test, push, GitHub gates, cleanup, and logging.
 
-**Language preflight (run first):** read `workspace/config.md -> ## Language`. Use `conversation:` for chat and `output:` for commits, PRs, and GitHub text. Default to English when absent and note that once.
+**Language preflight (run first):** Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for commits, PRs, and GitHub text.
 
 ## Standing invariants
 

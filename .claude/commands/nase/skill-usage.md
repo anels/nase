@@ -8,7 +8,7 @@ model: haiku
 effort: low
 ---
 
-Generate a read-only usage report from `workspace/stats/skill-usage.jsonl`. Run `.claude/docs/language-config.md` first and follow `.claude/docs/skill-contract.md`.
+Generate a read-only usage report from `workspace/stats/skill-usage.jsonl`. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md`.
 
 ## Workflow
 
