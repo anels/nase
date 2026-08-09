@@ -98,6 +98,7 @@ assert_contains "T2: top files sorted by event count" "$body" "workspace/kb/proj
 assert_contains "T2: source breakdown includes search results" "$body" "search-result"
 assert_contains "T2: unread search-only file is listed" "$body" "workspace/kb/general/b.sql"
 assert_contains "T2: unobserved mapped file is listed" "$body" "workspace/kb/ops/unused.md"
+assert_contains "T2: report explains unread versus unobserved semantics" "$body" "absence of a read event means unread, while absence of any event means unobserved"
 assert_not_contains "T2: old event outside window is excluded" "$body" "workspace/kb/projects/old.md"
 
 total=$((pass + fail))

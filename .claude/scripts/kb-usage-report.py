@@ -234,7 +234,7 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
 
     lines.extend(
         [
-            "`resolve` and `search-result` prove discovery only. `read` is the available direct-consumption signal; missing read telemetry means unobserved, not obsolete.",
+            "`resolve` and `search-result` prove discovery only. `read` is the available direct-consumption signal; absence of a read event means unread, while absence of any event means unobserved. Neither proves obsolescence.",
             "",
         ]
     )
