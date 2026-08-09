@@ -56,7 +56,7 @@ Collect data inline:
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Read `workspace/stats/skill-usage.jsonl` for skill rankings (if exists).
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
-6. Count KB files modified (cross-platform): `python3 -c "import os,datetime; start=datetime.date.fromisoformat('$START_DATE'); print(sum(1 for f in __import__('glob').glob('workspace/kb/**/*.md',recursive=True) if datetime.date.fromtimestamp(os.path.getmtime(f))>=start))"` (avoids GNU-only `find -newermt` which fails on macOS).
+6. Count KB files touched by mtime (cross-platform): `python3 -c "import os,datetime; start=datetime.date.fromisoformat('$START_DATE'); print(sum(1 for f in __import__('glob').glob('workspace/kb/**/*.md',recursive=True) if datetime.date.fromtimestamp(os.path.getmtime(f))>=start))"` (avoids GNU-only `find -newermt` which fails on macOS). Label this as a touched-file activity signal, not proof of a durable knowledge update or read.
 
 If the date range is large or `workspace/stats/skill-usage.jsonl` / `$TMPDIR_STATS/daily.csv` has thousands of rows, prefer `duckdb` to aggregate before reading output into the model. Use `qsv` for quick CSV sampling when that is enough; treat `mlr` / `jc` as advanced fallbacks only for formats where they clearly reduce parsing work. Keep the model input to compact counts, top-N rows, and chart-ready CSV; never paste raw JSONL/CSV dumps into chat.
 
@@ -115,7 +115,7 @@ Commits: {N}
 PRs: {N}
 Completed tasks: {N}/{completed+in_progress}
 New knowledge: {N} entries
-KB updates: {N} files
+KB files touched (mtime signal): {N}
 
 Skills (grouped by usage tier — easier to scan than a flat ranked list):
   - **Heavy** (≥50): {skill ×N | …}

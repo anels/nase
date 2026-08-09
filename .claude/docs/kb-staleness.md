@@ -3,7 +3,7 @@
 ## Contents
 
 - Inputs
-- Step A: Last-active date per file (dual track)
+- Step A: Last-active date per file (three tracks)
 - Step B: Classify each file
 - Step C: Orphan and gap scan
 - Step D: Lesson promotion candidates
@@ -18,21 +18,22 @@
 - The KB scope under review: `workspace/kb/general/`, `workspace/kb/projects/**/`, `workspace/kb/cross-project/`, `workspace/kb/ops/`, plus `workspace/tasks/lessons.md` and `workspace/kb/.domain-map.md`.
 - Optional: a subset filter passed in as `$ARGUMENTS` from the caller.
 
-## Step A — Last-active date per file (dual track)
+## Step A - Last-active date per file (three tracks)
 
-For each KB file, derive a `last_active` date using **the more recent** of two tracks:
+For each KB file, derive a `last_active` date from the entry date plus domain metadata, with file mtime as a metadata fallback:
 
 1. **Track 1 — entry date**: scan the file for `### YYYY-MM-DD` headers. Take the maximum. If none found, the file has no dated entries — Track 1 is `null`.
-2. **Track 2 — file mtime**: run `stat -f %m <file>` (macOS) or `stat -c %Y <file>` (GNU). Convert the Unix epoch to `YYYY-MM-DD`. If `stat` fails (broken symlink, permission denied), Track 2 is `null` for that file.
+2. **Track 2 - domain metadata**: read the mapped file's `last-updated:YYYY-MM-DD` from `workspace/kb/.domain-map.md`. Writers update this only after a durable content change. If missing or invalid, Track 2 is `null`.
+3. **Track 3 - file mtime fallback**: run `stat -f %m <file>` (macOS) or `stat -c %Y <file>` (GNU). Convert the Unix epoch to `YYYY-MM-DD`. Use this only when Track 2 is null. If `stat` fails, Track 3 is `null` for that file.
 
-`last_active = max(Track 1, Track 2)`. Record which track won (`source = "entry" | "mtime"`).
+`last_active = max(Track 1, Track 2 if present, otherwise Track 3)`. Record which track won (`source = "entry" | "domain-map" | "mtime-fallback"`).
 
 ### mtime poison detection
 
-`mtime` is a best-effort signal because `/nase:restore` resets every file's mtime to restore-time. Before using mtimes, check for the poison signature:
+`mtime` is a best-effort fallback because `/nase:restore` resets every file's mtime to restore-time. Before using mtime fallbacks, check for the poison signature:
 
 - Sort all mtimes ascending.
-- If **more than 80% of files have mtimes within 60 seconds of each other**, mtime data is poisoned. Drop Track 2 entirely for this run and rely solely on Track 1 entry dates.
+- If **more than 80% of files have mtimes within 60 seconds of each other**, mtime data is poisoned. Drop Track 3 entirely for this run and rely on entry dates plus domain metadata.
 
 ## Step B — Classify each file
 
@@ -43,7 +44,7 @@ Apply these thresholds against `last_active`:
 | Active | `<14 days` | 🟢 | Recent edits or entries |
 | Aging | `14–30 days` | 🟡 | Worth a refresh look |
 | Stale | `>30 days` | 🔴 | Likely diverged from current code |
-| Unknown | `last_active is null` | ⚪ | No entries and no mtime — empty or never written |
+| Unknown | `last_active is null` | ⚪ | No dated entry, domain metadata, or usable mtime |
 
 Stale ≠ obsolete. **Historical records** (past incidents, architecture decisions dated to their event) should never be flagged. Only flag entries that describe *ongoing or current* work with old dates. Heuristics for "ongoing":
 - Title or section mentions an active repo (cross-reference `workspace/context.md`).
@@ -55,7 +56,7 @@ Stale ≠ obsolete. **Historical records** (past incidents, architecture decisio
 - **Orphaned files** — files under `workspace/kb/` that have no entry in `workspace/kb/.domain-map.md`. Report path and basename.
 - **Empty/sparse** — files whose body (after stripping the header and frontmatter) is under 50 non-whitespace characters.
 - **Domain map gaps** — entries in `.domain-map.md` pointing at files that don't exist.
-- **Last-loaded staleness** — when `.domain-map.md` entries carry `last-loaded:YYYY-MM-DD` (see header convention in `.domain-map.md`), flag any file whose `last-loaded` is older than 60 days as a candidate for archival or removal.
+- **Access staleness** - use `workspace/stats/kb-usage.jsonl` read events when available. A file with no read event in 60 days is a review candidate, not an automatic archive candidate. `resolve` and `search-result` events prove discovery only and must not be treated as reads. Missing telemetry means unknown, not unused.
 
 ## Step D — Lesson promotion candidates
 

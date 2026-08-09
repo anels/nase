@@ -1,7 +1,7 @@
 ---
 name: nase:kb-review
 description: "Audit and repair KB plus workspace state for stale data, broken references, credential exposure, unsafe backup or restore behavior, and lifecycle drift. Use for review KB, workspace hygiene, clean up KB, or periodic health checks."
-argument-hint: "[workspace/path] [--report-only|--repair]"
+argument-hint: "[workspace/path] [--kb-only] [--report-only|--repair]"
 pattern: pipeline
 category: Knowledge base
 sub-patterns: [fan-out]
@@ -12,6 +12,7 @@ Audit the KB and the workspace mechanisms that keep it trustworthy, then apply o
 ## Scope and mode
 
 1. Default to the full `workspace/` health review. A path argument narrows the content review, but full-scope trust checks still cover credentials, task and effort indexes, backup metadata, and the writers that can corrupt durable state. Reject paths outside the repository.
+   - `--kb-only` is the fast maintenance path. Restrict content, structure, relationship, searchability, usage, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited. Default behavior remains the full review.
 2. Default to `--report-only`. `--repair` prepares exact patches after discovery, but still uses the approval boundaries below. Do not let repair mode narrow discovery.
 3. For broad reviews, dispatch read-only `nase-context-kb-researcher` slices for disjoint KB domains. The main thread owns KB edits and report writes, security triage, state reconciliation, and every mutation.
 4. When the reviewed root must remain untouched, store machine-readable before and after SHA-256 manifests outside that root and require them to match.

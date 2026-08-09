@@ -253,12 +253,7 @@ Skill-specific outputs:
 
 Persist before cleanup:
 
-**1. Research gate findings** (from Phase 3.5): if `research_gate_findings` is non-empty, write each library/API to the general KB:
-- Target: `workspace/kb/general/{technology}.md` (e.g. `azure-service-bus.md`, `signalr.md`) — create if it doesn't exist
-- Use standard `### YYYY-MM-DD — {topic}` entry format
-- Add `**Tags:** api-contract` and `**Confidence:** medium` (web-sourced, not yet battle-tested in this repo)
-- Include: signatures, required params, return types, pitfalls, official doc URL
-- If the file is new, register it in `workspace/kb/.domain-map.md` under `## General`
+**1. Research gate findings** (from Phase 3.5): if `research_gate_findings` is non-empty, invoke `/nase:learn` for each library/API candidate and apply its verification triad before writing to the general KB. Preserve the existing persistence outcome and include signatures, required params, return types, pitfalls, and the official doc URL, but keep candidates that fail V2 or V3 in the FSD research artifact instead of the active KB. `/nase:learn` owns target resolution, current-state reconciliation, confidence, domain-map registration, and the guarded write.
 
 **2. Implementation discoveries**: if implementation revealed new patterns, architectural insights, or hard constraints specific to the target repo, invoke `/nase:kb-update [domain]` with a concise summary.
 

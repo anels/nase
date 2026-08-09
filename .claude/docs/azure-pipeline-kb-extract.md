@@ -32,9 +32,9 @@ Locate or create an `## Azure Pipelines` section in `workspace/kb/projects/{doma
 
 Fill rows from the captured YAML data:
 
-- One row per pipeline file with `File`, `Trigger`, `Stages`. Leave `definitionId` as `FILL_IN`.
+- One row per pipeline file with `File`, `Trigger`, and `Stages`. Add `definitionId` only when verified from ADO.
 - One `### Pipeline Parameters` subsection per pipeline that has a `parameters:` block.
-- For the `<!-- ADO: ... project=... -->` comment, infer `project` from `extends: template@{resource}` in the YAML when possible; otherwise leave `FILL_IN`.
+- Add the `<!-- ADO: ... project=... -->` comment only when both values are verified. Otherwise omit the metadata comment.
 
 **Idempotency** — if the section already exists with user-filled `definitionId` values, do **not** overwrite those. Only add rows for newly-discovered pipelines and update parameters for existing ones.
 
@@ -51,8 +51,8 @@ Found {N} Azure Pipeline YAML(s) in {RepoName}:
 
 ✓ KB updated → workspace/kb/projects/{domain}.md (## Azure Pipelines section)
 
-⚠ Action required: fill in definitionId value(s) in workspace/kb/projects/{domain}.md → ## Azure Pipelines
-  How: ADO UI → Pipelines → click pipeline → URL parameter ?definitionId=NNNN
+Optional: add verified definitionId value(s) to workspace/kb/projects/{domain}.md → ## Azure Pipelines
+  Source: ADO UI → Pipelines → click pipeline → URL parameter ?definitionId=NNNN
 
-Trigger via your preferred mechanism once definitionId is filled (workspace skill `run-ado-pipeline` if installed, ADO UI, or `az pipelines run --id NNNN`).
+Trigger through the ADO UI until a verified definitionId is recorded; then `az pipelines run --id NNNN` or a local `run-ado-pipeline` workspace skill may use it.
 ```

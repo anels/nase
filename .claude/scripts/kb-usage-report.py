@@ -147,9 +147,14 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
     now = parse_now(args.now)
     events, malformed = load_events(root, now, args.window)
     mapped = load_mapped_files(root)
-    used_files = {event["file"] for event in events}
-    used_skills = {event["skill"] for event in events}
-    unused_mapped = sorted(mapped - used_files)
+    accessed_files = {event["file"] for event in events}
+    read_files = {event["file"] for event in events if event["access"] == "read"}
+    surfaced_files = {
+        event["file"] for event in events if event["access"] in {"resolve", "search-result"}
+    }
+    accessing_skills = {event["skill"] for event in events}
+    unread_mapped = sorted(mapped - read_files)
+    unobserved_mapped = sorted(mapped - accessed_files)
 
     file_counts = Counter(event["file"] for event in events)
     skill_counts = Counter(event["skill"] for event in events)
@@ -173,9 +178,12 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
         "## Summary",
         f"- Window: {window_label}",
         f"- Events: {len(events)}",
-        f"- KB files used: {len(used_files)}",
-        f"- Skills using KB: {len(used_skills)}",
-        f"- Unused mapped KB files: {len(unused_mapped)}",
+        f"- KB files accessed: {len(accessed_files)}",
+        f"- KB files read: {len(read_files)}",
+        f"- KB files surfaced: {len(surfaced_files)}",
+        f"- Skills accessing KB: {len(accessing_skills)}",
+        f"- Unread mapped KB files: {len(unread_mapped)}",
+        f"- Unobserved mapped KB files: {len(unobserved_mapped)}",
         f"- Malformed lines skipped: {malformed}",
         "",
     ]
@@ -192,7 +200,7 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
         ]
         for file_path, count in top_files
     ]
-    lines.extend(["## Top KB Files", *table(["File", "Events", "Skills", "Last used"], file_rows), ""])
+    lines.extend(["## Top KB Files by Access Event", *table(["File", "Events", "Skills", "Last accessed"], file_rows), ""])
 
     skill_rows = [
         [
@@ -203,25 +211,43 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
         ]
         for skill, count in top_skills
     ]
-    lines.extend(["## Top Skills", *table(["Skill", "Events", "Files", "Last used"], skill_rows), ""])
+    lines.extend(["## Top Skills", *table(["Skill", "Events", "Files", "Last accessed"], skill_rows), ""])
 
     source_table_rows = [[access, source, str(count)] for (access, source), count in source_rows]
     lines.extend(["## Access Source Breakdown", *table(["Access", "Source", "Events"], source_table_rows), ""])
 
-    lines.append("## Unused Mapped KB Files")
-    if unused_mapped:
-        for file_path in unused_mapped:
+    lines.append("## Unread Mapped KB Files")
+    if unread_mapped:
+        for file_path in unread_mapped:
             lines.append(f"- `{file_path}`")
     else:
         lines.append("- none")
     lines.append("")
 
+    lines.append("## Unobserved Mapped KB Files")
+    if unobserved_mapped:
+        for file_path in unobserved_mapped:
+            lines.append(f"- `{file_path}`")
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.extend(
+        [
+            "`resolve` and `search-result` prove discovery only. `read` is the available direct-consumption signal; missing read telemetry means unobserved, not obsolete.",
+            "",
+        ]
+    )
+
     summary = {
         "window_label": window_label,
         "events": len(events),
-        "kb_files": len(used_files),
-        "skills": len(used_skills),
-        "unused": len(unused_mapped),
+        "accessed_files": len(accessed_files),
+        "read_files": len(read_files),
+        "surfaced_files": len(surfaced_files),
+        "skills": len(accessing_skills),
+        "unread": len(unread_mapped),
+        "unobserved": len(unobserved_mapped),
         "top_files": top_files,
         "top_skills": top_skills,
         "malformed": malformed,
@@ -238,9 +264,12 @@ def format_summary(summary: dict[str, Any], output: pathlib.Path | None) -> str:
     lines = [
         f"KB usage summary ({summary['window_label']})",
         f"- Events: {summary['events']}",
-        f"- KB files used: {summary['kb_files']}",
-        f"- Skills using KB: {summary['skills']}",
-        f"- Unused mapped KB files: {summary['unused']}",
+        f"- KB files accessed: {summary['accessed_files']}",
+        f"- KB files read: {summary['read_files']}",
+        f"- KB files surfaced: {summary['surfaced_files']}",
+        f"- Skills accessing KB: {summary['skills']}",
+        f"- Unread mapped KB files: {summary['unread']}",
+        f"- Unobserved mapped KB files: {summary['unobserved']}",
         f"- Top files: {render_top(summary['top_files'])}",
         f"- Top skills: {render_top(summary['top_skills'])}",
     ]

@@ -1,6 +1,6 @@
 ---
 name: nase:kb-usage
-description: "Report which skills use which KB files and which mapped files are unused. Use for KB usage, KB observability, top KB files, or unused KB entries."
+description: "Report which skills access, read, or surface KB files and which mapped files are unobserved. Use for KB usage, KB observability, top KB files, or unused KB entries."
 argument-hint: "[--window N|all] [--top N] [--verbose]"
 pattern: utility
 category: Reporting
@@ -45,11 +45,11 @@ python3 .claude/scripts/kb-usage-report.py --window "7" --top "5" --verbose --ou
 
 Return the script summary in chat:
 
-- unique KB files used
-- skills using KB
-- unused mapped KB files
+- unique KB files accessed, directly read, and surfaced by resolve/search
+- skills accessing KB
+- unread and unobserved mapped KB files
 - top files
 - top skills
 - report path
 
-If `--verbose` is present, include the report body after the summary. Do not edit `workspace/kb/.domain-map.md`; this command is read-only except for the report artifact under `workspace/stats/`.
+If `--verbose` is present, include the report body after the summary. Treat `resolve` and `search-result` as discovery, not proof that a fact influenced the workflow. Do not edit `workspace/kb/.domain-map.md`; this command is read-only except for the report artifact under `workspace/stats/`.

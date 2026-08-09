@@ -47,7 +47,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 
 ### Repo & KB Workflow
 - Before repo work, run `/nase:onboard <path-or-url>` or `/nase:onboard`, then read the repo KB via `workspace/kb/.domain-map.md`. Load only relevant KB files.
-- KB writes follow `.claude/docs/kb-template.md → Writing Conventions`; silence is acceptable. After repo work, record durable discoveries in KB. Update a target repo's `CLAUDE.md` only when documentation is in scope or after the user approves the proposed diff.
+- KB writes follow `.claude/docs/kb-write-routing.md → Shared admission contract` and `.claude/docs/kb-template.md → Writing Conventions`; silence is acceptable. After repo work, record only verified durable discoveries in KB. Update a target repo's `CLAUDE.md` only when documentation is in scope or after the user approves the proposed diff.
 
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.

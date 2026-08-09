@@ -6,7 +6,7 @@ pattern: pipeline
 category: Knowledge base
 ---
 
-Import untrusted shared KB content through reviewable, path-bounded writes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/workspace-write-guard.md`.
+Import untrusted shared KB content through reviewable, path-bounded writes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/kb-write-routing.md -> Shared admission contract` and `.claude/docs/workspace-write-guard.md`.
 
 ## Import Path Hardening
 
@@ -21,8 +21,8 @@ Import untrusted shared KB content through reviewable, path-bounded writes. Foll
 1. Require an existing readable directory from `$ARGUMENTS`; do not search the whole machine.
 2. Inventory regular Markdown files, classify new/conflicting/unchanged/unsafe, and show a file-count preview.
 3. For imported skills, run `/nase:skill-audit` before proposing a write. A failed or unavailable audit blocks that skill, not safe KB files.
-4. Merge conflicts semantically: preserve local facts, add non-duplicate imported knowledge with provenance, surface contradictions, and never delete local content automatically.
-5. Stage complete proposed files under `workspace/tmp/`, show per-file diffs, and batch the concrete write choices.
+4. Treat each imported file as a staged proposal. Merge conflicts semantically: preserve local facts, add non-duplicate imported knowledge with provenance, surface contradictions, and never delete local content automatically. Apply the verification triad in `.claude/docs/kb-template.md` to every imported claim before admission; unresolved or unverifiable claims remain in the import report and are not promoted.
+5. Reconcile accepted current-state facts in place, then stage complete proposed files under `workspace/tmp/`, show per-file diffs, and batch the concrete write choices.
 6. Immediately before apply, re-check each target mtime/hash and staged SHA through `workspace-write-guard.py`. Drift preserves the staged file and blocks only that target.
 7. Sanitize generated wrapper metadata: derive descriptions from reviewed text, encode values as YAML double-quoted strings, Strip control characters, cap metadata length, and Never copy imported frontmatter blocks wholesale.
 8. Update `workspace/kb/.domain-map.md` only for accepted KB files, through its own guarded diff.

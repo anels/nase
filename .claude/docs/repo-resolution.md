@@ -35,8 +35,17 @@ KB_FILE=$(bash .claude/scripts/kb-domain-resolve.sh "<repo-name-or-domain>")
 ```
 
 The script normalises the name to a domain key (lowercase, hyphens), looks up `workspace/kb/.domain-map.md`, and returns the file path.
-- Exit 0 + path on stdout: read that KB file; focus on **Build & Run Commands** and **Architecture** sections.
+- Exit 0 + path on stdout: read that KB file; focus on the sections relevant to the task. Use KB claims as durable context and navigation. Verify actionable commands, IDs, owners, configuration, and current behavior against the repo or external source of truth before mutation.
 - Exit 1 + error on stderr: script not found OR domain not in map → warn and proceed without KB context.
+
+For a task scoped to concrete source/config paths, also run:
+
+```bash
+bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8
+```
+
+Carry returned constraints into the workflow. A missing hit means no indexed KB
+constraint was found; it does not prove the path has no operational constraint.
 
 If the script is unavailable, fall back to manual lookup:
 1. Derive domain key: lowercase, hyphen-separated (e.g. `MyRepo` → `my-repo`).

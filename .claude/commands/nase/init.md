@@ -20,7 +20,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 6. Create the skeleton in one bounded command:
 
 ```bash
-mkdir -p workspace/kb/projects workspace/kb/general workspace/kb/people workspace/tasks workspace/efforts/done workspace/logs workspace/journals workspace/recaps workspace/stats workspace/tmp workspace/skills
+mkdir -p workspace/kb/projects workspace/kb/general workspace/kb/cross-project workspace/kb/ops workspace/tasks workspace/efforts/done workspace/logs workspace/journals workspace/recaps workspace/stats workspace/tmp workspace/skills
 ```
 
 7. Write only missing stubs and preserve existing content. Create `workspace/config.md`, `workspace/context.md`, `workspace/kb/.domain-map.md`, task/log directories, and `.local-paths` entries needed on this machine.

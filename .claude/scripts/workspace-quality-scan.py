@@ -22,8 +22,13 @@ CANONICAL_SESSION_RE = re.compile(r"^- \d{2}:\d{2} \| [a-z0-9][a-z0-9:-]*: .+")
 PLACEHOLDER_RE = re.compile(r"\b(FILL_IN|TBD|TO_BE_FILLED|FIXME_PLACEHOLDER)\b", re.I)
 REFRESH_RE = re.compile(r"^###\s+20\d\d-\d\d-\d\d\s+[—-]\s+refresh\b", re.I)
 HEARTBEAT_RE = re.compile(
-    r"\b(no new commits since|head remains|head verified|unchanged|no action needed|"
-    r"\d+\s+commits?\s+since|commit-count|ownership-count)\b",
+    r"\b(no new commits since|head remains|head verified|commit-count|ownership-count)\b",
+    re.I,
+)
+STATUS_HEARTBEAT_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:\*\*)?(?:incremental scan|refresh(?: status)?|"
+    r"repository status|scan status|source status|content hash)\b.*\b"
+    r"(?:unchanged|\d+\s+commits?\s+since|no new commits)\b",
     re.I,
 )
 SESSION_LINE_LIMIT = 500
@@ -151,7 +156,7 @@ def scan_kb(root: pathlib.Path) -> list[dict[str, Any]]:
                 issues.append(finding("kb_placeholder", rel, "Unresolved placeholder in KB content.", idx))
             if REFRESH_RE.match(line):
                 issues.append(finding("kb_refresh_block", rel, "Low-value dated refresh block should be compacted.", idx))
-            if HEARTBEAT_RE.search(line):
+            if HEARTBEAT_RE.search(line) or STATUS_HEARTBEAT_RE.search(line):
                 issues.append(finding("kb_heartbeat", rel, "Git-recoverable heartbeat fact should not be durable KB.", idx))
     return issues
 
