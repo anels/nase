@@ -267,6 +267,59 @@ SOURCE_MANIFEST_SHA=$(manifest_sha "$SOURCE_MANIFEST") || {
   exit 1
 }
 
+# ---------------------------------------------------------------------------
+# Content dedup — skip publishing an archive identical to the last published one.
+#
+# The manifest already binds every archived member's path, mode, type, and
+# sha256, so its own hash is an exact fingerprint of what the zip would contain.
+# The zip bytes are not: they embed per-run timestamps, so two archives of an
+# unchanged workspace differ while their content does not. Compare manifests.
+#
+# The fingerprint lives at the repository root rather than inside `workspace/`
+# on purpose: a state file under the archived tree would change the very
+# manifest it is meant to fingerprint, so dedup could never match.
+#
+# `logs/.backup-status` is excluded for the same reason. This hook appends to it
+# on every run, so leaving it in would make the fingerprint differ every time
+# and dedup would never fire. It is excluded from the *fingerprint* only — the
+# manifest that binds the published archive still covers it.
+#
+# Requires a surviving archive — after a long idle period retention can expire
+# every copy, and "unchanged since the last one" must not mean "no backup".
+# ---------------------------------------------------------------------------
+content_fingerprint() {
+  python3 - "$1" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+manifest.pop("logs/.backup-status", None)
+payload = json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
+print(hashlib.sha256(payload).hexdigest())
+PY
+}
+
+BACKUP_STATE_FILE="$NASE_ROOT/.nase-backup-state"
+CONTENT_FINGERPRINT=$(content_fingerprint "$SOURCE_MANIFEST") || {
+  log_status "ERROR" "private workspace snapshot content fingerprint could not be computed"
+  exit 1
+}
+LAST_FINGERPRINT=""
+if [ -f "$BACKUP_STATE_FILE" ]; then
+  LAST_FINGERPRINT=$(sed -n 's/^last-content-fingerprint=//p' "$BACKUP_STATE_FILE" | head -1)
+fi
+# `ls` exits non-zero when the glob matches nothing, and `set -o pipefail` would
+# turn a legitimately empty target into a hook failure.
+EXISTING_ARCHIVES=$( { ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null || true; } | wc -l | tr -d ' ')
+if [ -n "$LAST_FINGERPRINT" ] \
+  && [ "$LAST_FINGERPRINT" = "$CONTENT_FINGERPRINT" ] \
+  && [ "$EXISTING_ARCHIVES" -gt 0 ]; then
+  log_status "OK" "workspace unchanged since last archive — skipped ($EXISTING_ARCHIVES retained)"
+  exit 0
+fi
+
 rc=0
 if command -v 7z &>/dev/null; then
   (cd "$SNAPSHOT_WORKSPACE" && 7z a -tzip -mx=1 -snl -bso0 -bsp0 "$LOCAL_ZIP_PATH" . -x!tmp) || rc=$?
@@ -336,10 +389,21 @@ fi
 ZIP_SIZE=$(du -sh "$ZIP_PATH" | cut -f1)
 log_status "OK" "created $ZIP_NAME ($ZIP_SIZE)"
 
+# Record the fingerprint only after the archive is published, so a failed run
+# never suppresses the next attempt.
+printf 'last-content-fingerprint=%s\n' "$CONTENT_FINGERPRINT" > "$BACKUP_STATE_FILE.tmp" \
+  && mv -f "$BACKUP_STATE_FILE.tmp" "$BACKUP_STATE_FILE" \
+  || log_status "WARNING" "could not record backup fingerprint — next run will re-archive"
+
 # ---------------------------------------------------------------------------
 # Retention cleanup — read policy from workspace/config.md
-# Format: backup_retention: count:100  or  backup_retention: days:7
+# Format: backup_retention: count:100, days:7, or both (`days:30,count:200`).
 # Default: count:100
+#
+# Both clauses apply when both are given: age prunes first, then the count cap
+# bounds what a single busy day can leave behind. A time-only window places no
+# bound on how many archives one day contributes, which is how this target
+# reached four figures.
 # ---------------------------------------------------------------------------
 RETENTION="count:100"
 if [ -f "$NASE_ROOT/workspace/config.md" ]; then
@@ -348,14 +412,34 @@ if [ -f "$NASE_ROOT/workspace/config.md" ]; then
     RETENTION="$CFG_LINE"
   fi
 fi
-RETENTION_TYPE="${RETENTION%%:*}"
-RETENTION_VALUE="${RETENTION##*:}"
 
-# Validate retention value is numeric
-if ! [[ "$RETENTION_VALUE" =~ ^[0-9]+$ ]]; then
-  log_status "WARNING" "invalid retention value '$RETENTION_VALUE' — using default count:100"
-  RETENTION_TYPE="count"
-  RETENTION_VALUE="100"
+RETENTION_COUNT=""
+RETENTION_DAYS=""
+RETENTION_INVALID=""
+OLD_IFS="$IFS"
+IFS=','
+for clause in $RETENTION; do
+  [ -n "$clause" ] || continue
+  clause_type="${clause%%:*}"
+  clause_value="${clause##*:}"
+  if ! [[ "$clause_value" =~ ^[0-9]+$ ]]; then
+    RETENTION_INVALID="$clause"
+    continue
+  fi
+  case "$clause_type" in
+    count) RETENTION_COUNT="$clause_value" ;;
+    days) RETENTION_DAYS="$clause_value" ;;
+    *) RETENTION_INVALID="$clause" ;;
+  esac
+done
+IFS="$OLD_IFS"
+
+if [ -n "$RETENTION_INVALID" ]; then
+  log_status "WARNING" "invalid retention clause '$RETENTION_INVALID' — ignored"
+fi
+if [ -z "$RETENTION_COUNT" ] && [ -z "$RETENTION_DAYS" ]; then
+  log_status "WARNING" "no usable retention clause in '$RETENTION' — using default count:100"
+  RETENTION_COUNT="100"
 fi
 
 # Collect backup zips sorted ascending by name (= chronological order)
@@ -363,27 +447,35 @@ BACKUPS=()
 while IFS= read -r line; do BACKUPS+=("$line"); done < <(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort)
 DELETED=0
 
-if [ "$RETENTION_TYPE" = "count" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_VALUE" ]; then
-  TO_DELETE=$(( ${#BACKUPS[@]} - RETENTION_VALUE ))
-  for ((i=0; i<TO_DELETE; i++)); do
-    rm -f "${BACKUPS[$i]}"
-    ((++DELETED))
-  done
-elif [ "$RETENTION_TYPE" = "days" ]; then
-  CUTOFF=$(date -d "-${RETENTION_VALUE} days" +%Y%m%d 2>/dev/null \
-    || date -v-"${RETENTION_VALUE}"d +%Y%m%d 2>/dev/null \
+if [ -n "$RETENTION_DAYS" ]; then
+  CUTOFF=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null \
+    || date -v-"${RETENTION_DAYS}"d +%Y%m%d 2>/dev/null \
     || true)
   if [ -z "$CUTOFF" ]; then
-    log_status "WARNING" "neither GNU nor BSD date supports computing cutoff — retention cleanup skipped (backups may grow unbounded)"
+    log_status "WARNING" "neither GNU nor BSD date supports computing cutoff — age retention skipped"
   else
-    for backup in "${BACKUPS[@]}"; do
+    RETAINED=()
+    for backup in ${BACKUPS[@]+"${BACKUPS[@]}"}; do
       BDATE=$(basename "$backup" | sed -n 's/nase-backup-\([0-9]\{8\}\)-.*/\1/p')
       if [ -n "$BDATE" ] && [ "$BDATE" -lt "$CUTOFF" ]; then
         rm -f "$backup"
         ((++DELETED))
+      else
+        RETAINED+=("$backup")
       fi
     done
+    # bash 3.2 treats "${EMPTY[@]}" as unbound under `set -u`; the +expansion
+    # form is the portable way to copy a possibly-empty array.
+    BACKUPS=(${RETAINED[@]+"${RETAINED[@]}"})
   fi
+fi
+
+if [ -n "$RETENTION_COUNT" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_COUNT" ]; then
+  TO_DELETE=$(( ${#BACKUPS[@]} - RETENTION_COUNT ))
+  for ((i=0; i<TO_DELETE; i++)); do
+    rm -f "${BACKUPS[$i]}"
+    ((++DELETED))
+  done
 fi
 
 if [ "$DELETED" -gt 0 ]; then
