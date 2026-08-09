@@ -294,6 +294,41 @@ class SecretScanTest(unittest.TestCase):
                 self.assertFalse(module.reference_like(reason))
                 self.assertFalse(module.is_placeholder_match(b"pass" + b"word=" + reason))
 
+    def test_bracket_redaction_marker_is_a_placeholder(self):
+        # A redaction marker is what remains AFTER the secret is removed, so documentation
+        # about redaction quotes it constantly. Both the bare form and the Markdown
+        # code-span form must be recognised, including trailing sentence punctuation.
+        for source in (
+            b"pass" + b"word=[REDACTED]",
+            b"pass" + b"word=`[REDACTED]`,",
+            b"to" + b"ken=[JWT_REDACTED]",
+            b"api_" + b"key=[REDACTED_VALUE]",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_bracket_marker_rule_stays_narrow(self):
+        # Only the marker shape is absolved. A bracketed literal, a lower-case lookalike, and
+        # a marker with a real value appended are all still credential assignments.
+        for source in (
+            b"pass" + b"word=[NotAMarker_9182]",
+            b"pass" + b"word=[redacted_abcdefgh12345678]",
+            b"pass" + b"word=[REDACTED]abcdefgh12345678",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_bracket_marker_does_not_mask_a_later_secret(self):
+        source = b"pass" + b"word=[REDACTED]\n" + b"client_secret" + b"=abcdefgh12345678"
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_fail_closed_sentinels_are_not_bracket_markers(self):
+        # The marker rule widens the trim set; the unreadable-value sentinels must still
+        # fail closed through it.
+        for reason in (b"<overlong-quoted-value>", b"<unterminated-quoted-value>"):
+            with self.subTest(reason=reason):
+                self.assertFalse(module.is_placeholder_match(b"pass" + b"word=" + reason))
+
     def test_prose_shaped_values_are_not_credentials(self):
         # Markdown running text produces incidental `key=` shapes. Each of these values is
         # provably not a credential: no alphanumerics at all, a bare length, or a format

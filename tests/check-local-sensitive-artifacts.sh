@@ -148,8 +148,22 @@ try:
 except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
     print("FAIL: backup snapshot manifest is unreadable or invalid.", file=sys.stderr)
     raise SystemExit(1)
+allowlist = set()
+allowlist_error = None
 try:
     with zipfile.ZipFile(archive_path) as archive:
+        # The archive carries its own reviewed exceptions at its root. Reading them from
+        # inside the zip - rather than from the live workspace - keeps this scan bound to
+        # the bytes actually being published, and the manifest comparison below already
+        # pins that file's hash, so the allowlist cannot be swapped independently.
+        try:
+            allowlist, allowlist_error = module.parse_secret_scan_allowlist(
+                archive.read(".secret-scan-allowlist").decode("utf-8")
+            )
+        except KeyError:
+            pass
+        except (UnicodeError, RuntimeError, OSError, NotImplementedError):
+            allowlist_error = "the archived copy could not be read"
         for info in archive.infolist():
             raw = info.filename.replace("\\", "/")
             parts = pathlib.PurePosixPath(raw).parts
@@ -180,8 +194,9 @@ try:
                 continue
             files += 1
             try:
-                with archive.open(info) as stream:
-                    match = module.scan_stream_for_secret(stream)
+                match = module.scan_source_for_secret(
+                    lambda info=info: archive.open(info), canonical, allowlist
+                )
                 with archive.open(info) as stream:
                     digest = hashlib.sha256()
                     while chunk := stream.read(64 * 1024):
@@ -194,14 +209,10 @@ try:
                 "sha256": digest.hexdigest(),
                 "type": "file",
             }
-            if match:
-                secret_kind, offset = match
-                try:
-                    with archive.open(info) as stream:
-                        line = stream.read(offset).count(b"\n") + 1
-                except (KeyError, NotImplementedError, RuntimeError, OSError):
-                    unreadable.add(member)
-                    line = 0
+            if match is module.ALLOWLIST_BUDGET_EXHAUSTED:
+                unreadable.add(member)
+            elif match:
+                secret_kind, line = match
                 hits.append((member, line, secret_kind))
 except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile):
     print("FAIL: backup snapshot is unreadable or invalid.", file=sys.stderr)
@@ -216,6 +227,13 @@ for name in set(actual) - set(expected):
 for name in set(expected) & set(actual):
     if expected[name] != actual[name]:
         incomplete.add(f"changed {safe_member(name)}")
+if allowlist_error is not None:
+    print(
+        f"FAIL: archived .secret-scan-allowlist is unusable: {allowlist_error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
 if hits or unsafe or unreadable or incomplete:
     if hits:
         print("FAIL: credential-like values found in backup snapshot. Values are redacted:", file=sys.stderr)
@@ -264,6 +282,36 @@ hits = []
 unreadable = set()
 unsafe_links = set()
 
+# Reviewed exceptions: `{sha256-of-line}  {workspace-relative path}  # reason`.
+# Keyed by content hash rather than line number so appending to or compacting a
+# daily log does not silently re-open a reviewed line, and editing that line
+# does re-open it. No wildcards: one entry acknowledges exactly one line in
+# exactly one file. Malformed or unreadable -> fail closed.
+ALLOWLIST_PATH = workspace / ".secret-scan-allowlist"
+allowlist = set()
+allowlist_used = set()
+allowlist_error = None
+
+if ALLOWLIST_PATH.is_file() and not ALLOWLIST_PATH.is_symlink():
+    try:
+        allowlist, allowlist_error = module.parse_secret_scan_allowlist(
+            ALLOWLIST_PATH.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError):
+        allowlist_error = "the file could not be read"
+
+BUDGET_EXHAUSTED = module.ALLOWLIST_BUDGET_EXHAUSTED
+
+
+def scan_file(path):
+    try:
+        relative = path.relative_to(workspace).as_posix()
+    except ValueError:
+        relative = None
+    return module.scan_source_for_secret(
+        lambda: path.open("rb"), relative, allowlist, allowlist_used
+    )
+
 
 def safe_path(path):
     try:
@@ -295,6 +343,12 @@ elif workspace.is_dir():
         parent = pathlib.Path(directory)
         retained_dirs = []
         for name in dirnames:
+            # Top-level `tmp` never enters the archive (`stop-backup.sh` passes
+            # `-x!tmp` / `-x "tmp/*"`) and is excluded from the manifest above, so
+            # scanning it here would let a scratch file block a backup that could
+            # never have contained it. Keep the three scopes identical.
+            if parent == workspace and name == "tmp":
+                continue
             path = parent / name
             try:
                 if path.is_symlink():
@@ -315,20 +369,20 @@ elif workspace.is_dir():
                 if not stat.S_ISREG(mode):
                     unreadable.add(safe_path(path))
                     continue
-                with path.open("rb") as stream:
-                    match = module.scan_stream_for_secret(stream)
+                match = scan_file(path)
             except OSError:
                 unreadable.add(safe_path(path))
                 continue
+            if match is BUDGET_EXHAUSTED:
+                unreadable.add(safe_path(path))
+                continue
             if match:
-                kind, offset = match
-                try:
-                    with path.open("rb") as stream:
-                        line = stream.read(offset).count(b"\n") + 1
-                except OSError:
-                    unreadable.add(safe_path(path))
-                    line = 0
+                kind, line = match
                 hits.append((safe_path(path), line, kind))
+
+if allowlist_error is not None:
+    print(f"FAIL: {ALLOWLIST_PATH.name} is unusable: {allowlist_error}", file=sys.stderr)
+    raise SystemExit(1)
 
 if hits or unreadable or unsafe_links:
     if hits:
@@ -336,6 +390,14 @@ if hits or unreadable or unsafe_links:
         for path, line, kind in sorted(hits):
             suffix = f":{line}" if line else ""
             print(f"{path}{suffix}\t{kind}", file=sys.stderr)
+        print(
+            "Inspect each line locally without rendering the value. If it is genuinely not a\n"
+            "credential, acknowledge that exact line by appending to workspace/.secret-scan-allowlist:\n"
+            "  printf '%s' \"$(sed -n \"${LINE}p\" \"$FILE\")\" | shasum -a 256   # hash excludes the newline\n"
+            "  then append '<sha256>  <path-relative-to-workspace/>  # reason'\n"
+            "Editing the line later re-opens the finding. If it IS a credential, remove and rotate it.",
+            file=sys.stderr,
+        )
     if unreadable:
         print("FAIL: workspace secret scan was incomplete; unreadable file(s):", file=sys.stderr)
         for path in sorted(unreadable):
@@ -345,6 +407,15 @@ if hits or unreadable or unsafe_links:
         for path in sorted(unsafe_links):
             print(path, file=sys.stderr)
     raise SystemExit(1)
+
+stale = allowlist - allowlist_used
+if stale:
+    print(
+        f"WARNING: {len(stale)} allowlist entr(y/ies) matched nothing; the line changed or moved:",
+        file=sys.stderr,
+    )
+    for digest, target in sorted(stale):
+        print(f"{digest[:12]}...  {target}", file=sys.stderr)
 
 print("PASS: no credential-like values found in the ignored workspace.")
 PY
