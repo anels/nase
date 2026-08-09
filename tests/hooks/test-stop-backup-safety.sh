@@ -47,6 +47,27 @@ assert_contains() {
   fi
 }
 
+# stop-backup.sh prefers 7z and only falls back to zip, so a fixture that shadows zip alone
+# is bypassed wherever 7z sits on the restricted PATH (/usr/bin on Linux, but not the
+# Homebrew prefix on macOS). That silently ran the real archiver: the rejection cases failed
+# on CI and the success cases passed vacuously. Shadow 7z in every fixture and route it to
+# that fixture's own zip stub so both archiver branches exercise the same fake archive.
+install_7z_shim() {
+  local dir="$1"
+  cat > "$dir/7z" <<'SH'
+#!/usr/bin/env bash
+out=""
+for arg in "$@"; do
+  case "$arg" in
+    *.zip) out="$arg"; break ;;
+  esac
+done
+[ -n "$out" ] || exit 2
+exec "$(dirname "$0")/zip" -qry "$out" . -x "tmp/*"
+SH
+  chmod +x "$dir/7z"
+}
+
 fakebin="$fixture/fakebin"
 mkdir -p "$fakebin"
 cat > "$fakebin/zip" <<'SH'
@@ -78,6 +99,7 @@ with zipfile.ZipFile(sys.argv[1], "w") as archive:
 PY
 SH
 chmod +x "$fakebin/zip"
+install_7z_shim "$fakebin"
 
 # The literal path has depth 3, but canonicalizes to /tmp. The hook must reject
 # the resolved path instead of trusting the raw string.
@@ -116,6 +138,7 @@ with zipfile.ZipFile(sys.argv[1], "w") as archive:
 PY
 SH
 chmod +x "$omitbin/zip"
+install_7z_shim "$omitbin"
 repo="$fixture/incomplete-archive-repo"
 target="$fixture/incomplete-archive-backups"
 make_repo "$repo"
@@ -148,6 +171,7 @@ printf '{}\n' > "$(dirname "$out")/source-manifest.json"
 exec /usr/bin/zip "$@"
 SH
 chmod +x "$authoritybin/zip"
+install_7z_shim "$authoritybin"
 repo="$fixture/manifest-authority-repo"
 target="$fixture/manifest-authority-backups"
 make_repo "$repo"
@@ -182,6 +206,7 @@ with zipfile.ZipFile(sys.argv[1], "a") as archive:
 PY
 SH
 chmod +x "$extradirbin/zip"
+install_7z_shim "$extradirbin"
 repo="$fixture/extra-directory-repo"
 target="$fixture/extra-directory-backups"
 make_repo "$repo"
@@ -274,6 +299,7 @@ ln -s "$RACE_OUTSIDE" mutable.txt
 exec /usr/bin/zip "$@"
 SH
 chmod +x "$racebin/zip"
+install_7z_shim "$racebin"
 repo="$fixture/raced-symlink-source-repo"
 target="$fixture/raced-symlink-source-backups"
 outside="$fixture/raced-symlink-outside.txt"
