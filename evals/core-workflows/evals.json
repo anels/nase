@@ -195,5 +195,131 @@
         }
       ]
     }
+  ],
+  "routing_cases": [
+    {
+      "id": "routing-design-positive",
+      "skill": "nase:design",
+      "prompt": "Create a decision-complete, repository-grounded implementation plan with risks, tests, and a target pull request shape.",
+      "expect": "invoke",
+      "risk": "high"
+    },
+    {
+      "id": "routing-design-near-miss",
+      "skill": "nase:design",
+      "prompt": "Estimate how long the already-defined implementation will take and explain the confidence range.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:estimate-eta",
+      "risk": "high"
+    },
+    {
+      "id": "routing-today-positive",
+      "skill": "nase:today",
+      "prompt": "Build today's priority plan from current calendar, active work, messages, and live blockers.",
+      "expect": "invoke",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-today-near-miss",
+      "skill": "nase:today",
+      "prompt": "Summarize what I accomplished last week from historical journals and sessions.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:recap",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-learn-positive",
+      "skill": "nase:learn",
+      "prompt": "Research this recurring engineering practice and capture a durable lesson that can apply across projects.",
+      "expect": "invoke",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-learn-near-miss",
+      "skill": "nase:learn",
+      "prompt": "Update the repository knowledge page with this project's newly verified deployment command.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:kb-update",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-onboard-positive",
+      "skill": "nase:onboard",
+      "prompt": "Onboard this repository by mapping architecture, ownership, workflows, risks, and evidence gaps.",
+      "expect": "invoke",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-onboard-near-miss",
+      "skill": "nase:onboard",
+      "prompt": "Search the existing knowledge base for the deployment owner of this repository.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:kb-search",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-wrap-up-positive",
+      "skill": "nase:wrap-up",
+      "prompt": "Close out today's work by updating the journal, carrying forward unfinished items, and extracting only durable learnings.",
+      "expect": "invoke",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-wrap-up-near-miss",
+      "skill": "nase:wrap-up",
+      "prompt": "Produce a historical weekly recap from the last seven days of sessions and journals.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:recap",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-fsd-positive",
+      "skill": "nase:fsd",
+      "prompt": "Implement the approved feature in the repository, verify its behavior, and leave the changes ready for my review.",
+      "expect": "invoke",
+      "risk": "high"
+    },
+    {
+      "id": "routing-fsd-near-miss",
+      "skill": "nase:fsd",
+      "prompt": "Analyze the feature and write an implementation-ready design only; do not change code.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:design",
+      "risk": "high"
+    }
+  ],
+  "runtime_cases": [
+    {
+      "id": "runtime-design-grounding",
+      "skill": "nase:design",
+      "score_case": "design-implementation-ready",
+      "prompt": "/nase:design inspect fixture/request.md and fixture/contract.md, then produce a decision-complete plan with exact fixture identifiers, target PR count, and runnable validation",
+      "fixture_dir": "fixtures/runtime-design-grounding",
+      "required_reads": [
+        "request.md",
+        "contract.md"
+      ],
+      "required_canaries": [
+        "DESIGN_RETRY_CANARY_7319",
+        "IDEMPOTENCY_HEADER_CANARY_8842"
+      ],
+      "risk": "high"
+    },
+    {
+      "id": "runtime-fsd-test-quality",
+      "skill": "nase:fsd",
+      "score_case": "fsd-rejects-vacuous-test-evidence",
+      "prompt": "/nase:fsd inspect fixture/task.md and fixture/test_parser.py without writing files, then assess test quality and include the exact fixture identifiers",
+      "fixture_dir": "fixtures/runtime-fsd-test-quality",
+      "required_reads": [
+        "task.md",
+        "test_parser.py"
+      ],
+      "required_canaries": [
+        "PARSER_GUARD_CANARY_6051",
+        "VACUOUS_TEST_CANARY_7724"
+      ],
+      "risk": "high"
+    }
   ]
 }

@@ -411,5 +411,100 @@
         }
       ]
     }
+  ],
+  "routing_cases": [
+    {
+      "id": "routing-discuss-pr-positive",
+      "skill": "nase:discuss-pr",
+      "prompt": "Review a newly opened pull request from problem context through verified findings, but do not publish comments.",
+      "expect": "invoke",
+      "risk": "high"
+    },
+    {
+      "id": "routing-discuss-pr-near-miss",
+      "skill": "nase:discuss-pr",
+      "prompt": "Work through the unresolved reviewer threads already left on my pull request and decide which comments to accept or decline.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:address-comments",
+      "risk": "high"
+    },
+    {
+      "id": "routing-address-comments-positive",
+      "skill": "nase:address-comments",
+      "prompt": "Analyze every unresolved review thread on my existing pull request, fix valid feedback, and verify the result without resolving threads remotely.",
+      "expect": "invoke",
+      "risk": "high"
+    },
+    {
+      "id": "routing-address-comments-near-miss",
+      "skill": "nase:address-comments",
+      "prompt": "Perform the first deep review of this new pull request and prepare evidence-backed findings.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:discuss-pr",
+      "risk": "high"
+    },
+    {
+      "id": "routing-request-review-positive",
+      "skill": "nase:request-review",
+      "prompt": "Choose suitable reviewers for my pull request from ownership evidence and draft the review request message.",
+      "expect": "invoke",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-request-review-near-miss",
+      "skill": "nase:request-review",
+      "prompt": "Analyze this pull request for correctness and prepare review findings, without asking anyone to review it.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:discuss-pr",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-prep-merge-positive",
+      "skill": "nase:prep-merge",
+      "prompt": "Prepare my approved pull request for merge by checking unresolved threads, CI, branch freshness, and final safety gates.",
+      "expect": "invoke",
+      "risk": "high"
+    },
+    {
+      "id": "routing-prep-merge-near-miss",
+      "skill": "nase:prep-merge",
+      "prompt": "Review this pull request for defects and give me findings only; it is not approved or ready for merge preparation.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:discuss-pr",
+      "risk": "high"
+    },
+    {
+      "id": "routing-tech-debt-audit-positive",
+      "skill": "nase:tech-debt-audit",
+      "prompt": "Audit this repository broadly for prioritized technical debt, verification gaps, and an evidence-backed repayment sequence.",
+      "expect": "invoke",
+      "risk": "medium"
+    },
+    {
+      "id": "routing-tech-debt-audit-near-miss",
+      "skill": "nase:tech-debt-audit",
+      "prompt": "Diagnose and fix this one reproducible parser crash, then run the focused regression test.",
+      "expect": "not_invoke",
+      "adjacent_skill": "nase:fsd",
+      "risk": "medium"
+    }
+  ],
+  "runtime_cases": [
+    {
+      "id": "runtime-discuss-pr-grounding",
+      "skill": "nase:discuss-pr",
+      "score_case": "discuss-pr-problem-first",
+      "prompt": "/nase:discuss-pr inspect fixture/context.md and fixture/pr.diff, then produce a problem-first review with exact fixture identifiers and file:line evidence; do not use GitHub",
+      "fixture_dir": "fixtures/runtime-discuss-pr-grounding",
+      "required_reads": [
+        "context.md",
+        "pr.diff"
+      ],
+      "required_canaries": [
+        "CACHE_EPOCH_CANARY_4821",
+        "TENANT_REFRESH_CANARY_9142"
+      ],
+      "risk": "high"
+    }
   ]
 }

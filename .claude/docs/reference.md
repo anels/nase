@@ -17,6 +17,9 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - Worktree cleanup: `worktree-pattern.md` owns remote-OID verification and safe retained-worktree behavior; automated workflows never force-remove worktrees.
 - Context moves: `context-boundary.md` owns the phase-boundary tree (continue → clear → hand off → subagent → compact); `CLAUDE.md → Compact instructions` owns what a compaction must preserve.
 - Canonical pointer wording: `language-config.md → Canonical pointer` owns the language-preflight spelling every skill copies verbatim; `tests/check-canonical-pointers.sh` fails on any reworded or inlined copy.
+- Skill evaluation: `.claude/scripts/skill-eval-run.py` runs isolated routing and fixture-backed output probes, stores private hash-bound receipts, reports separate coverage dimensions, and records explicit human review.
+- Citation validation: `.claude/scripts/citation-validator.py` validates GitHub, Jira, Confluence, and multi-root source references with `OK`, `BROKEN`, and `UNKNOWN` outcomes before report promotion.
+- Effort-rollup evidence: `effort-rollup-integrity.md` owns staging and promotion; `.claude/scripts/effort-rollup-evidence.py` collects fresh scope-bound GitHub evidence and independently re-derives delivery roles, buckets, coverage, and critical totals.
 
 ## Execution Style
 
