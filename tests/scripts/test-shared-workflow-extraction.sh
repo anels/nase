@@ -191,8 +191,13 @@ assert_contains "effort lifecycle uses wontfix terminal status" .claude/docs/eff
 assert_not_contains "effort lifecycle never emits invalid closed status" .claude/docs/effort-lifecycle.md 'status: closed'
 assert_contains "effort lifecycle uses guarded move" .claude/docs/effort-lifecycle.md 'apply-move'
 assert_contains "effort lifecycle uses executable transition decision" .claude/docs/effort-lifecycle.md 'transition\.action'
+assert_contains "effort lifecycle routes terminal moves by destination" .claude/docs/effort-lifecycle.md 'Terminal Destination'
+assert_contains "effort lifecycle archives tracking-only efforts" .claude/docs/effort-lifecycle.md 'workspace/efforts/archive/\{current year\}'
+assert_contains "effort lifecycle publishes the move destination" .claude/docs/effort-lifecycle.md 'transition\.destination_dir'
 assert_contains "efforts keeps dependency PRs separate" .claude/commands/nase/efforts.md 'Keep delivery, report-only, and dependency PR sets separate'
 assert_contains "efforts calls executable transition decision" .claude/commands/nase/efforts.md 'effort-state\.py.*Drift Auto-Sync'
+assert_contains "efforts honours the helper move destination" .claude/commands/nase/efforts.md 'transition\.destination_dir'
+assert_contains "effort rollup excludes tracking-only delivery" .claude/commands/nase/effort-rollup.md 'Exclude `tracking_only: true` efforts'
 assert_contains "today checks normalized PR references" .claude/commands/nase/today.md 'unique normalized PR reference'
 assert_not_contains "today status check is not URL-only" .claude/commands/nase/today.md 'For each unique PR URL found'
 assert_contains "today keeps PR roles separate" .claude/commands/nase/today.md 'Keep the three PR sets separate'
@@ -551,6 +556,25 @@ python3 .claude/scripts/codex-verify-bundle.py \
 assert_contains "large rename sample uses destination path" "$rename_bundle" 'old.txt -> new.txt'
 assert_contains "large rename sample includes appended behavior" "$rename_bundle" 'added-2500'
 
+removed_secret_repo=$(mktemp -d "$TMPROOT/removed-secret-repo.XXXXXX")
+removed_secret_bundle="$TMPROOT/removed-secret-bundle.md"
+removed_payload='Authorization: Bearer '"removed_diff_canary_17a2"
+(
+  cd "$removed_secret_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name Test
+  printf '%s\n' "$removed_payload" > config.txt
+  git add config.txt
+  git commit -q -m init
+  printf 'credential removed\n' > config.txt
+)
+python3 .claude/scripts/codex-verify-bundle.py \
+  --repo "$removed_secret_repo" --base HEAD --task removal --output "$removed_secret_bundle" >/dev/null
+assert_contains "credential-bearing deletion omits the unsafe diff" "$removed_secret_bundle" 'credential_like_diff_omitted'
+assert_cmd "credential-bearing deletion never reaches the bundle" \
+  bash -c '! grep -q removed_diff_canary_17a2 "$1"' _ "$removed_secret_bundle"
+
 secret_repo=$(mktemp -d "$TMPROOT/secret-bundle-repo.XXXXXX")
 secret_bundle="$TMPROOT/secret-bundle.md"
 secret_error="$TMPROOT/secret-bundle.err"
@@ -562,20 +586,40 @@ secret_error="$TMPROOT/secret-bundle.err"
   printf 'base\n' > safe.txt
   git add safe.txt
   git commit -q -m init
-  candidate_secret='Authorization: Bearer '"fsd_candidate_canary_17a2" # pragma: allowlist secret
-  printf '%s\n' "$candidate_secret" > local-credentials.txt
+  candidate_payload='Authorization: Bearer '"fsd_candidate_canary_17a2" # pragma: allowlist secret
+  printf '%s\n' "$candidate_payload" > local-credentials.txt
 )
 assert_cmd "candidate secret fails before bundle write" \
   bash -c '! python3 "$1" --repo "$2" --base HEAD --task secret --output "$3" >"$4.out" 2>"$4"' \
   _ "$ROOT/.claude/scripts/codex-verify-bundle.py" "$secret_repo" "$secret_bundle" "$secret_error"
 assert_cmd "candidate secret value is not echoed" bash -c '! grep -q fsd_candidate_canary "$1"' _ "$secret_error"
 assert_cmd "candidate secret leaves no bundle" test ! -e "$secret_bundle"
-
 rm "$secret_repo/local-credentials.txt"
+
+printf -v escaped_candidate '{\\"%s\\":\\"%s\\"}' \
+  'ADMIN_PASSWORD' 'fsd_escaped_canary_17a2'
+printf '%s\n' "$escaped_candidate" > "$secret_repo/escaped.json"
+assert_cmd "escaped candidate secret fails before bundle write" \
+  bash -c '! python3 "$1" --repo "$2" --base HEAD --task secret --output "$3" >"$4.out" 2>"$4"' \
+  _ "$ROOT/.claude/scripts/codex-verify-bundle.py" "$secret_repo" "$secret_bundle" "$secret_error"
+assert_cmd "escaped candidate secret value is not echoed" \
+  bash -c '! grep -q fsd_escaped_canary "$1"' _ "$secret_error"
+rm "$secret_repo/escaped.json"
+
+triple_quote='"""'
+printf '%s=%s%s%s\n' 'ADMIN_PASSWORD' "$triple_quote" "fsd_triple_canary_17a2" "$triple_quote" \
+  > "$secret_repo/triple.py"
+assert_cmd "triple-quoted candidate secret fails before bundle write" \
+  bash -c '! python3 "$1" --repo "$2" --base HEAD --task secret --output "$3" >"$4.out" 2>"$4"' \
+  _ "$ROOT/.claude/scripts/codex-verify-bundle.py" "$secret_repo" "$secret_bundle" "$secret_error"
+assert_cmd "triple-quoted candidate secret value is not echoed" \
+  bash -c '! grep -q fsd_triple_canary "$1"' _ "$secret_error"
+rm "$secret_repo/triple.py"
+
 evidence_tree=$(python3 .claude/scripts/codex-verify-bundle.py \
   --repo "$secret_repo" --base HEAD --candidate-tree-only | jq -r .candidate_tree_oid)
-evidence_secret='Authorization: Bearer '"fsd_evidence_canary_17a2" # pragma: allowlist secret
-jq -n --arg tree "$evidence_tree" --arg summary "$evidence_secret" \
+evidence_payload='Authorization: Bearer '"fsd_evidence_canary_17a2" # pragma: allowlist secret
+jq -n --arg tree "$evidence_tree" --arg summary "$evidence_payload" \
   '{candidate_tree_oid:$tree,commands:[{command:"verify",exit_code:0,summary:$summary}]}' \
   > "$TMPROOT/secret-evidence.json"
 assert_cmd "evidence secret fails before bundle write" \
@@ -583,8 +627,8 @@ assert_cmd "evidence secret fails before bundle write" \
   _ "$ROOT/.claude/scripts/codex-verify-bundle.py" "$secret_repo" "$TMPROOT/secret-evidence.json" "$secret_bundle" "$secret_error"
 assert_cmd "evidence secret value is not echoed" bash -c '! grep -q fsd_evidence_canary "$1"' _ "$secret_error"
 
-inventory_secret='client_secret='"fsd_inventory_canary_17a2"
-jq -n --arg summary "$inventory_secret" \
+inventory_payload='client_''secret''='"fsd_inventory_canary_17a2"
+jq -n --arg summary "$inventory_payload" \
   '[{ref:"REQ-001",id:"REQ-001",summary:$summary}]' > "$TMPROOT/secret-inventory.json"
 assert_cmd "inventory secret fails before bundle write" \
   bash -c '! python3 "$1" --repo "$2" --base HEAD --task inventory --inventory-file "$3" --output "$4" >"$5.out" 2>"$5"' \

@@ -20,8 +20,9 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspa
 
 ### Step 1: Inventory
 
-- Active: every `workspace/efforts/*.md` excluding `done/`. Read each file's YAML frontmatter (`status`, `scope`, `repo`, `jira`, `created`, and — if present — `blocked-by`, `discovered-from`) and its `## Lifecycle` section if present. Capture last-updated date via `stat` mtime.
+- Active: every `workspace/efforts/*.md` excluding `done/` and `archive/`. Read each file's YAML frontmatter (`status`, `scope`, `repo`, `jira`, `created`, and, if present, `blocked-by`, `discovered-from`, `tracking_only`) and its `## Lifecycle` section if present. Capture last-updated date via `stat` mtime.
 - Done: count files in `workspace/efforts/done/` (count only — don't read each).
+- Archived: count files under `workspace/efforts/archive/*/` (count only). Terminal tracking-only efforts land here instead of `done/` per `.claude/docs/effort-lifecycle.md → Terminal Destination`, so reporting `done/` alone understates what closed.
 
 If `workspace/efforts/` has no active files, say so and stop.
 
@@ -37,7 +38,7 @@ Use its `stage`, `evidence`, `pending_followups`, and `needs_live_verification` 
 
 Status vocabulary lives in `.claude/docs/effort-lifecycle.md`; tolerate real-world extras (`tracked`, `blocked`, `awaiting-deploy`) by mapping them through the rules above rather than discarding them.
 
-Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet: effort-slug blockers can be resolved from `done/` locally, but PR/Jira blockers need the Step 3 live reads.
+Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet: effort-slug blockers can be resolved locally from `done/` or `archive/*/`, but PR/Jira blockers need the Step 3 live reads.
 
 ### Step 3: Drift check (the value-add — verify against live state)
 
@@ -51,11 +52,11 @@ When there are more than ~5 PRs to check, fan out via the `nase-pr-metadata-read
 
 After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecycle.md → Dependency & Discovery Fields`:
 - Blocked when `status: blocked` **or** `blocked-by` points at an unresolved referent.
-- Resolve effort-slug blockers when `workspace/efforts/done/{slug}.md` exists; PR blockers when merged; Jira blockers when Done.
-- Treat free-text blockers and unreadable PR/Jira blockers as unresolved. Name the skipped check in the blocked reason.
+- Resolve effort-slug blockers when `workspace/efforts/done/{slug}.md` or `workspace/efforts/archive/*/{slug}.md` exists; PR blockers when merged; Jira blockers when Done.
+- Treat free-text blockers and unreadable PR/Jira blockers as unresolved. Name the skipped check in the blocked reason. A `blocked-by` that literally reads `none`/`n/a` is free text and reports as blocked - call it out as a doc defect and recommend deleting the key rather than silently treating it as unblocked.
 - Everything else active is *unblocked*. This is the "what can I actually pick up right now" set; it sits beside the stage classifier and does not replace it.
 
-Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`. Apply its `transition` output exactly. This documented auto-write uses the workspace write guard's normal `apply` or collision-safe `apply-move` path with no per-item human prompt, matching `/nase:today` Step 1 (Live status sync).
+Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md -> Drift Auto-Sync`. Apply its `transition` output exactly, including `transition.destination_dir` on `action: move` - do not assume `done/`. This documented auto-write uses the workspace write guard's normal `apply` or collision-safe `apply-move` path with no per-item human prompt, matching `/nase:today` Step 1 (Live status sync).
 
 Record each transition applied for the Step 5 report. Report-only signals (no mutation):
 - effort with **no PR and no mtime change in 14+ days** → **stalled**, may need attention or a `/nase:design --review {slug}` pass.
@@ -68,7 +69,7 @@ Count **after** the Step 3 transitions so active/`done/` totals reflect post-syn
 - By stage (Planning / Implementing / In review / Awaiting deploy / Follow-up).
 - By raw frontmatter `status:` value (shows vocabulary spread).
 - Unblocked vs blocked (from Step 3): count of unblocked active efforts and the list of blocked ones with their blocker.
-- Totals: active count, `done/` count, transitioned-this-run count, held-back count, stalled count.
+- Totals: active count, `done/` count, `archive/*/` count, transitioned-this-run count, held-back count, stalled count.
 - If `$ARGUMENTS` has `--by-scope` or `--by-repo`, add a count grouped by that frontmatter field.
 
 ### Step 5: Write report + chat summary
@@ -79,10 +80,10 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 # Effort Status — {YYYY-MM-DD}
 
 ## Counts
-| Stage | Count |  + by-status table, active/done/transitioned/stalled totals
+| Stage | Count |  + by-status table, active/done/archive/transitioned/stalled totals
 
 ## Transitioned this run   ← omit section if none
-- {effort} — {evidence} → status: {awaiting-deploy|completed|wontfix}{; moved to done/ if terminal}
+- {effort} - {evidence} -> status: {awaiting-deploy|completed|wontfix}{; moved to {destination_dir} if terminal}
 
 ## Held back - no open delivery PR, but deliverables still owed   ← omit section if none
 - {effort} — stays `{status}`; {N} unchecked Lifecycle row(s):
@@ -101,7 +102,7 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 Per `.claude/docs/skill-contract.md`, the chat reply is pointer + bounded summary only:
 ```
 Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
-Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M}
+Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M} · archive/: {A}
 Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Held back: {H} · Stalled: {S}
 ```
 With `--full`, also echo the per-effort table inline (otherwise it lives only in the file).
@@ -117,4 +118,4 @@ Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-
 
 ## Notes
 
-The move-to-`done/` transition is shared with `/nase:today` via `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`: both apply the same deterministic rule, so running either keeps the effort inventory in sync. Only that documented transition auto-writes; stalled and `awaiting-deploy` efforts are reported, never auto-moved.
+The terminal move is shared with `/nase:today` via `.claude/docs/effort-lifecycle.md -> Drift Auto-Sync`: both apply the same deterministic destination rule, so running either keeps the effort inventory in sync. Only that documented transition auto-writes; stalled and `awaiting-deploy` efforts are reported, never auto-moved.

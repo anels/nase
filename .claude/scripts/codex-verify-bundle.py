@@ -24,7 +24,12 @@ BUNDLE_LIMIT = 512 * 1024
 JSON_INPUT_LIMIT = 512 * 1024
 FULL_DIFF_BYTE_LIMIT = 128 * 1024
 SCAN_CHUNK = 64 * 1024
-SCAN_OVERLAP = 4 * 1024
+MAX_ASSIGNMENT_VALUE = 4 * 1024
+SCAN_OVERLAP = MAX_ASSIGNMENT_VALUE + 1024
+CREDENTIAL_ASSIGNMENT_RE = re.compile(
+    rb"(?<![A-Za-z0-9_-])[\"']?(?P<key>[A-Za-z_][A-Za-z0-9_-]*)"
+    rb"[\"']?[ \t]*(?::=|:(?!=)|=(?!=))[ \t]*"
+)
 SECRET_PATTERNS = (
     ("private-key", re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
     ("bearer-token", re.compile(rb"(?i)\bauthorization\s*:\s*bearer\s+[a-z0-9._~+/=-]{8,}")),
@@ -34,18 +39,143 @@ SECRET_PATTERNS = (
             rb"\b(?:AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})\b"
         ),
     ),
-    (
-        "credential-assignment",
-        re.compile(
-            rb"(?i)\b(?:password|passwd|pwd|api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|secret)\b\s*[:=]\s*[\"']?[A-Za-z0-9._~+/@!#$%^&*=-]{8,}"
-        ),
-    ),
 )
-PLACEHOLDER_MARKERS = (b"example", b"dummy", b"placeholder", b"redacted", b"changeme")
-TEST_PLACEHOLDER_VALUE = re.compile(rb"(?i)[:=]\s*[\"']?test[-_]")
+CANONICAL_PLACEHOLDER_VALUE = re.compile(
+    rb"(?i)^(?:null|none|false|your[_-][a-z0-9_-]+|(?:example|dummy|placeholder|redacted|changeme)(?:[_-](?:value|secret|token|password|key|credential)(?:[_-]\d+)?)?|"
+    rb"<[^<>\r\n\"']{1,64}>)$"
+)
+# AWS's own published example key. This constant exists to recognise it AS a placeholder,
+# so the literal is the point rather than an accident.
+KNOWN_PLACEHOLDER_VALUE = re.compile(rb"(?i)^AKIAIOSFODNN7EXAMPLE\d*$")  # pragma: allowlist secret
 IDENTIFIER_ECHO = re.compile(
     rb"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(?P<value>[A-Za-z_][A-Za-z0-9_]*)$"
 )
+REFERENCE_VALUE = re.compile(
+    rb"(?ix)^(?:"
+    rb"\$\{?[A-Z_][A-Z0-9_]*\}?|"
+    rb"\$\([A-Z_][A-Z0-9_]*\)|"
+    rb"(?:os\.)?getenv\([^\r\n)]*\)|"
+    rb"os\.environ(?:\.get)?(?:\[[^\r\n]*\]|\([^\r\n)]*\))|"
+    rb"process\.env\.[A-Z_][A-Z0-9_]*|"
+    rb"environment\.getenvironmentvariable\([^\r\n)]*\)|"
+    rb"(?:config|settings|credentials|env)\.[A-Z_][A-Z0-9_.]*|"
+    rb"(?:str|string|bytes|secretstr|optional\[[A-Z0-9_.]+\])"
+    rb")$"
+)
+SAFE_EXPRESSION_VALUE = re.compile(
+    rb"(?is)^(?:await[ \t]+)?(?:"
+    rb"secrets\.(?:token_bytes|token_hex|token_urlsafe|randbelow|choice)|"
+    rb"getpass\.getpass|input|"
+    rb"[A-Z_][A-Z0-9_.]*\.(?:get|read|fetch|retrieve)_secret"
+    rb")[ \t]*\([^\r\n]*\)$"
+)
+# `$(cmd --flag value)` — a shell/ADO command substitution that fetches the credential at
+# run time. Arguments are allowed, so this cannot reuse REFERENCE_VALUE's bare `$(NAME)`
+# alternative. Nested parens are excluded so the span stays anchored to one substitution.
+COMMAND_SUBSTITUTION_VALUE = re.compile(rb"^\$\([^()\r\n]*\)$")
+# PowerShell also groups a command with a bare paren (`$password = (az ... )`). Bare parens
+# are far weaker evidence than `$(`, so require a command word *plus* at least one argument —
+# that keeps `(az keyvault secret show ...)` while `(azurePassword123XY)` stays a literal.
+BARE_COMMAND_SUBSTITUTION = re.compile(rb"^\([A-Za-z_][A-Za-z0-9_.-]*[ \t]+[^()\r\n]*\)$")
+# The same substitution when its closing paren is not on this line — PowerShell backtick and
+# shell backslash continuations split `$(az keyvault secret show ...)` across lines, so the
+# unquoted branch only ever sees the opening fragment. Restricted to a short digit-free
+# command word so a truncated literal cannot pass as a CLI name.
+OPEN_COMMAND_SUBSTITUTION = re.compile(rb"^\$?\([A-Za-z][A-Za-z_.-]{0,9}$")
+# Markdown and code-excerpt punctuation that wraps a value inside prose without changing it
+# (`` `$(VAR)` ``, `"{$var}"`). Trimmed only to re-test the reference shapes below: a literal
+# secret cannot acquire a reference shape by losing quotes, so this widens nothing else.
+DOC_WRAPPER_CHARS = b"`\"'{}"
+# `${{ secrets.NAME }}` — the GitHub Actions expression. The value the unquoted branch sees
+# is the `${{` fragment, so every workflow excerpt that wires a secret read as a literal.
+ACTIONS_EXPRESSION_VALUE = re.compile(rb"^\$\{\{[^}\r\n]*\}\}$")
+ACTIONS_EXPRESSION_OPEN = re.compile(rb"^\$\{\{$")
+# `<API key secret>` — the same angle placeholder as CANONICAL_PLACEHOLDER_VALUE, but written
+# with spaces, which the unquoted branch truncates at the first one.
+ANGLE_PLACEHOLDER_SPAN = re.compile(rb"^<[^<>\r\n\"']{1,64}>$")
+# `parsed_assignment` reports an unreadable value with an angle-wrapped sentinel. Those are
+# fail-closed signals, not placeholders — the angle rules above must never absolve them.
+FAIL_CLOSED_VALUES = frozenset({b"<overlong-quoted-value>", b"<unterminated-quoted-value>"})
+# Prose, not an assignment. Markdown running text is full of incidental `key=` shapes whose
+# value carries no secret at all, and each of these is provable rather than heuristic:
+#   - no alphanumeric character at all (`...`, an elision, a stray backtick run). Every
+#     credential format in SECRET_PATTERNS requires alphanumerics, so this cannot hide one.
+#   - a bare short decimal, which is how a doc writes a *length* (`secret=32 chars`).
+#   - a printf/format conversion specifier, which is a placeholder by definition.
+NON_ALPHANUMERIC_VALUE = re.compile(rb"^[^A-Za-z0-9]{1,12}$")
+COUNT_VALUE = re.compile(rb"^[0-9]{1,4}$")
+FORMAT_SPECIFIER_VALUE = re.compile(rb"^%[-+ #0-9.]*[sdifgxXeEouc](?:\\[nrt])*[\"'`\\,]*$")
+# Boolean switches that merely *describe* secrecy. `isSecret=true` is a pipeline flag, not a
+# credential, and treating it as one flags every doc that explains how to set it.
+CREDENTIAL_FLAG_NAMES = frozenset(
+    {b"issecret", b"is_secret", b"hassecret", b"has_secret", b"requiresecret", b"require_secret",
+     b"requireclientsecret", b"secretrequired", b"secret_required", b"usesecret", b"use_secret"}
+)
+SNAKE_CREDENTIAL_NAMES = (
+    b"password",
+    b"passwd",
+    b"pwd",
+    b"api_key",
+    b"client_secret",
+    b"access_token",
+    b"refresh_token",
+    b"secret",
+)
+CAMEL_CREDENTIAL_SUFFIXES = (
+    b"Password",
+    b"Passwd",
+    b"Pwd",
+    b"ApiKey",
+    b"ClientSecret",
+    b"AccessToken",
+    b"RefreshToken",
+    b"Secret",
+)
+DELIMITED_SPANS = ((b"$((", b"))"), (b"${{", b"}}"), (b"$(", b")"), (b"<", b">"))
+
+
+def command_substitution_span(candidate: bytes) -> bytes | None:
+    """Return a whole delimited span so a value containing spaces survives.
+
+    The unquoted branch of `parsed_assignment` otherwise cuts the value at the first space,
+    which turns `$(az keyvault secret show --query value)` into a `$(az` fragment, and
+    `${{ secrets.NAME }}` / `<API key secret>` into `${{` / `<API`. None of those fragments
+    can match a reference or placeholder shape. Leading doc wrappers are tolerated; the span
+    ends at its own closing delimiter, so trailing prose stays out of the value.
+    """
+    prefix = len(candidate) - len(candidate.lstrip(DOC_WRAPPER_CHARS))
+    for opener, closer in DELIMITED_SPANS:
+        if candidate[prefix : prefix + len(opener)] != opener:
+            continue
+        end = candidate.find(closer, prefix + len(opener))
+        if end < 0:
+            return None
+        return candidate[prefix : end + len(closer)]
+    return None
+
+
+def reference_like(value: bytes) -> bool:
+    """Return whether the value is a run-time reference rather than a literal credential."""
+    if value in FAIL_CLOSED_VALUES:
+        return False
+    for candidate in (value, value.strip(DOC_WRAPPER_CHARS)):
+        if not candidate:
+            continue
+        if (
+            REFERENCE_VALUE.fullmatch(candidate)
+            or SAFE_EXPRESSION_VALUE.fullmatch(candidate)
+            or COMMAND_SUBSTITUTION_VALUE.fullmatch(candidate)
+            or BARE_COMMAND_SUBSTITUTION.fullmatch(candidate)
+            or OPEN_COMMAND_SUBSTITUTION.fullmatch(candidate)
+            or ACTIONS_EXPRESSION_VALUE.fullmatch(candidate)
+            or ACTIONS_EXPRESSION_OPEN.fullmatch(candidate)
+            or ANGLE_PLACEHOLDER_SPAN.fullmatch(candidate)
+            or NON_ALPHANUMERIC_VALUE.fullmatch(candidate)
+            or COUNT_VALUE.fullmatch(candidate)
+            or FORMAT_SPECIFIER_VALUE.fullmatch(candidate)
+        ):
+            return True
+    return False
 
 
 def git(
@@ -85,6 +215,23 @@ def canonical_bytes(value: Any) -> bytes:
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def safe_display_path(path: str) -> str:
+    encoded = path.encode("utf-8", "surrogateescape")
+    if secret_kind(encoded):
+        return f"<redacted-path:{sha256(encoded)[:12]}>"
+    return path
+
+
+def redact_sensitive_lines(value: str) -> str:
+    lines = []
+    for line in value.splitlines():
+        encoded = line.encode("utf-8", "surrogateescape")
+        lines.append(
+            f"<redacted-line:{sha256(encoded)[:12]}>" if secret_kind(encoded) else line
+        )
+    return "\n".join(lines)
 
 
 def load_json(path: str | None, default: Any) -> Any:
@@ -186,7 +333,7 @@ def blob_size(repo: Path, entry: dict[str, str] | None) -> int:
 def path_metadata(
     repo: Path, base_oid: str, tree_oid: str, source_path: str, destination_path: str
 ) -> dict[str, Any]:
-    result: dict[str, Any] = {"path": destination_path}
+    result: dict[str, Any] = {"path": safe_display_path(destination_path)}
     for label, oid, path in (
         ("base", base_oid, source_path),
         ("candidate", tree_oid, destination_path),
@@ -204,10 +351,9 @@ def path_metadata(
 def is_identifier_echo(matched: bytes) -> bool:
     """Return whether a non-password credential field references an identifier, not a literal.
 
-    Covers the exact echo (``accessToken: accessToken``) and the camel-cased variable echo that a
-    named argument produces constantly (``accessToken: userAccessToken``). Both camel forms are
-    matched case-sensitively, so an unquoted literal that merely contains the key word in lower
-    case stays flagged.
+    Covers exact same-name references and the camel-cased variable references that named
+    arguments produce constantly. Camel forms are matched case-sensitively, so an unquoted
+    literal that merely contains the key word in lower case stays flagged.
     """
     echo = IDENTIFIER_ECHO.match(matched.strip())
     if not echo:
@@ -227,20 +373,179 @@ def is_identifier_echo(matched: bytes) -> bool:
     return value.startswith(lower_camel) and value[len(lower_camel):][:1].isupper()
 
 
-def secret_match(data: bytes) -> tuple[str, int] | None:
+def is_credential_name(value: bytes) -> bool:
+    normalized = value.replace(b"-", b"_").lower()
+    if normalized in CREDENTIAL_FLAG_NAMES:
+        return False
+    if any(
+        normalized == name or normalized.endswith(b"_" + name)
+        for name in SNAKE_CREDENTIAL_NAMES
+    ):
+        return True
+    return any(value.endswith(suffix) for suffix in CAMEL_CREDENTIAL_SUFFIXES)
+
+
+def assigned_value(matched: bytes) -> bytes | None:
+    delimiter = re.search(rb"[:=]", matched)
+    if delimiter is None:
+        return None
+    raw = matched[delimiter.end():].strip()
+    if raw[:1] not in {b'"', b"'"}:
+        return raw.rstrip(b",;)}]")
+    if raw[:3] in {b'"""', b"'''"}:
+        quote = raw[:3]
+        end = raw.find(quote, 3)
+        return None if end < 0 else raw[3:end]
+    quote = raw[:1]
+    escaped = False
+    value = bytearray()
+    for byte in raw[1:]:
+        current = bytes((byte,))
+        if escaped:
+            value.extend(current)
+            escaped = False
+        elif current == b"\\":
+            escaped = True
+        elif current == quote:
+            return bytes(value)
+        else:
+            value.extend(current)
+    return None
+
+
+def parsed_assignment(data: bytes, match: re.Match[bytes]) -> tuple[bytes, bytes] | None:
+    """Return the bounded assignment and scalar value for one credential key."""
+    start = match.end()
+    if start >= len(data):
+        return None
+    triple_quote = data[start : start + 3]
+    if triple_quote in {b'"""', b"'''"}:
+        content_start = start + 3
+        search_end = min(len(data), content_start + MAX_ASSIGNMENT_VALUE + 3)
+        end = data.find(triple_quote, content_start, search_end)
+        if end >= 0:
+            complete = data[match.start() : end + 3]
+            value = assigned_value(complete)
+            return (complete, value) if value is not None else None
+        reason = (
+            b"<overlong-quoted-value>"
+            if len(data) - content_start > MAX_ASSIGNMENT_VALUE
+            else b"<unterminated-quoted-value>"
+        )
+        return data[match.start() : search_end], reason
+    quote = data[start : start + 1]
+    if quote in {b'"', b"'"}:
+        escaped = False
+        limit = min(len(data), start + MAX_ASSIGNMENT_VALUE + 2)
+        for index in range(start + 1, limit):
+            current = data[index : index + 1]
+            if escaped:
+                escaped = False
+            elif current == b"\\":
+                escaped = True
+            elif current == quote:
+                complete = data[match.start() : index + 1]
+                value = assigned_value(complete)
+                return (complete, value) if value is not None else None
+            elif current in {b"\r", b"\n"}:
+                return data[match.start() : index], b"<unterminated-quoted-value>"
+        return data[match.start() : limit], b"<overlong-quoted-value>"
+
+    line_end = min(len(data), start + MAX_ASSIGNMENT_VALUE)
+    for separator in (b"\r", b"\n"):
+        candidate = data.find(separator, start, line_end)
+        if candidate >= 0:
+            line_end = min(line_end, candidate)
+    raw = data[start:line_end]
+    comment = re.search(rb"[ \t]+(?:#|//|/\*|--)", raw)
+    if comment:
+        raw = raw[: comment.start()]
+    candidate = raw.strip().rstrip(b",;").strip()
+    if reference_like(candidate):
+        value = candidate
+    else:
+        value = command_substitution_span(candidate) or (
+            candidate.split(None, 1)[0] if candidate.split(None, 1) else b""
+        )
+    if not value:
+        return None
+    return data[match.start() : start] + value, value
+
+
+def is_placeholder_match(matched: bytes) -> bool:
+    value = assigned_value(matched)
+    candidate = matched.strip() if value is None else value.strip()
+    if candidate in FAIL_CLOSED_VALUES:
+        return False
+    return bool(
+        value == b""
+        or CANONICAL_PLACEHOLDER_VALUE.fullmatch(candidate)
+        or KNOWN_PLACEHOLDER_VALUE.fullmatch(candidate)
+    )
+
+
+def is_prompt_label(data: bytes, match: re.Match[bytes]) -> bool:
+    if match.group("key").lower() != b"password":
+        return False
+    line_start = data.rfind(b"\n", 0, match.start()) + 1
+    prefix = data[line_start : match.start()].rstrip()
+    return bool(
+        re.search(
+            rb"(?i)(?:input|getpass(?:\.getpass)?)\s*\(\s*\\?$",
+            prefix,
+        )
+    )
+
+
+def decode_escaped_quotes(data: bytes) -> tuple[bytes, list[int]]:
+    decoded = bytearray()
+    offsets: list[int] = []
+    index = 0
+    while index < len(data):
+        if data[index : index + 1] == b"\\" and data[index + 1 : index + 2] in {b'"', b"'"}:
+            index += 1
+        decoded.extend(data[index : index + 1])
+        offsets.append(index)
+        index += 1
+    return bytes(decoded), offsets
+
+
+def direct_secret_match(data: bytes) -> tuple[str, int] | None:
     for name, pattern in SECRET_PATTERNS:
         for match in pattern.finditer(data):
             matched = match.group(0)
-            if any(marker in matched.lower() for marker in PLACEHOLDER_MARKERS):
-                continue
-            # The fixture convention is value-prefix-bound. A real value that merely
-            # contains `-test-` must still be reported.
-            if TEST_PLACEHOLDER_VALUE.search(matched):
-                continue
-            if is_identifier_echo(matched):
+            if is_placeholder_match(matched):
                 continue
             return name, match.start()
+    for match in CREDENTIAL_ASSIGNMENT_RE.finditer(data):
+        if not is_credential_name(match.group("key")):
+            continue
+        if is_prompt_label(data, match):
+            continue
+        parsed = parsed_assignment(data, match)
+        if parsed is None:
+            continue
+        matched, value = parsed
+        if is_placeholder_match(matched):
+            continue
+        if reference_like(value):
+            continue
+        if is_identifier_echo(matched):
+            continue
+        return "credential-assignment", match.start()
     return None
+
+
+def secret_match(data: bytes) -> tuple[str, int] | None:
+    match = direct_secret_match(data)
+    if match or (b'\\"' not in data and b"\\'" not in data):
+        return match
+    decoded, offsets = decode_escaped_quotes(data)
+    match = direct_secret_match(decoded)
+    if not match:
+        return None
+    kind, offset = match
+    return kind, offsets[offset]
 
 
 def secret_kind(data: bytes) -> str | None:
@@ -276,12 +581,10 @@ def scan_blob_for_secret(repo: Path, oid: str) -> tuple[str, int] | None:
         if process.poll() is None:
             process.kill()
         process.wait()
-    return None
 
 
 def secret_preflight(
     repo: Path,
-    base_oid: str,
     tree_oid: str,
     paths: list[str],
     task: str,
@@ -304,26 +607,8 @@ def secret_preflight(
         if hit:
             kind, byte_offset = hit
             raise SystemExit(
-                f"possible {kind} secret in CANDIDATE:{path} near byte {byte_offset}; bundle was not written"
+                f"possible {kind} secret in CANDIDATE:{safe_display_path(path)} near byte {byte_offset}; bundle was not written"
             )
-    process = subprocess.Popen(
-        ["git", "-C", str(repo), "diff", "--no-ext-diff", base_oid, tree_oid],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    assert process.stdout is not None
-    try:
-        hit = scan_stream_for_secret(process.stdout)
-        if hit:
-            kind, byte_offset = hit
-            raise SystemExit(
-                f"possible {kind} secret in candidate diff near byte {byte_offset}; bundle was not written"
-            )
-    finally:
-        process.stdout.close()
-        if process.poll() is None:
-            process.kill()
-        process.wait()
 
 
 def context_secret_preflight(contexts: list[dict[str, Any]]) -> None:
@@ -460,20 +745,30 @@ def project_blob(
     return result
 
 
-def collect_changed_path_gaps(repo: Path, tree_oid: str, paths: list[str]) -> list[dict[str, str]]:
+def collect_changed_path_gaps(
+    repo: Path, tree_oid: str, paths: list[str]
+) -> list[dict[str, str]]:
     gaps: list[dict[str, str]] = []
     for path in paths:
         entry = tree_entry(repo, tree_oid, path)
+        if secret_kind(path.encode("utf-8", "surrogateescape")):
+            gaps.append(
+                {
+                    "path": safe_display_path(path),
+                    "reason": "credential_like_path_redacted",
+                    "tree": "CANDIDATE" if entry else "BASE",
+                }
+            )
         if entry is None:
             continue
         if entry["mode"] == "120000":
-            gaps.append({"path": path, "reason": "symlink", "tree": "CANDIDATE"})
+            gaps.append({"path": safe_display_path(path), "reason": "symlink", "tree": "CANDIDATE"})
         elif entry["mode"] == "160000":
             status = git_text(repo, "status", "--porcelain", "--ignore-submodules=none", "--", path)
             reason = "dirty_submodule" if status.strip() else "gitlink"
-            gaps.append({"path": path, "reason": reason, "tree": "CANDIDATE"})
+            gaps.append({"path": safe_display_path(path), "reason": reason, "tree": "CANDIDATE"})
         elif git(repo, "cat-file", "-t", entry["oid"], check=False).strip() != b"blob":
-            gaps.append({"path": path, "reason": "missing_blob", "tree": "CANDIDATE"})
+            gaps.append({"path": safe_display_path(path), "reason": "missing_blob", "tree": "CANDIDATE"})
     return gaps
 
 
@@ -487,7 +782,9 @@ def dirty_submodule_gaps(repo: Path, tree_oid: str) -> list[dict[str, str]]:
         entry = tree_entry(repo, tree_oid, path)
         status = git_text(repo, "status", "--porcelain", "--ignore-submodules=none", "--", path)
         if entry and entry["mode"] == "160000" and status.strip():
-            gaps.append({"path": path, "reason": "dirty_submodule", "tree": "CANDIDATE"})
+            gaps.append(
+                {"path": safe_display_path(path), "reason": "dirty_submodule", "tree": "CANDIDATE"}
+            )
     return gaps
 
 
@@ -592,7 +889,7 @@ def should_inline(path: str) -> bool:
 
 def limited_diff(
     repo: Path, base_oid: str, tree_oid: str, source_path: str, destination_path: str
-) -> str:
+) -> tuple[str, bool]:
     pathspecs = [f":(literal){source_path}"]
     if destination_path != source_path:
         pathspecs.append(f":(literal){destination_path}")
@@ -621,11 +918,13 @@ def limited_diff(
     _, stderr = process.communicate()
     if not truncated and process.returncode:
         raise SystemExit(stderr.decode("utf-8", "replace").strip() or "git diff failed")
+    if secret_kind(data):
+        return "(diff omitted because it contains credential-like bytes)", True
     try:
         text = data.decode("utf-8", "strict")
     except UnicodeDecodeError:
-        return "(non-UTF-8 diff omitted)"
-    return text + ("\n... diff truncated at 64 KiB ...\n" if truncated else "")
+        return "(non-UTF-8 diff omitted)", False
+    return text + ("\n... diff truncated at 64 KiB ...\n" if truncated else ""), False
 
 
 def fenced(label: str, content: str, language: str = "") -> str:
@@ -659,7 +958,7 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         raise SystemExit("task must be valid UTF-8") from exc
     if len(task_bytes) > ITEM_LIMIT:
         raise SystemExit("task exceeds the 64 KiB bundle item limit")
-    secret_preflight(repo, base_oid, tree_oid, paths, task, inventory, evidence)
+    secret_preflight(repo, tree_oid, paths, task, inventory, evidence)
     contexts = resolve_contexts(
         repo,
         base_oid,
@@ -684,7 +983,8 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
             {key: value for key, value in item.items() if key != "content"} for item in contexts
         ],
         "evidence_gaps": unique_gaps(
-            collect_changed_path_gaps(repo, tree_oid, paths) + dirty_submodule_gaps(repo, tree_oid)
+            collect_changed_path_gaps(repo, tree_oid, paths)
+            + dirty_submodule_gaps(repo, tree_oid)
         ),
         "binary_path_metadata": [],
     }
@@ -708,9 +1008,11 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
         path_metadata(repo, base_oid, tree_oid, item["source_path"], item["path"])
         for item in binary_files
     ]
-    stat = git_text(repo, "diff", "--stat", base_oid, tree_oid)
-    name_status = git_text(repo, "diff", "--name-status", "--find-renames", base_oid, tree_oid)
-    untracked = git_text(repo, "ls-files", "--others", "--exclude-standard")
+    stat = redact_sensitive_lines(git_text(repo, "diff", "--stat", base_oid, tree_oid))
+    name_status = redact_sensitive_lines(
+        git_text(repo, "diff", "--name-status", "--find-renames", base_oid, tree_oid)
+    )
+    untracked = redact_sensitive_lines(git_text(repo, "ls-files", "--others", "--exclude-standard"))
     lines = [
         f"<!-- fsd-artifact: {canonical_bytes(metadata).decode('utf-8')} -->",
         "# Codex Verification Bundle",
@@ -774,16 +1076,37 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
         for path in data["paths"]
     )
     if not binary_files and total <= args.max_full_diff_lines and changed_blob_bytes <= FULL_DIFF_BYTE_LIMIT:
-        lines.extend(
-            [
-                "## Full Diff",
-                "",
-                "```diff",
-                git_text(repo, "diff", "--no-ext-diff", base_oid, tree_oid).rstrip(),
-                "```",
-                "",
-            ]
-        )
+        full_diff = git(repo, "diff", "--no-ext-diff", base_oid, tree_oid)
+        if secret_kind(full_diff):
+            for path in data["paths"]:
+                entry = tree_entry(repo, base_oid, path)
+                if entry and entry["type"] == "blob" and scan_blob_for_secret(repo, entry["oid"]):
+                    metadata["evidence_gaps"].append(
+                        {
+                            "path": safe_display_path(path),
+                            "reason": "credential_like_diff_omitted",
+                            "tree": "BASE",
+                        }
+                    )
+            lines.extend(
+                [
+                    "## Full Diff Omitted",
+                    "",
+                    "Candidate diff omitted because it contains credential-like bytes. Candidate blobs were scanned separately.",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "## Full Diff",
+                    "",
+                    "```diff",
+                    full_diff.decode("utf-8", "strict").rstrip(),
+                    "```",
+                    "",
+                ]
+            )
     else:
         lines.extend(
             [
@@ -798,19 +1121,34 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
             for candidate in per_file
             if not candidate["binary"] and should_inline(candidate["path"])
         ][: args.max_files]:
-            projection = limited_diff(
+            projection, credential_omitted = limited_diff(
                 repo, base_oid, tree_oid, item["source_path"], item["path"]
             )
-            lines.append(
-                fenced(
-                    item["display"],
-                    projection,
-                    "diff",
+            if credential_omitted:
+                metadata["evidence_gaps"].append(
+                    {
+                        "path": safe_display_path(item["source_path"]),
+                        "reason": "credential_like_diff_omitted",
+                        "tree": "BASE",
+                    }
                 )
-            )
+            lines.append(fenced(safe_display_path(item["display"]), projection, "diff"))
+    metadata["evidence_gaps"] = unique_gaps(metadata["evidence_gaps"])
+    # The diff sections above can append gaps, so rewrite the already-emitted JSON payload
+    # and the leading metadata comment. Offset 3 skips the heading, blank line, and fence.
+    evidence_gap_index = lines.index("## Evidence Gaps") + 3
+    lines[evidence_gap_index] = json.dumps(
+        metadata["evidence_gaps"], ensure_ascii=False, sort_keys=True, indent=2
+    )
+    lines[0] = f"<!-- fsd-artifact: {canonical_bytes(metadata).decode('utf-8')} -->"
     bundle = "\n".join(lines)
     if len(bundle.encode("utf-8")) > BUNDLE_LIMIT:
         raise SystemExit("bundle exceeds the 512 KiB total limit")
+    final_match = secret_match(bundle.encode("utf-8"))
+    if final_match:
+        raise SystemExit(
+            f"possible {final_match[0]} secret in assembled bundle; bundle was not written"
+        )
     return bundle
 
 

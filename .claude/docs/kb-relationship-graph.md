@@ -1,6 +1,6 @@
 # KB Relationship Graph — Algorithm & Output Shape
 
-Used by `/nase:kb-review` Step 3b. Builds a cross-file reference graph over a set of in-scope KB files, then surfaces hubs, orphans, clusters, and missing backlinks.
+Used by `/nase:kb-review` under *Deep review -> Content and relationships*. Builds a cross-file reference graph over a set of in-scope KB files, then surfaces hubs, orphans, clusters, and missing backlinks.
 
 ---
 

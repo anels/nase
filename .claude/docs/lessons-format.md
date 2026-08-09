@@ -58,4 +58,4 @@ Silence is acceptable. Notability bar applies — same as KB writes.
 
 ## Promotion
 
-`/nase:kb-review` Step 6 promotes mature lessons to KB files (`workspace/kb/general/` or `workspace/kb/projects/`). When promoted, append a `> Promoted → {kb-file}` line to the lesson entry but keep the entry in place.
+`/nase:kb-review` identifies mature lesson-promotion candidates under *Deep review -> Content and relationships*. After an approved promotion to `workspace/kb/general/` or `workspace/kb/projects/`, append a `> Promoted -> {kb-file}` line to the lesson entry but keep the entry in place.

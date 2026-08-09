@@ -38,6 +38,8 @@ cat > "$TMPDIR_TEST/done/reporting.md" <<'EOF'
 status: done
 repo: acme/widgets
 jira: ABC-123
+tracking_only: true
+owner: teammate
 ---
 
 Fixed by https://github.com/acme/widgets/pull/42 and follow-up #43.
@@ -48,6 +50,8 @@ PATH="$TMPDIR_TEST/bin:$PATH" bash "$SCRIPT" 2026-06 "$TMPDIR_TEST/done" > "$out
 
 grep -q '=== reporting (2026-06) ===' "$out"
 grep -q 'status: done' "$out"
+grep -q 'tracking_only: true' "$out"
+grep -q 'owner: teammate' "$out"
 grep -q 'github.com/acme/widgets/pull/42' "$out"
 grep -q 'ABC-123' "$out"
 grep -q -- '---- 1 efforts with mtime in 2026-06' "$out"

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
 from pathlib import Path
+
+from frontmatter_scalar import canonical_bool, extract_frontmatter_scalar, normalize_scalar
 
 
 STAGE_DISPLAY = {
@@ -73,14 +76,22 @@ OUTSTANDING_CLAUSE_RE = re.compile(
 
 
 def frontmatter_status(text: str) -> str:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    if not match:
-        return ""
-    for line in match.group(1).splitlines():
-        status = re.match(r"^status:\s*(.+?)\s*$", line, re.IGNORECASE)
-        if status:
-            return status.group(1).strip().strip('"\'').lower()
-    return ""
+    raw = extract_frontmatter_scalar(text, "status")[0]
+    return "" if raw is None else normalize_scalar(raw)
+
+
+def tracking_only_state(text: str) -> tuple[bool, bool]:
+    """Return the ownership flag and whether its scalar is canonical.
+
+    Terminal transitions file these under `archive/{year}/` instead of `done/`,
+    so `done/` keeps meaning "work this workspace delivered". The flag is
+    deliberately separate from `status: tracked`: status is overwritten by the
+    lifecycle transitions below, ownership is not.
+    """
+    raw, singleton = extract_frontmatter_scalar(text, "tracking_only")
+    if not singleton:
+        return False, False
+    return canonical_bool(raw)
 
 
 def canonical_label(label: str) -> str | None:
@@ -135,6 +146,7 @@ def strip_emphasis(label: str) -> str:
 
 def classify(text: str) -> dict[str, object]:
     status = frontmatter_status(text)
+    tracking_only, tracking_only_valid = tracking_only_state(text)
     checked: set[str] = set()
     evidence: list[dict[str, object]] = []
     undelivered: list[dict[str, object]] = []
@@ -209,7 +221,22 @@ def classify(text: str) -> dict[str, object]:
         "undelivered": undelivered,
         "pending_postdeploy_validation": pending_postdeploy_validation,
         "target_pr_counts": target_pr_counts,
+        "tracking_only": tracking_only,
+        "tracking_only_valid": tracking_only_valid,
     }
+
+
+def terminal_destination_dir(classification: dict[str, object], archive_year: int) -> str:
+    """Directory a terminal transition files the effort into.
+
+    `done/` is the record of what this workspace delivered, so a `tracking_only`
+    effort someone else shipped goes straight to the yearly archive instead of
+    padding that record. `/nase:effort-rollup` reads `done/` and would otherwise
+    count another owner's delivery as ours.
+    """
+    if classification.get("tracking_only"):
+        return f"workspace/efforts/archive/{archive_year}"
+    return "workspace/efforts/done"
 
 
 def transition(
@@ -217,7 +244,12 @@ def transition(
     delivery_pr_states: list[str],
     jira_state: str,
     blocked_by_unresolved: bool,
+    archive_year: int | None = None,
 ) -> dict[str, object]:
+    destination_dir = terminal_destination_dir(
+        classification,
+        archive_year if archive_year is not None else datetime.date.today().year,
+    )
     if not delivery_pr_states:
         return {"action": "none", "status": None, "reason": "no-delivery-pr"}
     if "UNREADABLE" in delivery_pr_states:
@@ -228,6 +260,8 @@ def transition(
         return {"action": "none", "status": None, "reason": "unresolved-blocker"}
     if "OPEN" in delivery_pr_states:
         return {"action": "none", "status": None, "reason": "open-delivery-pr"}
+    if classification.get("tracking_only_valid") is False:
+        return {"action": "none", "status": None, "reason": "invalid-tracking-only"}
     # A multi-PR effort whose first PR merged is not deployable: the PRs nobody has
     # opened yet cannot appear in delivery_pr_states, so the states alone read as
     # "everything shipped" and would archive live work. This sits ahead of both
@@ -273,7 +307,12 @@ def transition(
                 "reason": "pending-postdeploy-validation",
             }
         if deployed and classification["pending_followups"] == 0:
-            return {"action": "move", "status": "completed", "reason": "deployed"}
+            return {
+                "action": "move",
+                "status": "completed",
+                "reason": "deployed",
+                "destination_dir": destination_dir,
+            }
         if classification["status"] == "awaiting-deploy":
             return {
                 "action": "none",
@@ -285,7 +324,12 @@ def transition(
             "status": "awaiting-deploy",
             "reason": "merged-awaiting-deploy",
         }
-    return {"action": "move", "status": "wontfix", "reason": "all-delivery-prs-closed"}
+    return {
+        "action": "move",
+        "status": "wontfix",
+        "reason": "all-delivery-prs-closed",
+        "destination_dir": destination_dir,
+    }
 
 
 def main() -> int:
@@ -314,6 +358,12 @@ def main() -> int:
         action="store_true",
         help="include the deterministic lifecycle transition decision",
     )
+    parser.add_argument(
+        "--archive-year",
+        type=int,
+        default=None,
+        help="year folder for a tracking-only terminal move (default: current year)",
+    )
     args = parser.parse_args()
 
     try:
@@ -329,6 +379,7 @@ def main() -> int:
             args.delivery_pr_state,
             args.jira_state,
             args.blocked_by_unresolved,
+            args.archive_year,
         )
     print(json.dumps(result, sort_keys=True))
     return 0

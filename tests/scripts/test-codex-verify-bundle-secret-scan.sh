@@ -7,6 +7,7 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 python3 - "$ROOT" <<'PY'
 import importlib.util
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from pathlib import Path
 ROOT = Path(sys.argv[1])
 sys.argv[:] = [sys.argv[0]]
 BUNDLE = ROOT / ".claude/scripts/codex-verify-bundle.py"
-PLACEHOLDER_CREDENTIAL = b'api_key: "' + b"AKIAIOSFODNN7EX" + b'AMPLE1"'
+PLACEHOLDER_CREDENTIAL = b"api_" + b'key: "' + b"AKIAIOSFODNN7EX" + b'AMPLE1"'
 
 spec = importlib.util.spec_from_file_location("codex_verify_bundle", BUNDLE)
 assert spec is not None and spec.loader is not None
@@ -26,9 +27,9 @@ class SecretScanTest(unittest.TestCase):
     def test_identifier_echo_is_not_a_credential(self):
         # A named argument or field initializer carries no literal value.
         for source in (
-            b"                accessToken: accessToken,\n",
-            b"access_token = access_token\n",
-            b"client_secret: client_secret,",
+            b"                access" + b"Token" + b": accessToken,\n",
+            b"access_" + b"token" + b" = access_token\n",
+            b"client_" + b"secret" + b": client_secret,",
         ):
             with self.subTest(source=source):
                 self.assertIsNone(module.secret_kind(source))
@@ -36,9 +37,9 @@ class SecretScanTest(unittest.TestCase):
     def test_camel_cased_variable_echo_is_not_a_credential(self):
         # A named argument whose value is a differently named variable carries no literal either.
         for source in (
-            b"                    accessToken: userAccessToken,\n",
-            b"client_secret: lookerClientSecret",
-            b"api_key = apiKeyFromConfig",
+            b"                    access" + b"Token" + b": userAccessToken,\n",
+            b"client_" + b"secret" + b": lookerClientSecret",
+            b"api_" + b"key" + b" = apiKeyFromConfig",
         ):
             with self.subTest(source=source):
                 self.assertIsNone(module.secret_kind(source))
@@ -53,16 +54,16 @@ class SecretScanTest(unittest.TestCase):
                 self.assertEqual(module.secret_kind(source), "credential-assignment")
 
     def test_camel_echo_does_not_mask_a_later_secret(self):
-        source = b"accessToken: userAccessToken,\n" + b"client_secret" + b"=abcdefgh12345678\n"
+        source = b"access" + b"Token: userAccessToken,\n" + b"client_secret" + b"=abcdefgh12345678\n"
         self.assertEqual(module.secret_kind(source), "credential-assignment")
 
-    def test_bound_test_fixture_marker_suppresses(self):
+    def test_test_prefix_is_not_a_production_bypass(self):
         for source in (
-            b"public const string AccessToken = " + b'"test-access-token";',
-            b"api_key" + b' = "test_api_key_value"',
+            b"Access" + b"Token" + b'="test-access-token"',
+            b"api_" + b"key" + b'="test_api_key_value"',
         ):
             with self.subTest(source=source):
-                self.assertIsNone(module.secret_kind(source))
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
 
     def test_unbound_test_substring_still_flagged(self):
         for source in (
@@ -80,6 +81,8 @@ class SecretScanTest(unittest.TestCase):
         # Keep fixture tokens non-contiguous so the scanner can inspect this source file.
         for source in (
             b"password" + b" = " + b'"hunter2sup3rsecret"',
+            b'"password' + b'": "hunter2sup3rsecret"',
+            b"ADMIN_PASSWORD" + b" = " + b'"recovery_canary_4735"',
             b"client_secret" + b"=" + b"abcdefgh12345678",
             b"refresh_token" + b": " + b"someOtherIdentifier",
             b"-----BEGIN RSA " + b"PRIVATE KEY-----",
@@ -88,9 +91,122 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIsNotNone(module.secret_kind(source))
 
+    def test_quoted_credentials_are_scanned_as_full_values(self):
+        # Short, spaced, Unicode-first, and punctuation-first values are still literals.
+        values = (
+            b'"two word passphrase"',
+            b'"x7!"',
+            '"密碼-canary"'.encode(),
+            b'":starts-with-punctuation"',
+        )
+        for value in values:
+            with self.subTest(value=value):
+                source = b"ADMIN_PASSWORD" + b" = " + value
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_quoted_credential_allows_cpp_style_comment(self):
+        source = b"ADMIN_PASSWORD" + b' = "two word canary" // local override'
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_common_trailing_comments_do_not_hide_credentials(self):
+        for suffix in (b" /* local override */", b" -- local override"):
+            with self.subTest(suffix=suffix):
+                source = b"ADMIN_PASSWORD" + b' = "two word canary"' + suffix
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_unquoted_short_unicode_and_punctuation_values_are_flagged(self):
+        for value in (b"x7!", "密碼-canary".encode(), b":local-canary"):
+            with self.subTest(value=value):
+                source = b"ADMIN_PASSWORD" + b"=" + value
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_runtime_references_are_not_literal_credentials(self):
+        for source in (
+            b"pass" + b"word = os.getenv(\"DB_PASSWORD\")",
+            b"ADMIN_PASS" + b"WORD=$DATABASE_PASSWORD",
+            b"pass" + b"word=config.password",
+            b"pass" + b"word: str",
+            b"pass" + b"word = secrets.token_urlsafe(32)",
+            b"client_" + b"secret" + b' = vault.get_secret("client-secret")',
+            b"pass" + b"word = getpass.getpass()",
+            b"pass" + b'word = input("Pass' + b'word: ")',
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_camel_and_pascal_prefixed_keys_are_flagged(self):
+        for key in (b"databasePassword", b"DatabasePassword"):
+            with self.subTest(key=key):
+                self.assertEqual(
+                    module.secret_kind(key + b'="production-canary-4831"'),
+                    "credential-assignment",
+                )
+
+    def test_arbitrary_calls_do_not_hide_hardcoded_values(self):
+        for value in (b'evil("literal")', b'SecretStr("hardcoded-secret")', b'str("hardcoded-secret")'):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    module.secret_kind(b"ADMIN_PASS" + b"WORD=" + value),
+                    "credential-assignment",
+                )
+
+    def test_safe_call_does_not_hide_nested_credential_assignment(self):
+        source = (
+            b"pass" + b'word = vault.get_secret("locator", '
+            + b"client_" + b"secret" + b'="hardcoded-canary-4831")'
+        )
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_long_credential_key_still_fails_closed(self):
+        key = (b"a" * 129) + b"_PASSWORD"
+        self.assertEqual(
+            module.secret_kind(key + b'="long-key-canary-4831"'),
+            "credential-assignment",
+        )
+
+    def test_triple_quoted_and_escaped_json_credentials_are_flagged(self):
+        key = b"ADMIN_" + b"PASSWORD"
+        triple = b'"' * 3
+        escaped = b'{\\"' + key + b'\\":\\"escaped-json-canary-4831\\"}'
+        for source in (
+            key + b"=" + triple + b"triple-quoted-canary-4831" + triple,
+            escaped,
+        ):
+            with self.subTest(source=source[:32]):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_escaped_prompt_text_is_not_an_assignment(self):
+        self.assertIsNone(module.secret_kind(b'input(\\"Pass' + b'word: \\")'))
+
+    def test_short_declaration_and_overlong_quoted_value_fail_closed(self):
+        self.assertEqual(
+            module.secret_kind(b"ADMIN_PASSWORD" + b' := "short-declaration-canary"'),
+            "credential-assignment",
+        )
+        overlong = b"ADMIN_PASS" + b"WORD=" + b'"' + (b"x" * 4097) + b'"'
+        self.assertEqual(module.secret_kind(overlong), "credential-assignment")
+
+    def test_long_quoted_assignment_is_found_across_stream_chunks(self):
+        import io
+
+        assignment = b"ADMIN_PASS" + b"WORD=" + b'"' + (b"x" * 4096) + b'"'
+        source = (b"a" * (module.SCAN_CHUNK - 33)) + b"\n" + assignment
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+        self.assertEqual(module.scan_stream_for_secret(io.BytesIO(source))[0], "credential-assignment")
+
+    def test_large_non_secret_blob_scans_without_regex_backtracking(self):
+        source = (b"ordinary_identifier=" + (b"a" * 1024) + b"\n") * 2048
+        started = time.monotonic()
+        self.assertIsNone(module.secret_kind(source))
+        self.assertLess(time.monotonic() - started, 3.0)
+
+    def test_placeholder_word_inside_real_value_does_not_suppress(self):
+        source = b"ADMIN_PASSWORD" + b' = "prod-dummy-value-9374"'
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_identifier_echo_does_not_mask_a_later_secret(self):
         # The scan must keep going past a benign match instead of returning on it.
-        source = b"accessToken: accessToken,\n" + b"client_secret" + b"=abcdefgh12345678\n"
+        source = b"access" + b"Token: accessToken,\n" + b"client_secret" + b"=abcdefgh12345678\n"
         self.assertEqual(module.secret_kind(source), "credential-assignment")
 
     def test_quoted_self_named_value_is_still_flagged(self):
@@ -99,6 +215,7 @@ class SecretScanTest(unittest.TestCase):
 
     def test_placeholder_marker_still_suppresses(self):
         self.assertIsNone(module.secret_kind(PLACEHOLDER_CREDENTIAL))
+        self.assertIsNone(module.secret_kind(b"pass" + b'word=""'))
 
     def test_placeholder_does_not_mask_a_later_secret(self):
         source = (
@@ -109,8 +226,114 @@ class SecretScanTest(unittest.TestCase):
         )
         self.assertEqual(module.secret_kind(source), "credential-assignment")
 
+    def test_paren_variable_reference_is_not_a_credential(self):
+        # ADO pipeline variables and shell command substitution both use `$(NAME)`; the
+        # `$VAR` / `${VAR}` forms alone left every pipeline YAML excerpt flagged.
+        for source in (
+            b"SNOWFLAKE_" + b"PASSWORD: $(SNOWFLAKE_PASSWORD)",
+            b"SNOWSQL_" + b"PWD=$(SNOWSQL_PWD)",
+            b"api_" + b"key" + b": $(apiKey)",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_doc_wrapped_reference_is_not_a_credential(self):
+        # Markdown and code excerpts wrap the value in backticks, quotes or braces without
+        # changing it. A literal cannot acquire a reference shape by losing wrappers.
+        for source in (
+            b"- Env var: `SNOWSQL_" + b"PWD: $(SNOWSQL_PWD)`",
+            b'password' + b'={$sqlPassword}"`',
+            b"pass" + b"word=`${DB_PASSWORD}`",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_command_substitution_with_arguments_is_not_a_credential(self):
+        # The unquoted branch cut the value at the first space, so an argument-bearing
+        # substitution only ever reached the matcher as a `$(az` fragment.
+        for source in (
+            b"$pass" + b"word = $(az keyvault secret show --query value -o tsv)",
+            b"$pass" + b"word = (az keyvault secret show `",
+            b"pass" + b"word=$(aws secretsmanager get-secret-value --secret-id db)",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_parenthesised_literal_is_still_flagged(self):
+        # Bare parens are weak evidence: without a command word plus an argument they must
+        # not launder a literal.
+        for source in (
+            b"pass" + b"word = (azurePassword123XY)",
+            b"pass" + b'word = "(az)"',
+            b"client_" + b"secret" + b" = (abcdefgh12345678)",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_angle_placeholder_is_not_a_credential(self):
+        for source in (
+            b'"CacheRefresh' + b'Token": "<cache-refresh-token-value>"',
+            b"pass" + b"word=<your-password-here>",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_angle_placeholder_does_not_mask_a_later_secret(self):
+        source = (
+            b'"CacheRefresh' + b'Token": "<cache-refresh-token-value>"\n'
+            + b"client_secret"
+            + b"=abcdefgh12345678\n"
+        )
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_fail_closed_sentinels_are_not_angle_placeholders(self):
+        # The angle-placeholder rule must not absolve the scanner's own unreadable-value
+        # sentinels, which are themselves angle-wrapped.
+        for reason in (b"<overlong-quoted-value>", b"<unterminated-quoted-value>"):
+            with self.subTest(reason=reason):
+                self.assertFalse(module.reference_like(reason))
+                self.assertFalse(module.is_placeholder_match(b"pass" + b"word=" + reason))
+
+    def test_prose_shaped_values_are_not_credentials(self):
+        # Markdown running text produces incidental `key=` shapes. Each of these values is
+        # provably not a credential: no alphanumerics at all, a bare length, or a format
+        # placeholder.
+        for source in (
+            b"contains a bearer token / `Pass" + b"word=...` / api key",
+            b"D-SaaS pushed back (Jay: " + b"secret=32 chars)",
+            b"printf 'client_secret" + b": %s\n'",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_prose_shapes_do_not_launder_real_values(self):
+        # The narrowing above must stay narrow: anything with alphanumerics, anything longer
+        # than a length, and anything past the conversion character is still a literal.
+        for source in (
+            b"password" + b"=abcdefgh12345678",
+            b"password" + b"=12345",
+            b"password" + b"=%secretvalue123",
+            b"client_secret" + b"=...abcdefgh12345678",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_dictionary_password_sample_is_still_flagged(self):
+        # A short word+digits value carries no reference or placeholder shape. Accepting it
+        # would blind the scanner to exactly the weak credentials it exists to catch.
+        for source in (
+            b"pass" + b"word=letmein12",
+            b"pass" + b"word=trustno1",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_scanner_sources_do_not_trip_their_own_preflight(self):
-        for path in (BUNDLE, ROOT / "tests/scripts/test-codex-verify-bundle-secret-scan.sh"):
+        for path in (
+            BUNDLE,
+            ROOT / "tests/scripts/test-codex-verify-bundle-secret-scan.sh",
+            ROOT / "tests/hooks/test-stop-backup-safety.sh",
+        ):
             with self.subTest(path=path):
                 self.assertIsNone(module.secret_kind(path.read_bytes()))
 

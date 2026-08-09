@@ -4,6 +4,7 @@
 
 - Stage Classifier
 - Status Vocabulary
+- Terminal Destination
 - Drift Auto-Sync
 - Multi-Deliverable Efforts
 - Dependency & Discovery Fields
@@ -40,7 +41,7 @@ conflicts with `needs_live_verification`. A deployed effort with pending
 ## Status Vocabulary
 
 Frontmatter `status:` for `workspace/efforts/{slug}.md`. This is the authoritative
-list; `/nase:kb-review` Step 4d validates against it.
+list; `/nase:kb-review` validates it under *Deep review -> Authoritative state*.
 
 **Active** (file lives directly in `workspace/efforts/`):
 
@@ -55,7 +56,7 @@ list; `/nase:kb-review` Step 4d validates against it.
 | `tracked` | tracking-only effort someone else implements |
 | `ready` | reserved alias for `merge-ready`/`planned`-complete states |
 
-**Done** (file moved to `workspace/efforts/done/`):
+**Done** (file moved out of `workspace/efforts/` - see *Terminal Destination* below):
 
 | status | meaning |
 |---|---|
@@ -64,7 +65,34 @@ list; `/nase:kb-review` Step 4d validates against it.
 
 `awaiting-deploy` is set by the Drift Auto-Sync rule below when delivery PRs merge,
 or by hand when needed, paired with `- [x] Merged` in the Lifecycle block. The
-effort moves to `done/` + `completed` only after deploy validation passes.
+effort leaves `workspace/efforts/` as `completed` only after deploy validation passes.
+
+## Terminal Destination
+
+A terminal transition files the effort into one of two directories, and
+`effort-state.py` decides which - read `transition.destination_dir` rather than
+hard-coding `done/`:
+
+| `tracking_only:` | destination | why |
+|---|---|---|
+| absent / false | `workspace/efforts/done/` | this workspace delivered the work |
+| `true` | `workspace/efforts/archive/{current year}/` | someone else delivered it |
+
+`done/` is the record of what this workspace shipped - `/nase:effort-rollup` reads it
+as the month's delivery and `/nase:efforts` counts it. An effort this workspace only
+*watched* would inflate both, so it skips `done/` and lands directly in the year
+archive that time-expired `done/` efforts eventually reach anyway.
+
+`tracking_only: true` is deliberately separate from `status: tracked`. Status is
+overwritten by every transition below (`tracked` -> `in-progress` -> `awaiting-deploy`
+-> `completed`); ownership is not, so a flag that must survive to the terminal move
+cannot live in `status:`. Set `tracking_only: true` alongside `owner:` when a
+different engineer owns code delivery and this workspace only tracks, reviews, and
+unblocks.
+
+Efforts already in `done/` age out to `workspace/efforts/archive/{YYYY}/` after 60
+days via `pre-compact-archive.sh`, so both paths converge - the flag only decides
+whether the effort passes through the delivery record on its way there.
 
 ## Drift Auto-Sync
 
@@ -86,7 +114,9 @@ Repeat `--delivery-pr-state` for multiple PRs; valid values are `OPEN`, `MERGED`
 `CLOSED`, and `UNREADABLE`. Jira state is `untracked`, `done`, `not-done`, or
 `unreadable`. Add `--blocked-by-unresolved` when any blocker remains unresolved.
 Use `transition.action` (`none`, `update`, or `move`) and `transition.status` exactly;
-do not independently reinterpret the rules below.
+do not independently reinterpret the rules below. On `action: move` the helper also
+returns `transition.destination_dir` - the move target per *Terminal Destination*.
+Use that value; do not assume `done/`.
 
 After the live reads, per active effort:
 
@@ -113,16 +143,18 @@ After the live reads, per active effort:
     leave the file active.
   - canonical classifier reports checked `Deployed` evidence with no pending
     follow-up or post-deploy validation -> set `status: completed` and move to
-    `workspace/efforts/done/`.
+    `transition.destination_dir`.
 - If all readable delivery PRs are `CLOSED`-not-merged, set `status: wontfix` and
-  move to `workspace/efforts/done/`.
+  move to `transition.destination_dir`.
 
 **Write path.** These transitions qualify for the `.claude/docs/workspace-write-guard.md`
 auto-accept path because their evidence and target are deterministic. Stage the
 frontmatter change under `workspace/tmp/`. Use the normal guarded `apply` when the file
-stays active. For terminal transitions, use the guard's `apply-move` operation; never
-run `apply` followed by `mv`. If the source drifts or `done/{slug}.md` already exists,
-preserve the staged draft and leave the source active. Log each applied transition.
+stays active. For terminal transitions, use the guard's `apply-move` operation with
+`{destination_dir}/{slug}.md`; never run `apply` followed by `mv`. `apply-move` creates
+the destination parent, so a first-of-year archive folder needs no separate `mkdir`. If
+the source drifts or the destination file already exists, preserve the staged draft and
+leave the source active. Log each applied transition, naming the destination.
 
 Completed effort retention uses `workspace-write-guard.py move-existing` with the
 60-day age gate. The operation refuses an existing archive destination and leaves
@@ -185,8 +217,12 @@ each doc body. Both are optional — omit when not applicable.
 
 `blocked-by` may be a single value or a YAML list. Clearing the blocker: remove the
 key (or set `status:` off `blocked`). A blocker counts resolved when an effort slug is
-in `done/`, a PR is merged, or a Jira issue is Done. Short free text has no resolver,
-so it stays unresolved until removed.
+no longer active - `workspace/efforts/done/{slug}.md` **or** any
+`workspace/efforts/archive/*/{slug}.md` exists, since a tracking-only blocker closes
+into the archive - a PR is merged, or a Jira issue is Done. Short free text has no
+resolver, so it stays unresolved until removed. A `blocked-by` whose value reads as
+"nothing" (`none`, `n/a`) is still free text with no resolver and will read as blocked:
+delete the key instead of writing a placeholder into it.
 
 **Computed "unblocked" view** (read-only, no stored field): an active effort is
 *unblocked* when `status:` is not `blocked` **and** it has no unresolved `blocked-by`.

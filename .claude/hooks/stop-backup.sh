@@ -112,6 +112,12 @@ if [ ! -d "$SRC" ] || ( [ ! -f "$SRC/context.md" ] && [ ! -d "$SRC/kb" ] ); then
   exit 1
 fi
 
+SENSITIVE_SCAN="$NASE_ROOT/tests/check-local-sensitive-artifacts.sh"
+if [ ! -f "$SENSITIVE_SCAN" ]; then
+  log_status "ERROR" "workspace security preflight is missing: tests/check-local-sensitive-artifacts.sh"
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Ensure target directory exists
 # ---------------------------------------------------------------------------
@@ -143,7 +149,14 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   fi
 fi
 echo $$ > "$LOCK_PID"
-trap 'rm -rf "$LOCK_DIR"' EXIT
+SNAPSHOT_DIR=""
+cleanup_backup() {
+  rm -rf "$LOCK_DIR"
+  if [ -n "$SNAPSHOT_DIR" ] && [ -d "$SNAPSHOT_DIR" ]; then
+    rm -rf "$SNAPSHOT_DIR"
+  fi
+}
+trap cleanup_backup EXIT
 
 # ---------------------------------------------------------------------------
 # Auto commit summary — append to today's daily log
@@ -161,6 +174,10 @@ if [ -n "$REPOS" ]; then
     # display (truncated to short hash on output) and dedup fingerprint.
     REPO_LOG=$(git -C "$repo" log --since="midnight" --format='%H %s' --branches 2>/dev/null || true)
     if [ -n "$REPO_LOG" ]; then
+      if ! printf '%s\n' "$REPO_LOG" | bash "$SENSITIVE_SCAN" --stdin >/dev/null 2>&1; then
+        log_status "WARNING" "skipped a commit summary containing a credential-like value"
+        continue
+      fi
       REPO_NAME=$(basename "$repo")
       REPO_DISPLAY=$(printf '%s\n' "$REPO_LOG" | awk '{ printf "%s %s\n", substr($1,1,7), substr($0, index($0,$2)) }')
       REPO_HASHES=$(printf '%s\n' "$REPO_LOG" | awk '{print $1}')
@@ -180,6 +197,7 @@ if [ -n "$REPOS" ]; then
       echo "[stop-backup] commit summary unchanged — skipping"
     else
       # Daily logs are append-only; keep prior commit snapshots intact.
+      mkdir -p "$(dirname "$COMMIT_LOG")"
       printf "\n## Commits\n%s\n" "$COMMITS" >> "$COMMIT_LOG"
       echo "$COMMIT_DATE:$FINGERPRINT" > "$FP_FILE"
       echo "[stop-backup] appended commit summary in $COMMIT_LOG"
@@ -199,25 +217,119 @@ else
   echo "[stop-backup] WARNING: no daily log for today — consider running /nase:wrap-up"
 fi
 
+# This is the final live-tree gate, after every hook-owned workspace mutation.
+if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$NASE_ROOT" bash "$SENSITIVE_SCAN" --workspace 2>&1); then
+  printf '%s\n' "$SCAN_OUTPUT" >&2
+  log_status "ERROR" "workspace security preflight failed; backup not created"
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
-# Create timestamped zip backup (prefer 7z, fallback to zip on macOS/Linux)
+# Create and validate a local zip snapshot before external publication.
 # ---------------------------------------------------------------------------
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 ZIP_NAME="nase-backup-${TIMESTAMP}.zip"
 ZIP_PATH="$TARGET/$ZIP_NAME"
+SNAPSHOT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/nase-backup.XXXXXX") || {
+  log_status "ERROR" "cannot create local backup snapshot directory"
+  exit 1
+}
+LOCAL_ZIP_PATH="$SNAPSHOT_DIR/$ZIP_NAME"
+SNAPSHOT_WORKSPACE="$SNAPSHOT_DIR/workspace"
+SOURCE_MANIFEST="$SNAPSHOT_DIR/source-manifest.json"
+POST_ARCHIVE_MANIFEST="$SNAPSHOT_DIR/post-archive-manifest.json"
+mkdir "$SNAPSHOT_WORKSPACE"
+if ! cp -a "$SRC/." "$SNAPSHOT_WORKSPACE/"; then
+  log_status "ERROR" "workspace could not be copied into the private snapshot"
+  exit 1
+fi
+if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$SNAPSHOT_DIR" bash "$SENSITIVE_SCAN" --workspace 2>&1); then
+  printf '%s\n' "$SCAN_OUTPUT" >&2
+  log_status "ERROR" "private workspace snapshot failed security validation"
+  exit 1
+fi
+if ! bash "$SENSITIVE_SCAN" --manifest "$SNAPSHOT_WORKSPACE" "$SOURCE_MANIFEST"; then
+  log_status "ERROR" "private workspace snapshot manifest could not be created"
+  exit 1
+fi
+manifest_sha() {
+  python3 - "$1" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+}
+
+SOURCE_MANIFEST_SHA=$(manifest_sha "$SOURCE_MANIFEST") || {
+  log_status "ERROR" "private workspace snapshot manifest could not be bound"
+  exit 1
+}
 
 rc=0
 if command -v 7z &>/dev/null; then
-  (cd "$SRC" && 7z a -tzip -mx=1 -bso0 -bsp0 "$ZIP_PATH" . -x!tmp) || rc=$?
+  (cd "$SNAPSHOT_WORKSPACE" && 7z a -tzip -mx=1 -snl -bso0 -bsp0 "$LOCAL_ZIP_PATH" . -x!tmp) || rc=$?
 elif command -v zip &>/dev/null; then
-  (cd "$SRC" && zip -rq "$ZIP_PATH" . -x "tmp/*") || rc=$?
+  (cd "$SNAPSHOT_WORKSPACE" && zip -qry "$LOCAL_ZIP_PATH" . -x "tmp/*") || rc=$?
 else
   log_status "ERROR" "neither 7z nor zip found — install one for backups"
   exit 1
 fi
 if [ "$rc" -ne 0 ]; then
-  rm -f "$ZIP_PATH"
   log_status "ERROR" "archive tool failed (exit $rc) — backup not created"
+  exit 1
+fi
+CURRENT_MANIFEST_SHA=$(manifest_sha "$SOURCE_MANIFEST") || CURRENT_MANIFEST_SHA=""
+if [ "$CURRENT_MANIFEST_SHA" != "$SOURCE_MANIFEST_SHA" ]; then
+  log_status "ERROR" "private workspace snapshot authority changed during archive creation"
+  exit 1
+fi
+if ! bash "$SENSITIVE_SCAN" --manifest "$SNAPSHOT_WORKSPACE" "$POST_ARCHIVE_MANIFEST" \
+  || ! cmp -s "$SOURCE_MANIFEST" "$POST_ARCHIVE_MANIFEST"; then
+  log_status "ERROR" "private workspace snapshot changed during archive creation"
+  exit 1
+fi
+if ! SCAN_OUTPUT=$(bash "$SENSITIVE_SCAN" --archive "$LOCAL_ZIP_PATH" "$SOURCE_MANIFEST" 2>&1); then
+  printf '%s\n' "$SCAN_OUTPUT" >&2
+  log_status "ERROR" "local backup snapshot failed security validation; backup not published"
+  exit 1
+fi
+if ! python3 - "$LOCAL_ZIP_PATH" "$ZIP_PATH" <<'PY'
+import os
+import shutil
+import sys
+
+source_path, destination_path = sys.argv[1:]
+source_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+source_fd = os.open(source_path, source_flags)
+destination_fd = None
+try:
+    destination_fd = os.open(
+        destination_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    with os.fdopen(source_fd, "rb", closefd=False) as source, os.fdopen(
+        destination_fd, "wb", closefd=False
+    ) as destination:
+        shutil.copyfileobj(source, destination, 1024 * 1024)
+        destination.flush()
+        os.fsync(destination.fileno())
+except Exception:
+    if destination_fd is not None:
+        try:
+            os.unlink(destination_path)
+        except OSError:
+            pass
+    raise SystemExit(1)
+finally:
+    os.close(source_fd)
+    if destination_fd is not None:
+        os.close(destination_fd)
+PY
+then
+  log_status "ERROR" "validated backup snapshot could not be published"
   exit 1
 fi
 

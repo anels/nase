@@ -53,7 +53,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
 - For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` skips if missing; CI still runs it). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
-- If `check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive: inspect it locally, remove or rotate it as appropriate, then rerun. Never stage it or suppress the gate.
+- If `check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive and inspect only through locally redacted output. Prepare the exact local removal or credential rotation, but require separate named approval before either action, then rerun the gate. Never render the matched value, stage the artifact, or suppress the gate.
 
 ### Logging & External Services
 - Append real-time one-line entries to `workspace/logs/YYYY-MM-DD.md` for completions, mistakes, user corrections, and decisions. Format: `.claude/docs/daily-log-format.md`.
