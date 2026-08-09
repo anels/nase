@@ -118,45 +118,72 @@ def activate(args: argparse.Namespace) -> int:
     if root is None:
         return 0
 
-    stable = stable_session_id(args.session)
     session = session_id(args.session)
     payload = {
         "ts": format_ts(utc_now()),
         "skill": normalize_skill(args.skill),
         "source": args.source or "unknown",
         "session": session,
+        # Whether this activation could be keyed to a real session. It decides who
+        # may later read the shared fallback — see `active_skill`.
+        "sessionless": stable_session_id(args.session) is None,
     }
+    serialized = json.dumps(payload, separators=(",", ":")) + "\n"
     try:
         path = context_path(root, session)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
-        if stable is None:
-            fallback_context_path(root).write_text(
-                json.dumps(payload, separators=(",", ":")) + "\n",
-                encoding="utf-8",
-            )
+        path.write_text(serialized, encoding="utf-8")
+        # The fallback is written unconditionally, not only when this activation
+        # lacked a stable session id. `kb-search.sh` and `kb-domain-resolve.sh`
+        # run as plain subprocesses without CLAUDE_SESSION_ID, so they resolve a
+        # `local-{ppid}` session that no activation ever keyed. Writing the
+        # fallback only in the no-stable-id case left them with nothing to fall
+        # back to, which is why nearly every kb-search event logged as `unknown`.
+        fallback_context_path(root).write_text(serialized, encoding="utf-8")
     except Exception:
         return 0
     return 0
 
 
-def active_skill_from_path(path: pathlib.Path, now: datetime) -> str:
+def read_context(path: pathlib.Path, now: datetime) -> tuple[str, bool]:
+    """Return the context's active skill and whether it was recorded session-less."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return "unknown"
+        return "unknown", False
 
     ts = parse_ts(str(payload.get("ts", "")))
     if ts is None or (now - ts).total_seconds() > 12 * 60 * 60:
-        return "unknown"
-    return normalize_skill(str(payload.get("skill", "")))
+        return "unknown", False
+    return normalize_skill(str(payload.get("skill", ""))), bool(payload.get("sessionless", True))
 
 
-def active_skill(root: pathlib.Path, session: str, now: datetime) -> str:
+def active_skill_from_path(path: pathlib.Path, now: datetime) -> str:
+    return read_context(path, now)[0]
+
+
+def active_skill(
+    root: pathlib.Path, session: str, now: datetime, sessionless_caller: bool = False
+) -> str:
     skill = active_skill_from_path(context_path(root, session), now)
     if skill != "unknown":
         return skill
-    return active_skill_from_path(fallback_context_path(root), now)
+
+    # The shared fallback is not a free-for-all: borrowing another session's active
+    # skill would be a wrong attribution, not a missing one. It applies in exactly
+    # two cases.
+    #
+    # 1. The activation itself had no session to key on, so the fallback is the
+    #    only record of it and any reader may use it.
+    # 2. The *caller* has no session id. `kb-search.sh` and `kb-domain-resolve.sh`
+    #    run as plain subprocesses without CLAUDE_SESSION_ID and resolve a
+    #    `local-{ppid}` session that no activation ever keyed, so a session-keyed
+    #    activation is unreachable for them by construction. This is the path that
+    #    logged 385 of 429 `unknown` events in a 30-day sample.
+    fallback, fallback_sessionless = read_context(fallback_context_path(root), now)
+    if fallback_sessionless or sessionless_caller:
+        return fallback
+    return "unknown"
 
 
 def recent_duplicate(jsonl: pathlib.Path, event: dict[str, Any], now: datetime) -> bool:
@@ -195,7 +222,12 @@ def record(args: argparse.Namespace) -> int:
 
     now = utc_now()
     session = session_id(args.session)
-    skill = normalize_skill(args.skill) if args.skill else active_skill(root, session, now)
+    sessionless = stable_session_id(args.session) is None
+    skill = (
+        normalize_skill(args.skill)
+        if args.skill
+        else active_skill(root, session, now, sessionless_caller=sessionless)
+    )
     event = {
         "ts": format_ts(now),
         "skill": skill,

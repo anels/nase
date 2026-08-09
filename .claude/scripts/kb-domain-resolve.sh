@@ -19,10 +19,12 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 log_kb_resolve() {
   local file_path="$1"
   command -v python3 >/dev/null 2>&1 || return 0
-  python3 "$SCRIPT_DIR/kb-usage-log.py" record \
-    --file "$file_path" \
-    --access resolve \
-    --source kb-domain-resolve >/dev/null 2>&1 || true
+  local args=(record --file "$file_path" --access resolve --source kb-domain-resolve)
+  # Pass the session through when the environment carries one; without it the
+  # logger falls back to a per-process id that no skill activation ever keyed.
+  local session="${CLAUDE_SESSION_ID:-${CLAUDE_SESSIONID:-}}"
+  [ -n "$session" ] && args+=(--session "$session")
+  python3 "$SCRIPT_DIR/kb-usage-log.py" "${args[@]}" >/dev/null 2>&1 || true
 }
 
 if [ ! -f "$DOMAIN_MAP" ]; then
