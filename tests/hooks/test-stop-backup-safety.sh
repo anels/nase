@@ -495,5 +495,169 @@ else
 fi
 assert_contains "new commit summary appended" "$(cat "$repo/workspace/logs/$today.md")" "seed workspace"
 
+# --- content dedup: an unchanged workspace must not publish a second archive ----------
+# The hook appends to workspace/logs/.backup-status on every run, so a naive manifest
+# fingerprint would differ every time and dedup would never fire. These cases pin that
+# the churn file is excluded from the fingerprint but real content changes are not.
+count_archives() {
+  ls -1 "$1"/nase-backup-*.zip 2>/dev/null | wc -l | tr -d ' '
+}
+
+repo="$fixture/dedup-repo"
+target="$fixture/dedup-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+# A real workspace already has logs/; without it the first run would create the
+# directory and the second would see a genuinely different tree.
+mkdir -p "$repo/workspace/logs"
+cat > "$repo/workspace/logs/$(date +%Y-%m-%d).md" <<'LOG'
+# Work Log
+
+## Sessions
+- 09:00 | test: seed entry
+LOG
+
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "first backup succeeds" 0 "$rc" "$out"
+assert_exit "first run published one archive" 1 "$(count_archives "$target")" "$out"
+
+sleep 1
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "unchanged rerun succeeds" 0 "$rc" "$out"
+assert_contains "unchanged rerun reports a skip" "$out" "workspace unchanged since last archive"
+assert_exit "unchanged rerun published no second archive" 1 "$(count_archives "$target")" "$out"
+
+sleep 1
+printf 'changed content\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "changed workspace succeeds" 0 "$rc" "$out"
+assert_exit "changed workspace published a second archive" 2 "$(count_archives "$target")" "$out"
+
+# Dedup must stay bound to the exact validated archive. If that archive disappears
+# while an older one remains, the older bytes cannot satisfy the current fingerprint.
+latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
+rm -f "$latest_archive"
+sleep 1
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "missing fingerprint-bound archive re-publishes" 0 "$rc" "$out"
+assert_exit "older unrelated archive does not suppress replacement" 2 "$(count_archives "$target")" "$out"
+
+# The recorded archive name alone is not enough: storage corruption must not
+# leave an empty or changed file satisfying the current workspace fingerprint.
+latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
+: > "$latest_archive"
+sleep 1
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "corrupted fingerprint-bound archive re-publishes" 0 "$rc" "$out"
+assert_exit "corrupted archive does not suppress replacement" 3 "$(count_archives "$target")" "$out"
+
+# Dedup must never mean "no current backup": once the fingerprint-bound archive
+# falls outside a days policy, the hook publishes a replacement before pruning it.
+rm -f "$target"/nase-backup-*.zip "$repo/.nase-backup-state"
+printf 'backup_retention: days:1\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "days-policy seed backup succeeds" 0 "$rc" "$out"
+latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
+expired_archive="$target/nase-backup-20000101-000000.zip"
+mv "$latest_archive" "$expired_archive"
+sed -i.bak 's/^last-archive=.*/last-archive=nase-backup-20000101-000000.zip/' "$repo/.nase-backup-state"
+rm -f "$repo/.nase-backup-state.bak"
+sleep 1
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "expired fingerprint-bound archive triggers replacement" 0 "$rc" "$out"
+assert_exit "expired archive is pruned after replacement" 1 "$(count_archives "$target")" "$out"
+
+# With the same content but every archive removed, the hook has to publish again
+# rather than trust the stored fingerprint.
+sleep 1
+rm -f "$target"/nase-backup-*.zip
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "empty target re-publishes despite matching fingerprint" 0 "$rc" "$out"
+assert_exit "empty target regained an archive" 1 "$(count_archives "$target")" "$out"
+
+# --- retention: a count clause bounds what a single day can leave behind ---------------
+repo="$fixture/retention-repo"
+target="$fixture/retention-backups"
+make_repo "$repo"
+mkdir -p "$target"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_retention: days:30,count:2\n' > "$repo/workspace/config.md"
+today=$(date +%Y%m%d)
+for stamp in 000001 000002 000003 000004; do
+  printf 'placeholder\n' > "$target/nase-backup-${today}-${stamp}.zip"
+done
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "combined retention run succeeds" 0 "$rc" "$out"
+assert_exit "count clause caps same-day archives" 2 "$(count_archives "$target")" "$out"
+
+# An unparsable clause must not silently disable retention.
+repo="$fixture/retention-invalid-repo"
+target="$fixture/retention-invalid-backups"
+make_repo "$repo"
+mkdir -p "$target"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_retention: weeks:4\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "unusable retention policy still backs up" 0 "$rc" "$out"
+assert_contains "unusable retention policy warns" "$out" "invalid retention clause"
+assert_contains "unusable retention policy falls back" "$out" "using default count:100"
+
+# A zero count would delete the archive that was just published. Treat it as
+# unusable input and keep the fail-safe default instead.
+repo="$fixture/retention-zero-repo"
+target="$fixture/retention-zero-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_retention: count:0\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "zero retention count still backs up" 0 "$rc" "$out"
+assert_contains "zero retention count warns" "$out" "invalid retention clause"
+assert_exit "zero retention count cannot delete the new archive" 1 "$(count_archives "$target")" "$out"
+
+# A required replacement must not fail when the current second still maps to
+# the changed archive's existing name.
+repo="$fixture/same-second-collision-repo"
+target="$fixture/same-second-collision-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "same-second collision seed backup succeeds" 0 "$rc" "$out"
+latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
+collision_timestamp=$(basename "$latest_archive" | sed 's/^nase-backup-//; s/\.zip$//')
+: > "$latest_archive"
+collisionbin="$fixture/collisionbin"
+mkdir -p "$collisionbin"
+cp "$fakebin/zip" "$fakebin/7z" "$collisionbin/"
+cat > "$collisionbin/date" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = '+%Y%m%d-%H%M%S' ] && mkdir "$NASE_DATE_ONCE" 2>/dev/null; then
+  printf '%s\n' "$NASE_COLLISION_TIMESTAMP"
+  exit 0
+fi
+exec "$NASE_REAL_DATE" "$@"
+SH
+chmod +x "$collisionbin/date"
+out=$(cd "$repo" \
+  && NASE_COLLISION_TIMESTAMP="$collision_timestamp" \
+  NASE_DATE_ONCE="$fixture/date-once" \
+  NASE_REAL_DATE="$(command -v date)" \
+  PATH="$collisionbin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "same-second collision publishes a replacement" 0 "$rc" "$out"
+assert_exit "same-second collision preserves both archives" 2 "$(count_archives "$target")" "$out"
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

@@ -93,6 +93,14 @@ ACTIONS_EXPRESSION_OPEN = re.compile(rb"^\$\{\{$")
 # `<API key secret>` — the same angle placeholder as CANONICAL_PLACEHOLDER_VALUE, but written
 # with spaces, which the unquoted branch truncates at the first one.
 ANGLE_PLACEHOLDER_SPAN = re.compile(rb"^<[^<>\r\n\"']{1,64}>$")
+# `[REDACTED]` / `[JWT_REDACTED]` — the bracketed marker a redactor substitutes FOR a secret.
+# Documentation about redaction quotes these constantly (`Password=[REDACTED]`), and a marker
+# is the one value proven not to be the credential: it is what remains after removal. Kept
+# deliberately narrow — upper-case, bracketed, and REDACTED must appear as a whole word — so
+# no literal can acquire the shape. The closing bracket is optional because
+# `assigned_value` strips a trailing `]` along with other value punctuation; requiring it
+# would make the rule fire on the backticked form only and miss the bare one.
+BRACKET_REDACTION_MARKER = re.compile(rb"^\[[A-Z0-9]*_?REDACTED(?:_[A-Z0-9]+)*\]?$")
 # `parsed_assignment` reports an unreadable value with an angle-wrapped sentinel. Those are
 # fail-closed signals, not placeholders — the angle rules above must never absolve them.
 FAIL_CLOSED_VALUES = frozenset({b"<overlong-quoted-value>", b"<unterminated-quoted-value>"})
@@ -477,10 +485,20 @@ def is_placeholder_match(matched: bytes) -> bool:
     candidate = matched.strip() if value is None else value.strip()
     if candidate in FAIL_CLOSED_VALUES:
         return False
-    return bool(
+    if (
         value == b""
         or CANONICAL_PLACEHOLDER_VALUE.fullmatch(candidate)
         or KNOWN_PLACEHOLDER_VALUE.fullmatch(candidate)
+    ):
+        return True
+    # A bracketed redaction marker survives Markdown wrappers and trailing sentence
+    # punctuation the same way a run-time reference survives quotes. The marker regex is a
+    # fixed literal shape, so widening the trim set cannot admit anything else, and the
+    # fail-closed sentinel guard above still runs first.
+    return any(
+        BRACKET_REDACTION_MARKER.fullmatch(trimmed)
+        for trimmed in (candidate, candidate.strip(DOC_WRAPPER_CHARS + b",;."))
+        if trimmed
     )
 
 
@@ -551,6 +569,84 @@ def secret_match(data: bytes) -> tuple[str, int] | None:
 def secret_kind(data: bytes) -> str | None:
     match = secret_match(data)
     return match[0] if match else None
+
+
+# Reviewed-exception support, shared by every caller that scans a whole workspace or a
+# whole backup archive. Keeping the parser and the resume loop here is deliberate: the
+# defect this mechanism was written for was three scan paths disagreeing about scope, and a
+# second private copy would reintroduce exactly that.
+ALLOWLIST_MAX_SKIPS = 64
+ALLOWLIST_BUDGET_EXHAUSTED = object()
+
+
+def parse_secret_scan_allowlist(text: str) -> tuple[set[tuple[str, str]], str | None]:
+    """Parse `<sha256>  <path>  # reason` lines. Returns (entries, error).
+
+    Any malformed line yields an error and NO entries, so a damaged allowlist fails the
+    scan closed instead of silently acknowledging a subset.
+    """
+    entries: set[tuple[str, str]] = set()
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("#", 1)[0].strip().split()
+        if len(fields) != 2:
+            return set(), f"line {number} is not '<sha256> <path>'"
+        digest, target = fields
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            return set(), f"line {number} has a malformed sha256"
+        if target.startswith("/") or ".." in target.split("/") or "*" in target:
+            return set(), f"line {number} has an unsafe or wildcard path"
+        entries.add((digest, target))
+    return entries, None
+
+
+def _discard(stream: Any, count: int) -> None:
+    """Skip `count` bytes without seeking; zip member streams are not seekable."""
+    while count > 0:
+        chunk = stream.read(min(count, SCAN_CHUNK))
+        if not chunk:
+            return
+        count -= len(chunk)
+
+
+def scan_source_for_secret(
+    open_stream: Any,
+    relative_path: str | None,
+    allowlist: set[tuple[str, str]],
+    used: set[tuple[str, str]] | None = None,
+) -> Any:
+    """First hit on `relative_path` that the allowlist does not acknowledge.
+
+    `open_stream()` must return a fresh binary stream each call. An acknowledged line
+    suppresses only itself: the scan resumes at the following byte, so a real secret
+    elsewhere in the same source is still reported.
+    """
+    start = 0
+    for _ in range(ALLOWLIST_MAX_SKIPS + 1):
+        with open_stream() as stream:
+            if start:
+                _discard(stream, start)
+            match = scan_stream_for_secret(stream)
+        if match is None:
+            return None
+        kind, offset = match
+        absolute = start + offset
+        with open_stream() as stream:
+            head = stream.read(absolute)
+            tail = stream.readline()
+        line_start = head.rfind(b"\n") + 1
+        line_bytes = head[line_start:] + tail.rstrip(b"\r\n")
+        number = head.count(b"\n") + 1
+        key = (hashlib.sha256(line_bytes).hexdigest(), relative_path or "")
+        if relative_path is not None and key in allowlist:
+            if used is not None:
+                used.add(key)
+            start = line_start + len(line_bytes) + 1
+            continue
+        return kind, number
+    return ALLOWLIST_BUDGET_EXHAUSTED
 
 
 def scan_stream_for_secret(stream: Any) -> tuple[str, int] | None:

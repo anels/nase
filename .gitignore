@@ -2,6 +2,7 @@
 .omx/
 workspace/
 .local-paths
+.nase-backup-state
 .full-review/
 
 # OS / IDE temporary files
