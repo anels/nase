@@ -60,6 +60,14 @@ longtoken line 27
 longtoken line 28
 longtoken line 29
 longtoken line 30
+
+## Folder-Scope Enforcement
+
+Current-state folder contract.
+
+#### Nested implementation detail
+
+folderScopeToken is required by the current contract.
 EOF
 
 cd "$FIXTURE" || exit 1
@@ -149,6 +157,18 @@ assert_contains "T8: search-result telemetry is appended" "$ledger_body" '"acces
 assert_contains "T8: telemetry records result file only" "$ledger_body" '"file":"workspace/kb/general/search.md"'
 assert_not_contains "T8: telemetry does not log raw query text" "$ledger_body" '"query"'
 assert_not_contains "T8: telemetry does not include searched term" "$ledger_body" 'longtoken'
+
+out=$(bash "$SCRIPT" "Folder-Scope Enforcement" 2>&1)
+rc=$?
+assert_exit "T9: level-two current-state heading succeeds" 0 "$rc"
+assert_contains "T9: level-two current-state heading is returned" "$out" "## Folder-Scope Enforcement"
+assert_not_contains "T9: exact level-two heading does not fall back" "$out" "partial match"
+
+out=$(bash "$SCRIPT" "folderScopeToken" 2>&1)
+rc=$?
+assert_exit "T10: nested level-four content succeeds" 0 "$rc"
+assert_contains "T10: nested content returns its parent current-state section" "$out" "## Folder-Scope Enforcement"
+assert_contains "T10: nested content remains in the returned section" "$out" "folderScopeToken is required"
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

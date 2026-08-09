@@ -28,7 +28,7 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
    - Current complexity and test coverage
    - Any dependencies or integrations involved
 3. Read `workspace/tasks/lessons.md` if it exists — look for similar past tasks and how long they took
-   - Also check the relevant project KB (`workspace/kb/projects/`) for historical velocity data and known complexity patterns
+   - Also check the resolved project KB for verified complexity constraints and prior gotchas. Use lessons or completed effort evidence for historical duration; do not infer team velocity from an active project KB unless it contains an explicit measured series with provenance.
 4. Read `workspace/tasks/todo.md` to understand current workload and what's in flight
 5. Break the task into concrete subtasks. Tag each with its **dominant lane** (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) per `.claude/docs/eta-estimation.md` → Lane Classification — ask "what is this step blocked on?"
 6. Size each subtask with the rough bucket scale (S / M / L / XL / XXL). Apply AI-leverage compression only to 🤖 lane subtasks; 🔌 / 🧠 / ✅ do not speed up because codegen got faster

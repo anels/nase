@@ -9,7 +9,7 @@ Every hygiene finding must be classified before action:
 | Class | Meaning | Default action |
 |-------|---------|----------------|
 | `verified` | Current KB claim still matches repo `HEAD` or a live source of truth | Leave unchanged |
-| `auto-fix` | Low-risk source-verifiable fact is wrong or incomplete | Update the KB directly |
+| `auto-fix` | Low-risk source-verifiable fact is wrong or incomplete | Reconcile through the Shared admission contract |
 | `stale` | A current-state claim appears superseded but the right replacement needs judgment | Mark with evidence and report |
 | `needs-human` | API auth, schema semantics, ownership, business intent, or cross-repo contract meaning may be wrong | Report with suggested patch; do not rewrite |
 
@@ -31,7 +31,8 @@ Never auto-rewrite these without user confirmation:
 
 ## Historical Notes
 
-Historical notes are never silently deleted. Use one of these markers:
+Reconcile current-state sections in place and remove superseded current wording.
+Genuine historical notes are never silently deleted. Use one of these markers:
 
 - `Correction YYYY-MM-DD: ...` when a prior claim was wrong.
 - `Superseded by: ...` when a prior claim was true at the time but replaced by a later change.
@@ -40,12 +41,16 @@ If a section has more than three corrections or supersession markers, report it 
 
 ## Required Preflight
 
-Before using an existing project KB as context:
+Before `/nase:onboard` uses an existing project KB as the base for a refresh:
 
 1. Run `.claude/scripts/kb-hygiene-scan.py --repo-root {repo} --kb-file {kb}`.
 2. Read the report before trusting the KB.
-3. Apply `auto-fix` items only when they are in the safe scope above.
+3. Apply `auto-fix` items only when they are in the safe scope above and pass `.claude/docs/kb-write-routing.md -> Shared admission contract`.
 4. Add `Correction` / `Superseded by` markers for stale historical claims.
 5. Report all `needs-human` items in the `/nase:onboard` confirmation.
 
 Use `--hygiene-report-only` to produce the report without KB edits.
+
+Ordinary KB consumers do not run a full hygiene scan on every read. They follow
+`.claude/docs/repo-resolution.md`: use the KB as context, then validate actionable
+current claims against the relevant source of truth.

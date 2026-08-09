@@ -19,8 +19,6 @@
 - PR Gates
 - Azure Pipelines
 - Related Repos
-- Cross-Validation Notes
-- Knowledge Hygiene
 
 ## Writing Conventions (apply to every KB write)
 
@@ -261,11 +259,13 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 
 ## Azure Pipelines
 <!-- definitionId: ADO UI → Pipelines → select pipeline → URL parameter ?definitionId=NNNN -->
-<!-- ADO: org=https://dev.azure.com/your-org  project=FILL_IN -->
+<!-- Add ADO org/project metadata only after both values are verified. -->
 
-| Pipeline | File | definitionId | Trigger | Stages |
-|----------|------|-------------|---------|--------|
-| {name} | `{yaml_relative_path}` | `FILL_IN` | {trigger summary} | {stage names} |
+| Pipeline | File | Trigger | Stages |
+|----------|------|---------|--------|
+| {name} | `{yaml_relative_path}` | {trigger summary} | {stage names} |
+
+Add a `definitionId` column only for verified values.
 
 ### Pipeline Parameters
 #### {name} (`{yaml_path}`)
@@ -276,19 +276,8 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 ## Related Repos
 <!-- Outbound integration claims; cross-validated against target repo's `## API Surface → Inbound Endpoints` -->
 - **{repo name}** — {relationship + specific integration point + link to source file or pipeline}
-
-## Cross-Validation Notes
-<!-- Updated by /nase:onboard cross-validation pass (.claude/docs/cross-repo-validation.md). Read-only summary — do not edit by hand. -->
-- Last cross-validated: {YYYY-MM-DD}
-- Ownership drift: {none / N issues — see report}
-- Contract drift: {none / N drift / N partial / N unknown}
-- Tracker sync: {in sync / N cells differ — see report}
-
-## Knowledge Hygiene
-<!-- Updated by /nase:onboard using .claude/docs/kb-hygiene.md and .claude/scripts/kb-hygiene-scan.py. -->
-- Last hygiene scan: {YYYY-MM-DD}
-- Last deep scan: {YYYY-MM-DD}
-- Auto-fixed: {none / N items}
-- Stale-marked: {none / N items}
-- Needs human review: {none / N items}
 ```
+
+Cross-validation and hygiene results are run receipts, not durable knowledge.
+Keep them in the command output or its report artifact. Persist only a verified
+contract, ownership, or content delta discovered by the check.

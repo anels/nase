@@ -65,7 +65,8 @@ if [ "$rc" = 0 ] && [ -f "$empty_report" ]; then
 else
   fail_msg "T1: no-data report failed (exit $rc)"
 fi
-assert_contains "T1: no-data summary shows zero files" "$empty_out" "KB files used: 0"
+assert_contains "T1: no-data summary shows zero accessed files" "$empty_out" "KB files accessed: 0"
+assert_contains "T1: no-data summary shows zero read files" "$empty_out" "KB files read: 0"
 assert_contains "T1: no-data report explains empty ledger" "$(cat "$empty_report" 2>/dev/null)" "No KB usage data yet."
 
 cat > "$FIXTURE/workspace/stats/kb-usage.jsonl" <<'EOF'
@@ -86,13 +87,18 @@ else
 fi
 
 body=$(cat "$report" 2>/dev/null)
-assert_contains "T2: summary counts unique KB files" "$out" "KB files used: 2"
-assert_contains "T2: summary counts skills including unknown" "$out" "Skills using KB: 2"
-assert_contains "T2: summary counts unused mapped files" "$out" "Unused mapped KB files: 1"
+assert_contains "T2: summary counts unique accessed files" "$out" "KB files accessed: 2"
+assert_contains "T2: summary distinguishes direct reads" "$out" "KB files read: 1"
+assert_contains "T2: summary distinguishes surfaced files" "$out" "KB files surfaced: 2"
+assert_contains "T2: summary counts skills including unknown" "$out" "Skills accessing KB: 2"
+assert_contains "T2: summary counts unread mapped files" "$out" "Unread mapped KB files: 2"
+assert_contains "T2: summary counts unobserved mapped files" "$out" "Unobserved mapped KB files: 1"
 assert_contains "T2: report records malformed lines skipped" "$body" "Malformed lines skipped: 1"
 assert_contains "T2: top files sorted by event count" "$body" "workspace/kb/projects/a.md"
 assert_contains "T2: source breakdown includes search results" "$body" "search-result"
-assert_contains "T2: unused mapped file is listed" "$body" "workspace/kb/ops/unused.md"
+assert_contains "T2: unread search-only file is listed" "$body" "workspace/kb/general/b.sql"
+assert_contains "T2: unobserved mapped file is listed" "$body" "workspace/kb/ops/unused.md"
+assert_contains "T2: report explains unread versus unobserved semantics" "$body" "absence of a read event means unread, while absence of any event means unobserved"
 assert_not_contains "T2: old event outside window is excluded" "$body" "workspace/kb/projects/old.md"
 
 total=$((pass + fail))

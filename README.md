@@ -208,7 +208,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 ### Build and share knowledge
 
-- Capture lessons, articles, and patterns into durable KB files.
+- Capture verified, non-obvious lessons, articles, and patterns into durable KB files; no-op refreshes stay out.
 - `/nase:extract-skills` turns repeated workflows into workspace-local commands.
 - `/nase:kb-review` audits KB and workspace trust, then prepares approved repairs without automatic deletion.
 - `/nase:kb-teamshare` exports sanitized KB + skills; teammates import with `/nase:kb-merge`.
@@ -291,7 +291,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | `/nase:effort-rollup` | Build a monthly delivery report from live PR and Jira state. Use for effort rollup, impact report, month in review, or what did I ship. |
 | `/nase:efforts` | Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. |
 | `/nase:estimate-eta` | Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, estimate this, or before committing to a timeline. |
-| `/nase:kb-usage` | Report which skills use which KB files and which mapped files are unused. Use for KB usage, KB observability, top KB files, or unused KB entries. |
+| `/nase:kb-usage` | Report which skills access, read, or surface KB files and which mapped files are unobserved. Use for KB usage, KB observability, top KB files, or unused KB entries. |
 | `/nase:recap` | Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, review progress, what did I do, or summarize a period. |
 | `/nase:skill-usage` | Report skill usage, outcomes, context hotspots, and deprecation candidates. Use for which skills do I use, skill stats, skill token cost, context hotspots, or deprecate skills. |
 | `/nase:stats` | Display workspace activity counts and charts inline. Use for show stats, how active am I, productivity, or 7/30/all-time activity; use /nase:recap for narrative. |

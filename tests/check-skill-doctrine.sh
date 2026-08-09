@@ -25,6 +25,7 @@
 #   D19. allowed-tools is described as a security boundary
 #   D20. review skills lose diff-first investigation or trace-shape checks
 #   D21. discuss-pr loses outgoing-comment quality or review-state gates
+#   D22. KB writers regress to append-only refreshes, heartbeat facts, or placeholders
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -855,6 +856,133 @@ if [[ -n "$d21_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': discuss-pr comment-quality and review-state gates are wired\n'
+fi
+
+# ---------- D22: KB writers reconcile current state without noise ----------
+section "D22: KB writers reconcile current state without noise"
+d22_hits=$(python3 - <<'PY'
+from pathlib import Path
+
+required = {
+    ".claude/commands/nase/onboard.md": [
+        "keep every KB target file byte-identical",
+        "Reconcile current-state sections in place",
+        "Do not add dated refresh blocks",
+    ],
+    ".claude/commands/nase/kb-update.md": [
+        "Current-state fact",
+        "Never write placeholders",
+        "write nothing",
+        "Verification triad",
+        "Do not add frontmatter solely for KB metadata",
+    ],
+    ".claude/commands/nase/kb-gap-detect.md": [
+        "verification triad",
+        "current-state reconciliation",
+        "admitted drafts",
+    ],
+    ".claude/commands/nase/kb-merge.md": [
+        "verification triad",
+        "staged proposal",
+    ],
+    ".claude/docs/fsd-delivery-gates.md": [
+        "invoke `/nase:learn`",
+        "verification triad",
+    ],
+    ".claude/docs/kb-write-routing.md": [
+        "Shared admission contract",
+        "Reconcile current state in place",
+        "Apply KB content before its domain-map metadata update",
+    ],
+    "CLAUDE.md": [
+        "Shared admission contract",
+        "verified durable discoveries",
+    ],
+    "workspace/skills/docs/sre-alert-recovery.md": [
+        "invoke `/nase:kb-update`",
+        "current-state alert pattern",
+    ],
+    "workspace/skills/alert-rule-quality-checker.md": [
+        "invoke `/nase:kb-update`",
+    ],
+    "workspace/skills/runbook-from-incident.md": [
+        "invoke `/nase:kb-update`",
+    ],
+    ".claude/commands/nase/doctor.md": [
+        "kb-hygiene-scan.py --workspace-scan",
+    ],
+    ".claude/commands/nase/kb-review.md": [
+        "--kb-only",
+    ],
+    ".claude/docs/kb-staleness.md": [
+        "domain metadata",
+        "Access staleness",
+    ],
+    "workspace/skills/deploy-alpha.md": [
+        "current pipeline source",
+    ],
+    "workspace/skills/confluence-doc-internalize.md": [
+        "current repo contract is authoritative",
+    ],
+    "workspace/skills/repo-docs-with-ascii.md": [
+        "verified against the current repo",
+    ],
+    ".claude/docs/azure-pipeline-kb-extract.md": [
+        "only when verified",
+        "omit the metadata comment",
+    ],
+}
+
+hits = []
+for filename, tokens in required.items():
+    path = Path(filename)
+    if not path.exists():
+        if filename.startswith("workspace/"):
+            continue
+        hits.append(f"  {path}: missing")
+        continue
+    text = path.read_text(encoding="utf-8")
+    for token in tokens:
+        if token not in text:
+            hits.append(f"  {path}: missing required no-noise token: {token!r}")
+
+for filename in (
+    ".claude/docs/azure-pipeline-kb-extract.md",
+    ".claude/docs/kb-template.md",
+):
+    path = Path(filename)
+    if "FILL_IN" in path.read_text(encoding="utf-8"):
+        hits.append(f"  {path}: KB-writing guidance must not emit FILL_IN")
+
+for filename, forbidden in {
+    ".claude/docs/kb-template.md": ["## Cross-Validation Notes", "## Knowledge Hygiene"],
+    ".claude/commands/nase/kb-update.md": ["If no frontmatter exists"],
+    ".claude/commands/nase/kb-gap-detect.md": [
+        "**Source:** detected by /nase:kb-gap-detect",
+        "**Tags:** gap-detected",
+    ],
+    "workspace/kb/.domain-map.md": ["last-loaded:"],
+}.items():
+    path = Path(filename)
+    if not path.exists():
+        if filename.startswith("workspace/"):
+            continue
+        hits.append(f"  {path}: missing")
+        continue
+    text = path.read_text(encoding="utf-8")
+    for token in forbidden:
+        if token in text:
+            hits.append(f"  {path}: stale KB maintenance contract remains: {token!r}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d22_hits" ]]; then
+  red "FAIL"; printf ': KB writers must update current state in place and omit placeholders/heartbeats:\n'
+  printf '%s\n' "$d22_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': KB writers preserve no-op identity and write only verified durable facts\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

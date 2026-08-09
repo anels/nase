@@ -114,36 +114,48 @@ if [ ! -s "$KB_FILES_TMP" ]; then
 fi
 
 # ── search function ───────────────────────────────────────────────────────────
-# Extract entry block containing match_line: from enclosing `### ` header to
-# the line before the next `## ` heading (or EOF). Single awk pass — replaces
-# the previous per-line `sed -n "${n}p"` loop that was O(n²) per match.
+# Extract the section containing match_line. Prefer the nearest enclosing `###`
+# or `##` heading, fall back to the file `#` heading, and keep nested headings
+# inside the section. This supports both dated entries and current-state KB
+# sections without changing the search, filter, scoring, or output contracts.
 extract_entry_block() {
   local file="$1"
   local match_line="$2"
   awk -v ln="$match_line" '
-    function emit() {
-      for (i = start; i <= NR - 1; i++) print buf[i]
-      done = 1
+    function heading_level(line) {
+      if (line ~ /^###### /) return 6
+      if (line ~ /^##### /) return 5
+      if (line ~ /^#### /) return 4
+      if (line ~ /^### /) return 3
+      if (line ~ /^## /) return 2
+      if (line ~ /^# /) return 1
+      return 0
     }
-    /^### / {
-      if (start && ln >= start && ln <= NR - 1) emit()
-      if (done) exit
-      delete buf
-      start = NR
+    {
       buf[NR] = $0
-      next
-    }
-    /^##+ / && start {
-      if (ln >= start && ln <= NR - 1) emit()
-      if (done) exit
-      start = 0
-      next
-    }
-    start { buf[NR] = $0 }
-    END {
-      if (!done && start && ln >= start) {
-        for (i = start; i <= NR; i++) print buf[i]
+      if (NR <= ln) {
+        level = heading_level($0)
+        if (level >= 1 && level <= 3) {
+          start = NR
+          start_level = level
+        }
       }
+    }
+    END {
+      if (!start) exit
+
+      end = NR
+      boundary_level = start_level == 1 ? 2 : start_level
+      for (i = start + 1; i <= NR; i++) {
+        level = heading_level(buf[i])
+        if (level && level <= boundary_level) {
+          end = i - 1
+          break
+        }
+      }
+
+      if (ln < start || ln > end) exit
+      for (i = start; i <= end; i++) print buf[i]
     }
   ' "$file"
 }

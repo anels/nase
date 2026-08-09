@@ -102,6 +102,13 @@ cat > "$FIXTURE/workspace/kb/projects/example.md" <<'EOF'
 - No new commits since the last scan; HEAD remains abc1234.
 EOF
 
+cat > "$FIXTURE/workspace/kb/projects/substantive.md" <<'EOF'
+# Substantive constraints
+
+- The public JSON wire format is unchanged, so existing clients remain compatible.
+- Retry code `3` means the operation already succeeded; no action needed by the operator.
+EOF
+
 cat > "$FIXTURE/workspace/stats/kb-usage.jsonl" <<'EOF'
 {"ts":"2026-06-01T00:00:00Z","skill":"unknown","file":"workspace/kb/projects/example.md","access":"read","source":"read-hook","session":"s1"}
 {"ts":"2026-06-01T00:01:00Z","skill":"fsd","file":"workspace/kb/projects/example.md","access":"read","source":"read-hook","session":"s1"}
@@ -225,6 +232,8 @@ assert_jq "sre tracker is ignored" "$json" \
   '[.findings[] | select(.path | contains("sre-tracker"))] | length == 0'
 assert_jq "kb placeholder and refresh heartbeat are reported" "$json" \
   'any(.findings[]; .category == "kb_placeholder") and any(.findings[]; .category == "kb_refresh_block") and any(.findings[]; .category == "kb_heartbeat")'
+assert_jq "substantive unchanged and no-action constraints are not heartbeats" "$json" \
+  '[.findings[] | select(.path == "workspace/kb/projects/substantive.md")] | length == 0'
 assert_jq "high unknown kb usage rate is reported" "$json" \
   'any(.findings[]; .category == "kb_usage_unknown_rate")'
 assert_jq "invalid effort statuses and location mismatches are reported" "$json" \

@@ -183,7 +183,10 @@ All three checks read KB files only (from the shared map built in Inputs) plus r
 
 In batch mode, dispatch 6a / 6b / 6c **in parallel** — their inputs are independent. Buffer outputs and render the final report in fixed `6a → 6b → 6c` order so the user reads it top-to-bottom.
 
-**No-change guard for `Last cross-validated` writes**: when updating each KB's `## Cross-Validation Notes` footer, skip the write entirely if the prior summary line is identical except for the date and the previous date is within 7 days. Avoids 20 single-line diffs every batch run.
+Cross-validation summaries are report receipts. Do not write a date/status footer
+into every KB file. If a check finds a durable contract or ownership delta, route
+that specific change through `.claude/docs/kb-write-routing.md -> Shared admission
+contract`; otherwise keep the KB byte-identical.
 
 ---
 

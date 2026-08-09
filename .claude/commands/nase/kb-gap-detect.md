@@ -16,7 +16,7 @@ Detect knowledge-base gaps by mining daily logs + lessons for repeated questions
 - `--auto` — write proposed KB drafts directly without prompting
 - `--verbose` — also dump full report inline in chat
 
-Follows `.claude/docs/workspace-write-guard.md` for applied KB drafts and daily-log apply-count updates. Auto-write modes only skip human confirmation; they never skip final drift checks. `--auto` skips only the prompt, not target staging or `workspace-write-guard.py apply`.
+Follows `.claude/docs/kb-write-routing.md -> Shared admission contract` and `.claude/docs/workspace-write-guard.md` for applied KB drafts and daily-log apply-count updates. Auto-write modes only skip human confirmation; they never skip final drift checks. They also preserve the verification triad, current-state reconciliation, and target staging. `--auto` skips only the prompt, not admission or `workspace-write-guard.py apply`.
 
 ## Output Discipline
 
@@ -105,12 +105,22 @@ For each gap, produce a draft using the standard `/nase:kb-update` entry format:
 **Details:**
 - {snippet 1, condensed}
 - {snippet 2, condensed}
-**Source:** detected by /nase:kb-gap-detect on {today}
-**Tags:** gap-detected, {confidence}
+**Source:** {authoritative repo, documentation, ticket, or runbook reference used for verification}
+**Tags:** {choose from the kb-template vocabulary; omit when none applies}
 **Confidence:** {high|medium|low}
 ```
 
 Track each draft alongside its proposed target file path.
+
+Treat log snippets as discovery evidence, not proof of the inferred claim. Apply
+`.claude/docs/kb-template.md -> Verification triad` before marking a draft as
+admitted. Verify the claim against the relevant repo, runbook, authoritative
+documentation, or repeated directly observed result. If V2 or V3 fails, keep the
+candidate in the gap report and exclude it from the apply set. When the target
+already covers the topic, draft a current-state reconciliation instead of a new
+dated occurrence block. Before apply, replace inferred or hypothesis wording
+with the verified claim and cite the evidence that admitted it. Detection
+provenance stays in the gap report, not the active KB.
 
 ### Step 7: Write report
 
@@ -147,7 +157,7 @@ Append to today's daily log following `.claude/docs/daily-log-format.md` (tag: `
 ```
 Write the line **before** prompting so it lands regardless of the user's next choice.
 
-If `--auto` was passed: skip the prompt; apply all drafts; update the log line's apply count.
+If `--auto` was passed: skip the prompt; apply all admitted drafts; update the log line's apply count. Report candidates rejected by the verification triad separately.
 
 Otherwise invoke `AskUserQuestion`:
 ```
@@ -161,7 +171,7 @@ options:
 
 For each applied gap:
 1. Read the target KB file
-2. Stage the updated target under `workspace/tmp/`, show the diff, re-check mtime/hash, then append the draft under the appropriate section header (or create the section if missing)
+2. Follow `/nase:kb-update` and the Shared admission contract: reconcile an existing current-state section or place a genuinely dated durable event under the appropriate section, stage the complete target under `workspace/tmp/`, show the diff, and re-check mtime/hash before apply
 3. Increment the daily-log apply tally
 
 ### Step 9: Chat summary

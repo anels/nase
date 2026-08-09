@@ -109,15 +109,15 @@ cat > "$FIXTURE/workspace/kb/.domain-map.md" <<'EOF'
 # Domain Map
 
 <!--
-Entry format: - <key> → <relative path> [last-updated:YYYY-MM-DD] [last-loaded:YYYY-MM-DD]
+Entry format: - <key> → <relative path> [last-updated:YYYY-MM-DD]
 - commented-example → workspace/kb/general/commented-example.md
 -->
 
 ## General
-- duplicate-a → workspace/kb/general/duplicate-a.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
-- duplicate-b → workspace/kb/general/duplicate-b.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
-- sparse → workspace/kb/general/sparse.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
-- missing → workspace/kb/general/missing.md [last-updated:2026-05-01] [last-loaded:2026-05-01]
+- duplicate-a → workspace/kb/general/duplicate-a.md [last-updated:2026-05-01]
+- duplicate-b → workspace/kb/general/duplicate-b.md [last-updated:2026-05-01]
+- sparse → workspace/kb/general/sparse.md [last-updated:2026-05-01]
+- missing → workspace/kb/general/missing.md [last-updated:2026-05-01]
 EOF
 
 cat > "$FIXTURE/workspace/kb/general/duplicate-a.md" <<'EOF'

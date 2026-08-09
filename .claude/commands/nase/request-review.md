@@ -44,7 +44,7 @@ It returns title/body/base/head/changed-file/signals only. The main thread merge
 
 ## Step 3 — Resolve code owners
 
-Use this priority order — stop as soon as you have confident owners. Always reach the KB before going to GitHub.
+Use this priority order to generate candidates. Always reach the KB before going to GitHub, but validate current ownership before drafting a request.
 Resolve each repo and its KB path via `.claude/docs/repo-resolution.md` before reading ownership signals; do not assume `workspace/kb/projects/<repo-name>.md` exists until resolution succeeds.
 
 When the changed-file list spans multiple areas, dispatch `nase-reviewer-owner-scanner` per repo or per PR after Step 2.
@@ -53,17 +53,17 @@ The main thread owns Slack lookup, recipient confirmation, and draft staging.
 
 **3a. Read project KB**
 
-Read `workspace/kb/projects/<repo-name>.md` once. Extract ownership signals in a single pass:
+Read the KB path returned by repo resolution once. Extract ownership signals in a single pass:
 1. Look for the `## Ownership Map` table — match each changed file path to a row (directory prefix or module name); collect Primary Owner and Secondary Owner GitHub handles.
 2. Also scan for ownership notes, team sections, or "who to ping for X" annotations anywhere else in the file.
 
 If the KB has no Ownership Map (repo not yet onboarded), skip to 3b.
 
-If the KB yields confident owners for all changed areas → proceed to 3c (skip CODEOWNERS).
+If the KB yields confident owners for all changed areas, keep them as primary candidates and use 3b to validate the touched-path mapping. If CODEOWNERS is unavailable, corroborate with recent scoped history and label the remaining uncertainty rather than treating an old KB row as current authority.
 
-**3b. Read CODEOWNERS (fallback)**
+**3b. Validate with CODEOWNERS**
 
-Only needed if 3a leaves gaps or no Ownership Map exists. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read the file directly: `cat {repo_path}/CODEOWNERS 2>/dev/null || cat {repo_path}/.github/CODEOWNERS 2>/dev/null`. Otherwise fetch via:
+Use this to validate KB candidates and fill gaps. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read the file directly: `cat {repo_path}/CODEOWNERS 2>/dev/null || cat {repo_path}/.github/CODEOWNERS 2>/dev/null`. Otherwise fetch via:
 ```bash
 gh api "repos/{owner}/{repo}/contents/CODEOWNERS" --jq '.content' | base64 --decode
 ```

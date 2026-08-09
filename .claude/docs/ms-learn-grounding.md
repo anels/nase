@@ -77,7 +77,7 @@ Do **not** ground:
    - NO-COVERAGE — Learn returns no relevant result (claim may be repo-internal)
 
 4. Apply outcomes:
-   - MATCH    → append " [verified against Microsoft Learn YYYY-MM-DD]" to the KB line
+   - MATCH    → keep the KB byte-identical when the claim and existing source are already sufficient. If the claim lacks provenance and the Learn URL materially improves future verification, add the URL without a date-only verification marker.
    - REFINE   → rewrite the KB line with the refined nuance + cite Learn URL
    - CONFLICT → DO NOT silently overwrite. Log to onboard report under
                 ## MS Learn Grounding Conflicts, include both versions, leave the
