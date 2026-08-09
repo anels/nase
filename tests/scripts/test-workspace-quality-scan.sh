@@ -195,6 +195,19 @@ EOF
 printf 'recoverable state\n' > "$FIXTURE/workspace/tmp/old-state.json"
 touch -t 202501010000 "$FIXTURE/workspace/tmp/old-state.json"
 
+# Aged but cited by a durable workspace document: evidence, not loose state.
+printf 'measurement evidence\n' > "$FIXTURE/workspace/tmp/cited-evidence.md"
+touch -t 202501010000 "$FIXTURE/workspace/tmp/cited-evidence.md"
+cat > "$FIXTURE/workspace/efforts/cites-tmp.md" <<'EOF'
+---
+status: in-progress
+---
+
+# Cites a scratch file
+
+Baseline measured in `workspace/tmp/cited-evidence.md`.
+EOF
+
 json=$(python3 "$SCRIPT" --root "$FIXTURE" --days 999999 --json 2>&1)
 rc=$?
 if [ "$rc" = 0 ]; then
@@ -227,7 +240,9 @@ assert_jq "non-contract tracking-only scalars are reported" "$json" \
 assert_jq "closed todo items and broken effort references are reported" "$json" \
   'any(.findings[]; .category == "todo_closed_item") and any(.findings[]; .category == "todo_broken_effort_ref")'
 assert_jq "stale tmp inventory is reported without deleting it" "$json" \
-  'any(.findings[]; .category == "tmp_stale_inventory") and (.summary.tmp.stale_files == 1)'
+  'any(.findings[]; .category == "tmp_stale_inventory") and (.summary.tmp.stale_files == 2)'
+assert_jq "a cited stale tmp file is not counted as loose state" "$json" \
+  '(.summary.tmp.stale_uncited_files == 1) and (.summary.tmp.stale_uncited_bytes < .summary.tmp.stale_bytes)'
 
 window="$FIXTURE/window"
 mkdir -p "$window/workspace/logs" "$window/workspace/kb/projects" "$window/workspace/stats"
