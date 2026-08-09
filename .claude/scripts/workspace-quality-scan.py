@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only quality scan for workspace KB/log drift."""
+"""Read-only quality scan for workspace content and state drift."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from frontmatter_scalar import canonical_bool, extract_frontmatter_scalar, normalize_scalar
 from nase_time import parse_ts
 
 
@@ -27,6 +28,9 @@ HEARTBEAT_RE = re.compile(
 )
 SESSION_LINE_LIMIT = 500
 UNKNOWN_RATE_THRESHOLD = 0.20
+TMP_STALE_DAYS = 30
+EFFORT_REF_RE = re.compile(r"workspace/efforts/[A-Za-z0-9_./-]+\.md")
+TODO_CLOSED_RE = re.compile(r"^\s*-\s*\[[xX]\]")
 
 
 def resolve_root(explicit: str | None) -> pathlib.Path:
@@ -152,6 +156,156 @@ def scan_kb(root: pathlib.Path) -> list[dict[str, Any]]:
     return issues
 
 
+def effort_status_vocabulary(root: pathlib.Path) -> tuple[set[str], set[str]]:
+    path = root / ".claude" / "docs" / "effort-lifecycle.md"
+    if not path.is_file():
+        return set(), set()
+    text = path.read_text(encoding="utf-8", errors="replace")
+    section = re.search(r"^## Status Vocabulary\s*$\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if not section:
+        return set(), set()
+    active, separator, done = section.group(1).partition("**Done**")
+    if not separator:
+        return set(), set()
+    row = re.compile(r"^\|\s*`([^`]+)`\s*\|", re.MULTILINE)
+    return set(row.findall(active)), set(row.findall(done))
+
+
+def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
+    efforts = root / "workspace" / "efforts"
+    if not efforts.is_dir():
+        return []
+
+    active_statuses, done_statuses = effort_status_vocabulary(root)
+    if not active_statuses or not done_statuses:
+        return [
+            finding(
+                "effort_status_contract_missing",
+                ".claude/docs/effort-lifecycle.md",
+                "Status Vocabulary cannot be parsed; effort validation is incomplete.",
+            )
+        ]
+
+    issues: list[dict[str, Any]] = []
+    canonical = active_statuses | done_statuses
+    candidates = [(path, active_statuses, "active") for path in sorted(efforts.glob("*.md"))]
+    candidates.extend(
+        (path, done_statuses, "done") for path in sorted((efforts / "done").glob("*.md"))
+    )
+    candidates.extend(
+        (path, done_statuses, "archive")
+        for path in sorted((efforts / "archive").glob("*/*.md"))
+    )
+
+    for path, expected, location in candidates:
+        rel = path.relative_to(root)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        raw_status = extract_frontmatter_scalar(text, "status")[0]
+        status = None if raw_status is None else normalize_scalar(raw_status)
+        if status is None:
+            issues.append(finding("effort_missing_status", rel, "Effort frontmatter has no status."))
+        elif status not in canonical:
+            issues.append(
+                finding(
+                    "effort_invalid_status",
+                    rel,
+                    f"Effort status '{status}' is outside the canonical vocabulary.",
+                )
+            )
+        elif status not in expected:
+            issues.append(
+                finding(
+                    "effort_status_location_mismatch",
+                    rel,
+                    f"Effort status '{status}' does not match its {location} location.",
+                )
+            )
+        raw_tracking_only, singleton = extract_frontmatter_scalar(text, "tracking_only")
+        tracking_only, tracking_only_valid = canonical_bool(raw_tracking_only)
+        tracking_only_valid = tracking_only_valid and singleton
+        if not tracking_only_valid:
+            issues.append(
+                finding(
+                    "effort_invalid_tracking_only",
+                    rel,
+                    f"Effort tracking_only '{normalize_scalar(raw_tracking_only or '')}' must be unquoted true, false, or absent.",
+                )
+            )
+        elif location == "done" and tracking_only:
+            issues.append(
+                finding(
+                    "effort_tracking_only_destination_mismatch",
+                    rel,
+                    "Tracking-only effort is in done/ instead of the yearly archive.",
+                )
+            )
+    return issues
+
+
+def scan_todo(root: pathlib.Path) -> list[dict[str, Any]]:
+    path = root / "workspace" / "tasks" / "todo.md"
+    if not path.is_file():
+        return []
+
+    issues: list[dict[str, Any]] = []
+    rel = path.relative_to(root)
+    for idx, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if TODO_CLOSED_RE.match(line):
+            issues.append(finding("todo_closed_item", rel, "Closed item remains in the open-work queue.", idx))
+        for raw in EFFORT_REF_RE.findall(line):
+            if not (root / raw).is_file():
+                issues.append(
+                    finding(
+                        "todo_broken_effort_ref",
+                        rel,
+                        f"Effort reference does not resolve: {raw}",
+                        idx,
+                    )
+                )
+    return issues
+
+
+def scan_tmp(root: pathlib.Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    tmp = root / "workspace" / "tmp"
+    if not tmp.is_dir():
+        return [], {"files": 0, "bytes": 0, "stale_files": 0, "stale_bytes": 0}
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TMP_STALE_DAYS)
+    files = 0
+    total_bytes = 0
+    stale_files = 0
+    stale_bytes = 0
+    for path in tmp.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        files += 1
+        total_bytes += stat.st_size
+        if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < cutoff:
+            stale_files += 1
+            stale_bytes += stat.st_size
+
+    summary = {
+        "files": files,
+        "bytes": total_bytes,
+        "stale_files": stale_files,
+        "stale_bytes": stale_bytes,
+    }
+    issues = []
+    if stale_files:
+        issues.append(
+            finding(
+                "tmp_stale_inventory",
+                "workspace/tmp",
+                f"Temporary storage has {stale_files} file(s) older than {TMP_STALE_DAYS} days; classify recoverable state before cleanup.",
+            )
+        )
+    return issues, summary
+
+
 def scan_kb_usage(root: pathlib.Path, days: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     path = root / "workspace" / "stats" / "kb-usage.jsonl"
     if not path.is_file():
@@ -212,6 +366,10 @@ def build_report(root: pathlib.Path, days: int) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     findings.extend(scan_daily_logs(root, days))
     findings.extend(scan_kb(root))
+    findings.extend(scan_efforts(root))
+    findings.extend(scan_todo(root))
+    tmp_findings, tmp_summary = scan_tmp(root)
+    findings.extend(tmp_findings)
     usage_findings, usage_summary = scan_kb_usage(root, days)
     findings.extend(usage_findings)
 
@@ -224,6 +382,7 @@ def build_report(root: pathlib.Path, days: int) -> dict[str, Any]:
             "daily_log_findings": sum(count for cat, count in counts.items() if cat.startswith("daily_log_")),
             "kb_findings": sum(count for cat, count in counts.items() if cat.startswith("kb_")),
             "kb_usage": usage_summary,
+            "tmp": tmp_summary,
             "stale_active_skill_files": stale_active_skill_files(root),
             "categories": dict(sorted(counts.items())),
         },

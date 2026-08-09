@@ -210,14 +210,14 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 - Capture lessons, articles, and patterns into durable KB files.
 - `/nase:extract-skills` turns repeated workflows into workspace-local commands.
-- `/nase:kb-review` deduplicates, cross-references, and prunes stale entries.
+- `/nase:kb-review` audits KB and workspace trust, then prepares approved repairs without automatic deletion.
 - `/nase:kb-teamshare` exports sanitized KB + skills; teammates import with `/nase:kb-merge`.
 
 ```
 /nase:learn <url-or-tip>       # capture an article, technique, or lesson
 /nase:kb-update                # persist session learnings into KB
 /nase:extract-skills           # analyze session → extract reusable patterns as workspace skills
-/nase:kb-review                # periodically: deduplicate, cross-reference, clean up stale entries
+/nase:kb-review                # periodically: audit KB, references, credentials, state, backup/restore
 /nase:kb-teamshare             # export sanitized KB + skills for teammates
 /nase:kb-merge <path>          # import a teammate's shared KB into your workspace
 ```
@@ -249,7 +249,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 |---------|---------|
 | `/nase:kb-gap-detect` | Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries. |
 | `/nase:kb-merge` | Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export. |
-| `/nase:kb-review` | Audit and organize KB files for duplicates, links, staleness, and lesson promotion. Use for review KB, organize notes, clean up KB, or periodic KB hygiene. |
+| `/nase:kb-review` | Audit and repair KB plus workspace state for stale data, broken references, credential exposure, unsafe backup or restore behavior, and lifecycle drift. Use for review KB, workspace hygiene, clean up KB, or periodic health checks. |
 | `/nase:kb-search` | Search KB files for topics, keywords, patterns, and related entries. Use for search KB, find in KB, or is X documented; use /nase:kb-update or /nase:learn to write. |
 | `/nase:kb-teamshare` | Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, share skills, or package content for /nase:kb-merge. |
 | `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns. |
@@ -316,7 +316,7 @@ Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destr
 
 External-write hooks block direct Slack sends, require a fresh prompted Jira write token plus explicit body format, stop oversized or non-ADF Confluence page writes, and reject raw GitHub/Azure/Kubernetes/Terraform CLI mutations. Use Slack drafts, explicit Jira confirmation, a `workspace/tmp/` Confluence patch, or an approved `external-write-action.py` manifest when those guards fire.
 
-Other hooks: `SessionStart` creates today's log, reports backup status, and syncs local `workspace/skills` into generated `/nase:workspace:*` command wrappers; `UserPromptSubmit` records slash-command recognition, `UserPromptExpansion` records activation, and `PostToolUse:Skill` records tool outcome; `Stop` backs up `workspace/`; `StopFailure`, `PostToolUseFailure`, and `SubagentStop` write redacted bounded failure/subagent summaries; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts. `WorktreeCreate` is intentionally unwired because Claude Code expects that hook to create and print the worktree path.
+Other hooks: `SessionStart` creates today's log, reports backup status, and syncs local `workspace/skills` into generated `/nase:workspace:*` command wrappers; `UserPromptSubmit` records slash-command recognition, `UserPromptExpansion` records activation, and `PostToolUse:Skill` records tool outcome; `Stop` backs up `workspace/` only after credential, coverage, and symlink checks pass, then verifies the private snapshot and final archive against the same content manifest before publication; `StopFailure`, `PostToolUseFailure`, and `SubagentStop` write redacted bounded failure/subagent summaries; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` shellchecks edited `.sh`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts. `WorktreeCreate` is intentionally unwired because Claude Code expects that hook to create and print the worktree path.
 
 Full table with behavior details: [`docs/architecture.md` — Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
 

@@ -11,7 +11,7 @@
 - Step E: Temp and outdated artifact scan
 - Output for the caller
 
-> Shared algorithm for surfacing stale, orphaned, and outdated KB content. Referenced from `/nase:kb-review` (Steps 1, 4, 4b) and `/nase:doctor --deep`. Edit here, not in the skills.
+> Shared algorithm for surfacing stale, orphaned, and outdated KB content. Referenced from `/nase:kb-review` under *Deep review -> Content and relationships* and `/nase:doctor --deep`. Edit here, not in the skills.
 
 ## Inputs
 

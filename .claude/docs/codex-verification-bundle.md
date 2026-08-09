@@ -26,7 +26,7 @@ The first bundle line is machine-readable `fsd-artifact` JSON. It records:
 - changed-path count and hash
 - deterministic evidence metadata and its tested `candidate_tree_oid`
 - requested bound-context metadata
-- symlink, gitlink, missing-blob, or special-file evidence gaps
+- symlink, gitlink, missing-blob, special-file, credential-like path, or omitted-diff evidence gaps
 - bounded binary-path object metadata; binary patches are never embedded
 
 `--reviewer-identity-output` writes trusted JSON containing the resolved `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and SHA-256 of the exact finished bundle bytes. Keep it outside the target repository, pass it outside the untrusted bundle section of the reviewer prompt, and require the reviewer to copy it exactly into `result.artifact`. Pass the same captured bundle value to every reducer invocation as `--expected-bundle-sha256` together with the independently resolved `--expected-base-oid`. This rejects body tampering or an incorrect diff base even when a reviewer echoes the bundle's self-description.
@@ -35,7 +35,7 @@ The first bundle line is machine-readable `fsd-artifact` JSON. It records:
 
 The helper creates a temporary `GIT_INDEX_FILE`, runs `read-tree HEAD`, `git add -A -- .` only against that temporary index, then `git write-tree`. It never changes the real index. The resulting tree captures tracked, unstaged, untracked, deleted, renamed, and mode-changed paths while respecting ignored files.
 
-All stat, name-status, changed-line, sample, and full-diff sections compare `base_oid` directly with `candidate_tree_oid`. Rename samples use the actual source and destination paths. Binary patches are represented only by path, mode, Git object OID, and byte size. Text diff projections are capped at 64 KiB, full diffs at 128 KiB of changed blob content, and the entire bundle at 512 KiB. Staging or committing the same content therefore preserves the reviewed identity.
+All stat, name-status, changed-line, sample, and full-diff sections compare `base_oid` directly with `candidate_tree_oid`. Rename samples use the actual source and destination paths unless a path itself resembles a credential assignment, in which case the rendered path is replaced by a stable redaction marker and recorded as an evidence gap. Binary patches are represented only by redacted-safe path, mode, Git object OID, and byte size. Text diff projections are capped at 64 KiB, full diffs at 128 KiB of changed blob content, and the entire bundle at 512 KiB. Staging or committing the same content therefore preserves the reviewed identity.
 
 To resolve only the candidate identity:
 
@@ -64,7 +64,7 @@ Resolve `tested_candidate_tree_oid` immediately before the final verification co
 
 An evidence payload is capped at 64 KiB. Larger JSON keeps SHA-256, original byte count, and head/tail projection. Invalid UTF-8 is rejected.
 
-Before writing any reviewer artifact, the helper runs a redacted, high-confidence secret preflight over the canonical task, inventory, structured command evidence, candidate diff, every changed candidate blob, and any requested context projection. Blob and diff scans use bounded chunks. A possible credential stops bundle creation and reports only kind plus location, never the matched value. Existing repository secret tooling may add broader checks, but must run against the same candidate tree before external review.
+Before writing any reviewer artifact, the helper runs a redacted, high-confidence secret preflight over the canonical task, inventory, structured command evidence, every changed candidate blob, diff projections, paths, and requested context. Blob and diff scans use bounded chunks. A possible credential in candidate-controlled content stops bundle creation and reports only kind plus redacted-safe location, never the matched value. Credential-like bytes that exist only on the base side of a deletion are omitted from the rendered diff and recorded as a `BASE` evidence gap, which prevents the reducer from returning `PROCEED`. Credential-like path text is replaced by a stable hash marker and likewise becomes an evidence gap. A final scan of the assembled bundle fails closed if any credential-like bytes remain. Existing repository secret tooling may add broader checks, but must run against the same candidate tree before external review.
 
 ## Bound Context
 

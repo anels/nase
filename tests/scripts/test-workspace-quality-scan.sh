@@ -33,7 +33,35 @@ assert_jq() {
   fi
 }
 
-mkdir -p "$FIXTURE/workspace/logs" "$FIXTURE/workspace/kb/projects" "$FIXTURE/workspace/stats"
+mkdir -p \
+  "$FIXTURE/.claude/docs" \
+  "$FIXTURE/workspace/efforts/archive/2031" \
+  "$FIXTURE/workspace/efforts/done" \
+  "$FIXTURE/workspace/kb/projects" \
+  "$FIXTURE/workspace/logs" \
+  "$FIXTURE/workspace/stats" \
+  "$FIXTURE/workspace/tasks" \
+  "$FIXTURE/workspace/tmp"
+
+cat > "$FIXTURE/.claude/docs/effort-lifecycle.md" <<'EOF'
+## Status Vocabulary
+
+**Active**
+
+| status | meaning |
+|---|---|
+| `planned` | queued |
+| `in-progress` | underway |
+
+**Done**
+
+| status | meaning |
+|---|---|
+| `completed` | shipped |
+| `wontfix` | closed |
+
+## Next section
+EOF
 
 cat > "$FIXTURE/workspace/logs/2026-06-01.md" <<'EOF'
 # Work Log — 2026-06-01
@@ -72,6 +100,76 @@ cat > "$FIXTURE/workspace/stats/kb-usage.jsonl" <<'EOF'
 {"ts":"2026-06-01T00:01:00Z","skill":"fsd","file":"workspace/kb/projects/example.md","access":"read","source":"read-hook","session":"s1"}
 EOF
 
+cat > "$FIXTURE/workspace/efforts/invalid-status.md" <<'EOF'
+---
+status: in-review
+---
+
+# Invalid active status
+EOF
+
+cat > "$FIXTURE/workspace/efforts/done/active-status.md" <<'EOF'
+---
+status: in-progress
+---
+
+# Invalid done status
+EOF
+
+cat > "$FIXTURE/workspace/efforts/done/tracking-only.md" <<'EOF'
+---
+status: completed
+tracking_only: true
+---
+
+# Wrong terminal destination
+EOF
+
+cat > "$FIXTURE/workspace/efforts/archive/2031/invalid-status.md" <<'EOF'
+---
+status: proposed
+---
+
+# Invalid archived status
+EOF
+
+cat > "$FIXTURE/workspace/efforts/archive/2031/invalid-tracking-only.md" <<'EOF'
+---
+status: completed
+tracking_only: "true # literal string"
+---
+
+# Invalid tracking-only scalar
+EOF
+
+cat > "$FIXTURE/workspace/efforts/archive/2031/empty-tracking-only.md" <<'EOF'
+---
+status: completed
+tracking_only:
+---
+
+# Empty tracking-only scalar
+EOF
+
+cat > "$FIXTURE/workspace/efforts/archive/2031/duplicate-tracking-only.md" <<'EOF'
+---
+status: completed
+tracking_only: false
+tracking_only: true
+---
+
+# Duplicate tracking-only scalar
+EOF
+
+cat > "$FIXTURE/workspace/tasks/todo.md" <<'EOF'
+# Open work only
+
+- [x] Closed item must leave the open queue -> `workspace/efforts/missing.md`
+EOF
+
+printf 'recoverable state\n' > "$FIXTURE/workspace/tmp/old-state.json"
+touch -t 202501010000 "$FIXTURE/workspace/tmp/old-state.json"
+
 json=$(python3 "$SCRIPT" --root "$FIXTURE" --days 999999 --json 2>&1)
 rc=$?
 if [ "$rc" = 0 ]; then
@@ -91,6 +189,16 @@ assert_jq "kb placeholder and refresh heartbeat are reported" "$json" \
   'any(.findings[]; .category == "kb_placeholder") and any(.findings[]; .category == "kb_refresh_block") and any(.findings[]; .category == "kb_heartbeat")'
 assert_jq "high unknown kb usage rate is reported" "$json" \
   'any(.findings[]; .category == "kb_usage_unknown_rate")'
+assert_jq "invalid effort statuses and location mismatches are reported" "$json" \
+  'any(.findings[]; .category == "effort_invalid_status" and .path == "workspace/efforts/invalid-status.md") and any(.findings[]; .category == "effort_status_location_mismatch" and .path == "workspace/efforts/done/active-status.md") and any(.findings[]; .category == "effort_invalid_status" and .path == "workspace/efforts/archive/2031/invalid-status.md")'
+assert_jq "tracking-only efforts in done are reported" "$json" \
+  'any(.findings[]; .category == "effort_tracking_only_destination_mismatch" and .path == "workspace/efforts/done/tracking-only.md")'
+assert_jq "non-contract tracking-only scalars are reported" "$json" \
+  'any(.findings[]; .category == "effort_invalid_tracking_only" and .path == "workspace/efforts/archive/2031/invalid-tracking-only.md") and any(.findings[]; .category == "effort_invalid_tracking_only" and .path == "workspace/efforts/archive/2031/empty-tracking-only.md") and any(.findings[]; .category == "effort_invalid_tracking_only" and .path == "workspace/efforts/archive/2031/duplicate-tracking-only.md")'
+assert_jq "closed todo items and broken effort references are reported" "$json" \
+  'any(.findings[]; .category == "todo_closed_item") and any(.findings[]; .category == "todo_broken_effort_ref")'
+assert_jq "stale tmp inventory is reported without deleting it" "$json" \
+  'any(.findings[]; .category == "tmp_stale_inventory") and (.summary.tmp.stale_files == 1)'
 
 window="$FIXTURE/window"
 mkdir -p "$window/workspace/logs" "$window/workspace/kb/projects" "$window/workspace/stats"

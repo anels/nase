@@ -70,7 +70,7 @@ class ReviewGateTests(unittest.TestCase):
         self.bundle = self.artifacts / "bundle.md"
         self.refresh_bundle()
 
-    def refresh_bundle(self) -> None:
+    def refresh_bundle(self, *extra_args: str) -> None:
         candidate = json.loads(
             run(
                 "python3",
@@ -112,6 +112,7 @@ class ReviewGateTests(unittest.TestCase):
             str(self.evidence),
             "--output",
             str(self.bundle),
+            *extra_args,
         )
         first = self.bundle.read_text(encoding="utf-8").splitlines()[0]
         self.metadata = json.loads(first.removeprefix("<!-- fsd-artifact: ").removesuffix(" -->"))
@@ -699,6 +700,48 @@ class ReviewGateTests(unittest.TestCase):
         self.assertEqual(first["context_evidence_gaps"][0]["reason"], "symlink")
         terminal = self.reduce_quality_round_three(self.quality(), prior=self.quality())
         self.assertEqual(terminal["terminal_status"], "blocked-evidence")
+
+    def test_large_diff_credential_omission_blocks_proceed(self) -> None:
+        marker = "Authorization: " + "Bearer " + "large_diff_canary_17a2"
+        (self.repo / "auth.txt").write_text(
+            marker + "\nauthorization_guard=true\n", encoding="utf-8"
+        )
+        run("git", "add", "-A", cwd=self.repo)
+        run("git", "commit", "-q", "-m", "sensitive base", cwd=self.repo)
+        self.base_oid = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+        (self.repo / "auth.txt").write_text("authorization_guard=false\n", encoding="utf-8")
+        self.refresh_bundle("--max-full-diff-lines", "0")
+
+        self.assertEqual(
+            self.metadata["evidence_gaps"],
+            [
+                {
+                    "path": "auth.txt",
+                    "reason": "credential_like_diff_omitted",
+                    "tree": "BASE",
+                }
+            ],
+        )
+        self.assertNotIn("large_diff_canary_17a2", self.bundle.read_text(encoding="utf-8"))
+        self.assertEqual(self.reduce("quality", 1, self.quality())["action"], "CONTEXT")
+
+    def test_deleted_credential_bearing_path_is_redacted_and_blocks_proceed(self) -> None:
+        sensitive_name = "ADMIN_" + "PASS" + "WORD=deleted_path_canary_17a2.txt"
+        (self.repo / sensitive_name).write_text("safe content\n", encoding="utf-8")
+        run("git", "add", "-A", cwd=self.repo)
+        run("git", "commit", "-q", "-m", "sensitive path base", cwd=self.repo)
+        self.base_oid = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+        (self.repo / sensitive_name).unlink()
+        self.refresh_bundle()
+
+        bundle = self.bundle.read_text(encoding="utf-8")
+        self.assertNotIn("deleted_path_canary_17a2", bundle)
+        self.assertIn("<redacted-path:", bundle)
+        self.assertEqual(
+            self.metadata["evidence_gaps"][0]["reason"],
+            "credential_like_path_redacted",
+        )
+        self.assertEqual(self.reduce("quality", 1, self.quality())["action"], "CONTEXT")
 
     def test_inventory_unverifiable_context_and_human_blocker(self) -> None:
         spec = self.spec()

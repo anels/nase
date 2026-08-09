@@ -141,11 +141,11 @@ status: awaiting-deploy
 EOF
 transition deployed --delivery-pr-state MERGED --jira-state "done"
 assert_jq "deployed delivery moves to completed" "$TMPDIR_TEST/deployed-transition.json" \
-  '.transition == {"action":"move","reason":"deployed","status":"completed"}'
+  '.transition == {"action":"move","reason":"deployed","status":"completed","destination_dir":"workspace/efforts/done"}'
 
 transition frontmatter --delivery-pr-state CLOSED --delivery-pr-state CLOSED --jira-state not-done
 assert_jq "all closed delivery PRs move to wontfix" "$TMPDIR_TEST/frontmatter-transition.json" \
-  '.transition == {"action":"move","reason":"all-delivery-prs-closed","status":"wontfix"}'
+  '.transition == {"action":"move","reason":"all-delivery-prs-closed","status":"wontfix","destination_dir":"workspace/efforts/done"}'
 
 transition frontmatter --delivery-pr-state UNREADABLE --jira-state "done"
 assert_jq "unreadable delivery PR blocks transition" "$TMPDIR_TEST/frontmatter-transition.json" \
@@ -365,7 +365,7 @@ EOF
 
 transition validated-deploy --delivery-pr-state MERGED --jira-state "done"
 assert_jq "checked post-deploy validation allows completion" "$TMPDIR_TEST/validated-deploy-transition.json" \
-  '.transition == {"action":"move","reason":"deployed","status":"completed"}'
+  '.transition == {"action":"move","reason":"deployed","status":"completed","destination_dir":"workspace/efforts/done"}'
 
 # Unchecked rows outside the Lifecycle section are implementation-plan steps that
 # authors routinely leave unticked after the work lands; treating them as owed
@@ -392,6 +392,115 @@ assert_jq "plan steps outside Lifecycle are not undelivered work" "$TMPDIR_TEST/
 transition plan-steps-outside --delivery-pr-state MERGED --jira-state untracked
 assert_jq "plan steps outside Lifecycle do not block the transition" "$TMPDIR_TEST/plan-steps-outside-transition.json" \
   '.transition.status == "awaiting-deploy"'
+
+# `done/` is the record of what this workspace delivered, so an effort someone else
+# owns closes straight into the yearly archive instead of padding that record.
+cat > "$TMPDIR_TEST/tracking-only.md" <<'EOF'
+---
+status: awaiting-deploy
+tracking_only: true
+owner: someone-else
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/301
+- [x] Merged
+- [x] Deployed to prod
+EOF
+
+classify tracking-only
+assert_jq "tracking_only frontmatter is surfaced" "$TMPDIR_TEST/tracking-only.json" \
+  '.tracking_only == true'
+
+transition tracking-only --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+assert_jq "tracking-only completion archives instead of done/" "$TMPDIR_TEST/tracking-only-transition.json" \
+  '.transition == {"action":"move","reason":"deployed","status":"completed","destination_dir":"workspace/efforts/archive/2031"}'
+
+sed 's/tracking_only: true/tracking_only: true # another engineer owns delivery/' \
+  "$TMPDIR_TEST/tracking-only.md" > "$TMPDIR_TEST/tracking-only-commented.md"
+transition tracking-only-commented --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+assert_jq "valid inline YAML comment preserves tracking-only routing" \
+  "$TMPDIR_TEST/tracking-only-commented-transition.json" \
+  '.tracking_only == true and .tracking_only_valid == true and .transition.destination_dir == "workspace/efforts/archive/2031"'
+
+transition tracking-only --delivery-pr-state CLOSED --jira-state "done" --archive-year 2031
+assert_jq "tracking-only wontfix archives instead of done/" "$TMPDIR_TEST/tracking-only-transition.json" \
+  '.transition.destination_dir == "workspace/efforts/archive/2031" and .transition.status == "wontfix"'
+
+# The routing flag must not leak into non-terminal decisions.
+transition tracking-only --delivery-pr-state OPEN --jira-state "done" --archive-year 2031
+assert_jq "non-terminal transitions carry no destination" "$TMPDIR_TEST/tracking-only-transition.json" \
+  '.transition.action == "none" and (.transition | has("destination_dir") | not)'
+
+# `status: tracked` is a lifecycle status the transitions overwrite; it must not be
+# mistaken for the ownership flag, or every planning-stage effort would archive.
+cat > "$TMPDIR_TEST/status-tracked.md" <<'EOF'
+---
+status: tracked
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/302
+- [x] Merged
+- [x] Deployed to prod
+EOF
+
+classify status-tracked
+assert_jq "status: tracked alone is not tracking_only" "$TMPDIR_TEST/status-tracked.json" \
+  '.tracking_only == false'
+
+transition status-tracked --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+assert_jq "status: tracked still completes into done/" "$TMPDIR_TEST/status-tracked-transition.json" \
+  '.transition.destination_dir == "workspace/efforts/done"'
+
+sed 's/tracking_only: true/tracking_only: sometimes/' \
+  "$TMPDIR_TEST/tracking-only.md" > "$TMPDIR_TEST/tracking-only-invalid.md"
+transition tracking-only-invalid --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+assert_jq "invalid tracking-only scalar blocks terminal mutation" \
+  "$TMPDIR_TEST/tracking-only-invalid-transition.json" \
+  '.tracking_only_valid == false and .transition == {"action":"none","reason":"invalid-tracking-only","status":null}'
+
+for invalid_scalar in '"true # literal string"' yes 1; do
+  sed "s/tracking_only: true/tracking_only: $invalid_scalar/" \
+    "$TMPDIR_TEST/tracking-only.md" > "$TMPDIR_TEST/tracking-only-invalid-quoted.md"
+  transition tracking-only-invalid-quoted --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+  assert_jq "non-contract tracking-only scalar '$invalid_scalar' fails closed" \
+    "$TMPDIR_TEST/tracking-only-invalid-quoted-transition.json" \
+    '.tracking_only_valid == false and .transition.reason == "invalid-tracking-only"'
+done
+
+for escaped_scalar in '"true"' '"tr\\ue"' '"tru\\e"'; do
+  sed "s/tracking_only: true/tracking_only: $escaped_scalar/" \
+    "$TMPDIR_TEST/tracking-only.md" > "$TMPDIR_TEST/tracking-only-invalid-escaped.md"
+  transition tracking-only-invalid-escaped --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+  assert_jq "quoted or escaped tracking-only scalar '$escaped_scalar' fails closed" \
+    "$TMPDIR_TEST/tracking-only-invalid-escaped-transition.json" \
+    '.tracking_only_valid == false and .transition.reason == "invalid-tracking-only"'
+done
+
+sed 's/tracking_only: true/tracking_only:/' \
+  "$TMPDIR_TEST/tracking-only.md" > "$TMPDIR_TEST/tracking-only-empty.md"
+transition tracking-only-empty --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+assert_jq "empty tracking-only scalar fails closed" \
+  "$TMPDIR_TEST/tracking-only-empty-transition.json" \
+  '.tracking_only_valid == false and .transition.reason == "invalid-tracking-only"'
+
+for duplicate_order in false-true true-false; do
+  if [ "$duplicate_order" = false-true ]; then
+    first='tracking_only: false'
+    second='tracking_only: true'
+  else
+    first='tracking_only: true'
+    second='tracking_only: false'
+  fi
+  awk -v first="$first" -v second="$second" \
+    '{ if ($0 == "tracking_only: true") { print first; print second } else print }' \
+    "$TMPDIR_TEST/tracking-only.md" > "$TMPDIR_TEST/tracking-only-duplicate.md"
+  transition tracking-only-duplicate --delivery-pr-state MERGED --jira-state "done" --archive-year 2031
+  assert_jq "duplicate tracking-only scalar fails closed" \
+    "$TMPDIR_TEST/tracking-only-duplicate-transition.json" \
+    '.tracking_only_valid == false and .transition.reason == "invalid-tracking-only"'
+done
 
 printf '\n--- %d pass, %d fail ---\n' "$((tests - failures))" "$failures"
 [ "$failures" -eq 0 ]

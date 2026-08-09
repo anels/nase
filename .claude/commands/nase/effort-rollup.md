@@ -19,8 +19,10 @@ Generate an evidence-backed monthly delivery report. Follow `.claude/docs/langua
 
    **Do not render `closed without delivery`.** Exclude `wontfix`, superseded, and unmerged PRs from both the list and headline count. Mention a dropped effort only where it explains another label.
 
+   **Exclude `tracking_only: true` efforts from every delivered bucket and the merged-PR count** - someone else owns that code, which is why they close into `workspace/efforts/archive/{YYYY}/` instead of `done/`. List them only under an uncounted `tracked, delivered by {owner}` line.
+
    Merged-PR volume is supporting evidence below this section, never the headline.
-2. Inventory every effort doc whose delivery intersects the month — **active and done both**. `.claude/scripts/month-efforts.sh` buckets `done/` docs by file mtime, which is a starting point, not the boundary: work delivered in-month often lives in a doc that is still active (`awaiting-deploy`) or was closed a month later, so its mtime is outside the window. To catch those, sweep the PRs cited across **all** effort docs and let the reconciled `mergedAt` (Step 4) decide membership — never let mtime alone scope the month, or you will undercount in-month merges sitting in active docs.
+2. Inventory every effort doc whose delivery intersects the month - **active, `done/`, and `archive/{YYYY}/`**. `.claude/scripts/month-efforts.sh` buckets one directory by mtime (pass the archive as its second argument), which is a starting point, not the boundary: work delivered in-month often lives in a doc that is still active (`awaiting-deploy`) or was closed a month later, so its mtime is outside the window. To catch those, sweep the PRs cited across **all** effort docs and let the reconciled `mergedAt` (Step 4) decide membership - never let mtime alone scope the month, or you will undercount in-month merges sitting in active docs.
 3. Read effort metadata through `.claude/docs/effort-lifecycle.md`. Treat frontmatter as a lead, not live truth.
 4. Reconcile every structured delivery PR with `gh`. Split by actual `mergedAt` in the report month, closed without delivery, still open, or unreadable. Keep report-only and dependency PRs separate.
 5. Reconcile linked Jira issues when access exists. Record access gaps; never infer Jira state from stale effort text.

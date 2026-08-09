@@ -94,10 +94,15 @@ last original copy, and rolls back its own intact destination on a caught
 failure. If another writer replaces a path, it preserves that entry in place or
 moves it to a unique recovery path instead of deleting or overwriting it:
 
+For an effort transition the destination is not always `done/` - take it from
+`transition.destination_dir` per `.claude/docs/effort-lifecycle.md → Terminal
+Destination`. `apply-move` creates the destination parent, so a first-of-year
+archive folder needs no separate `mkdir`.
+
 ```bash
 python3 .claude/scripts/workspace-write-guard.py apply-move \
   --target workspace/efforts/{slug}.md \
-  --destination workspace/efforts/done/{slug}.md \
+  --destination {destination_dir}/{slug}.md \
   --staged "$staged" \
   --expected-mtime-ns "$mtime_ns" \
   --expected-sha256 "$sha256" \

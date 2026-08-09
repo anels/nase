@@ -44,4 +44,4 @@ When the same topic has both a general and a project-specific facet, write to **
 - Frame the content for that file's scope (general = the pattern; project = the constraint).
 - End with `> See also: [<other-file>](<relative-path>)` so they stay reciprocally linked.
 
-`/nase:kb-review` Step 3 (Cross-References) checks for missing reciprocal links — if you skip one direction, it'll flag the gap.
+`/nase:kb-review` checks reciprocal links under *Deep review -> Content and relationships* - if you skip one direction, it flags the gap.
