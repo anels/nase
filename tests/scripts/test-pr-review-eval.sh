@@ -17,6 +17,72 @@ source "$ROOT/tests/lib/assert.sh"
 assert_cmd "eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$EVAL_SET"
 assert_cmd "core workflow eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$CORE_EVAL_SET"
 
+mkdir -p "$TMPDIR_TEST/schema/fixture"
+cat > "$TMPDIR_TEST/schema/evals.json" <<'JSON'
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "offline",
+      "skill": "nase:design",
+      "prompt": "/nase:design example",
+      "expected_output": "example",
+      "assertions": [{"name": "shape", "type": "must_contain_regex", "pattern": "example"}]
+    }
+  ],
+  "routing_cases": [
+    {"id": "routing-design-positive", "skill": "nase:design", "prompt": "Plan the change", "expect": "invoke", "risk": "low"},
+    {"id": "routing-design-near-miss", "skill": "nase:design", "prompt": "Estimate the work", "expect": "not_invoke", "risk": "low"}
+  ],
+  "runtime_cases": [
+    {
+      "id": "runtime",
+      "skill": "nase:design",
+      "score_case": "offline",
+      "prompt": "/nase:design inspect fixture/input.txt",
+      "fixture_dir": "fixture",
+      "required_reads": ["input.txt"],
+      "required_canaries": ["placeholder"],
+      "risk": "low"
+    }
+  ]
+}
+JSON
+"$PYTHON_BIN" - "$TMPDIR_TEST/schema/evals.json" "$TMPDIR_TEST/schema/fixture/input.txt" <<'PY'
+import json
+import sys
+eval_path, fixture_path = sys.argv[1:]
+canary = "SCHEMA_" + "CANARY_VALUE_5519"
+data = json.load(open(eval_path, encoding="utf-8"))
+data["runtime_cases"][0]["required_canaries"] = [canary]
+json.dump(data, open(eval_path, "w", encoding="utf-8"))
+open(fixture_path, "w", encoding="utf-8").write(canary + "\n")
+PY
+assert_cmd "extended schema validates" "$PYTHON_BIN" "$SCRIPT" validate "$TMPDIR_TEST/schema/evals.json"
+
+assert_invalid_mutation() {
+  local name="$1" expression="$2" target="$TMPDIR_TEST/schema/$3.json"
+  "$PYTHON_BIN" - "$TMPDIR_TEST/schema/evals.json" "$target" "$expression" <<'PY'
+import json
+import sys
+source, target, expression = sys.argv[1:]
+data = json.load(open(source, encoding="utf-8"))
+exec(expression, {"data": data})
+json.dump(data, open(target, "w", encoding="utf-8"))
+PY
+  assert_cmd "$name" bash -c '! "$1" "$2" validate "$3" >/dev/null 2>&1' _ "$PYTHON_BIN" "$SCRIPT" "$target"
+}
+
+assert_invalid_mutation "duplicate IDs are rejected" 'data["routing_cases"][0]["id"] = "offline"' duplicate
+assert_invalid_mutation "target slash in routing prompt is rejected" 'data["routing_cases"][0]["prompt"] = "/nase:design do it"' slash
+assert_invalid_mutation "incomplete routing pairs are rejected" 'data["routing_cases"].pop()' incomplete
+assert_invalid_mutation "non-string risk is rejected without traceback" 'data["routing_cases"][0]["risk"] = []' risk-type
+assert_invalid_mutation "adjacent skill cannot equal target" 'data["routing_cases"][1]["adjacent_skill"] = "nase:design"' adjacent-self
+assert_invalid_mutation "workspace routing cases are rejected" 'data["routing_cases"][0].update({"id": "routing-workspace-deploy-alpha-positive", "skill": "nase:workspace:deploy-alpha"})' workspace-routing
+assert_invalid_mutation "missing runtime fixtures are rejected" 'data["runtime_cases"][0]["fixture_dir"] = "absent"' missing-fixture
+assert_invalid_mutation "canary prompt leakage is rejected" 'data["runtime_cases"][0]["prompt"] += " " + "SCHEMA_" + "CANARY_VALUE_5519"' canary-leak
+assert_invalid_mutation "runtime score skill mismatch is rejected" 'data["runtime_cases"][0]["skill"] = "nase:fsd"' score-skill
+
 cat > "$TMPDIR_TEST/discuss-ok.txt" <<'TXT'
 Review frame
 Problem: this PR fixes stale cache invalidation for dashboard refreshes.

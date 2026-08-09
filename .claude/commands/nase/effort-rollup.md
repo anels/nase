@@ -1,16 +1,19 @@
 ---
 name: nase:effort-rollup
 description: "Build a monthly delivery report from live PR and Jira state. Use for effort rollup, impact report, month in review, or what did I ship."
-argument-hint: "<YYYY-MM> [--repo <name>] [--scope <v>] [--md-only]"
+argument-hint: "<YYYY-MM> [--repo <name>] [--md-only]"
 pattern: utility
 category: Reporting
 ---
 
 Generate an evidence-backed monthly delivery report. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md`.
 
+Read `.claude/docs/effort-rollup-integrity.md` before the workflow and follow its
+collector, validation, coverage, staging, and promotion gates exactly.
+
 ## Workflow
 
-1. Resolve `YYYY-MM`; default to the previous calendar month. Reject invalid or future-only ranges.
+1. Resolve `YYYY-MM`; default to the previous calendar month. Reject invalid or future-only ranges, `--scope`, and unknown arguments.
 
    **Lead with `efforts completed in the month`, not merged PRs.** After the stat strip, list efforts delivered and moved to `workspace/efforts/done/` that month. Count a row only when its canonical PR URL and live `mergedAt` resolve; include live Jira state when linked and accessible, otherwise mark the access gap. Use two counted buckets plus one process-gap list:
    - **delivered, code merged in-month** - the month's real code output;
@@ -22,9 +25,9 @@ Generate an evidence-backed monthly delivery report. Follow `.claude/docs/langua
    **Exclude `tracking_only: true` efforts from every delivered bucket and the merged-PR count** - someone else owns that code, which is why they close into `workspace/efforts/archive/{YYYY}/` instead of `done/`. List them only under an uncounted `tracked, delivered by {owner}` line.
 
    Merged-PR volume is supporting evidence below this section, never the headline.
-2. Inventory every effort doc whose delivery intersects the month - **active, `done/`, and `archive/{YYYY}/`**. `.claude/scripts/month-efforts.sh` buckets one directory by mtime (pass the archive as its second argument), which is a starting point, not the boundary: work delivered in-month often lives in a doc that is still active (`awaiting-deploy`) or was closed a month later, so its mtime is outside the window. To catch those, sweep the PRs cited across **all** effort docs and let the reconciled `mergedAt` (Step 4) decide membership - never let mtime alone scope the month, or you will undercount in-month merges sitting in active docs.
-3. Read effort metadata through `.claude/docs/effort-lifecycle.md`. Treat frontmatter as a lead, not live truth.
-4. Reconcile every structured delivery PR with `gh`. Split by actual `mergedAt` in the report month, closed without delivery, still open, or unreadable. Keep report-only and dependency PRs separate.
+2. Use the collector's full active, `done/`, and `archive/{YYYY}/` inventory. Its `month-efforts.sh` capture is a discovery aid only; canonical `mergedAt` and structured effort membership decide the month boundary.
+3. Read effort metadata and ownership from canonical `evidence.json`, which applies `.claude/docs/effort-lifecycle.md`, including `tracking_only`.
+4. Use the collector's per-PR `gh pr view` captures for actual state and `mergedAt`. Search results are gap candidates only. Keep delivery, report-only, dependency, context-only, and untracked-candidate roles separate.
 5. Reconcile linked Jira issues when access exists. Record access gaps; never infer Jira state from stale effort text.
 6. **Mine measured impact.** For every effort delivering in the month whose scope is optimization / improvement / perf / coverage / pipeline (or whose doc states any baseline), open the doc and extract each concrete metric pair: `metric`, `from` (baseline value+unit), `to` (post value+unit), `delta`, source (Sonar / staging telemetry / pipeline timing / App Insights), and the merged PR that landed it. These numbers are the point of an impact report — carry them into the report verbatim, do not collapse them to prose. Label each value's confidence:
    - `verified` — you independently re-ran the metric this pass **and** confirmed the change mechanism is actually live (see enablement check); the observed after-value backs the claim.
@@ -41,7 +44,7 @@ Generate an evidence-backed monthly delivery report. Follow `.claude/docs/langua
    - Read the effort investigation and shipped change site. Report the file:line, whether the measured path changed, and rollout/flag polarity. Distinguish *inert by design* (not enabled; roll it out) from *wrong lever* (enabled but flat; redesign the intervention).
 
    If live evidence conflicts with the effort doc, re-read its attribution, rejected alternatives, Lifecycle state, and next step, then report both the documented claim and measured correction. Name what would work and cite an in-month PR that proves the shape when available. Never stop at `flat, cause unknown`, strip documented numbers, skip a reachable live query, or credit a result without the enablement check.
-7. Write `workspace/recaps/effort-rollup-{YYYY-MM}.md`. Unless `--md-only`, also write a self-contained HTML report with the same facts and no remote assets.
+7. Write the fresh Markdown and HTML inside the transient bundle first. Promote them to `workspace/recaps/effort-rollup-{YYYY-MM}.{md,html}` only through the count-critical integrity gate above. Unless `--md-only`, the HTML remains self-contained with the same facts and no remote assets.
 
    **The HTML must be VISUAL - charts, not converted tables.** Do not generate it by running the Markdown through a converter; that produces a table dump and silently drops every chart. Hand-author the HTML (or template it) and read the previous month's `workspace/recaps/effort-rollup-*.html` first as the visual reference to carry forward: masthead + stat strip, before→after bar rows, incident cards, theme cards, collapsible per-repo appendix.
 
@@ -66,6 +69,6 @@ Generate an evidence-backed monthly delivery report. Follow `.claude/docs/langua
    Order the narrative sections (impact, incidents, features, themes) above the bookkeeping tables — a reader scanning the top should see *what changed and what it was worth*, not raw PR counts.
 
    **Every PR and Jira reference is a clickable link.** Never emit a bare `#4664` or `IN-13355` as plain text — render PRs as `https://github.com/{owner}/{repo}/pull/{n}` and Jira keys as `{baseUrl}/browse/{KEY}` (baseUrl from `workspace/config.md`), in **both** the Markdown and the HTML. The report is a navigation surface: a reader clicks straight through to the PR diff or the Jira ticket. The PR appendix guarantees full PR coverage; inline mentions in impact/incident/feature rows link too.
-9. Append the daily-log entry using `.claude/docs/daily-log-format.md` and return only the artifact pointer plus up to five highlights.
+9. After successful promotion, append the daily-log entry using `.claude/docs/daily-log-format.md` and return only the artifact pointer plus up to five highlights.
 
 Do not mutate effort lifecycle, PRs, Jira, or GitHub. A PR merged outside the month stays outside the in-month merged-PR count. An effort completed during the month may still appear under `delivered, code merged earlier` after its PR and Jira evidence are reconciled.

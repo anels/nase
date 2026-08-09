@@ -62,6 +62,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-fsd-preflight.sh
   tests/scripts/test-fsd-review-gate.sh
   tests/scripts/test-pr-review-eval.sh
+  tests/scripts/test-skill-eval-run.sh
   tests/scripts/test-voice-profile-routing.sh
   tests/scripts/test-shared-workflow-extraction.sh
   tests/scripts/test-command-skill-size-budget.sh
@@ -307,8 +308,9 @@ run_skill_overlap() {
 }
 
 run_evals() {
-  section "PR review evals"
+  section "skill evals"
   run_gate "test-pr-review-eval.sh" bash tests/scripts/test-pr-review-eval.sh
+  run_gate "test-skill-eval-run.sh" bash tests/scripts/test-skill-eval-run.sh
 }
 
 run_links() {
@@ -372,7 +374,7 @@ run_changed_extras() {
   if printf '%s\n' "$changed" | grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$'; then
     run_canonical_pointers
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(evals/pr-review/|\.claude/scripts/pr-review-eval\.py|tests/scripts/test-pr-review-eval\.sh)'; then
+  if printf '%s\n' "$changed" | grep -qE '^(evals/(pr-review|core-workflows)/|\.claude/scripts/(pr-review-eval|skill-eval-run)\.py|tests/scripts/test-(pr-review-eval|skill-eval-run)\.sh)'; then
     run_evals
   fi
 

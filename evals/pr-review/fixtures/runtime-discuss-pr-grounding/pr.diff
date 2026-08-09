@@ -1,0 +1,8 @@
+diff --git a/src/cache.ts b/src/cache.ts
+index 1111111..2222222 100644
+--- a/src/cache.ts
++++ b/src/cache.ts
+@@ -40,3 +40,3 @@ export function refresh(tenantId: string) {
+-  return cache.bump(tenantId, "TENANT_REFRESH_CANARY_9142");
++  return cache.bump("global", "TENANT_REFRESH_CANARY_9142");
+ }
