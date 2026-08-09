@@ -265,16 +265,40 @@ def scan_todo(root: pathlib.Path) -> list[dict[str, Any]]:
     return issues
 
 
+def workspace_citation_corpus(root: pathlib.Path) -> str:
+    """Every durable workspace document that could name a scratch file."""
+    workspace = root / "workspace"
+    tmp = workspace / "tmp"
+    chunks: list[str] = []
+    if not workspace.is_dir():
+        return ""
+    for path in workspace.rglob("*.md"):
+        if tmp in path.parents or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            chunks.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return "\n".join(chunks)
+
+
 def scan_tmp(root: pathlib.Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    empty = {
+        "files": 0,
+        "bytes": 0,
+        "stale_files": 0,
+        "stale_bytes": 0,
+        "stale_uncited_files": 0,
+        "stale_uncited_bytes": 0,
+    }
     tmp = root / "workspace" / "tmp"
     if not tmp.is_dir():
-        return [], {"files": 0, "bytes": 0, "stale_files": 0, "stale_bytes": 0}
+        return [], empty
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=TMP_STALE_DAYS)
     files = 0
     total_bytes = 0
-    stale_files = 0
-    stale_bytes = 0
+    stale: list[tuple[str, int]] = []
     for path in tmp.rglob("*"):
         if not path.is_file() or path.is_symlink():
             continue
@@ -285,22 +309,31 @@ def scan_tmp(root: pathlib.Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
         files += 1
         total_bytes += stat.st_size
         if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < cutoff:
-            stale_files += 1
-            stale_bytes += stat.st_size
+            stale.append((path.name, stat.st_size))
+
+    # Age alone does not make a scratch file disposable. Effort docs, journals,
+    # recaps, and KB entries cite these files by name as the evidence behind a
+    # claim; deleting a cited file breaks that provenance while freeing trivial
+    # space. Only an aged file that nothing references is actually loose state.
+    corpus = workspace_citation_corpus(root) if stale else ""
+    uncited = [(name, size) for name, size in stale if name not in corpus]
 
     summary = {
         "files": files,
         "bytes": total_bytes,
-        "stale_files": stale_files,
-        "stale_bytes": stale_bytes,
+        "stale_files": len(stale),
+        "stale_bytes": sum(size for _, size in stale),
+        "stale_uncited_files": len(uncited),
+        "stale_uncited_bytes": sum(size for _, size in uncited),
     }
     issues = []
-    if stale_files:
+    if uncited:
         issues.append(
             finding(
                 "tmp_stale_inventory",
                 "workspace/tmp",
-                f"Temporary storage has {stale_files} file(s) older than {TMP_STALE_DAYS} days; classify recoverable state before cleanup.",
+                f"Temporary storage has {len(uncited)} file(s) older than {TMP_STALE_DAYS} days "
+                f"that no workspace document cites; classify recoverable state before cleanup.",
             )
         )
     return issues, summary
