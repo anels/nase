@@ -171,6 +171,20 @@ def effort_status_vocabulary(root: pathlib.Path) -> tuple[set[str], set[str]]:
     return set(row.findall(active)), set(row.findall(done))
 
 
+def effort_scope_vocabulary(root: pathlib.Path) -> set[str]:
+    path = root / ".claude" / "docs" / "effort-lifecycle.md"
+    if not path.is_file():
+        return set()
+    text = path.read_text(encoding="utf-8", errors="replace")
+    section = re.search(
+        r"^## Scope Vocabulary\s*$\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL
+    )
+    if not section:
+        return set()
+    row = re.compile(r"^\|\s*`([^`]+)`\s*\|", re.MULTILINE)
+    return set(row.findall(section.group(1)))
+
+
 def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
     efforts = root / "workspace" / "efforts"
     if not efforts.is_dir():
@@ -186,7 +200,17 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
             )
         ]
 
+    canonical_scopes = effort_scope_vocabulary(root)
+
     issues: list[dict[str, Any]] = []
+    if not canonical_scopes:
+        issues.append(
+            finding(
+                "effort_scope_contract_missing",
+                ".claude/docs/effort-lifecycle.md",
+                "Scope Vocabulary cannot be parsed; scope validation is incomplete.",
+            )
+        )
     canonical = active_statuses | done_statuses
     candidates = [(path, active_statuses, "active") for path in sorted(efforts.glob("*.md"))]
     candidates.extend(
@@ -220,6 +244,22 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
                     f"Effort status '{status}' does not match its {location} location.",
                 )
             )
+        if canonical_scopes:
+            raw_scope = extract_frontmatter_scalar(text, "scope")[0]
+            scope = None if raw_scope is None else normalize_scalar(raw_scope)
+            if scope is None:
+                issues.append(
+                    finding("effort_missing_scope", rel, "Effort frontmatter has no scope.")
+                )
+            elif scope not in canonical_scopes:
+                issues.append(
+                    finding(
+                        "effort_invalid_scope",
+                        rel,
+                        f"Effort scope '{scope}' is outside the canonical vocabulary.",
+                    )
+                )
+
         raw_tracking_only, singleton = extract_frontmatter_scalar(text, "tracking_only")
         tracking_only, tracking_only_valid = canonical_bool(raw_tracking_only)
         tracking_only_valid = tracking_only_valid and singleton

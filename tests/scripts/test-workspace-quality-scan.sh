@@ -60,6 +60,13 @@ cat > "$FIXTURE/.claude/docs/effort-lifecycle.md" <<'EOF'
 | `completed` | shipped |
 | `wontfix` | closed |
 
+## Scope Vocabulary
+
+| scope | meaning |
+|---|---|
+| `quick-fix` | one PR |
+| `feature` | own design |
+
 ## Next section
 EOF
 
@@ -133,6 +140,24 @@ status: proposed
 # Invalid archived status
 EOF
 
+cat > "$FIXTURE/workspace/efforts/invalid-scope.md" <<'EOF'
+---
+status: planned
+scope: bugfix
+---
+
+# Scope names a change kind, not a size
+EOF
+
+cat > "$FIXTURE/workspace/efforts/valid-scope.md" <<'EOF'
+---
+status: planned
+scope: quick-fix
+---
+
+# Canonical scope
+EOF
+
 cat > "$FIXTURE/workspace/efforts/archive/2031/invalid-tracking-only.md" <<'EOF'
 ---
 status: completed
@@ -191,6 +216,10 @@ assert_jq "high unknown kb usage rate is reported" "$json" \
   'any(.findings[]; .category == "kb_usage_unknown_rate")'
 assert_jq "invalid effort statuses and location mismatches are reported" "$json" \
   'any(.findings[]; .category == "effort_invalid_status" and .path == "workspace/efforts/invalid-status.md") and any(.findings[]; .category == "effort_status_location_mismatch" and .path == "workspace/efforts/done/active-status.md") and any(.findings[]; .category == "effort_invalid_status" and .path == "workspace/efforts/archive/2031/invalid-status.md")'
+assert_jq "invalid effort scopes are reported and canonical ones are not" "$json" \
+  'any(.findings[]; .category == "effort_invalid_scope" and .path == "workspace/efforts/invalid-scope.md") and ([.findings[] | select(.category == "effort_invalid_scope" and .path == "workspace/efforts/valid-scope.md")] | length == 0)'
+assert_jq "efforts with no scope are reported" "$json" \
+  'any(.findings[]; .category == "effort_missing_scope" and .path == "workspace/efforts/invalid-status.md")'
 assert_jq "tracking-only efforts in done are reported" "$json" \
   'any(.findings[]; .category == "effort_tracking_only_destination_mismatch" and .path == "workspace/efforts/done/tracking-only.md")'
 assert_jq "non-contract tracking-only scalars are reported" "$json" \

@@ -4,6 +4,7 @@
 
 - Stage Classifier
 - Status Vocabulary
+- Scope Vocabulary
 - Terminal Destination
 - Drift Auto-Sync
 - Multi-Deliverable Efforts
@@ -66,6 +67,23 @@ list; `/nase:kb-review` validates it under *Deep review -> Authoritative state*.
 `awaiting-deploy` is set by the Drift Auto-Sync rule below when delivery PRs merge,
 or by hand when needed, paired with `- [x] Merged` in the Lifecycle block. The
 effort leaves `workspace/efforts/` as `completed` only after deploy validation passes.
+
+## Scope Vocabulary
+
+Frontmatter `scope:` for `workspace/efforts/{slug}.md`. This is the authoritative
+list; `/nase:kb-review` validates it alongside `status:`.
+
+`scope` answers **how big is this**, not **what kind of change is it**. A bug fix
+is `quick-fix` or `feature` depending on its size; `bug`, `fix`, `bugfix`,
+`audit`, `investigation`, `roadmap`, and `security-hardening` are all category
+errors against this axis and have been normalized away.
+
+| scope | meaning |
+|---|---|
+| `quick-fix` | one PR, bounded blast radius, no design surface to speak of |
+| `feature` | a deliverable with its own design and success criteria; usually 1-2 PRs |
+| `initiative` | multi-PR programme, often with child efforts and phases |
+| `exploration` | investigation or spike whose deliverable is an answer, not shipped code |
 
 ## Terminal Destination
 
@@ -271,7 +289,7 @@ Create `workspace/efforts/{slug}.md` with:
 ---
 status: planned
 created: {YYYY-MM-DD}
-scope: {quick-fix|feature|initiative|exploration}
+scope: {see Scope Vocabulary}
 repo: {repo-name or "multiple"}
 ---
 ```
