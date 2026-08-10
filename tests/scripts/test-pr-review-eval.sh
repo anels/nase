@@ -17,6 +17,69 @@ source "$ROOT/tests/lib/assert.sh"
 assert_cmd "eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$EVAL_SET"
 assert_cmd "core workflow eval set validates" "$PYTHON_BIN" "$SCRIPT" validate "$CORE_EVAL_SET"
 
+deleted_source_repo="$TMPDIR_TEST/deleted-source-repo"
+git init -q "$deleted_source_repo"
+printf 'tracked source\n' > "$deleted_source_repo/deleted.txt"
+git -C "$deleted_source_repo" add deleted.txt
+rm "$deleted_source_repo/deleted.txt"
+assert_cmd "canary isolation distinguishes deleted and unreadable sources" \
+  "$PYTHON_BIN" - "$SCRIPT" "$deleted_source_repo" <<'PY'
+import importlib.util
+import json
+import pathlib
+import sys
+import types
+
+script, repo = map(pathlib.Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("pr_review_eval", script)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.source_paths(repo) == []
+
+raced = repo / "raced-after-enumeration.txt"
+run = module.subprocess.run
+module.subprocess.run = lambda *args, **kwargs: types.SimpleNamespace(stdout=b"H raced-after-enumeration.txt\0")
+try:
+    assert module.source_paths(repo) == [raced]
+finally:
+    module.subprocess.run = run
+
+eval_source = script.parents[2] / "evals/core-workflows/evals.json"
+eval_set = json.loads(eval_source.read_text(encoding="utf-8"))
+runtime_case = eval_set["runtime_cases"][0]
+offline_cases = {case["id"]: case for case in eval_set["cases"]}
+
+
+def assert_source_read_fails_closed(path):
+    module.source_paths = lambda root: [path]
+    try:
+        module.validate_runtime_case(runtime_case, set(), offline_cases, eval_source)
+    except module.EvalError as exc:
+        assert "cannot prove canary isolation" in str(exc)
+    else:
+        raise AssertionError("source read failure did not fail closed")
+
+
+assert_source_read_fails_closed(raced)
+denied = repo / "denied.txt"
+denied.write_text("existing source\n", encoding="utf-8")
+read_bytes = pathlib.Path.read_bytes
+
+
+def guarded_read_bytes(path):
+    if path == denied:
+        raise PermissionError
+    return read_bytes(path)
+
+
+pathlib.Path.read_bytes = guarded_read_bytes
+try:
+    assert_source_read_fails_closed(denied)
+finally:
+    pathlib.Path.read_bytes = read_bytes
+PY
+
 mkdir -p "$TMPDIR_TEST/schema/fixture"
 cat > "$TMPDIR_TEST/schema/evals.json" <<'JSON'
 {

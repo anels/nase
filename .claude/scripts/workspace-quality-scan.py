@@ -384,18 +384,29 @@ def scan_tmp(root: pathlib.Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
     return issues, summary
 
 
+def reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
 def scan_kb_usage(root: pathlib.Path, days: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     path = root / "workspace" / "stats" / "kb-usage.jsonl"
     if not path.is_file():
-        return [], {"events": 0, "unknown": 0, "unknown_rate": 0.0}
+        return [], {"events": 0, "unknown": 0, "unknown_rate": 0.0, "malformed": 0}
 
     cutoff = datetime_cutoff(days)
     total = 0
     unknown = 0
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    malformed = 0
+    for line in path.read_bytes().splitlines():
+        if not line.strip():
+            continue
         try:
-            payload = json.loads(line)
-        except Exception:
+            payload = json.loads(line.decode("utf-8"), parse_constant=reject_json_constant)
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            malformed += 1
+            continue
+        if not isinstance(payload, dict):
+            malformed += 1
             continue
         ts = parse_ts(str(payload.get("ts", "")))
         if ts is None or ts < cutoff:
@@ -415,7 +426,15 @@ def scan_kb_usage(root: pathlib.Path, days: int) -> tuple[list[dict[str, Any]], 
                 f"KB usage attribution is {unknown}/{total} unknown ({rate:.0%}).",
             )
         )
-    return issues, {"events": total, "unknown": unknown, "unknown_rate": rate}
+    if malformed:
+        issues.append(
+            finding(
+                "kb_usage_malformed",
+                "workspace/stats/kb-usage.jsonl",
+                f"KB usage ledger contains {malformed} malformed nonblank record(s).",
+            )
+        )
+    return issues, {"events": total, "unknown": unknown, "unknown_rate": rate, "malformed": malformed}
 
 
 def stale_active_skill_files(root: pathlib.Path) -> int:
