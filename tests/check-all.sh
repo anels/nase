@@ -193,11 +193,9 @@ run_actionlint() {
 }
 
 check_hook_wiring() {
-  local opt_in_regex='^(edit-typecheck)$'
   local f name missing=0
   for f in .claude/hooks/*.sh; do
     name=$(basename "$f" .sh)
-    [[ "$name" =~ $opt_in_regex ]] && continue
     if ! grep -q "${name}.sh" .claude/settings.json; then
       printf 'FAIL: %s.sh not wired in settings.json\n' "$name" >&2
       missing=1

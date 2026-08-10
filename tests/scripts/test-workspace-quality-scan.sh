@@ -262,6 +262,77 @@ window_out=$(python3 "$SCRIPT" --root "$window" --days 1 --json 2>&1)
 assert_jq "old kb usage does not affect current window" "$window_out" \
   '(.summary.kb_usage.events == 0) and ([.findings[] | select(.category == "kb_usage_unknown_rate")] | length == 0)'
 
+malformed="$FIXTURE/malformed"
+mkdir -p "$malformed/workspace/stats"
+cat > "$malformed/workspace/stats/kb-usage.jsonl" <<'EOF'
+{"ts":"2026-06-01T00:00:00Z","skill":"fsd"}
+
+not-json
+["not", "an", "event"]
+EOF
+{
+  printf '1'
+  for ((i = 0; i < 5000; i++)); do
+    printf '0'
+  done
+  printf '\n'
+  for ((i = 0; i < 1100; i++)); do
+    printf '['
+  done
+  printf '0'
+  for ((i = 0; i < 1100; i++)); do
+    printf ']'
+  done
+  printf '\n'
+} >> "$malformed/workspace/stats/kb-usage.jsonl"
+printf '%s\n' '{"ts":"2026-06-01T00:00:00Z","skill":NaN}' \
+  >> "$malformed/workspace/stats/kb-usage.jsonl"
+printf '{"ts":"2026-06-01T00:00:00Z","skill":"bad\377"}\n' \
+  >> "$malformed/workspace/stats/kb-usage.jsonl"
+cp "$malformed/workspace/stats/kb-usage.jsonl" "$malformed/ledger.before"
+
+malformed_warn_out=$(python3 "$SCRIPT" --root "$malformed" --days 999999 --json 2>&1)
+malformed_warn_rc=$?
+if [ "$malformed_warn_rc" = 0 ]; then
+  pass_msg "malformed kb usage keeps warn mode successful"
+else
+  fail_msg "malformed kb usage keeps warn mode successful (rc=$malformed_warn_rc)"
+  printf '%s\n' "$malformed_warn_out" >&2
+fi
+assert_jq "malformed kb usage is aggregated into one finding" "$malformed_warn_out" \
+  '(.summary.kb_usage.events == 1) and (.summary.kb_usage.malformed == 6) and ([.findings[] | select(.category == "kb_usage_malformed" and .path == "workspace/stats/kb-usage.jsonl" and (.message | contains("6 malformed")))] | length == 1)'
+
+malformed_strict_out=$(python3 "$SCRIPT" --root "$malformed" --days 999999 --strict --json 2>&1)
+malformed_strict_rc=$?
+if [ "$malformed_strict_rc" = 1 ]; then
+  pass_msg "strict mode rejects malformed-only kb usage"
+else
+  fail_msg "strict mode rejects malformed-only kb usage (rc=$malformed_strict_rc)"
+  printf '%s\n' "$malformed_strict_out" >&2
+fi
+assert_jq "strict malformed output stays parseable and precise" "$malformed_strict_out" \
+  '(.summary.kb_usage.malformed == 6) and ([.findings[] | select(.category == "kb_usage_malformed" and .path == "workspace/stats/kb-usage.jsonl")] | length == 1)'
+
+if cmp -s "$malformed/ledger.before" "$malformed/workspace/stats/kb-usage.jsonl"; then
+  pass_msg "kb usage scan does not modify malformed input"
+else
+  fail_msg "kb usage scan does not modify malformed input"
+fi
+
+blank="$FIXTURE/blank"
+mkdir -p "$blank/workspace/stats"
+printf '\n  \n' > "$blank/workspace/stats/kb-usage.jsonl"
+blank_out=$(python3 "$SCRIPT" --root "$blank" --days 999999 --strict --json 2>&1)
+blank_rc=$?
+if [ "$blank_rc" = 0 ]; then
+  pass_msg "blank-only kb usage stays clean in strict mode"
+else
+  fail_msg "blank-only kb usage stays clean in strict mode (rc=$blank_rc)"
+  printf '%s\n' "$blank_out" >&2
+fi
+assert_jq "blank kb usage records are not malformed" "$blank_out" \
+  '(.summary.kb_usage.malformed == 0) and ([.findings[] | select(.category == "kb_usage_malformed")] | length == 0)'
+
 strict_out=$(python3 "$SCRIPT" --root "$FIXTURE" --days 999999 --strict 2>&1)
 strict_rc=$?
 if [ "$strict_rc" != 0 ]; then
@@ -293,7 +364,8 @@ else
   fail_msg "strict mode exits 0 when no findings exist"
   printf '%s\n' "$clean_out" >&2
 fi
-assert_jq "clean fixture has zero findings" "$clean_out" '.summary.total == 0'
+assert_jq "clean fixture has zero findings" "$clean_out" \
+  '(.summary.total == 0) and (.summary.kb_usage.malformed == 0)'
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

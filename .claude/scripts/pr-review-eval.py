@@ -156,14 +156,39 @@ def command_path(repo_root: Path, skill: str) -> Path:
 def source_paths(repo_root: Path) -> list[Path]:
     try:
         completed = subprocess.run(
-            ["git", "-C", str(repo_root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "-t",
+                "--cached",
+                "--deleted",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise EvalError("cannot enumerate repository sources for canary isolation") from exc
-    return [repo_root / os.fsdecode(item) for item in completed.stdout.split(b"\0") if item]
+    paths: list[Path] = []
+    deleted: set[Path] = set()
+    for item in completed.stdout.split(b"\0"):
+        if not item:
+            continue
+        try:
+            tag, value = item.split(b" ", 1)
+        except ValueError as exc:
+            raise EvalError("cannot parse repository sources for canary isolation") from exc
+        path = repo_root / os.fsdecode(value)
+        if tag == b"R":
+            deleted.add(path)
+        else:
+            paths.append(path)
+    return [path for path in paths if path not in deleted]
 
 
 def validate_runtime_case(
