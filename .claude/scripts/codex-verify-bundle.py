@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 
-GENERATED_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".lock")
 ITEM_LIMIT = 64 * 1024
 CONTEXT_LIMIT = 256 * 1024
 BUNDLE_LIMIT = 512 * 1024
@@ -284,7 +283,9 @@ def candidate_tree(repo: Path) -> tuple[str, str]:
 def changed_lines(repo: Path, base_oid: str, tree_oid: str) -> tuple[int, list[dict[str, Any]]]:
     total = 0
     per_file: list[dict[str, Any]] = []
-    fields = git(repo, "diff", "--numstat", "-z", base_oid, tree_oid).split(b"\0")
+    fields = git(
+        repo, "diff", "--no-ext-diff", "--no-textconv", "--numstat", "-z", base_oid, tree_oid
+    ).split(b"\0")
     index = 0
     while index < len(fields) - 1:
         header = fields[index]
@@ -296,8 +297,26 @@ def changed_lines(repo: Path, base_oid: str, tree_oid: str) -> tuple[int, list[d
             source = fields[index].decode("utf-8", "strict")
             destination = fields[index + 1].decode("utf-8", "strict")
             index += 2
-        binary = added == b"-" or deleted == b"-"
-        count = 0 if binary else int(added) + int(deleted)
+        entries = (
+            tree_entry(repo, base_oid, source),
+            tree_entry(repo, tree_oid, destination),
+        )
+        binary = any(
+            entry is not None
+            and (
+                entry["type"] != "blob"
+                or project_blob(repo, entry, 0)["encoding"] != "utf-8"
+            )
+            for entry in entries
+        )
+        if binary:
+            count = 0
+        elif added == b"-" or deleted == b"-":
+            # Git attributes can force `- -` numstat for renderable text. Blob byte limits,
+            # not this display-only count, decide whether the full diff is safe to embed.
+            count = 1
+        else:
+            count = int(added) + int(deleted)
         total += count
         per_file.append(
             {
@@ -313,7 +332,7 @@ def changed_lines(repo: Path, base_oid: str, tree_oid: str) -> tuple[int, list[d
 
 
 def changed_paths(repo: Path, base_oid: str, tree_oid: str) -> list[str]:
-    raw = git(repo, "diff", "--name-only", "-z", base_oid, tree_oid)
+    raw = git(repo, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", base_oid, tree_oid)
     return [item.decode("utf-8", "strict") for item in raw.split(b"\0") if item]
 
 
@@ -796,6 +815,8 @@ def project_blob(
     while chunk := process.stdout.read(SCAN_CHUNK):
         actual_count += len(chunk)
         digest.update(chunk)
+        if b"\0" in chunk:
+            utf8 = False
         if utf8:
             try:
                 decoder.decode(chunk, final=False)
@@ -979,10 +1000,6 @@ def resolve_contexts(
     return contexts
 
 
-def should_inline(path: str) -> bool:
-    return not path.lower().endswith(GENERATED_SUFFIXES)
-
-
 def limited_diff(
     repo: Path, base_oid: str, tree_oid: str, source_path: str, destination_path: str
 ) -> tuple[str, bool]:
@@ -996,6 +1013,8 @@ def limited_diff(
             str(repo),
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
+            "--text",
             "--find-renames",
             base_oid,
             tree_oid,
@@ -1104,9 +1123,20 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
         path_metadata(repo, base_oid, tree_oid, item["source_path"], item["path"])
         for item in binary_files
     ]
-    stat = redact_sensitive_lines(git_text(repo, "diff", "--stat", base_oid, tree_oid))
+    stat = redact_sensitive_lines(
+        git_text(repo, "diff", "--no-ext-diff", "--no-textconv", "--stat", base_oid, tree_oid)
+    )
     name_status = redact_sensitive_lines(
-        git_text(repo, "diff", "--name-status", "--find-renames", base_oid, tree_oid)
+        git_text(
+            repo,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-status",
+            "--find-renames",
+            base_oid,
+            tree_oid,
+        )
     )
     untracked = redact_sensitive_lines(git_text(repo, "ls-files", "--others", "--exclude-standard"))
     lines = [
@@ -1172,7 +1202,9 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
         for path in data["paths"]
     )
     if not binary_files and total <= args.max_full_diff_lines and changed_blob_bytes <= FULL_DIFF_BYTE_LIMIT:
-        full_diff = git(repo, "diff", "--no-ext-diff", base_oid, tree_oid)
+        full_diff = git(
+            repo, "diff", "--no-ext-diff", "--no-textconv", "--text", base_oid, tree_oid
+        )
         if secret_kind(full_diff):
             for path in data["paths"]:
                 entry = tree_entry(repo, base_oid, path)
@@ -1204,6 +1236,16 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
                 ]
             )
     else:
+        sample_candidates = [
+            candidate
+            for candidate in per_file
+            if not candidate["binary"]
+        ]
+        if len(sample_candidates) > args.max_files:
+            raise SystemExit(
+                f"large diff has {len(sample_candidates)} text paths; "
+                f"--max-files {args.max_files} would omit review evidence"
+            )
         lines.extend(
             [
                 "## Large Diff Sample",
@@ -1212,11 +1254,7 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
                 "",
             ]
         )
-        for item in [
-            candidate
-            for candidate in per_file
-            if not candidate["binary"] and should_inline(candidate["path"])
-        ][: args.max_files]:
+        for item in sample_candidates:
             projection, credential_omitted = limited_diff(
                 repo, base_oid, tree_oid, item["source_path"], item["path"]
             )

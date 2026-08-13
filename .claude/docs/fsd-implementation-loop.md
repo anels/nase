@@ -168,9 +168,19 @@ Follow `.claude/docs/cli-tooling.md`. Probe optional tools with `python3 .claude
 
 Missing optional tools are warning-only unless the task explicitly depends on their evidence. Verify tool findings against the changed source before editing.
 
-### 2. Freeze the tested candidate
+### 2. Freeze the base and tested candidate
 
-Resolve `tested_candidate_tree_oid` with `codex-verify-bundle.py --candidate-tree-only`. This uses the same temporary-index algorithm as the final bundle and performs the redacted candidate secret preflight. An unresolved secret match stops before any reviewer payload is written.
+Capture the candidate metadata once, then extract both values used by the final bundle:
+
+```bash
+BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
+candidate_metadata=$(python3 .claude/scripts/codex-verify-bundle.py \
+  --repo "{worktree_or_repo}" --base "$BASE" --candidate-tree-only)
+tested_candidate_tree_oid=$(printf '%s\n' "$candidate_metadata" | jq -er '.candidate_tree_oid')
+changed_path_count=$(printf '%s\n' "$candidate_metadata" | jq -er '.changed_path_count')
+```
+
+This uses the same temporary-index algorithm as the final bundle and performs the redacted candidate secret preflight. An unresolved secret match stops before any reviewer payload is written.
 
 ### 3. Focused behavioral evidence
 
@@ -184,10 +194,9 @@ Rerun the complete build, lint, typecheck, and test command set after the last e
 
 ### 5. Final diff-size guard
 
-Resolve the commit base and measure the complete candidate, including untracked text:
+Use the commit base frozen in Step 2 and measure the complete candidate, including untracked text:
 
 ```bash
-BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
 git -C {worktree_or_repo} diff --stat "$BASE" | tail -1
 git -C {worktree_or_repo} ls-files --others --exclude-standard
 ```
@@ -215,11 +224,12 @@ python3 .claude/scripts/codex-verify-bundle.py \
   --task "$canonical_task_spec" \
   --inventory-file "{inventory_json}" \
   --evidence-file "{command_evidence_json}" \
+  --max-files "$changed_path_count" \
   --reviewer-identity-output "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-r{qa_round}-identity.json" \
   --output "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-r{qa_round}.md"
 ```
 
-The helper rejects stale evidence, secret-like candidate/evidence content, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.25 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
+Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects stale evidence, secret-like candidate/evidence content, silently omitted text paths, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.25 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
 
 ### Anti-rationalization gate (apply before deciding to skip any sub-step in Phases 5–7)
 
