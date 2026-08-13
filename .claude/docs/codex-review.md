@@ -456,6 +456,8 @@ Codex returns `{threadId, content}`. For default one-call modes, only `content` 
 - **Append it to the parent skill's findings/resolutions**, tagged `[codex]`, so the user can see where each line came from.
 - **De-duplicate against existing findings.** If Codex repeats something a Claude specialist already raised, collapse them into a single entry with both source tags: `[claude+codex]` (higher confidence).
 - **Truncate aggressively** if the response is verbose — Codex sometimes over-explains. For verifier gates, write the full raw result under the invoking workspace's `workspace/tmp/` and show only verdict, top issues, and the result path.
+- **Open a cited location before rebutting it.** A finding that names a `file:line` is checked at the reviewed ref first, per `.claude/docs/pr-review-verification.md` §3 (file-vs-description) and §7 (citation + triage). Your own search scope is the likelier error than the second model's citation — a dismissed "there is a test forcing telemetry to throw" claim was exactly right, and acting on the rebuttal would have shipped the bug.
+- **A refuted finding is still a coverage signal.** When you disprove one, ask which missing test made the misreading plausible to a competent reader, and record that gap with the refutation instead of dropping the finding. Add the test in the same pass when it is in scope, and feed the file that disproved the claim back as bound context for the next round.
 
 ## Error handling
 

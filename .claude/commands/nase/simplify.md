@@ -8,7 +8,7 @@ category: Git workflow
 
 Cleanup pass on recently-modified code: deletion-first anti-slop cleanup plus `code-simplifier` readability refinement, with behavior preserved exactly.
 
-Replaces the retired Anthropic bundled `/simplify` (removed in Claude Code v2.1.147). Uses the `code-simplifier:code-simplifier` subagent when available, with the anti-slop contract embedded in the dispatch prompt.
+Replaces the retired Anthropic bundled `/simplify` (removed in Claude Code v2.1.147). Uses whichever `code-simplifier` subagent is installed (`code-simplifier:code-simplifier` or `pr-review-toolkit:code-simplifier`), with the anti-slop contract embedded in the dispatch prompt.
 
 **Input:** `$ARGUMENTS` — optional scope override (`--scope=<glob>`), `--review`, `--dry-run`, `--verbose`.
 
@@ -98,19 +98,29 @@ Review the scoped files, current diff, and verification evidence. Return:
 
 Stop after the review report unless the user explicitly asks this same pass to switch to writer mode.
 
-### 5. Plugin availability check
+### 5. Resolve the simplifier subagent
 
-If the `code-simplifier:code-simplifier` subagent is not available (plugin not installed), fall back to self-review:
+The simplifier ships under different names depending on which plugin is installed, so
+resolve it against the Agent tool's available-agent list instead of assuming one. Take the
+first that is actually available and hold it as `$SIMPLIFIER_AGENT`:
+
+1. `code-simplifier:code-simplifier` — `claude-plugins-official`
+2. `pr-review-toolkit:code-simplifier` — `pr-review-toolkit`
+
+Never guess a name that is not in the list; an unavailable `subagent_type` fails the call
+outright rather than degrading, which costs a round trip mid-workflow.
+
+If neither is available, fall back to self-review:
 - Check each file against the cleanup targets in Step 3.
 - Apply minimal, behavior-preserving fixes only. Prefer deletion, then duplication consolidation, then clearer names/control flow/error handling.
 - Skip anything that needs a broad rewrite, changes behavior, or cannot be validated.
-- Emit `WARN: code-simplifier subagent unavailable — ran self-review anti-slop fallback. Install claude-plugins-official for the full pass.`
+- Emit `WARN: code-simplifier subagent unavailable — ran self-review anti-slop fallback. Install claude-plugins-official or pr-review-toolkit for the full pass.`
 
 Otherwise continue to Step 6.
 
 ### 6. Dispatch subagent
 
-Launch the `code-simplifier:code-simplifier` subagent via the Agent tool. Pass:
+Launch the `$SIMPLIFIER_AGENT` subagent resolved in Step 5 via the Agent tool. Pass:
 - The deduplicated file list from `$FILES` (Step 1)
 - Instruction:
   - Refine each file for clarity, consistency, maintainability, and anti-slop cleanup following the project's CLAUDE.md conventions.
@@ -166,6 +176,6 @@ The commit-sequence next step is `/nase:improve-commit-message`. This skill does
 
 ## Attribution
 
-The `code-simplifier:code-simplifier` subagent is provided by the `claude-plugins-official` marketplace (`plugins/code-simplifier/agents/code-simplifier.md`) under Apache License 2.0, Copyright Anthropic. This skill dispatches it without vendoring the agent prompt.
+The `code-simplifier:code-simplifier` subagent is provided by the `claude-plugins-official` marketplace (`plugins/code-simplifier/agents/code-simplifier.md`) under Apache License 2.0, Copyright Anthropic. `pr-review-toolkit:code-simplifier` is the same agent shipped under the `pr-review-toolkit` plugin. This skill dispatches whichever is installed, without vendoring the agent prompt.
 
 Anti-slop criteria are adapted from Codex `ai-slop-cleaner` / `code-simplifier`; this skill dispatches only `code-simplifier` and embeds anti-slop checks in the prompt/fallback.

@@ -32,7 +32,7 @@ Follow:
 
 Preserve these names across phase documents:
 
-`success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `qa_round`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `bundle_sha256`, `contract_inventory_sha256`, `quality_action`, `spec_action`, and `approved_candidate_tree_oid`.
+`success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `qa_round`, `tested_candidate_tree_oid`, `changed_path_count`, `candidate_tree_oid`, `bundle_sha256`, `contract_inventory_sha256`, `quality_action`, `spec_action`, and `approved_candidate_tree_oid`.
 
 ## Phase map
 

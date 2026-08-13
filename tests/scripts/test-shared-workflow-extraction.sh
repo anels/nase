@@ -89,6 +89,18 @@ assert_not_contains "FSD entrypoint does not inline closeout report" .claude/com
 assert_cmd "FSD entrypoint keeps size headroom" bash -c 'test "$(wc -c < "$1")" -lt 9000' _ .claude/commands/nase/fsd.md
 assert_contains "FSD freezes complete canonical task" .claude/docs/fsd-intake-and-setup.md 'canonical_task_spec'
 assert_contains "FSD binds tests to candidate tree" .claude/docs/fsd-implementation-loop.md 'tested_candidate_tree_oid'
+assert_contains "FSD state preserves changed path count" .claude/commands/nase/fsd.md 'changed_path_count'
+assert_not_contains "changed-line classification never buffers a forced text patch" \
+  .claude/scripts/codex-verify-bundle.py 'forced_patch = git'
+assert_cmd "FSD captures changed path count before bundle use" python3 - <<'PY'
+from pathlib import Path
+
+text = Path(".claude/docs/fsd-implementation-loop.md").read_text(encoding="utf-8")
+base = text.index("BASE=$(git -C")
+capture = text.index("changed_path_count=$(printf")
+use = text.index('--max-files "$changed_path_count"')
+assert base < capture < use
+PY
 assert_not_contains "FSD intake no longer points to Phase 5.5" .claude/docs/fsd-intake-and-setup.md 'Phase 5\.5'
 assert_not_contains "PR gates no longer point to Phase 5.5" .claude/docs/pr-gates-consumption.md 'Phase 5\.5'
 assert_contains "verification matrix uses final canonical evidence" .claude/docs/fsd-delivery-gates.md 'Phase 6\.1 final canonical test evidence'
@@ -318,6 +330,47 @@ git -C "$tree_repo" add tracked.txt
 partial_tree=$(git -C "$tree_repo" write-tree)
 assert_cmd "partial staging fails approved-tree assertion" test "$partial_tree" != "$tree_changed"
 
+sample_repo=$(mktemp -d "$TMPROOT/large-sample-repo.XXXXXX")
+sample_bundle="$TMPROOT/large-sample.md"
+sample_error="$TMPROOT/large-sample.err"
+(
+  cd "$sample_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name Test
+  git config diff.hide.textconv true
+  printf 'seed\n' > seed.txt
+  git add seed.txt
+  git commit -q -m init
+  for index in 1 2 3 4 5 6; do
+    printf 'changed %s\n' "$index" > "change-$index.py"
+  done
+  printf '[[package]]\nname = "review-me"\nversion = "1.0.0"\n' > Cargo.lock
+  printf '*.py binary diff=hide\n' > .gitattributes
+)
+if python3 .claude/scripts/codex-verify-bundle.py \
+  --repo "$sample_repo" --base HEAD --task sample \
+  --max-full-diff-lines 0 --max-files 5 --output "$sample_bundle" \
+  > /dev/null 2> "$sample_error"
+then
+  fail "large diff refuses to omit a text path"
+else
+  pass "large diff refuses to omit a text path"
+fi
+assert_contains "large diff omission error names the required limit" "$sample_error" \
+  '8 text paths; --max-files 5 would omit review evidence'
+assert_cmd "raised large diff budget samples every text path" \
+  python3 .claude/scripts/codex-verify-bundle.py \
+    --repo "$sample_repo" --base HEAD --task sample \
+    --max-full-diff-lines 0 --max-files 8 --output "$sample_bundle"
+for index in 1 2 3 4 5 6; do
+  assert_contains "large diff bundle includes change-$index.py" "$sample_bundle" \
+    "### change-$index.py"
+done
+assert_contains "large diff bundle includes Cargo.lock" "$sample_bundle" '### Cargo.lock'
+assert_contains "large diff bundle includes candidate attributes" "$sample_bundle" '### \.gitattributes'
+assert_contains "candidate attributes and textconv cannot hide source content" "$sample_bundle" '^\+changed 1$'
+
 context_repo=$(mktemp -d "$TMPROOT/context-repo.XXXXXX")
 context_bundle="$TMPROOT/context-initial.md"
 context_augmented="$TMPROOT/context-augmented.md"
@@ -536,6 +589,7 @@ binary_bundle="$TMPROOT/binary-bundle.md"
   git add README.txt
   git commit -q -m init
   head -c 1048576 /dev/urandom > large.bin
+  printf 'prefix\0suffix\n' > nul.bin
 )
 python3 .claude/scripts/codex-verify-bundle.py \
   --repo "$binary_repo" --base HEAD --task binary --output "$binary_bundle" >/dev/null
@@ -543,6 +597,13 @@ assert_cmd "binary patch is never embedded" bash -c '! grep -q "GIT binary patch
 assert_cmd "binary bundle is byte bounded" test "$(wc -c < "$binary_bundle")" -lt 524288
 assert_contains "binary bundle retains object metadata" "$binary_bundle" '## Binary Path Metadata'
 assert_contains "binary bundle records original byte count" "$binary_bundle" '"byte_count": 1048576'
+assert_contains "NUL-bearing blob retains binary metadata" "$binary_bundle" '"path": "nul.bin"'
+assert_cmd "NUL-bearing patch is never embedded" python3 - "$binary_bundle" <<'PY'
+from pathlib import Path
+import sys
+
+assert b"\0" not in Path(sys.argv[1]).read_bytes()
+PY
 
 rename_repo=$(mktemp -d "$TMPROOT/rename-bundle-repo.XXXXXX")
 rename_bundle="$TMPROOT/rename-bundle.md"

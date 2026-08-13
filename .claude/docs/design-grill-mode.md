@@ -326,6 +326,8 @@ An effort doc that has been through several grill/review rounds accumulates cruf
 
 **Consistency check:** if the pass finds two lines asserting different values for the same thing (a drift, e.g. two different thresholds), **flag it, don't silently pick** — surface as a judgment call.
 
+**Reconcile derived sections:** whenever this session rewrote the body, a resolution, or a constraint, re-read every section *derived* from those decisions — Files list, implementation-plan steps, ETA rows, Reviewability, Success Criteria — and repair each one that still states a pre-rewrite conclusion. Grill and review both read for correctness of the argument, so these tables silently retain the old decision (a rewrite that forbade `Task.WhenAll` left three places still instructing it, and survived two full passes). A contradiction with a current decision is a repair, not a judgment call; a value drift with no current decision behind it stays a flag per the consistency check. Re-anchor any line numbers the session cited if the remote moved. Count these repairs in the `**Cleaned:**` line.
+
 Record the result in the Grill Session block's `**Cleaned:**` line (N auto-removed, M flagged). If nothing needed cleaning, say so — silence is a valid outcome.
 
 ## Step 7: Report

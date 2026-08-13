@@ -61,6 +61,10 @@ For each row fill four fields. Be concrete — paths, env vars, endpoints, query
 - **expected**: success criteria — response code, telemetry event name + dimensions, log line, row-count / checksum match, no-500-on-startup, etc. For telemetry rows include the KQL/PromQL directly so the author pastes and runs it.
 - **why this layer**: 1 line — what slips through if this row is skipped. Especially important for the 🔥 critical row.
 
+**Negative control for "all N surfaces" criteria:** when `expected` has the shape "N/N present / enabled / passing" and a script or query produces that count, the row also carries the **pre-change** run of the same command showing N/N missing. Only that pair separates a real transition from a matcher that matches nothing and passes vacuously. Without the pre-change result the row cannot be marked ✅ done — keep it `required` and name the missing control in the coverage caveat.
+
+**One checker, two invocations, two rows:** when the same script is called with different flags by different callers (CI with no arguments, a hook with `--workspace`), each invocation mode gets its own row and its own status. One mode's green is not evidence for the other; a caveat in prose does not fail a build.
+
 ---
 
 ## 4. Plan-presence scan (skip when PR body not yet drafted)

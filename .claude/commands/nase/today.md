@@ -31,7 +31,7 @@ Slack/Jira MCP queries stay in the main thread because they depend on live conne
 
 ### 4c. Need Attention scan + action menu
 
-Rank confirmed blockers, requested reviews, failing CI, direct replies, Jira actions, stale decisions, and due maintenance. Re-check live state before presenting an action. Include a direct URL for every external item and never manufacture an empty-queue claim when connector coverage is partial.
+Rank confirmed blockers, requested reviews, failing CI, direct replies, Jira actions, stale decisions, and due maintenance. Re-check live state before presenting an action. Rank a Slack item by its resolved thread state, not by the top-level message: read the whole thread, and suppress it when anyone answered and the asker acknowledged — not only when the reply was yours. A top-level-only read promotes closed items and buries open ones. Include a direct URL for every external item and never manufacture an empty-queue claim when connector coverage is partial.
 
 Offer only actions supported by the gathered evidence. External mutations remain draft-first or explicitly gated under `.claude/docs/external-mutation-policy.md`.
 
