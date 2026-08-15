@@ -242,7 +242,7 @@ RESTORE_MD=".claude/commands/nase/restore.md"
 RESTORE_HELPER=".claude/scripts/restore-workspace.py"
 d6_hits=""
 for needle in \
-  "selected backup is outside backup-target" \
+  "restore-workspace.py\" resolve-backup" \
   "restore-workspace.py\" inspect" \
   "restore-workspace.py\" apply" \
   "restore-workspace.py\" recover" \
@@ -252,6 +252,8 @@ for needle in \
   fi
 done
 for needle in \
+  "selected backup is outside backup-target" \
+  "nase-backup-*.zip or nase-backup-*.7z" \
   "7z listing has no member metadata separator" \
   "archive contains parent traversal" \
   "Unicode/case collision" \

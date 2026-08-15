@@ -16,7 +16,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ## Flags
 
-- `--auto-accept` - skip confirmation and amend immediately only when `PUSH_STATE=not-pushed`. A pushed HEAD, or a HEAD whose remote freshness cannot be established, still requires the exact approval in Step 6. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+- `--auto-accept` - skip confirmation and amend immediately only when `push_state: not-pushed`. A pushed HEAD, or a HEAD whose remote freshness cannot be established, still requires the exact approval in Step 6. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
@@ -27,54 +27,36 @@ Never assume repository state — check it with git commands first.
 
 <workflow>
 
-### 1. Detect commitlint config
+### 1. Collect commit context
 
-Use Glob to find config files (`.commitlintrc.json`, `.commitlintrc.js`, `.commitlintrc.yml`, `commitlint.config.js`, `commitlint.config.mjs`, `commitlint.config.cjs`, `commitlint.config.ts`) in the repo root. Multiple may exist — the one CI loads wins, not the first found. Confirm against the `configFile:` line in the commitlint CI job log when a run exists.
-If a JSON config exists, use Read to parse it directly — extract:
+One call captures the HEAD message, parent count, publish state, and every commitlint config candidate:
+
+```bash
+python3 .claude/scripts/git-commit-context.py [--repo /abs/path/to/repo]
+```
+
+`--repo` defaults to the current directory; pass it when the commit lives in another checkout.
+
+From `commitlint.candidates`, take the config CI actually loads — multiple may exist and the first found is not automatically the winner. Confirm against the `configFile:` line in the commitlint CI job log when a run exists. JSON candidates arrive pre-parsed under `rules`; a non-JSON candidate that CI loads still needs a direct Read. Extract:
 - `header-max-length` (validation limit; display target is always **80 chars**)
 - `type-enum` (allowed types)
 - `subject-case` (0 = disabled, 2 = enforced)
 - `subject-full-stop`
 
-If no config found, use defaults: max 72, lowercase, no period, standard types.
+If no config is found (`commitlint.found: false`), use defaults: max 72, lowercase, no period, standard types.
 
-### 2. Get commit info + check safety
+### 2. Check safety
 
-Capture the full HEAD message and parent count. Then refresh every configured remote head before deciding whether HEAD is already published:
+The helper already refreshed every configured remote head before deciding whether HEAD is published.
 
-```bash
-git log -1 --format="%H%n%s%n%n%b"
-git log -1 --format="%P" | tr ' ' '\n' | wc -l
-
-PUSH_STATE=not-pushed
-REMOTES=$(git remote)
-if [ -n "$REMOTES" ]; then
-  FETCH_OK=true
-  for remote in $REMOTES; do
-    git fetch --prune "$remote" "+refs/heads/*:refs/remotes/$remote/*" || FETCH_OK=false
-  done
-  if [ "$FETCH_OK" != true ]; then
-    PUSH_STATE=unknown
-  elif git branch -r --contains HEAD | grep -q .; then
-    PUSH_STATE=pushed
-  fi
-fi
-```
-
-- If merge commit (>1 parent): abort — do not amend merge commits.
-- Compute `IS_PUSHED=true` when `PUSH_STATE` is `pushed` or `unknown`; only a successful refresh followed by no containing remote branch yields `IS_PUSHED=false`. This fail-closed value determines the Step 6 branch.
+- If `is_merge` is true (>1 parent): abort — do not amend merge commits.
+- `is_pushed` is `true` when `push_state` is `pushed` or `unknown`; only a successful refresh followed by no containing remote branch yields `false`. This fail-closed value determines the Step 6 branch.
 
 ### 3. Analyze changes (diff-first strategy)
 
-**Get the diff** (handle initial commits):
-1. Check parent count: `git rev-list --count HEAD`
-2. If count is 1 (initial commit): `git show HEAD --format="" --patch`
-3. Otherwise: `git diff -U5 HEAD^ HEAD`
-
-```
-# Normal case:
-git diff -U5 HEAD^ HEAD
-```
+**Get the diff**, branching on `is_initial_commit` from Step 1:
+- true → `git show HEAD --format="" --patch`
+- false → `git diff -U5 HEAD^ HEAD`
 
 Read the diff first. Only read full source files when the 5-line context is insufficient to understand the purpose or scope of the change. Read only the files needed to understand the change scope.
 
@@ -114,7 +96,7 @@ git commit --amend -m "type(scope): subject"
 
 For multi-line messages, use `-m "subject" -m "body paragraph"`.
 
-When `IS_PUSHED=true`, `--auto-accept` does not authorize the amend. Approval cannot be inherited from a caller flag or earlier workflow confirmation. Display the full current and proposed messages, rerun `git log -1 --format=%H`, and require its output to equal the captured `{full_sha}`. Set `{history_status}` to `pushed` when `PUSH_STATE=pushed`, or `possibly pushed because remote freshness failed` when `PUSH_STATE=unknown`. Then ask this exact approval question immediately before the amend:
+When `is_pushed: true`, `--auto-accept` does not authorize the amend. Approval cannot be inherited from a caller flag or earlier workflow confirmation. Display the full current and proposed messages, rerun `git log -1 --format=%H`, and require its output to equal the captured `{full_sha}`. Set `{history_status}` to `pushed` when `push_state: pushed`, or `possibly pushed because remote freshness failed` when `push_state: unknown`. Then ask this exact approval question immediately before the amend:
 
 ```
 question: "Approve amending {history_status} HEAD ({full_sha}) from exactly:\n{current full message}\n\nto exactly:\n{proposed full message}\n\nThis rewrites history and the next push must use --force-with-lease."
@@ -126,7 +108,7 @@ options:
 
 If "Skip", output "Keeping original message ({history_status} HEAD; aborted to avoid forced-push surprise)." and stop. If HEAD or the proposed message changes after approval, discard the approval and ask again with the new exact values. If "Approve exact amend", run the amend immediately with no intervening prompt or action, emit `WARN: HEAD was {history_status} before amend. Your next 'git push' must use --force-with-lease.`, and stop.
 
-When `PUSH_STATE=not-pushed` and `--auto-accept` is present, display the current vs proposed message, amend immediately, and stop.
+When `push_state: not-pushed` and `--auto-accept` is present, display the current vs proposed message, amend immediately, and stop.
 
 Otherwise, display the comparison and confirm using AskUserQuestion:
 
@@ -173,7 +155,7 @@ fix(auth): handle null tokens from expired sessions
 
 <error_handling>
 
-- **Pushed or freshness unknown**: after the mandatory remote refresh, either a containing remote branch or a refresh failure sets `IS_PUSHED=true`. Step 6 always requires exact immediate approval for the final HEAD and message, including in `--auto-accept` mode. Skill never pushes itself.
+- **Pushed or freshness unknown**: after the mandatory remote refresh, either a containing remote branch or a refresh failure sets `is_pushed: true`. Step 6 always requires exact immediate approval for the final HEAD and message, including in `--auto-accept` mode. Skill never pushes itself.
 - **Merge commit**: Skip — do not amend
 - **No parent** (initial commit): Use `git show HEAD --format="" --patch` (as in Step 3)
 - **Multiple scopes**: Use the most significant scope; mention others in body

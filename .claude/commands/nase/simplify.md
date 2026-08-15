@@ -22,44 +22,19 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ### 1. Determine scope
 
-Pick the scope source from `$ARGUMENTS` (lowercase, trimmed):
+The helper matches `$ARGUMENTS` case-insensitively, in this order, and returns the deduplicated list:
 
-- `--scope=<glob>` → resolve the glob via tracked files and untracked files matching the glob.
-- contains `unstaged` → `git diff --name-only` plus untracked files.
-- contains `staged` (e.g. "staged files", "staged-only") → `git diff --name-only --cached`.
-- contains `last-commit` or `last commit` → `git diff --name-only HEAD~1 HEAD`.
-- anything else (default) → all files modified since the merge base with `origin/<default-branch>`, plus staged + unstaged + untracked.
-
-Capture the deduplicated list into `$FILES` so later steps have a concrete handle:
+- `--scope=<glob>` → tracked + untracked files matching the glob (the glob keeps its case).
+- contains `unstaged` → unstaged changes plus untracked files.
+- contains `staged` (e.g. "staged files", "staged-only") → the index only.
+- contains `last-commit` or `last commit` → files changed in `HEAD~1..HEAD`.
+- anything else (default) → files modified since the merge base with `origin/<default-branch>`, plus staged + unstaged + untracked.
 
 ```bash
-git fetch origin --quiet
-DEFAULT=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-[ -z "$DEFAULT" ] && DEFAULT=main
-BASE_REF="origin/$DEFAULT"
-MERGE_BASE=$(git merge-base HEAD "$BASE_REF" 2>/dev/null || git rev-parse HEAD)
-
-case "$ARGUMENTS" in
-  *--scope=*) GLOB="${ARGUMENTS##*--scope=}"; GLOB="${GLOB%% *}"
-              FILES=$({
-                git ls-files -- "$GLOB"
-                git ls-files --others --exclude-standard -- "$GLOB"
-              } | sort -u) ;;
-  *unstaged*) FILES=$({
-                git diff --name-only
-                git ls-files --others --exclude-standard
-              } | sort -u) ;;
-  *staged*)   FILES=$(git diff --name-only --cached | sort -u) ;;
-  *"last-commit"*|*"last commit"*)
-              FILES=$(git diff --name-only HEAD~1 HEAD | sort -u) ;;
-  *)          FILES=$({
-                git diff --name-only "$MERGE_BASE" HEAD
-                git diff --name-only
-                git diff --name-only --cached
-                git ls-files --others --exclude-standard
-              } | sort -u) ;;
-esac
+FILES=$(bash .claude/scripts/scope-files.sh "$ARGUMENTS")
 ```
+
+Add a repo path as a second argument (`... "$ARGUMENTS" /abs/path/to/repo`) to scope another checkout; paths come back relative to it.
 
 If `$FILES` is empty → output `No modified files in scope. Nothing to simplify.` and stop.
 

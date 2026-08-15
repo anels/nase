@@ -579,6 +579,52 @@ assert (snapshot / "old").read_text() == "old"
 PY
 assert_cmd "recovery validates journal namespaces and candidate/snapshot inventories" test "$?" = 0
 
+# --- resolve-backup: guards the restore skill used to inline in shell ---------
+backup_target="$TMPROOT/backups"
+outside_dir="$TMPROOT/outside"
+mkdir -p "$backup_target" "$outside_dir"
+printf 'zip\n' > "$backup_target/nase-backup-20260101-000000.zip"
+printf '7z\n' > "$backup_target/nase-backup-20260102-000000.7z"
+printf 'notes\n' > "$backup_target/notes.zip"
+printf 'evil\n' > "$outside_dir/nase-backup-20260103-000000.zip"
+ln -s "$outside_dir/nase-backup-20260103-000000.zip" "$backup_target/nase-backup-escape.zip"
+
+resolve_backup() {
+  python3 "$SCRIPT" resolve-backup --target "$1" --selection "$2" 2>"$TMPROOT/resolve.err"
+}
+
+# Output is canonical, so expectations compare against the resolved target
+# (macOS /var is a symlink to /private/var).
+backup_target_real=$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve())' "$backup_target")
+
+out=$(resolve_backup "$backup_target" "nase-backup-20260101-000000.zip")
+assert_cmd "bare name resolves under the backup target" \
+  test "$out" = "$backup_target_real/nase-backup-20260101-000000.zip"
+
+out=$(resolve_backup "$backup_target/" "nase-backup-20260102-000000.7z")
+assert_cmd "trailing-slash target still resolves a .7z archive" \
+  test "$out" = "$backup_target_real/nase-backup-20260102-000000.7z"
+
+out=$(resolve_backup "$backup_target" "$backup_target/nase-backup-20260101-000000.zip")
+assert_cmd "absolute selection inside the target is accepted" \
+  test "$out" = "$backup_target_real/nase-backup-20260101-000000.zip"
+
+resolve_backup "$backup_target" "../outside/nase-backup-20260103-000000.zip" >/dev/null
+assert_cmd "traversal outside the backup target is rejected" test "$?" = 2
+assert_cmd "traversal error names the containment guard" \
+  grep -q "outside backup-target" "$TMPROOT/resolve.err"
+
+resolve_backup "$backup_target" "nase-backup-escape.zip" >/dev/null
+assert_cmd "symlink escaping the backup target is rejected" test "$?" = 2
+
+resolve_backup "$backup_target" "notes.zip" >/dev/null
+assert_cmd "non-nase archive name is rejected" test "$?" = 2
+assert_cmd "name error states the required pattern" \
+  grep -q "nase-backup-\*.zip" "$TMPROOT/resolve.err"
+
+resolve_backup "$backup_target" "$backup_target" >/dev/null
+assert_cmd "the target directory itself is not a valid selection" test "$?" = 2
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nrestore workspace tests passed.\n'
   exit 0
