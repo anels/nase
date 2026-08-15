@@ -47,39 +47,14 @@ options:
   - label: "Other"                                       , description: "Type a filename or list more"
 ```
 
-Resolve the selected backup to a canonical path before using it:
+Resolve the selected backup to a canonical path before using it. The helper canonicalizes both paths, treats a bare name as relative to the backup target, and rejects any selection that escapes the target or is not a `nase-backup-*.{zip,7z}` archive:
+
 ```bash
-canonicalize_restore_path() {
-  local path="$1"
-  local py
-  py=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
-  if [ -n "$py" ]; then
-    "$py" - "$path" <<'PY'
-from pathlib import Path
-import sys
-
-print(Path(sys.argv[1]).expanduser().resolve(strict=False))
-PY
-    return
-  fi
-  realpath "$path" 2>/dev/null || readlink -f "$path" 2>/dev/null || printf '%s\n' "$path"
-}
-
-TARGET_REAL=$(canonicalize_restore_path "$TARGET")
-case "$SELECTED_BACKUP" in
-  /*|~*) SELECTED_PATH="$SELECTED_BACKUP" ;;
-  *)     SELECTED_PATH="$TARGET/$SELECTED_BACKUP" ;;
-esac
-ZIP_PATH=$(canonicalize_restore_path "$SELECTED_PATH")
-case "$ZIP_PATH" in
-  "$TARGET_REAL"/*) ;;
-  *) echo "ERROR: selected backup is outside backup-target" >&2; exit 1 ;;
-esac
-case "$(basename "$ZIP_PATH")" in
-  nase-backup-*.zip|nase-backup-*.7z) ;;
-  *) echo "ERROR: selected backup name must be nase-backup-*.zip or nase-backup-*.7z" >&2; exit 1 ;;
-esac
+ZIP_PATH=$(python3 "$NASE_ROOT/.claude/scripts/restore-workspace.py" resolve-backup \
+  --target "$TARGET" --selection "$SELECTED_BACKUP") || exit 1
 ```
+
+The `|| exit 1` is load-bearing: command substitution otherwise leaves `ZIP_PATH` empty on a rejected selection and the flow walks into `inspect` with no archive. Report the helper's error and stop — never fall back to the raw selection.
 
 ### 4. Inspect and confirm
 

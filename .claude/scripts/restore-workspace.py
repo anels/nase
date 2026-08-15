@@ -830,9 +830,38 @@ def recover_restore(root: Path) -> dict[str, Any]:
         raise RestoreError(str(exc)) from exc
 
 
+def canonicalize_path(raw: str) -> Path:
+    return Path(raw).expanduser().resolve(strict=False)
+
+
+def resolve_backup(target_raw: str, selection: str) -> str:
+    """Resolve a user-selected backup to a canonical path inside the backup target.
+
+    A selection is either an absolute/`~` path or a name relative to the backup target.
+    The resolved path must live strictly under the resolved target, and the filename must
+    be a nase backup archive.
+    """
+    if not selection:
+        raise RestoreError("no backup selected")
+    target_real = canonicalize_path(target_raw)
+    if selection.startswith(("/", "~")):
+        candidate = selection
+    else:
+        candidate = f"{target_raw}/{selection}"
+    resolved = canonicalize_path(candidate)
+    if not str(resolved).startswith(f"{target_real}{os.sep}"):
+        raise RestoreError("selected backup is outside backup-target")
+    if not re.fullmatch(r"nase-backup-.*\.(zip|7z)", resolved.name):
+        raise RestoreError("selected backup name must be nase-backup-*.zip or nase-backup-*.7z")
+    return str(resolved)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
+    resolve_parser = subcommands.add_parser("resolve-backup")
+    resolve_parser.add_argument("--target", required=True)
+    resolve_parser.add_argument("--selection", required=True)
     inspect_parser = subcommands.add_parser("inspect")
     inspect_parser.add_argument("--root", required=True)
     inspect_parser.add_argument("--archive", required=True)
@@ -848,7 +877,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     try:
-        if args.command == "inspect":
+        if args.command == "resolve-backup":
+            print(resolve_backup(args.target, args.selection))
+        elif args.command == "inspect":
             result = inspect_archive(Path(args.root), Path(args.archive), Path(args.manifest_out))
             print(
                 json.dumps(

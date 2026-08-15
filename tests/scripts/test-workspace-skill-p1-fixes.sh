@@ -74,22 +74,27 @@ assert_contains "sync docs checks local workspace-skill manifest" "$SYNC" 'works
 assert_not_contains "sync docs does not depend on empty HEAD diff" "$SYNC" 'git diff HEAD --name-only'
 
 IMPROVE_COMMIT=.claude/commands/nase/improve-commit-message.md
+COMMIT_CONTEXT=.claude/scripts/git-commit-context.py
 KB_USAGE=.claude/commands/nase/kb-usage.md
 
 assert_contains "pushed amend requires immediate approval even with auto-accept" \
-  "$IMPROVE_COMMIT" 'When `IS_PUSHED=true`, `--auto-accept` does not authorize the amend.'
+  "$IMPROVE_COMMIT" 'When `is_pushed: true`, `--auto-accept` does not authorize the amend.'
 assert_contains "pushed amend cannot inherit caller authorization" \
   "$IMPROVE_COMMIT" 'Approval cannot be inherited from a caller flag or earlier workflow confirmation.'
 assert_contains "pushed amend approval names the full SHA" \
   "$IMPROVE_COMMIT" 'HEAD ({full_sha}) from exactly:'
 assert_contains "pushed amend approval binds the full message" \
   "$IMPROVE_COMMIT" '{proposed full message}'
+assert_contains "improve commit reads publish state from the shared helper" \
+  "$IMPROVE_COMMIT" 'git-commit-context.py'
 assert_contains "pushed amend refreshes all configured remote heads" \
-  "$IMPROVE_COMMIT" '+refs/heads/*:refs/remotes/$remote/*'
+  "$COMMIT_CONTEXT" 'f"+refs/heads/*:refs/remotes/{remote}/*"'
 assert_contains "pushed amend fails closed on remote refresh errors" \
-  "$IMPROVE_COMMIT" 'PUSH_STATE=unknown'
+  "$COMMIT_CONTEXT" 'state = "unknown"'
+assert_contains "unknown publish state counts as published" \
+  "$COMMIT_CONTEXT" 'state in ("pushed", "unknown")'
 assert_contains "auto-accept only skips approval for confirmed local commits" \
-  "$IMPROVE_COMMIT" 'When `PUSH_STATE=not-pushed` and `--auto-accept` is present'
+  "$IMPROVE_COMMIT" 'When `push_state: not-pushed` and `--auto-accept` is present'
 assert_contains "pushed amend warnings preserve unknown state" \
   "$IMPROVE_COMMIT" 'HEAD was {history_status} before amend'
 assert_not_contains "pushed amend does not claim committer timestamp preservation" \
