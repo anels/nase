@@ -112,7 +112,7 @@ in `.claude/docs/cli-tooling.md`.
 | **Slack** | `/nase:request-review` - resolves GitHub handles to Slack users and stages DM drafts; direct sends are blocked by a hook | [Slack MCP Server](https://docs.slack.dev/ai/slack-mcp-server/) |
 | **Codex** | Optional read-only second-opinion gates; skipped cleanly when unavailable | `claude mcp add codex --scope user -- /Applications/Codex.app/Contents/Resources/codex mcp-server` |
 
-Configure MCP servers in your Claude Code `settings.json` (or `settings.local.json`) under `mcpServers`. GitHub workflows use `gh` CLI by default.
+[Configure MCP servers](https://code.claude.com/docs/en/mcp) with `claude mcp add`; Claude Code stores project-scoped servers in `.mcp.json` and user- or local-scoped servers in `~/.claude.json`. GitHub workflows use `gh` CLI by default.
 
 ---
 
