@@ -329,6 +329,33 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(reason=reason):
                 self.assertFalse(module.is_placeholder_match(b"pass" + b"word=" + reason))
 
+    def test_url_credential_position_reference_is_not_a_credential(self):
+        # `git clone https://x-access-token:${PAT}@github.com/owner/repo.git` — the value the
+        # scanner sees is the reference plus the URL authority and path, so no fullmatch
+        # reference rule covers it. Real pipelines keep this line permanently.
+        for source in (
+            b'"https://x-access-' + b"token:${GITHUB_PAT}@github.com/${REPO_OWNER}/${REPO_NAME}.git\"",
+            b"x-access-" + b"token:$GITHUB_PAT@github.com/owner/repo.git",
+            b"access_" + b"token:$(SYSTEM_TOKEN)@dev.azure.com/org/project",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_url_credential_position_literal_is_still_flagged(self):
+        # The rule requires the reference to START the value. A pasted literal in the same
+        # position has no leading reference, and a real token after the `@` is still caught
+        # by the known-token pattern.
+        self.assertEqual(
+            module.secret_kind(b"x-access-" + b"token:abc123secretvalue@github.com/owner/repo.git"),
+            "credential-assignment",
+        )
+        self.assertEqual(
+            module.secret_kind(
+                b"x-access-" + b"token:${PAT}@github.com/o/" + b"ghp_" + b"a" * 22 + b".git"
+            ),
+            "known-token",
+        )
+
     def test_prose_shaped_values_are_not_credentials(self):
         # Markdown running text produces incidental `key=` shapes. Each of these values is
         # provably not a credential: no alphanumerics at all, a bare length, or a format
