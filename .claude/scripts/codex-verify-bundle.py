@@ -100,6 +100,17 @@ ANGLE_PLACEHOLDER_SPAN = re.compile(rb"^<[^<>\r\n\"']{1,64}>$")
 # `assigned_value` strips a trailing `]` along with other value punctuation; requiring it
 # would make the rule fire on the backticked form only and miss the bare one.
 BRACKET_REDACTION_MARKER = re.compile(rb"^\[[A-Z0-9]*_?REDACTED(?:_[A-Z0-9]+)*\]?$")
+# `https://x-access-token:${GITHUB_PAT}@github.com/owner/repo.git` — a clone URL whose
+# credential position is filled at run time. `x-access-token` reads as a credential name and
+# the value the unquoted branch sees is the reference *plus* the URL authority and path, so
+# none of the fullmatch reference rules above can absolve it. The reference must start the
+# value: everything after the `@` is host and path, which is not the credential. A pasted
+# literal in that same position has no leading reference and stays flagged, and a real token
+# after the `@` is still caught by SECRET_PATTERNS.
+URL_CREDENTIAL_REFERENCE = re.compile(
+    rb"(?ix)^(?:\$\{[A-Z_][A-Z0-9_]*\}|\$\([A-Z_][A-Z0-9_]*\)|\$[A-Z_][A-Z0-9_]*)"
+    rb"@[A-Z0-9._~:/?\#\[\]!$&'()*+,;=%{}-]*$"
+)
 # `parsed_assignment` reports an unreadable value with an angle-wrapped sentinel. Those are
 # fail-closed signals, not placeholders — the angle rules above must never absolve them.
 FAIL_CLOSED_VALUES = frozenset({b"<overlong-quoted-value>", b"<unterminated-quoted-value>"})
@@ -180,6 +191,7 @@ def reference_like(value: bytes) -> bool:
             or NON_ALPHANUMERIC_VALUE.fullmatch(candidate)
             or COUNT_VALUE.fullmatch(candidate)
             or FORMAT_SPECIFIER_VALUE.fullmatch(candidate)
+            or URL_CREDENTIAL_REFERENCE.fullmatch(candidate)
         ):
             return True
     return False
