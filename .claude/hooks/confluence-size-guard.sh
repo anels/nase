@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse guard for Confluence page writes: enforce a lossless format and a size cap.
+# PreToolUse guard for Confluence page writes: enforce an accepted format and a size cap.
 # The Atlassian MCP can truncate or fail on very large page bodies; block at
 # 60K bytes to leave headroom for storage-format expansion. Note that headroom
-# was calibrated when ADF was the only accepted format — markdown is far terser
+# was calibrated when ADF was the only accepted format - markdown is far terser
 # per input byte, so callers publishing markdown should split well below the cap
 # (see .claude/docs/confluence-publish-conversion.md).
 # Page bodies must be sent as contentFormat:"adf", "html" (Confluence HTML+), or
-# "markdown"; all three round-trip inlineCard, panels, tables, and attachments
-# through the MCP's own converter. Storage XHTML and unset are rejected —
+# "markdown". adf and html round-trip inlineCard, panels, tables, and
+# attachments through the MCP's own converter; markdown is passthrough and
+# cannot express any of them. Storage XHTML and unset are rejected -
 # see .claude/docs/confluence-adf-pattern.md.
 set -euo pipefail
 
@@ -33,10 +34,11 @@ block_format() {
     echo "BLOCKED by confluence-size-guard: $reason."
     echo ""
     echo "Confluence page bodies must be sent as one of contentFormat:"
-    echo "\"adf\", \"html\", or \"markdown\" so inlineCard Jira links, panels,"
-    echo "tables, and attachments round-trip. Use \"adf\" when editing a page"
-    echo "already fetched as ADF, \"html\" (Confluence HTML+) when publishing"
-    echo "converted HTML, and \"markdown\" for markdown passthrough."
+    echo "\"adf\", \"html\", or \"markdown\". Use \"adf\" when editing a page"
+    echo "already fetched as ADF and \"html\" (Confluence HTML+) when publishing"
+    echo "converted HTML - both round-trip inlineCard Jira links, panels,"
+    echo "tables, and attachments. \"markdown\" is passthrough and expresses"
+    echo "none of those, so use it only for a plain markdown document."
     echo "Storage XHTML and any other value are rejected. If a page cannot be"
     echo "expressed in one of these, save a draft to workspace/tmp/ and ask"
     echo "the user to paste it manually."

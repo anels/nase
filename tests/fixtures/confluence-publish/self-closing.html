@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Self-Closing Regression</title>
+<style>
+body{margin:0}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{border:1px solid #ccc;padding:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Self-Closing Regression</h1>
+
+<p>Before the traps.</p>
+
+<button type="button">Export<i class="icon"/></button>
+<p>After a self-closed tag inside a dropped subtree.</p>
+
+<svg class="glyph"/>
+<p>After a self-closed viewBox-less svg.</p>
+
+<div class="cards"/>
+<p>After a self-closed grid container.</p>
+
+<section/>
+<p>After a self-closed unwrapped section.</p>
+
+<h2>Layout grid</h2>
+<div class="cards">
+  <div class="card"><strong>Runs</strong><span>1,643,173</span></div>
+  <div class="card"><strong>Failures</strong><span>412</span></div>
+</div>
+
+<h2>Last section</h2>
+<p>Nothing may swallow this.</p>
+</div>
+</body></html>

@@ -20,13 +20,13 @@ Shared rules for reading and writing Confluence pages via Atlassian MCP. Referen
 
 ## Accepted write formats: `adf`, `html`, `markdown`
 
-Every `createConfluencePage` / `updateConfluencePage` body must be sent as one of `contentFormat: "adf"`, `"html"`, or `"markdown"`. All three go through the MCP's own converter and round-trip `inlineCard` Jira links, panels, tables, expands, and attachment references without loss. Pick by what you are holding:
+Every `createConfluencePage` / `updateConfluencePage` body must be sent as one of `contentFormat: "adf"`, `"html"`, or `"markdown"`. All three go through the MCP's own converter. `adf` and `html` are lossless for `inlineCard` Jira links, panels, tables, expands, and attachment references; **`markdown` is not** - measured on the round-trip, it cannot express any of those, and a markdown Jira link stays a plain `<a href>`. Pick by what you are holding:
 
 | You are | Use | Why |
 |---|---|---|
 | Editing a page you fetched as ADF | `adf` | Modify the fetched tree in memory and send it back; no conversion in either direction. |
 | Publishing converted HTML | `html` (Confluence HTML+) | The source is already HTML, and HTML+ is exactly what `getConfluencePage(contentFormat:"html")` returns, so it is the server's own shape. It is also far more compact than ADF for the same content, which matters against the size cap below. |
-| Publishing a Markdown document | `markdown` | Passthrough, no local converter. Markdown is terser than the other two, so it expands further into storage format — split well below the cap. |
+| Publishing a Markdown document | `markdown` | Passthrough, no local converter. Lossy: no panels, expands, or inline cards - use `html` when those matter. Markdown is also terser than the other two, so it expands further into storage format; split well below the cap. |
 
 `.claude/hooks/confluence-size-guard.sh` enforces the set — it blocks a page write whose `contentFormat` is unset, `storage`, or anything outside those three. If a page genuinely cannot be expressed in one of them, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
 

@@ -99,6 +99,38 @@ check_contains "chart: chart text preserved" "$body" 'Chart data (text)'
 check_contains "chart: chart values searchable" "$body" '2025-10 $91k +4.0%'
 check_absent   "chart: svg markup not inlined" "$body" '<svg'
 
+# --- self-closing tags must not leak parser state --------------------------
+# A self-closed non-void tag gets a starttag callback and never an endtag. If it
+# opened a dropped subtree, the drop counter never returns to zero and every
+# element after it is discarded - silently, with exit 0.
+out="$WORK/selfclose"; rc=$(plan_of "$FIX/self-closing.html" "$out")
+check "self-closing: plan exits 0" "$rc" "0"
+body=$(cat "$out"/page-000.body.html)
+check_contains "self-closing: survives <i/> in a dropped subtree" "$body" "After a self-closed tag inside"
+check_contains "self-closing: survives <svg/>"                    "$body" "After a self-closed viewBox-less svg"
+check_contains "self-closing: survives <div class=cards/>"        "$body" "After a self-closed grid container"
+check_contains "self-closing: survives <section/>"                "$body" "After a self-closed unwrapped section"
+check_contains "self-closing: document tail is not swallowed"     "$body" "Nothing may swallow this."
+check_absent   "self-closing: button chrome dropped"              "$body" "Export"
+
+# --- CSS-grid blocks are rasterized, not unwrapped to paragraph soup -------
+# A grid lays meaning out in two dimensions; unwrapping it yields a run of
+# orphan labels and numbers, so the block is captured and screenshotted whole.
+check "grid: one block visual detected" \
+  "$(jqp "$out/plan.json" "sum(len(p['visuals']) for p in d['pages'])")" "1"
+check "grid: classified as a block, not an svg" \
+  "$(jqp "$out/plan.json" "d['pages'][0]['visuals'][0]['kind']")" "block"
+check_contains "grid: placeholder emitted"  "$body" 'attach <code>chart-01.png</code>'
+check_contains "grid: text stays searchable" "$body" "Runs 1,643,173 Failures 412"
+check_absent   "grid: card markup not inlined" "$body" '<strong>Runs</strong>'
+# --no-rasterize must turn the block back into ordinary unwrapped content
+out="$WORK/selfclose-norast"
+python3 "$SCRIPT" plan --source "$FIX/self-closing.html" --out-dir "$out" --no-rasterize >/dev/null 2>&1
+check "grid: --no-rasterize emits no visuals" \
+  "$(jqp "$out/plan.json" "sum(len(p['visuals']) for p in d['pages'])")" "0"
+check_contains "grid: --no-rasterize keeps the content" \
+  "$(cat "$out"/page-000.body.html)" "<strong>Runs</strong>"
+
 # --- nesting violations are detected, never rewritten ----------------------
 for case in table-in-li table-in-panel table-in-cell; do
   out="$WORK/nest-$case"
@@ -146,6 +178,32 @@ for plan in "$WORK"/*/plan.json; do
   done
 done
 check "every emitted body is under the 60000 cap" "$overs" "0"
+
+# --- attach: the placeholder -> media-node swap ----------------------------
+# The only part of `attach` that needs no network, and the part that silently
+# no-ops if the panel wording in `capture_visual` drifts from PLACEHOLDER_RE.
+swap=$(python3 - "$SCRIPT" "$WORK/selfclose/page-000.body.html" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cp", sys.argv[1])
+cp = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cp)
+body = open(sys.argv[2], encoding="utf-8").read()
+node = '<figure data-type="media-single"><div data-type="media" data-id="X"></div></figure>'
+out, hit = cp.replace_placeholder(body, "chart-01.png", node)
+miss_out, miss = cp.replace_placeholder(body, "chart-99.png", node)
+print("hit=%s node=%s panel=%s expand=%s tail=%s miss=%s intact=%s" % (
+    hit,
+    node in out,
+    "attach <code>chart-01.png</code>" not in out,
+    "Chart data (text)" in out,
+    "Nothing may swallow this." in out,
+    miss,
+    miss_out == body,
+))
+PY
+)
+check "attach: placeholder swapped for the media node" "$swap" \
+  "hit=True node=True panel=True expand=True tail=True miss=False intact=True"
 
 # --- ledger: resume, drift detection, orphans ------------------------------
 LEDGER="$WORK/pubs.jsonl"

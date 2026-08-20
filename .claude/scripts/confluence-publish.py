@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """Convert a local Markdown/HTML artifact into Confluence-ready page bodies.
 
-Two subcommands, and the split between them is deliberate:
+Subcommands:
 
-    plan    parse, classify visuals, emit page bodies, measure, split
-    render  rasterize the SVG charts the placeholders point at
+    plan            parse, classify visuals, emit page bodies, measure, split
+    render          rasterize the captured charts and layout blocks
+    attach          upload the PNGs and swap placeholders for media nodes
+    ledger-append   record one published page
+    ledger-lookup   resolve create/update per page for a re-publish
 
 `plan` owns the split because it owns the measurement. Emitting needs no
 browser, so it produces the real bodies and splits on real bytes; a split
 computed from an estimate and only checked later would let a user confirm
 "single page" and then hard-fail with no re-split path.
 
-Neither subcommand touches the network or the Atlassian MCP. That boundary is
-what makes the conversion testable without Confluence credentials.
+`plan` and `render` never touch the network, which is what lets
+tests/scripts/test-confluence-publish.sh run without credentials. `attach` is
+the one networked subcommand: Confluence exposes attachment upload only on
+REST v1, so it cannot go through the Atlassian MCP.
 
 See .claude/docs/confluence-publish-conversion.md for the mapping contract.
 """
@@ -25,9 +30,15 @@ import json
 import os
 import re
 import shutil
+import base64
 import subprocess
 import sys
+import urllib.error
+import urllib.request
+from html import unescape
 from html.parser import HTMLParser
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 EXIT_OVERSIZE = 3
 EXIT_NESTING = 4
@@ -47,7 +58,10 @@ PASSTHROUGH = frozenset(
     "blockquote pre details summary a".split()
 )
 
-DROP_TREE = frozenset("style script head nav footer canvas svg".split())
+DROP_TREE = frozenset(
+    "style script head nav footer canvas svg button select textarea form "
+    "dialog noscript template".split()
+)
 
 UNWRAP = frozenset("div span section article main header aside figure figcaption i b".split())
 
@@ -74,6 +88,30 @@ NESTING_RULES = (
 )
 
 MIN_CHART_TEXT = 20
+DEFAULT_CONTENT_WIDTH = 1080
+
+GRID_RULE = re.compile(r"\.([a-z0-9_-]+)[^{]*\{([^}]*)\}", re.I)
+
+
+def layout_classes(source: str) -> set[str]:
+    """Classes the source lays out with CSS grid.
+
+    These carry the report's visual language - KPI boards, before/after cards,
+    incident grids - and unwrapping them to semantic HTML yields paragraph soup,
+    because the meaning lives in the two-dimensional placement, not the markup.
+    They are rasterized instead.
+    """
+    found = set()
+    for style in re.findall(r"<style[^>]*>(.*?)</style>", source, re.S):
+        for match in GRID_RULE.finditer(style):
+            if re.search(r"display:\s*grid", match.group(2)):
+                found.add(match.group(1).lower())
+    return found
+
+
+def content_width(source: str) -> int:
+    widths = [int(w) for w in re.findall(r"max-width:\s*(\d{3,4})px", source)]
+    return max(widths) if widths else DEFAULT_CONTENT_WIDTH
 
 
 def escape(text: str) -> str:
@@ -136,15 +174,19 @@ class HtmlPlusEmitter(HTMLParser):
         self.drop_depth = 0
         self.title_from_head = ""
         self.in_title = False
-        self.pending_text: list[str] = []
         self.last_char = " "
         self.gap_pending = False
+        self.stray_table_text: list[str] = []
+        self.auto_cells: set[int] = set()
+        self.panel_starts: list[int] = []
         self.visual_seq = 0
         self.dropped_subtrees = 0
         self.current_heading = ""
 
-        self.svg_start: int | None = None
-        self.svg_depth = 0
+        self.grid_classes = set() if no_rasterize else layout_classes(source_text)
+        self.capture_start: int | None = None
+        self.capture_tag = ""
+        self.capture_depth = 0
 
     # ---- position helpers -------------------------------------------------
     def abs_offset(self) -> int:
@@ -199,9 +241,9 @@ class HtmlPlusEmitter(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = {k: (v or "") for k, v in attrs}
 
-        if self.svg_start is not None:
-            if tag == "svg":
-                self.svg_depth += 1
+        if self.capture_start is not None:
+            if tag == self.capture_tag and tag not in VOID:
+                self.capture_depth += 1
             return
         if tag == "title" and not self.in_title:
             # Checked before drop_depth: <title> lives inside <head>, which is a
@@ -216,10 +258,14 @@ class HtmlPlusEmitter(HTMLParser):
 
         if tag == "svg":
             if "viewbox" in {k.lower() for k in attrs} and not self.no_rasterize:
-                self.svg_start = self.abs_offset()
-                self.svg_depth = 1
+                self.begin_capture(tag)
             else:
                 self.drop_depth = 1
+            return
+
+        class_set = set((attrs.get("class") or "").lower().split())
+        if class_set & self.grid_classes:
+            self.begin_capture(tag)
             return
 
         if tag in VOID:
@@ -252,9 +298,10 @@ class HtmlPlusEmitter(HTMLParser):
             if panel:
                 self.check_nesting("panel")
                 self.stack.append("panel")
-                if not self.stack[:-1]:
+                if self.structural_depth() == 1:
                     self.open_block()
                 self.emit('<div data-type="%s">' % panel)
+                self.panel_starts.append(len(self.block.html))
             else:
                 self.stack.append("~unwrap")
                 self.emit_gap()
@@ -264,6 +311,16 @@ class HtmlPlusEmitter(HTMLParser):
             self.stack.append("~unwrap")
             self.emit_gap()
             return
+
+        if self.stack and self.stack[-1] in ("table", "thead", "tbody", "tr") and tag not in (
+            "tr", "td", "th", "thead", "tbody"
+        ):
+            # An element orphaned inside a row, outside any cell. Malformed
+            # source, but the content is real - a dropped <td> around a PR link
+            # is the usual cause - so wrap it in a cell rather than losing it.
+            self.stack.append("td")
+            self.auto_cells.add(len(self.stack) - 1)
+            self.emit("<td>")
 
         self.check_nesting(tag)
 
@@ -300,18 +357,43 @@ class HtmlPlusEmitter(HTMLParser):
         return "<%s>" % tag
 
     def handle_startendtag(self, tag, attrs):
+        """Self-closing non-void tags must leave no state behind.
+
+        `handle_starttag` can open a capture, a dropped subtree, or a stack
+        entry, and no end tag is coming to close any of them. A leaked
+        `drop_depth` is the dangerous one: `<button><i class="icon"/></button>`
+        leaves the counter at 1 forever, so every element after it is silently
+        discarded and the page publishes truncated.
+        """
+        if tag in VOID:
+            self.handle_starttag(tag, attrs)
+            return
+        before_drop = self.drop_depth
+        before_capture = self.capture_start
+        before_capture_depth = self.capture_depth
         self.handle_starttag(tag, attrs)
-        if tag not in VOID and self.svg_start is None and not self.drop_depth:
-            self.handle_endtag(tag)
+        if before_capture is not None:
+            self.capture_depth = before_capture_depth
+            return
+        if self.capture_start is not None:
+            # It opened a capture on an element that closes immediately, so
+            # there is no content to rasterize. Abandon it.
+            self.capture_start = None
+            return
+        if self.drop_depth != before_drop:
+            self.drop_depth = before_drop
+            return
+        self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
-        if self.svg_start is not None:
-            if tag == "svg":
-                self.svg_depth -= 1
-                if self.svg_depth == 0:
+        if self.capture_start is not None:
+            if tag == self.capture_tag:
+                self.capture_depth -= 1
+                if self.capture_depth == 0:
                     end = self.source_text.find(">", self.abs_offset()) + 1
-                    self.capture_visual(self.source_text[self.svg_start:end])
-                    self.svg_start = None
+                    markup = self.source_text[self.capture_start:end]
+                    self.capture_start = None
+                    self.capture_visual(markup)
             return
         if tag == "title":
             self.in_title = False
@@ -325,6 +407,15 @@ class HtmlPlusEmitter(HTMLParser):
 
         if self.stack and self.stack[-1] == "panel" and tag == "div":
             self.stack.pop()
+            start = self.panel_starts.pop() if self.panel_starts else len(self.block.html)
+            inner = "".join(self.block.html[start:])
+            # A panel holding only inline runs gets one paragraph per run from
+            # Confluence, which fragments a sentence across lines. Wrap the whole
+            # run in a single <p> instead. Panels containing real blocks are left
+            # alone - nesting a <p> around them would be invalid.
+            if inner.strip() and not re.search(r"<(p|table|ul|ol|blockquote|details|h[1-6])[ >]", inner):
+                del self.block.html[start:]
+                self.block.html.append("<p>%s</p>" % inner.strip())
             self.emit("</div>")
             return
         if tag in UNWRAP or tag not in PASSTHROUGH:
@@ -332,6 +423,11 @@ class HtmlPlusEmitter(HTMLParser):
                 self.stack.pop()
             self.emit_gap()
             return
+        if tag == "tr" and self.stack and self.stack[-1] == "td" \
+                and (len(self.stack) - 1) in self.auto_cells:
+            self.auto_cells.discard(len(self.stack) - 1)
+            self.stack.pop()
+            self.emit("</td>")
         if tag in self.stack:
             while self.stack and self.stack[-1] != tag:
                 self.stack.pop()
@@ -342,7 +438,7 @@ class HtmlPlusEmitter(HTMLParser):
             self.block.heading = self.current_heading
 
     def handle_data(self, data):
-        if self.svg_start is not None:
+        if self.capture_start is not None:
             return
         if self.in_title:
             self.title_from_head += data
@@ -357,7 +453,18 @@ class HtmlPlusEmitter(HTMLParser):
             self.gap_pending = False
             if not data[:1].isspace() and self.last_char and not self.last_char.isspace():
                 self.emit(" ")
-        if not self.stack:
+        if self.stack and self.stack[-1] in ("table", "thead", "tbody", "tr"):
+            # Text directly inside a table but outside any cell is invalid HTML.
+            # Real sources do produce it - a broken generator can leave literal
+            # text where a <td> should be - and forwarding it risks the MCP
+            # rejecting the whole page, so drop it and surface it as a warning
+            # rather than silently shipping malformed markup.
+            self.stray_table_text.append(data.strip()[:40])
+            return
+        if self.structural_depth() == 0:
+            # Bare text with only unwrapped layout wrappers above it still needs
+            # a paragraph; emitting it loose leaves inline text at the top level
+            # of the page body.
             self.open_block()
             self.emit("<p>%s</p>" % escape(data.strip()))
             return
@@ -366,15 +473,22 @@ class HtmlPlusEmitter(HTMLParser):
         self.emit(escape(data))
 
     # ---- visuals ----------------------------------------------------------
-    def capture_visual(self, svg_markup: str) -> None:
+    def begin_capture(self, tag: str) -> None:
+        self.capture_start = self.abs_offset()
+        self.capture_tag = tag
+        self.capture_depth = 1
+
+    def capture_visual(self, markup: str) -> None:
         self.visual_seq += 1
         name = "chart-%02d.png" % self.visual_seq
-        width, height = viewbox_dimensions(svg_markup)
-        chart_text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", svg_markup)).strip()
+        is_svg = markup.lstrip().startswith("<svg")
+        width, height = viewbox_dimensions(markup) if is_svg else (0, 0)
+        chart_text = unescape(re.sub(r"<[^>]+>", " ", markup))
+        chart_text = re.sub(r"\s+", " ", chart_text).strip()
 
         placeholder = (
             '<div data-type="panel-info"><p><strong>Chart:</strong> %s'
-            " &mdash; attach <code>%s</code> here.</p></div>"
+            " - attach <code>%s</code> here.</p></div>"
             % (escape(self.current_heading or "chart %d" % self.visual_seq), name)
         )
         if len(chart_text) >= MIN_CHART_TEXT:
@@ -382,7 +496,7 @@ class HtmlPlusEmitter(HTMLParser):
                 "<details><summary>Chart data (text)</summary><p>%s</p></details>"
                 % escape(chart_text)
             )
-        if not self.stack:
+        if self.structural_depth() == 0:
             self.open_block()
         self.emit(placeholder)
         self.block.visuals.append(
@@ -392,8 +506,9 @@ class HtmlPlusEmitter(HTMLParser):
                 "width": width,
                 "height": height,
                 "text_chars": len(chart_text),
+                "kind": "svg" if is_svg else "block",
                 "placeholder": placeholder,
-                "markup": svg_markup,
+                "markup": markup,
                 "status": "pending",
             }
         )
@@ -497,7 +612,7 @@ def clamp(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]
-    return cut.rstrip(" ,;:—-") + "…"
+    return cut.rstrip(" ,;:-") + "…"
 
 
 def page_title(base: str, page: list[Block], index: int, carried: str) -> tuple[str, str]:
@@ -509,11 +624,11 @@ def page_title(base: str, page: list[Block], index: int, carried: str) -> tuple[
     if index == 0:
         return clamp(base, TITLE_LIMIT), heading
     if own:
-        title = "%s — %s" % (base, clamp(own, HEADING_FRAGMENT_LIMIT))
+        title = "%s - %s" % (base, clamp(own, HEADING_FRAGMENT_LIMIT))
     elif carried:
-        title = "%s — %s (cont. %d)" % (base, clamp(carried, HEADING_FRAGMENT_LIMIT), index + 1)
+        title = "%s - %s (cont. %d)" % (base, clamp(carried, HEADING_FRAGMENT_LIMIT), index + 1)
     else:
-        title = "%s — part %d" % (base, index + 1)
+        title = "%s - part %d" % (base, index + 1)
     return clamp(title, TITLE_LIMIT), heading
 
 
@@ -541,6 +656,12 @@ def cmd_plan(args) -> int:
         head_title = emitter.title_from_head
         blocks = [b for b in emitter.blocks if b.text().strip() or b.visuals]
         dropped = emitter.dropped_subtrees
+        if emitter.stray_table_text:
+            warnings.append(
+                "dropped %d text run(s) sitting inside a table but outside any cell - "
+                "the source markup is malformed there: %s"
+                % (len(emitter.stray_table_text), ", ".join(emitter.stray_table_text[:6]))
+            )
 
     title = resolve_title(args.title, head_title, blocks, source_path)
     if kind == "html" and blocks and blocks[0].level == 1 and blocks[0].heading.strip() == title.strip():
@@ -559,10 +680,25 @@ def cmd_plan(args) -> int:
 
     os.makedirs(args.out_dir, exist_ok=True)
     ext = "md" if kind == "markdown" else "html"
+
+    def tidy(body: str) -> str:
+        """Drop rules stranded at the top of a page.
+
+        A separator that sat inside a dropped interactive container (an export
+        menu, say) survives as a leading `<hr>` because it is a void element
+        emitted before its parent is discarded. A page should not open with a
+        horizontal rule.
+        """
+        while True:
+            stripped = re.sub(r"^\s*<hr\s*/?>\s*", "", body)
+            if stripped == body:
+                return body
+            body = stripped
+
     pages = []
     carried_heading = ""
     for index, page in enumerate(pages_blocks):
-        body = "".join(b.text() for b in page)
+        body = tidy("".join(b.text() for b in page))
         nbytes = len(body.encode("utf-8"))
         if nbytes > CAP_BYTES:
             heading = next((b.heading for b in page if b.heading), "(untitled section)")
@@ -588,7 +724,7 @@ def cmd_plan(args) -> int:
                 "bytes": nbytes,
                 "bytes_without_visuals": sum(b.nbytes(with_visuals=False) for b in page),
                 "visuals": [
-                    {k: v[k] for k in ("id", "png", "width", "height", "text_chars", "status")}
+                    {k: v[k] for k in ("id", "png", "width", "height", "text_chars", "kind", "status")}
                     for v in visuals
                 ],
             }
@@ -611,6 +747,7 @@ def cmd_plan(args) -> int:
             str(v["id"]): v["markup"] for b in blocks for v in b.visuals
         },
         "_style": extract_styles(raw) if kind == "html" else "",
+        "_content_width": content_width(raw) if kind == "html" else DEFAULT_CONTENT_WIDTH,
     }
     plan_path = os.path.join(args.out_dir, "plan.json")
     with open(plan_path, "w", encoding="utf-8") as handle:
@@ -645,11 +782,67 @@ def find_chrome() -> str | None:
     return shutil.which("google-chrome") or shutil.which("chromium")
 
 
+DARK_MEDIA = re.compile(r"@media[^{]*prefers-color-scheme\s*:\s*dark[^{]*\{")
+
+
+def force_light(style: str) -> str:
+    """Disable the source's dark-mode block for rendering only.
+
+    Confluence pages are light, so a chart captured in the dark palette looks
+    broken on the page. Forcing `data-theme="light"` is not enough: a report
+    whose media query is unguarded (no `:not([data-theme="light"])`) still
+    follows the browser preference, and headless Chrome may report dark. The
+    rewritten CSS is used for the screenshot only and never written back.
+    """
+    return DARK_MEDIA.sub("@media not all{", style)
+
+
+def render_document(style: str, markup: str, width: int, measure: bool) -> str:
+    """Standalone page holding one visual block.
+
+    `data-theme="light"` is forced because these reports are theme-aware and
+    headless Chrome would otherwise render the dark palette onto Confluence's
+    light page. The `.wrap` shim reinstates the content width the block's CSS
+    assumes, which dies the moment the element leaves its ancestor chain.
+    """
+    probe = (
+        "<script>window.addEventListener('load',function(){"
+        "var b=document.querySelector('.__block').getBoundingClientRect();"
+        "document.title='H'+Math.ceil(b.height);});</script>"
+        if measure else ""
+    )
+    return (
+        '<!doctype html><html data-theme="light"><head><meta charset="utf-8">'
+        "<style>%s\nhtml,body{margin:0;padding:0;background:#fff}"
+        ".__shim{width:%dpx;padding:0;margin:0;max-width:none}"
+        ".__block{display:inline-block;width:%dpx;padding:12px;box-sizing:border-box}"
+        "</style>%s</head>"
+        '<body><div class="wrap __shim"><div class="__block">%s</div></div></body></html>'
+        % (force_light(style), width, width, probe, markup)
+    )
+
+
+def measure_height(chrome: str, path: str, width: int) -> int:
+    """Chrome screenshots a viewport, not an element, so the height has to be
+    read back before the capture or every PNG carries a tail of blank page."""
+    argv = [
+        chrome, "--headless", "--disable-gpu", "--hide-scrollbars",
+        "--virtual-time-budget=4000", "--window-size=%d,800" % width,
+        "--dump-dom", "file://%s" % path,
+    ]
+    try:
+        done = subprocess.run(argv, capture_output=True, timeout=30, text=True)
+    except subprocess.TimeoutExpired:
+        return 0
+    found = re.search(r"<title>H(\d+)</title>", done.stdout or "")
+    return int(found.group(1)) if found else 0
+
+
 def cmd_render(args) -> int:
     with open(args.plan, encoding="utf-8") as handle:
         plan = json.load(handle)
-    markup = plan.get("_visual_markup", {})
-    if not markup:
+    markup_by_id = plan.get("_visual_markup", {})
+    if not markup_by_id:
         print("no visuals to render")
         return 0
 
@@ -658,30 +851,43 @@ def cmd_render(args) -> int:
     os.makedirs(assets, exist_ok=True)
     chrome = find_chrome()
     style = plan.get("_style", "")
+    page_width = int(plan.get("_content_width") or DEFAULT_CONTENT_WIDTH)
 
     for page in plan["pages"]:
         for visual in page["visuals"]:
-            svg = markup.get(str(visual["id"]), "")
-            width = visual["width"] or 1040
-            height = visual["height"] or 600
+            markup = markup_by_id.get(str(visual["id"]), "")
             target = os.path.join(assets, visual["png"])
-
-            if not chrome:
+            if not chrome or not markup:
                 visual["status"] = "skipped:no-renderer"
                 continue
 
-            # The source sizes its charts through CSS that dies the moment the
-            # element leaves its ancestor chain, so pin the viewBox dimensions
-            # onto the element instead of inheriting them.
-            sized = re.sub(r"<svg\b", '<svg width="%d" height="%d"' % (width, height), svg, count=1)
-            doc = (
-                '<!doctype html><html data-theme="light"><head><meta charset="utf-8">'
-                "<style>%s\nbody{margin:0;background:#fff}</style></head><body>%s</body></html>"
-                % (style, sized)
-            )
+            if visual.get("kind") == "svg":
+                # The source sizes its charts through CSS that dies once the
+                # element leaves its ancestor chain, so pin the viewBox
+                # dimensions onto the element instead of inheriting them.
+                width = visual["width"] or page_width
+                height = visual["height"] or 600
+                markup = re.sub(
+                    r"<svg\b", '<svg width="%d" height="%d"' % (width, height), markup, count=1
+                )
+                doc_width = width
+            else:
+                doc_width = page_width
+                height = 0
+
             html_path = os.path.join(assets, "visual-%02d.html" % visual["id"])
+            if not height:
+                with open(html_path, "w", encoding="utf-8") as handle:
+                    handle.write(render_document(style, markup, doc_width, measure=True))
+                height = measure_height(chrome, html_path, doc_width)
+                if not height:
+                    visual["status"] = "skipped:unmeasurable"
+                    os.remove(html_path)
+                    continue
+                visual["width"], visual["height"] = doc_width, height
+
             with open(html_path, "w", encoding="utf-8") as handle:
-                handle.write(doc)
+                handle.write(render_document(style, markup, doc_width, measure=False))
 
             argv = [
                 chrome,
@@ -691,7 +897,7 @@ def cmd_render(args) -> int:
                 "--hide-scrollbars",
                 "--force-device-scale-factor=2",
                 "--default-background-color=ffffffff",
-                "--window-size=%d,%d" % (width, height),
+                "--window-size=%d,%d" % (doc_width, height),
                 "--screenshot=%s" % target,
                 "file://%s" % html_path,
             ]
@@ -699,9 +905,12 @@ def cmd_render(args) -> int:
                 subprocess.run(argv, capture_output=True, timeout=30, check=False)
             except subprocess.TimeoutExpired:
                 visual["status"] = "skipped:render-timeout"
-                continue
-            visual["status"] = "rendered" if os.path.exists(target) else "skipped:no-output"
-            os.remove(html_path)
+            else:
+                visual["status"] = (
+                    "rendered" if os.path.exists(target) else "skipped:no-output"
+                )
+            if os.path.exists(html_path):
+                os.remove(html_path)
 
     with open(args.plan, "w", encoding="utf-8") as handle:
         json.dump(plan, handle, indent=2)
@@ -714,6 +923,228 @@ def cmd_render(args) -> int:
         print("%-24s %d" % (status, count))
     print("assets      %s" % assets)
     return 0
+
+
+KEYCHAIN_SERVICE = "nase-confluence"
+ATTACH_PATH = "/wiki/rest/api/content/%s/child/attachment"
+
+
+TOKEN_ENV = "CONFLUENCE_API_TOKEN"
+
+
+def api_token(service: str, account: str) -> str:
+    """Read the Atlassian API token, keychain first and environment second.
+
+    The token is never passed on a command line, never written to the plan, and
+    never printed. Confluence attachment upload exists only on REST v1 - the
+    MCP exposes no attachment tool and v2 is GET/DELETE only - so this is the
+    single credential the publish path needs.
+
+    The keychain is preferred because it survives no shell history and no
+    process listing. `security` is macOS-only, so everywhere else the
+    environment variable is the supported path; it is read only after the
+    keychain lookup fails, so a stale export never shadows the real token.
+    """
+    if shutil.which("security"):
+        done = subprocess.run(
+            ["security", "find-generic-password", "-w", "-s", service, "-a", account],
+            capture_output=True, text=True,
+        )
+        if done.returncode == 0 and done.stdout.strip():
+            return done.stdout.strip()
+
+    from_env = os.environ.get(TOKEN_ENV, "").strip()
+    if from_env:
+        return from_env
+
+    raise RuntimeError(
+        "no Atlassian API token found for %r.\n"
+        "  macOS:     security add-generic-password -U -s %s -a %s -w\n"
+        "             (then paste the token at the prompt)\n"
+        "  elsewhere: export %s=<token>\n"
+        "Create the token at https://id.atlassian.com/manage-profile/security/api-tokens"
+        % (account, service, account, TOKEN_ENV)
+    )
+
+
+def multipart(fields: dict, filename: str, payload: bytes) -> tuple[bytes, str]:
+    boundary = "----nase" + hashlib.sha256(filename.encode()).hexdigest()[:24]
+    out = []
+    for key, value in fields.items():
+        out.append(
+            ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n"
+             % (boundary, key, value)).encode()
+        )
+    out.append(
+        ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n"
+         "Content-Type: image/png\r\n\r\n" % (boundary, filename)).encode()
+    )
+    out.append(payload)
+    out.append(("\r\n--%s--\r\n" % boundary).encode())
+    return b"".join(out), "multipart/form-data; boundary=%s" % boundary
+
+
+def upload_attachment(site: str, email: str, token: str, page_id: str, path: str) -> dict:
+    name = os.path.basename(path)
+    body, content_type = multipart({"minorEdit": "true"}, name, open(path, "rb").read())
+    request = urllib.request.Request(
+        "https://%s%s" % (site, ATTACH_PATH % page_id), data=body, method="POST"
+    )
+    request.add_header("Content-Type", content_type)
+    request.add_header("X-Atlassian-Token", "nocheck")
+    request.add_header(
+        "Authorization",
+        "Basic " + base64.b64encode(("%s:%s" % (email, token)).encode()).decode(),
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return json.loads(response.read().decode())
+
+
+def existing_attachments(site: str, email: str, token: str, page_id: str) -> dict:
+    """Map filename -> fileId for attachments already on the page, so a re-run
+    does not upload a second version of an image that is already there."""
+    request = urllib.request.Request(
+        "https://%s/wiki/api/v2/pages/%s/attachments?limit=250" % (site, page_id)
+    )
+    request.add_header(
+        "Authorization",
+        "Basic " + base64.b64encode(("%s:%s" % (email, token)).encode()).decode(),
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode())
+    except (urllib.error.URLError, OSError, json.JSONDecodeError):
+        # Worst case this misses an existing attachment and uploads a second
+        # version, which Confluence handles; a traceback here would abort the
+        # whole page instead.
+        return {}
+    return {a["title"]: a.get("fileId", "") for a in data.get("results", []) if a.get("fileId")}
+
+
+def media_id_of(result: dict) -> str:
+    node = (result.get("results") or [result])[0]
+    return (node.get("extensions") or {}).get("fileId") or node.get("id", "")
+
+
+PLACEHOLDER_RE = (
+    r'<div data-type="panel-info"><p><strong>Chart:</strong>'
+    r'(?:(?!</div>).)*?attach <code>%s</code>(?:(?!</div>).)*?</p></div>'
+)
+
+
+def replace_placeholder(body: str, png: str, node: str) -> tuple[str, bool]:
+    """Swap the placeholder panel for the real media node.
+
+    Matched on the PNG filename rather than a remembered string: the panel text
+    is regenerated by `plan` and only the filename is guaranteed stable across
+    a re-plan.
+    """
+    pattern = re.compile(PLACEHOLDER_RE % re.escape(png), re.S)
+    updated, count = pattern.subn(node, body, count=1)
+    return updated, bool(count)
+
+
+def resolve_site(explicit: str) -> str:
+    """The Atlassian host to upload to.
+
+    Hard-coding one organisation would make this script unusable for anyone
+    else, so the default comes from the same `workspace/config.md` entry the
+    Jira flows already read.
+    """
+    if explicit:
+        return explicit.replace("https://", "").rstrip("/")
+    # REPO_ROOT is the checkout holding this script; cwd covers a worktree,
+    # where `workspace/` is git-ignored and therefore absent.
+    for root in (REPO_ROOT, os.getcwd()):
+        config = os.path.join(root, "workspace", "config.md")
+        if not os.path.exists(config):
+            continue
+        found = re.search(
+            r"^\s*baseUrl:\s*(?:https://)?([A-Za-z0-9.-]+)",
+            open(config, encoding="utf-8").read(), re.M,
+        )
+        if found:
+            return found.group(1).rstrip("/")
+    raise RuntimeError(
+        "no Atlassian site to upload to. Pass --site <your-org>.atlassian.net, or add "
+        "`baseUrl: https://<your-org>.atlassian.net` under `## Jira` in workspace/config.md"
+    )
+
+
+def cmd_attach(args) -> int:
+    site = resolve_site(args.site)
+    with open(args.plan, encoding="utf-8") as handle:
+        plan = json.load(handle)
+    out_dir = os.path.dirname(os.path.abspath(args.plan))
+    assets = os.path.join(out_dir, "assets")
+
+    page = next((p for p in plan["pages"] if p["index"] == args.page_index), None)
+    if page is None:
+        sys.stderr.write("no page with index %d in the plan\n" % args.page_index)
+        return 2
+    # Retry anything not already attached: a failed upload (auth, network) must
+    # be re-runnable without hand-editing the plan, and an already-attached
+    # visual must not be uploaded twice.
+    pending = [v for v in page["visuals"] if v.get("status") != "attached"]
+    if not pending:
+        print("nothing to attach for page %d" % args.page_index)
+        return 0
+
+    token = api_token(args.keychain_service, args.account)
+    already = existing_attachments(site, args.account, token, args.page_id)
+    body_path = page["body_file"]
+    body = open(body_path, encoding="utf-8").read()
+
+    for visual in pending:
+        png = os.path.join(assets, visual["png"])
+        if not os.path.exists(png):
+            visual["status"] = "attach-failed:missing-png"
+            continue
+        media_id = already.get(visual["png"], "")
+        if not media_id:
+            try:
+                result = upload_attachment(site, args.account, token, args.page_id, png)
+            except urllib.error.HTTPError as exc:
+                visual["status"] = "attach-failed:http-%d" % exc.code
+                sys.stderr.write("upload %s failed: HTTP %d\n" % (visual["png"], exc.code))
+                continue
+            except (urllib.error.URLError, OSError) as exc:
+                visual["status"] = "attach-failed:network"
+                sys.stderr.write("upload %s failed: %s\n" % (visual["png"], exc))
+                continue
+            media_id = media_id_of(result)
+        if not media_id:
+            visual["status"] = "attach-failed:no-media-id"
+            continue
+
+        node = (
+            '<figure data-type="media-single" data-layout="center" data-width="%d" '
+            'data-width-type="pixel"><div data-type="media" data-media-type="file" '
+            'data-id="%s" data-collection="contentId-%s" data-width="%d" data-height="%d">'
+            "</div></figure>"
+            % (visual["width"], media_id, args.page_id,
+               visual["width"] * 2, visual["height"] * 2)
+        )
+        body, swapped = replace_placeholder(body, visual["png"], node)
+        if not swapped:
+            visual["status"] = "attach-failed:placeholder-not-found"
+            continue
+        visual["media_id"] = media_id
+        visual["status"] = "attached"
+
+    with open(body_path, "w", encoding="utf-8") as handle:
+        handle.write(body)
+    page["bytes"] = len(body.encode("utf-8"))
+    with open(args.plan, "w", encoding="utf-8") as handle:
+        json.dump(plan, handle, indent=2)
+
+    counts: dict[str, int] = {}
+    for visual in page["visuals"]:
+        counts[visual["status"]] = counts.get(visual["status"], 0) + 1
+    for status, count in sorted(counts.items()):
+        print("%-28s %d" % (status, count))
+    print("body        %s (%d B)" % (body_path, page["bytes"]))
+    return 0 if all(v["status"] == "attached" for v in pending) else 1
 
 
 LEDGER = "workspace/confluence-publications.jsonl"
@@ -840,6 +1271,15 @@ def main() -> int:
     append_parser.add_argument("--published-at", required=True)
     append_parser.add_argument("--asset", action="append", default=[])
     append_parser.set_defaults(func=cmd_ledger_append)
+
+    attach_parser = sub.add_parser("attach")
+    attach_parser.add_argument("--plan", required=True)
+    attach_parser.add_argument("--page-index", type=int, default=0)
+    attach_parser.add_argument("--page-id", required=True)
+    attach_parser.add_argument("--site", default="")
+    attach_parser.add_argument("--account", required=True)
+    attach_parser.add_argument("--keychain-service", default=KEYCHAIN_SERVICE)
+    attach_parser.set_defaults(func=cmd_attach)
 
     lookup_parser = sub.add_parser("ledger-lookup")
     lookup_parser.add_argument("--ledger", default=LEDGER)
