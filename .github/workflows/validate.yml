@@ -32,6 +32,10 @@ jobs:
           # is reproducible across runs. Action prepends `lychee-` to this value
           # when constructing the release URL — provide bare `vX.Y.Z`.
           lycheeVersion: v0.15.1
+          # tests/fixtures is excluded because fixtures are deliberately malformed
+          # inputs, not documentation: confluence-publish/digest.md carries a broken
+          # image reference on purpose, since that is what proves `plan` warns that
+          # markdown passthrough cannot carry a local image.
           args: >-
             --offline
             --no-progress
@@ -39,6 +43,7 @@ jobs:
             --exclude-path workspace
             --exclude-path .omc
             --exclude-path node_modules
+            --exclude-path tests/fixtures
             './**/*.md'
             '.claude/**/*.md'
           fail: true
