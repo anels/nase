@@ -275,14 +275,16 @@ developer-instructions:
     REPLY / RESOLVE RISKS:
       - {thread id or file:line + reason, or "none"}
     SCOPE CREEP:
-      - {diff change unrelated to the accepted comments, or "none"}
+      - {diff change unrelated to the accepted comments, or an added code comment that only
+         restates the code or narrates the change, or "none"}
     REASONING: {1-3 sentences}
 
   Verdict rules:
   - PASS: accepted threads are addressed, replies are consistent with the final dossier/action map,
     required verification notes are preserved, and no meaningful scope creep appears in the diff.
-  - FAIL: an accepted thread is not addressed, a reply contradicts the code, or there
-    is clear unrelated scope creep.
+    An unearned code comment is reported under SCOPE CREEP but does not by itself force FAIL.
+  - FAIL: an accepted thread is not addressed, a reply contradicts the code, a code comment
+    contradicts the line it sits above, or there is clear unrelated scope creep.
   - NEEDS-HUMAN: reviewer intent is ambiguous or a business/stakeholder decision is needed.
 
   Read-only. Do not propose file writes.

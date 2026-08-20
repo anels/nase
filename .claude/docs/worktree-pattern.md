@@ -15,21 +15,38 @@ Shared worktree creation and cleanup pattern used by nase skills.
 
 ## Naming Convention
 
-Worktree path is always a sibling directory to the repo:
+Worktrees live under one fixed root outside every repo, so no product repo's parent
+directory accumulates `{repo}-fsd`, `{repo}-fsd-1`, `{repo}-address-comments` leftovers:
 
 ```
-{repo_parent}/{repo_name}-{suffix}
+{worktree_root}/{repo_name}-{suffix}
 ```
+
+`{worktree_root}` is `$HOME/.nase-worktrees`. Expand `$HOME` to its absolute value
+before using the path — the skills pass these paths to `git -C` and to file tools that
+do not perform shell tilde expansion.
 
 If that path already exists, append `-1`, `-2`, etc. until an available path is found.
+An existing path usually means a concurrent session, not stale garbage, so never reuse
+or delete it.
 
 Each skill uses its own suffix (e.g. `fsd`, `address-comments`, `prep-merge`).
+
+**Do not put the root in `/tmp`.** macOS runs `com.apple.tmp_cleaner` daily at 00:00 and
+deletes aged `/tmp` content regardless of Git worktree locks. That silently destroys the
+retained quarantine worktrees this pattern's cleanup step deliberately keeps for human
+inspection — and any uncommitted work inside a retained dirty worktree — while leaving a
+stale locked entry in `git worktree list`. `$HOME` is not swept.
 
 ## Creation
 
 ```bash
+mkdir -p "$HOME/.nase-worktrees"
 git -C {repo_path} worktree add {worktree_path} {ref}
 ```
+
+`{worktree_root}` is shared across repos, so it may already hold another repo's
+worktrees. Create it with `mkdir -p` and never clear it wholesale.
 
 Where `{ref}` is one of:
 - `origin/{branch_name}` — existing remote branch (most skills, e.g. address-comments, prep-merge)

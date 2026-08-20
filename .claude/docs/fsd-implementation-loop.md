@@ -80,7 +80,7 @@ Carry `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findi
 Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present - implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
 If `design_pr_plan` exists, preserve it unless the diff-size hard gate, repo boundary, release boundary, or a reviewer-owner boundary clearly forces a split. Implementation phases are not PR boundaries by themselves.
 
-**Comments - write sparingly.** Default to none (`CLAUDE.md → Code Quality`; `workspace/kb/general/clean-code.md`). Add a comment only when the logic is genuinely non-obvious, and then explain the *why* (the invariant, the bug a workaround references) - never restate what the code already says. Comments that narrate the obvious are AI-slop the final quality review will flag.
+**Comments - follow `.claude/docs/code-comment-policy.md`.** Default to none; apply the deletion test before writing one, prefer a better name or an extracted function over prose, and when a comment is warranted keep it to one anchored sentence about *why*. Never narrate the diff (`// added per review feedback`). Phase 6.25's `comment_quality` lens scores necessity and concision alongside accuracy, so unearned comments come back as findings.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**

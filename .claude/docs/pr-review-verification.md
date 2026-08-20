@@ -88,6 +88,7 @@ Ask it to judge independently, per thread:
 - does the diff/reply actually address what the reviewer asked?
 - is any decline reply factually wrong?
 - does any reply contradict the dossier evidence or omit a required verification note?
+- does the diff add a code comment that `.claude/docs/code-comment-policy.md` would not earn - restating the code, narrating the change, or an unanchored *why*? Report it; a comment that contradicts the line below it is a FAIL, an unearned one is not.
 
 Do NOT include your own classification reasoning or expected verdict. It must answer in the same `VERDICT:` shape below; apply the same decision tree. Log `thread-resolution verify: single-model fallback (Codex unavailable)`; overrides use tag `fallback-verify`.
 
@@ -113,7 +114,7 @@ REASONING: ...
 
 Decision tree:
 
-- **PASS** → log one line (`Codex thread-resolution verify: PASS`) and proceed to Phase 8. No user prompt.
+- **PASS** → log one line (`Codex thread-resolution verify: PASS`) and proceed to Phase 8. No user prompt. If SCOPE CREEP came back non-empty, print those items first: a PASS verdict does not mean they are absent, and this is the only place they ever surface. Delete an unearned comment it names before committing - a comment-only deletion needs no further gate round.
 - **NEEDS-HUMAN** → present the full Codex output and ask via `AskUserQuestion`:
   - Q: "Codex flagged ambiguity in the review-thread resolution. What now?"
   - Options: `Revise first` / `Proceed — push anyway` / `Show me the diff + replies`
