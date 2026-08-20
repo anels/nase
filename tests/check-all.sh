@@ -314,10 +314,15 @@ run_evals() {
 run_links() {
   section "markdown internal-link check"
   if command -v lychee >/dev/null 2>&1; then
+    # Keep this exclude list identical to the lychee step in
+    # .github/workflows/validate.yml; a divergence means the local gate passes
+    # and CI fails. tests/fixtures is excluded because fixtures are deliberately
+    # malformed inputs, not documentation.
     run_gate "lychee offline markdown links" lychee --offline --no-progress --include-fragments \
       --exclude-path workspace \
       --exclude-path .omc \
       --exclude-path node_modules \
+      --exclude-path tests/fixtures \
       './**/*.md' \
       '.claude/**/*.md'
   else

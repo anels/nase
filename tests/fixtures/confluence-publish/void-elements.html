@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Void Element Regression</title>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Void Element Regression</h1>
+<p>A depth counter that treats <code>meta</code> as nesting never leaves the head and emits nothing.</p>
+<hr>
+<p>Line one<br>line two</p>
+<img src="missing.png" alt="dropped">
+<h2>Second section</h2>
+<p>Still emitted.</p>
+</div>
+</body></html>

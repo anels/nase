@@ -31,6 +31,7 @@ ALLOWED_DIRS = (
 ALLOWED_FILES = (
     "workspace/context.md",
     "workspace/communication-style.md",
+    "workspace/confluence-publications.jsonl",
 )
 DISALLOWED_DIRS = (
     "workspace/tmp",

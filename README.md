@@ -292,6 +292,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | `/nase:efforts` | Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. |
 | `/nase:estimate-eta` | Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, estimate this, or before committing to a timeline. |
 | `/nase:kb-usage` | Report which skills access, read, or surface KB files and which mapped files are unobserved. Use for KB usage, KB observability, top KB files, or unused KB entries. |
+| `/nase:publish-confluence` | Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts preserved. Use for publish to Confluence, share this report, put this on the wiki, or a local report path. |
 | `/nase:recap` | Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, review progress, what did I do, or summarize a period. |
 | `/nase:skill-usage` | Report skill usage, outcomes, context hotspots, and deprecation candidates. Use for which skills do I use, skill stats, skill token cost, context hotspots, or deprecate skills. |
 | `/nase:stats` | Display workspace activity counts and charts inline. Use for show stats, how active am I, productivity, or 7/30/all-time activity; use /nase:recap for narrative. |

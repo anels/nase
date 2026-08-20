@@ -134,6 +134,11 @@ Daily logs, journal append sections, and skill-usage JSONL can append without a
 diff prompt, but should still create the parent directory and avoid rewriting
 existing entries.
 
+`workspace/confluence-publications.jsonl` is the same shape: `/nase:publish-confluence`
+appends one record per Confluence page as it lands, so an interrupted fan-out leaves an
+accurate trail. Records are never rewritten - a later publish of the same source appends
+a new record and the reader takes the latest per `(source_path, page_index)`.
+
 ### Generated Integrity-Manifest Exception
 
 `workspace-skill-integrity.py write-manifest` may atomically replace only the
