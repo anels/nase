@@ -162,7 +162,7 @@ class ReviewGateTests(unittest.TestCase):
                     "evidence": ["app.py and test_app.py reviewed together"],
                     "reason": "The candidate satisfies this review lens.",
                 }
-                for lens in ("problem_fit", "simple_design", "architecture_boundaries", "comment_accuracy")
+                for lens in ("problem_fit", "simple_design", "architecture_boundaries", "comment_quality")
             },
             "findings": [],
             "context_requests": [],

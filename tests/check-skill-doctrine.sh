@@ -26,6 +26,7 @@
 #   D20. review skills lose diff-first investigation or trace-shape checks
 #   D21. discuss-pr loses outgoing-comment quality or review-state gates
 #   D22. KB writers regress to append-only refreshes, heartbeat facts, or placeholders
+#   D23. fsd/address-comments/simplify lose the code-comment default or the gate that scores it
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -985,6 +986,71 @@ if [[ -n "$d22_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': KB writers preserve no-op identity and write only verified durable facts\n'
+fi
+
+# ---------- D23: code-writing workflows wire the code comment policy ----------
+section "D23: code-writing skills wire the code comment policy"
+d23_hits=$(python3 - <<'PY'
+from pathlib import Path
+
+# Assert the wiring, not just the citation: a future edit that keeps the
+# `code-comment-policy.md` path but drops the write-time default or the gate
+# that scores it must fail here.
+required = {
+    ".claude/docs/code-comment-policy.md": [
+        "Deletion test",
+        "What never earns a comment",
+        "Repos that mandate documentation",
+        "When a reviewer asks for a comment",
+    ],
+    ".claude/docs/fsd-implementation-loop.md": [
+        ".claude/docs/code-comment-policy.md",
+        "Default to none",
+        "comment_quality",
+    ],
+    ".claude/docs/fsd-delivery-gates.md": [
+        ".claude/docs/code-comment-policy.md",
+        "necessity and concision",
+    ],
+    ".claude/docs/address-comments-delivery.md": [
+        ".claude/docs/code-comment-policy.md",
+        "Default to none",
+    ],
+    ".claude/docs/pr-review-verification.md": [
+        ".claude/docs/code-comment-policy.md",
+    ],
+    ".claude/docs/codex-review.md": [
+        "restates the code or narrates the change",
+    ],
+    ".claude/commands/nase/simplify.md": [
+        ".claude/docs/code-comment-policy.md",
+        "Unearned comments",
+        # The cleanup pass deletes comments, so the mandated-doc carve-out is the
+        # guard that keeps it from stripping a repo's required public-API docs.
+        "never strip a doc comment the repo mandates",
+    ],
+}
+
+hits = []
+for filename, tokens in required.items():
+    path = Path(filename)
+    if not path.exists():
+        hits.append(f"  {path}: missing")
+        continue
+    text = path.read_text(encoding="utf-8")
+    for token in tokens:
+        if token not in text:
+            hits.append(f"  {path}: missing required comment-policy token: {token!r}")
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d23_hits" ]]; then
+  red "FAIL"; printf ': code-writing workflows must default to no comment and keep the policy gated:\n'
+  printf '%s\n' "$d23_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': fsd, address-comments, and simplify write against the code comment policy\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

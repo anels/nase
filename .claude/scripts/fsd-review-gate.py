@@ -41,8 +41,11 @@ QUALITY_REVIEW_LENSES = {
         "compatibility_migration",
         "deployment_operability",
     ),
-    "comment_accuracy": ("correctness",),
+    "comment_quality": ("correctness",),
 }
+# A diff that neither adds nor touches a comment has nothing for this lens to judge,
+# so it is the only lens that may come back NOT_APPLICABLE.
+OPTIONAL_QUALITY_LENS = "comment_quality"
 HUMAN_BLOCKERS = {
     "PRODUCT_DECISION",
     "CONTRACT_CONFLICT",
@@ -508,7 +511,7 @@ def validate_quality(value: Any) -> dict[str, Any]:
     for lens, mapped_axes in QUALITY_REVIEW_LENSES.items():
         item = exact_keys(lenses[lens], {"status", "evidence", "reason"}, f"lens_coverage.{lens}")
         status = enum_string(item["status"], AXIS_STATUSES, f"lens_coverage.{lens}.status")
-        if lens != "comment_accuracy" and status == "NOT_APPLICABLE":
+        if lens != OPTIONAL_QUALITY_LENS and status == "NOT_APPLICABLE":
             raise InvalidResult(f"quality lens {lens} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"lens_coverage.{lens}.evidence")
         if status == "PASS" and not evidence:
@@ -832,7 +835,7 @@ def contract(kind: str) -> dict[str, Any]:
             "artifact": artifact,
             "axes": {axis: {"required": axis in REQUIRED_AXES} for axis in QUALITY_AXES},
             "review_lenses": {
-                lens: {"mapped_axes": list(mapped_axes), "required": lens != "comment_accuracy"}
+                lens: {"mapped_axes": list(mapped_axes), "required": lens != OPTIONAL_QUALITY_LENS}
                 for lens, mapped_axes in QUALITY_REVIEW_LENSES.items()
             },
             "axis_statuses": sorted(AXIS_STATUSES),
@@ -840,7 +843,7 @@ def contract(kind: str) -> dict[str, Any]:
             "validation_rules": [
                 "Return exactly the result_schema keys and no Markdown fences.",
                 "Required axes cannot be NOT_APPLICABLE; PASS needs evidence.",
-                "Assess every review lens explicitly; only comment_accuracy may be NOT_APPLICABLE.",
+                "Assess every review lens explicitly; only comment_quality may be NOT_APPLICABLE.",
                 "test_quality cannot PASS on grep, coverage, snapshots, or test count alone.",
                 "FAIL needs a linked P0/P1 finding; UNVERIFIABLE needs linked context or a human blocker.",
                 "P0/P1 is either autofixable with no blocker or non-autofixable with one allowed blocker.",

@@ -126,7 +126,7 @@ When the user corrects wording/tone on an external draft I produced (Slack, PR d
 
 - **Minimal changes**: write the minimum code needed — do not add unrequested features or refactor surrounding code
 - **"While we're at it" rejection**: drive-by improvements you noticed while doing the assigned task default to rejected. Flag them as a follow-up at the end (filename + one-line description) so the user can choose; never bundle them silently. The exception: a one-line typo fix in code you already had to touch for the actual task.
-- **No comments by default**: unless the user asks or the logic is genuinely non-obvious
+- **No comments by default**: unless the user asks or the logic is genuinely non-obvious; `.claude/docs/code-comment-policy.md` owns when one is warranted and its shape
 - **Check dependencies first**: verify in the project's dependency file before using a library
 - **Do not weaken tests to hide failures**: fix production defects; update or add tests when intended behavior or contracts change
 - **Keep handoffs brief**: report requested results, verification commands, and unresolved blockers

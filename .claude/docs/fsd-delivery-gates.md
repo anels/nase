@@ -45,7 +45,13 @@ Do not include implementation reasoning, a proposed verdict, or prior reviewer t
 
 ### Review depth
 
-Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design search, architecture boundaries, security/privacy, reliability/data integrity, concurrency, compatibility/migration, performance, UI/accessibility, deployment/operability, testability, and comment accuracy. P0 and P1 need concrete evidence. P2 is deferred and does not gate.
+Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design search, architecture boundaries, security/privacy, reliability/data integrity, concurrency, compatibility/migration, performance, UI/accessibility, deployment/operability, testability, and comment quality. P0 and P1 need concrete evidence. P2 is deferred and does not gate.
+
+The `comment_quality` lens judges comment necessity and concision as well as truth, against `.claude/docs/code-comment-policy.md`: a comment that restates the code, narrates the change, or asserts an unanchored *why* is a finding even when it is accurate, and a mandated public-API doc comment is not.
+
+When a comment and the code disagree, decide which one is wrong before repairing anything. If the code is wrong, the finding belongs on `correctness` at its own severity - rewriting the comment to match buggy code cements the bug and hides the last remaining evidence of the intended behavior.
+
+Severity on this lens is a routing choice, not a statement of importance. P2 is deferred without repair and reaches the final report as a bare count, so a P2 comment finding ships silently in the PR - never use it to register a comment you actually want gone. Report clearly unearned, stale, or contradicting comments as a single P1 whose `smallest_fix` is the deletion or rewrite: `AUTOFIX` then applies it with no user prompt. Cluster every occurrence in the candidate into that one finding - anchor `path`/`line` at the first, enumerate the siblings in `evidence` - so a handful of comments costs one round rather than one round each. Leave a genuinely borderline comment unreported instead of manufacturing a finding.
 
 The `test_quality` axis is blocking. It must judge observable behavioral contracts, plausible failure power or a mutation seam, risk-appropriate positive/negative/boundary/error paths, regression fidelity, concrete assertions over values/state/side effects/absence, isolation of nondeterministic inputs, mock fidelity, retry/order/concurrency/locale/timezone determinism, and whether parameterized cases add distinct behavior. Source-text grep, incidental snapshots, test count, and line coverage cannot alone prove behavior.
 
@@ -66,7 +72,7 @@ python3 .claude/scripts/fsd-review-gate.py reduce \
   > "{quality_decision_json}"
 ```
 
-The reducer rejects unknown keys, invalid enum values, contradictory axis/finding states, unsafe paths, stale artifact identity, a bundle that differs from the SHA-256 captured before review, and a result that does not echo that exact hash. Required axes are `correctness`, `test_quality`, and `verification_evidence`. Conditional axes are emitted by `contract` and must be assessed or explicitly marked `NOT_APPLICABLE` with a reason. The generated `lens_coverage` contract also makes problem fit, simple design, architecture boundaries, and comment accuracy explicit instead of relying on free-form reviewer prose.
+The reducer rejects unknown keys, invalid enum values, contradictory axis/finding states, unsafe paths, stale artifact identity, a bundle that differs from the SHA-256 captured before review, and a result that does not echo that exact hash. Required axes are `correctness`, `test_quality`, and `verification_evidence`. Conditional axes are emitted by `contract` and must be assessed or explicitly marked `NOT_APPLICABLE` with a reason. The generated `lens_coverage` contract also makes problem fit, simple design, architecture boundaries, and comment quality explicit instead of relying on free-form reviewer prose.
 
 Only a quality `PROCEED` result may advance to Phase 6.5 on the same bundle.
 

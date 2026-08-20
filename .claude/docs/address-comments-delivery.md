@@ -41,6 +41,8 @@ Read referenced file/line range. Apply the planned minimal change using repo sta
 
 If accepted change alters logic/adds path, ensure test coverage; add/update test if needed.
 
+**Code comments - follow `.claude/docs/code-comment-policy.md`.** Default to none. A thread that asks for a comment reports confusion, not the fix: comment only *why* facts anchored outside the code, and prefer a rename, an extraction, or a named test when the confusion is about *what* - then name that choice in the reply. Never add change-narration comments (`// per review feedback`, `// fixed in PR #123`); the diff already carries that. If you edit code under an existing comment, update or delete that comment in the same change.
+
 **Multi-case malformed-input checklist:** when a comment names multiple input cases that must land differently ("`null` and `[…]` both look like 'no value'", "string and list both should be malformed", "X / Y / Z should all surface as errors"):
 1. Write each named value as a checklist line.
 2. Map each value to its code landing site: `malformed` / `read_errors` / `silent` / `kept`.

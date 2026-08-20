@@ -51,7 +51,8 @@ Preserve behavior exactly. Do not change features, outputs, public APIs, persist
 ### 3. Classify cleanup targets
 
 Look for concrete smells only:
-- Dead code: unused exports, unreachable branches, stale flags, debug leftovers, dead variables, redundant comments.
+- Dead code: unused exports, unreachable branches, stale flags, debug leftovers, dead variables, commented-out code.
+- Unearned comments: judge every comment in scope against `.claude/docs/code-comment-policy.md`. Delete the ones that restate the code, narrate the change (`// added per review feedback`), or assert a *why* with no anchor. Deleting a comment is behavior-preserving, which makes this pass the right place for it - but never strip a doc comment the repo mandates through an analyzer, lint rule, CI gate, or consistent existing convention. Where a comment and the code disagree, do not rewrite the comment to match: this pass cannot change behavior, so if the code looks like the wrong one, report it as a follow-up in Step 8 instead of cementing it.
 - Duplication: repeated logic, copy-paste branches, duplicate conditionals, repeated parsing or normalization.
 - Needless abstraction: pass-through wrappers, speculative indirection, single-use helper layers, clever one-liners that obscure intent.
   - **Reuse-first ladder test** (operationalizes DRY + YAGNI from `.claude/docs/design-principles.md`; apply after comprehending the existing flow): for each added construct, find the first rung that justifies it — (1) needs to exist? (YAGNI) (2) already in codebase? (3) in stdlib? (4) native platform feature? (5) already-installed dependency? (6) one-liner? (7) only then a new minimal implementation. If a construct is covered by rungs 1–6, cut it. Never cut trust-boundary validation, security, or accessibility regardless of rung.
@@ -86,7 +87,7 @@ Never guess a name that is not in the list; an unavailable `subagent_type` fails
 outright rather than degrading, which costs a round trip mid-workflow.
 
 If neither is available, fall back to self-review:
-- Check each file against the cleanup targets in Step 3.
+- Check each file against the cleanup targets in Step 3, including the comment pass against `.claude/docs/code-comment-policy.md`.
 - Apply minimal, behavior-preserving fixes only. Prefer deletion, then duplication consolidation, then clearer names/control flow/error handling.
 - Skip anything that needs a broad rewrite, changes behavior, or cannot be validated.
 - Emit `WARN: code-simplifier subagent unavailable — ran self-review anti-slop fallback. Install claude-plugins-official or pr-review-toolkit for the full pass.`
@@ -104,6 +105,7 @@ Launch the `$SIMPLIFIER_AGENT` subagent resolved in Step 5 via the Agent tool. P
   - Prefer deletion over addition.
   - Reuse local utilities and patterns before introducing any abstraction. Do not add dependencies. For each added construct apply the reuse-first ladder (codebase → stdlib → platform → installed dep → one-liner → only then new code); cut anything an earlier rung already covers. Never cut trust-boundary validation, security, or accessibility.
   - Run one smell-focused pass at a time: delete dead code first, consolidate duplication second, improve names/control flow/error handling third, reinforce tests last only when needed.
+  - Apply `.claude/docs/code-comment-policy.md` to every comment in scope: delete ones that restate the code, narrate the change, or carry an unanchored *why*; keep ones anchored to an invariant, an external defect, or a documented domain rule. Where a comment and the code disagree, report it rather than rewriting the comment to match - the code may be the wrong one, and this pass cannot change behavior. Never remove a doc comment the repo mandates via analyzer, lint, CI, or a consistent existing convention. Do not add new comments to explain your own cleanup - if a change needs narration, it is too large for this pass.
   - Keep useful abstractions. Do not inline code merely because it is shorter if the abstraction carries meaning or isolates change.
   - Replace nested ternaries and dense one-liners with explicit conditionals when that improves readability.
   - Avoid cosmetic-only churn, large abstractions for one-off code, broad renames, and combining unrelated concerns.
