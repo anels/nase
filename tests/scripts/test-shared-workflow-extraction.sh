@@ -64,6 +64,12 @@ assert_not_contains "address-comments delivery does not run gh pr checks" .claud
 assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/docs/address-comments-delivery.md 'pr-gate-remediation'
 assert_not_contains "address-comments does not claim PR gates green" .claude/docs/address-comments-delivery.md 'PR gates: all green'
 
+assert_contains "worktree root is the fixed home directory root" .claude/docs/worktree-pattern.md '\$HOME/\.nase-worktrees'
+assert_contains "worktree pattern forbids a /tmp root with the sweep reason" .claude/docs/worktree-pattern.md 'tmp_cleaner'
+assert_not_contains "worktree pattern no longer places worktrees beside the repo" .claude/docs/worktree-pattern.md '\{repo_parent\}'
+assert_not_contains "FSD delivery gates no longer restate sibling placement" .claude/docs/fsd-delivery-gates.md 'sibling to the repo'
+assert_contains "FSD delivery gates defer worktree path to shared pattern" .claude/docs/fsd-delivery-gates.md 'Worktree path.*worktree-pattern\.md'
+
 assert_contains "fsd uses delivery gates doc" .claude/commands/nase/fsd.md 'fsd-delivery-gates\.md'
 assert_contains "fsd loads intake on demand" .claude/commands/nase/fsd.md 'fsd-intake-and-setup\.md'
 assert_contains "fsd loads implementation loop on demand" .claude/commands/nase/fsd.md 'fsd-implementation-loop\.md'

@@ -338,7 +338,7 @@ Skip failed or routine no-surprise runs; routine wins dilute downstream skill-op
 
 - **Continue after Phase 2** - ordinary build, test, quality, and spec failures are automatically repaired and reverified. Ask only for an approved human blocker, the existing external mutation gates, >1500-line scope choice, or secret uncertainty.
 - **Protected branches** - never commit directly to `main`, `master`, `develop`, or `release/*`. FSD always works on a feature branch.
-- **Worktree path** - always create it as a sibling to the repo (not inside it) to avoid git nesting issues.
+- **Worktree path** - always take it from `.claude/docs/worktree-pattern.md -> Naming Convention` (`$HOME/.nase-worktrees/{repo_name}-{suffix}`). Never create it inside the repo, which causes git nesting issues, and never under `/tmp`, which the OS sweeps.
 - **Secrets** - if unsure about a file during the staging scan, stop and ask rather than committing and reverting later.
 - **Test loop bound** - 5 cumulative iterations is a hard cap and QA rounds do not reset it. Exhaust automatic repairs before surfacing `QA_REPAIR_EXHAUSTED` or an evidence/infrastructure terminal state.
 - **PR is always draft** - FSD never opens a ready-for-review PR. Promotion is a human decision.
