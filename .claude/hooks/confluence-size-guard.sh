@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse guard for Confluence page writes: enforce ADF format and a size cap.
+# PreToolUse guard for Confluence page writes: enforce a lossless format and a size cap.
 # The Atlassian MCP can truncate or fail on very large page bodies; block at
-# 60K bytes to leave headroom for storage-format expansion. Page bodies must
-# also be sent as contentFormat:"adf" so inlineCard, panels, tables, and
-# screenshots round-trip — see .claude/docs/confluence-adf-pattern.md.
+# 60K bytes to leave headroom for storage-format expansion. Note that headroom
+# was calibrated when ADF was the only accepted format — markdown is far terser
+# per input byte, so callers publishing markdown should split well below the cap
+# (see .claude/docs/confluence-publish-conversion.md).
+# Page bodies must be sent as contentFormat:"adf", "html" (Confluence HTML+), or
+# "markdown"; all three round-trip inlineCard, panels, tables, and attachments
+# through the MCP's own converter. Storage XHTML and unset are rejected —
+# see .claude/docs/confluence-adf-pattern.md.
 set -euo pipefail
 
 LIMIT=60000
@@ -27,11 +32,14 @@ block_format() {
   {
     echo "BLOCKED by confluence-size-guard: $reason."
     echo ""
-    echo "Confluence page bodies must be sent as contentFormat: \"adf\" so"
-    echo "inlineCard Jira links, panels, tables, and screenshots round-trip."
-    echo "Fetch the current page as ADF, modify in memory, and send it back as"
-    echo "adf. If a page genuinely cannot be expressed as ADF, save a draft to"
-    echo "workspace/tmp/ and ask the user to paste it manually."
+    echo "Confluence page bodies must be sent as one of contentFormat:"
+    echo "\"adf\", \"html\", or \"markdown\" so inlineCard Jira links, panels,"
+    echo "tables, and attachments round-trip. Use \"adf\" when editing a page"
+    echo "already fetched as ADF, \"html\" (Confluence HTML+) when publishing"
+    echo "converted HTML, and \"markdown\" for markdown passthrough."
+    echo "Storage XHTML and any other value are rejected. If a page cannot be"
+    echo "expressed in one of these, save a draft to workspace/tmp/ and ask"
+    echo "the user to paste it manually."
     echo ""
     echo "Policy source: .claude/docs/confluence-adf-pattern.md"
   } >&2
@@ -52,9 +60,12 @@ case "$TOOL" in
 esac
 
 CONTENT_FORMAT=$(printf '%s' "$INPUT" | jq -r '.tool_input.contentFormat // ""' 2>/dev/null || echo "")
-if [ "$CONTENT_FORMAT" != "adf" ]; then
-  block_format "$TOOL sent contentFormat \"${CONTENT_FORMAT:-<unset>}\", expected \"adf\""
-fi
+case "$CONTENT_FORMAT" in
+  adf|html|markdown) ;;
+  *)
+    block_format "$TOOL sent contentFormat \"${CONTENT_FORMAT:-<unset>}\", expected one of \"adf\", \"html\", \"markdown\""
+    ;;
+esac
 
 if ! SIZE=$(printf '%s' "$INPUT" \
   | jq -j '.tool_input.body // .tool_input.value // ""' 2>/dev/null \

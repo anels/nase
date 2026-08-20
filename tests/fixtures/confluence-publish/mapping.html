@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mapping Coverage</title>
+<style>.bar{height:7px}</style></head>
+<body>
+<h1>Mapping Coverage</h1>
+<h2>Tables</h2>
+<table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead>
+<tbody><tr><td>one</td><td>two</td><td>three</td></tr>
+<tr><td colspan="2">spans two</td><td rowspan="1">plain</td></tr></tbody></table>
+<h2>Panels</h2>
+<div class="note"><p>note panel</p></div>
+<div class="warn"><p>warning panel</p></div>
+<div class="crit"><p>error panel</p></div>
+<div class="good"><p>success panel</p></div>
+<h2>Expand and code</h2>
+<details><summary>More</summary><p>hidden detail</p></details>
+<pre><code class="language-bash">echo <span class="tok">hi</span> &amp;&amp; exit 0</code></pre>
+<h2>Links</h2>
+<p><a href="https://uipath.atlassian.net/browse/IN-12966">IN-12966</a> and
+<a href="https://example.com/plain">a plain link</a>.</p>
+<h2>Lists and quote</h2>
+<ul><li>alpha</li><li>beta</li></ul>
+<ol><li>first</li><li>second</li></ol>
+<blockquote><p>quoted</p></blockquote>
+<h2>Decorative charts</h2>
+<div class="bars"><div class="bar" data-tip="before 100"><i style="width:100%"></i></div>
+<div class="bar" data-tip="after 5"><i style="width:5%"></i></div></div>
+<p>Values already in text: <span class="from">100</span><span class="arr">-&gt;</span><span class="to">5</span></p>
+<h2>Icon svg without a viewBox</h2>
+<svg width="12" height="12"><circle cx="6" cy="6" r="5"/></svg>
+<p>End.</p>
+</body></html>

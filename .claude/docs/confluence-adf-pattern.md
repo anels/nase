@@ -2,7 +2,7 @@
 
 ## Contents
 
-- Always write with `contentFormat: "adf"`
+- Accepted write formats: `adf`, `html`, `markdown`
 - Update vs Create
 - Full Body Requirement
 - Jira Links: always `inlineCard`
@@ -18,11 +18,19 @@ Shared rules for reading and writing Confluence pages via Atlassian MCP. Referen
 
 ---
 
-## Always write with `contentFormat: "adf"`
+## Accepted write formats: `adf`, `html`, `markdown`
 
-Every `createConfluencePage` / `updateConfluencePage` body must be sent as `contentFormat: "adf"`. The MCP enum also offers `markdown` and `html`, but ADF is the workspace standard because it is what round-trips `inlineCard` Jira links, panels, tables, and embedded screenshots without loss. Fetch the current page as ADF (`getConfluencePage`), modify in memory, and send ADF back.
+Every `createConfluencePage` / `updateConfluencePage` body must be sent as one of `contentFormat: "adf"`, `"html"`, or `"markdown"`. All three go through the MCP's own converter and round-trip `inlineCard` Jira links, panels, tables, expands, and attachment references without loss. Pick by what you are holding:
 
-`.claude/hooks/confluence-size-guard.sh` enforces this — it blocks a page write whose `contentFormat` is unset, `markdown`, or `html`. If a page genuinely cannot be expressed as ADF, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
+| You are | Use | Why |
+|---|---|---|
+| Editing a page you fetched as ADF | `adf` | Modify the fetched tree in memory and send it back; no conversion in either direction. |
+| Publishing converted HTML | `html` (Confluence HTML+) | The source is already HTML, and HTML+ is exactly what `getConfluencePage(contentFormat:"html")` returns, so it is the server's own shape. It is also far more compact than ADF for the same content, which matters against the size cap below. |
+| Publishing a Markdown document | `markdown` | Passthrough, no local converter. Markdown is terser than the other two, so it expands further into storage format — split well below the cap. |
+
+`.claude/hooks/confluence-size-guard.sh` enforces the set — it blocks a page write whose `contentFormat` is unset, `storage`, or anything outside those three. If a page genuinely cannot be expressed in one of them, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
+
+`/nase:publish-confluence` owns the HTML → HTML+ conversion rules; see `.claude/docs/confluence-publish-conversion.md`. The ADF mechanics in the rest of this doc still govern every caller working in ADF.
 
 This is the **opposite** of Jira, where bodies must be `markdown` (see `.claude/docs/jira-write-pattern.md`). The format gate is write-only — reading a page as `markdown` for human-readable internalization (e.g. `confluence-doc-internalize`) is unaffected.
 
@@ -90,10 +98,12 @@ Only `type` and `attrs.id` are required. Resolve the account ID with `lookupJira
 If a page has never been published (draft), pass `status: "draft"` on every `updateConfluencePage` call:
 
 ```json
-{"status": "draft", "version": {"number": 1}, ...}
+{"status": "draft", ...}
 ```
 
 Without it the API auto-increments to version 2 and returns `400: "Version number must be 1 when publishing a page for the first time"`. Draft pages stay at version 1 until explicitly published.
+
+**Do not send a `version` field.** The current `updateConfluencePage` tool schema has no `version` parameter — the MCP manages versioning itself. An earlier revision of this doc showed `{"status": "draft", "version": {"number": 1}}`; the `version` half no longer corresponds to anything the tool accepts. Likewise, `getConfluencePage` returns `lastModified` (e.g. `"Jul 31, 2026"`) and no version number, so quote that when a skill needs to show the user which revision it is about to replace.
 
 ---
 

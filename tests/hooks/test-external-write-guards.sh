@@ -84,14 +84,20 @@ large_confluence_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassi
 wide_body=$(printf '中%.0s' {1..20001})
 wide_confluence=$(jq -cn --arg body "$wide_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
 markdown_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"markdown"}}')
+html_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluencePage",tool_input:{body:"<p>short</p>",contentFormat:"html"}}')
+storage_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"storage"}}')
+large_html_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"html"}}')
 unset_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluencePage",tool_input:{body:"short"}}')
 confluence_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluencePage","tool_input":{"pageId":"1","contentFormat":"markdown"}}'
 expect_rc "confluence small adf body allowed" .claude/hooks/confluence-size-guard.sh "$small_confluence" 0
 expect_rc "confluence large body blocked" .claude/hooks/confluence-size-guard.sh "$large_confluence" 2 "confluence-size-guard"
 expect_rc "confluence alternate namespace blocked" .claude/hooks/confluence-size-guard.sh "$large_confluence_alt" 2 "confluence-size-guard"
 expect_rc "confluence UTF-8 byte limit blocked" .claude/hooks/confluence-size-guard.sh "$wide_confluence" 2 "bytes"
-expect_rc "confluence markdown write blocked" .claude/hooks/confluence-size-guard.sh "$markdown_confluence" 2 'expected "adf"'
-expect_rc "confluence unset format write blocked" .claude/hooks/confluence-size-guard.sh "$unset_confluence" 2 'expected "adf"'
+expect_rc "confluence markdown write allowed" .claude/hooks/confluence-size-guard.sh "$markdown_confluence" 0
+expect_rc "confluence html write allowed" .claude/hooks/confluence-size-guard.sh "$html_confluence" 0
+expect_rc "confluence storage format write blocked" .claude/hooks/confluence-size-guard.sh "$storage_confluence" 2 'expected one of'
+expect_rc "confluence unset format write blocked" .claude/hooks/confluence-size-guard.sh "$unset_confluence" 2 'expected one of'
+expect_rc "confluence large html body still blocked" .claude/hooks/confluence-size-guard.sh "$large_html_confluence" 2 "bytes"
 expect_rc "confluence read (markdown) allowed" .claude/hooks/confluence-size-guard.sh "$confluence_read" 0
 expect_rc "confluence malformed JSON blocked" .claude/hooks/confluence-size-guard.sh "{" 2 "could not parse"
 
