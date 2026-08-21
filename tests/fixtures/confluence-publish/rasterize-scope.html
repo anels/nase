@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Rasterize Scope</title>
+<style>
+body{margin:0}
+.ba{display:grid;gap:12px}
+.bar{height:7px;background:#eee}
+.inc{display:grid;gap:12px}
+.incident{border-left:3px solid #d03b3b;padding:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Rasterize Scope</h1>
+
+<h2>Measured impact</h2>
+<div class="ba">
+  <div class="metric">Requests p95</div>
+  <div class="bar"><i style="width:100%"></i></div>
+  <div class="bar"><i style="width:18%"></i></div>
+</div>
+
+<h2>Incidents</h2>
+<div class="inc">
+  <div class="incident">
+    <div class="title">Listing returned empty-success</div>
+    <p>Root cause: a swallowed error surfaced as an empty list, so
+    <a href="https://uipath.atlassian.net/browse/SRE-624400">SRE-624400</a> read as an empty account.</p>
+  </div>
+</div>
+
+<h2>Last section</h2>
+<p>Nothing may swallow this.</p>
+</div>
+</body></html>

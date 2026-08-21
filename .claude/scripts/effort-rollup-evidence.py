@@ -1202,9 +1202,14 @@ def reconstruct_live_prs(entries: list[dict[str, Any]], values: dict[str, Any]) 
             gaps.append(f"{key}:{entry.get('error_category') or 'view-failed'}")
             continue
         try:
-            owner_repo, number = key.split("#", 1)
-            owner, repo = owner_repo.split("/", 1)
+            _, number = key.split("#", 1)
+            command = entry.get("command")
+            if not isinstance(command, list) or "--repo" not in command:
+                raise ValueError("PR view command is missing --repo")
+            owner, repo = str(command[command.index("--repo") + 1]).split("/", 1)
             canonical = canonical_pr(owner, repo, number)
+            if pr_key(canonical) != key:
+                raise ValueError("PR view command targets another PR")
             if int(value["number"]) != int(number) or pr_key(str(value["url"])) != key:
                 raise ValueError("PR identity mismatch")
             if not isinstance(value["title"], str) or not isinstance(value["state"], str):
@@ -1215,7 +1220,7 @@ def reconstruct_live_prs(entries: list[dict[str, Any]], values: dict[str, Any]) 
             author = value.get("author")
             if author is not None and (not isinstance(author, dict) or not isinstance(author.get("login"), str)):
                 raise TypeError("invalid PR author")
-        except (KeyError, TypeError, ValueError) as exc:
+        except (IndexError, KeyError, TypeError, ValueError) as exc:
             raise EvidenceError(f"invalid canonical PR capture: {key}") from exc
         live[key] = {
             "id": f"pr:{key}", "url": canonical, "owner": owner, "repo": repo,

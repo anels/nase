@@ -84,6 +84,13 @@ status: completed
 repo: service
 ---
 Context only: https://github.com/example/service/pull/6'
+write_effort effort-mixedcase '---
+status: completed
+repo: service
+pr: https://github.com/Example/Service/pull/8
+---
+## Lifecycle
+- [x] PR opened - https://github.com/Example/Service/pull/8'
 
 GH_LOG="$TMPDIR_TEST/gh.log"
 export GH_LOG
@@ -131,9 +138,11 @@ if args[:2] == ["pr", "view"]:
         5: "2026-08-05T00:00:00Z",
         6: "2026-08-06T00:00:00Z",
         7: "2026-08-03T00:00:00Z",
+        8: "2026-08-07T00:00:00Z",
     }[number]
     title = "ghp_" + "A" * 24 if mode == "secret-title" else f"PR {number}"
-    print(json.dumps({"number": number, "title": title, "state": "MERGED" if merged else "CLOSED", "mergedAt": merged, "author": {"login": "alice"}, "url": f"https://github.com/example/service/pull/{number}"}))
+    slug = "Example/Service" if number == 8 else "example/service"
+    print(json.dumps({"number": number, "title": title, "state": "MERGED" if merged else "CLOSED", "mergedAt": merged, "author": {"login": "alice"}, "url": f"https://github.com/{slug}/pull/{number}"}))
     raise SystemExit(0)
 print("unexpected command", file=sys.stderr)
 raise SystemExit(9)
@@ -165,8 +174,8 @@ assert run["scope"]["local_availability"] == [{"alias": "service", "status": "av
 assert [source["account"] for source in run["scope"]["github_sources"]] == ["alice"]
 assert evidence["coverage"] == {"status": "complete-for-declared-sources", "gaps": []}
 assert evidence["totals"] == {
-    "delivered_efforts": 3,
-    "merged_delivery_prs_in_month": 1,
+    "delivered_efforts": 4,
+    "merged_delivery_prs_in_month": 2,
     "tracked_external_efforts": 1,
     "untracked_merged_pr_candidates": 1,
 }
@@ -182,6 +191,9 @@ assert prs[1]["countable"] is True
 assert prs[5]["role"] == "dependency" and prs[5]["countable"] is False
 assert prs[6]["role"] == "context-only" and prs[6]["countable"] is False
 assert prs[7]["role"] == "untracked-candidate" and prs[7]["countable"] is False
+assert prs[8]["owner"] == "Example" and prs[8]["repo"] == "Service"
+assert prs[8]["url"] == "https://github.com/Example/Service/pull/8"
+assert prs[8]["countable"] is True
 PY
 
 assert_cmd "exact repo author and month query is owned by helper" grep -Fq $'search\tprs\t--repo\texample/service\t--author\talice\t--merged-at\t2026-08-01..2026-08-31\t--limit\t1000\t--json\tnumber,title,url,state,author,createdAt,closedAt' "$GH_LOG"
@@ -194,12 +206,14 @@ cat > "$BUNDLE/report.fresh.md" <<EOF
 Evidence SHA: $EVIDENCE_SHA
 Measurement basis: effort-rollup-v2
 Coverage: complete-for-declared-sources
-Delivered efforts: 3
-Merged delivery PRs in month: 1
+Delivered efforts: 4
+Merged delivery PRs in month: 2
 effort:effort-a
 effort:effort-b
 effort:effort-earlier
+effort:effort-mixedcase
 https://github.com/example/service/pull/1
+https://github.com/Example/Service/pull/8
 EOF
 assert_cmd "rendered Markdown binds evidence and counted records" "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --markdown "$BUNDLE/report.fresh.md" --format json
 
@@ -425,7 +439,7 @@ data = json.load(open(sys.argv[1], encoding="utf-8"))
 effort = next(item for item in data["efforts"] if item["slug"] == "effort-invalid")
 assert effort["bucket"] == "excluded" and "invalid-status" in effort["classification_errors"]
 assert data["coverage"]["status"] == "partial"
-assert data["totals"]["delivered_efforts"] == 3
+assert data["totals"]["delivered_efforts"] == 4
 PY
 rm "$FIXTURE/workspace/efforts/done/effort-invalid.md"
 
@@ -460,7 +474,7 @@ import sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 effort = next(item for item in data["efforts"] if item["slug"] == "effort-location")
 assert effort["bucket"] == "excluded" and "status-location-mismatch" in effort["classification_errors"]
-assert data["totals"]["delivered_efforts"] == 3
+assert data["totals"]["delivered_efforts"] == 4
 PY
 rm "$FIXTURE/workspace/efforts/done/effort-location.md"
 
@@ -604,7 +618,7 @@ search = next(item for item in data["captures"] if item["kind"] == "github-searc
 assert search["attempt_count"] == 3
 assert search["status"] == "failed"
 assert data["coverage"]["status"] == "partial"
-assert data["totals"]["merged_delivery_prs_in_month"] == 1
+assert data["totals"]["merged_delivery_prs_in_month"] == 2
 PY
 
 if [[ "$failures" -eq 0 ]]; then
