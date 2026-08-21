@@ -7,10 +7,40 @@ Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md
 
 After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 4e batches pending deltas into approved style-doc edits.
 
+## Formatting Mechanics
+
+The rest of this doc governs what to say. This section governs what survives
+`slack_send_message_draft`, which is a separate failure mode: a message with the right voice
+still reads as broken when the tool mangles its structure, and the user is the one who has to
+repair it in the composer before sending.
+
+The MCP accepts Markdown-style text. Its installed Slack plugin documents `- item` as the
+bulleted-list syntax, while Slack's own `mrkdwn` has no dedicated list syntax and instead
+uses regular text plus line breaks. The runtime may convert the Markdown before Slack renders
+it.
+
+- **Write `- item` for bullets, never a literal `•`.** A literal `•` is plain text; the
+  Markdown-converting draft path uses `- item` to produce a list.
+- **Avoid ending a line with a bare URL when the next line is a bullet.** The current draft
+  renderer has produced malformed link spans in that shape. Keep prose after the URL on the
+  same line: `Merged in https://github.com/Org/Repo/pull/1 - the window sort is gone.`
+- **Do not rely on a blank line after a bullet block for separation.** A blank line immediately
+  after a bullet block is dropped by the current draft conversion, so the next section runs into
+  the list. Separate sections with a non-empty text line instead.
+- **Keep bare URLs.** The workspace style rejects destination-hiding labels; Slack also
+  auto-links direct URLs.
+
+Verifying a draft is only possible through the user: there is no list-drafts or read-draft tool,
+and per `.claude/docs/external-mutation-policy.md` sending a test message is not an option. So
+treat these as the rules that make a first attempt correct, and when structure matters, say
+explicitly what the draft should look like so the user can spot a mismatch at a glance.
+
 ## Quick Checklist
 
 Apply before presenting the draft to the user:
 
+- [ ] Bullets are `- item`, not a literal `•` (see Formatting Mechanics - a literal `•` never indents)
+- [ ] No line ends with a bare URL while the next line is a bullet - prose follows the URL on the same line
 - [ ] No opening greeting ("Hi", "Hello", "Hope you're well") — jump straight to content
 - [ ] No AI filler words ("certainly", "absolutely", "I'd be happy to", "I wanted to reach out") — delete
 - [ ] Technical content: use bullets, not prose paragraphs

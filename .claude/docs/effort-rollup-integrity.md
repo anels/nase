@@ -29,7 +29,7 @@ narrative claims but never change canonical roles or totals.
 
 Render `$BUNDLE/report.fresh.md` and, unless `--md-only`,
 `$BUNDLE/report.fresh.html`. Both artifacts MUST show the exact `Evidence SHA`,
-`Measurement basis: effort-rollup-v1`, coverage label, and critical totals.
+`Measurement basis: effort-rollup-v2`, coverage label, and critical totals.
 Every counted effort cites its `effort:{slug}` record ID, every counted PR uses
 its canonical URL, and new file citations are repo-qualified.
 

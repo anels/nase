@@ -65,7 +65,7 @@ status: in-review
 - [x] Reviewed proposal
 
 - [x] Implementation started
-- [x] PR opened - UiPath/Widgets#42
+- [x] PR opened - acme/widget#42
 EOF
 classify no-header
 assert_jq "canonical checkboxes work without Lifecycle header" "$TMPDIR_TEST/no-header.json" \
@@ -501,6 +501,503 @@ for duplicate_order in false-true true-false; do
     "$TMPDIR_TEST/tracking-only-duplicate-transition.json" \
     '.tracking_only_valid == false and .transition.reason == "invalid-tracking-only"'
 done
+
+# --- unticked `Merged` row: offered only where the merge is provable ---
+
+cat > "$TMPDIR_TEST/stale-merged.md" <<'EOF'
+---
+status: in-progress
+repo: Widgets
+pr: https://github.com/acme/widget/pull/91
+---
+
+## Lifecycle
+- [x] Implementation started
+- [x] PR opened - https://github.com/acme/widget/pull/91
+- [ ] Merged
+- [ ] Deployed (if applicable)
+EOF
+classify stale-merged
+assert_jq "unticked Merged row is reported by classify" "$TMPDIR_TEST/stale-merged.json" \
+  '(.unticked_canonical_rows | length) == 1 and .unticked_canonical_rows[0].line == 10 and .unticked_canonical_rows[0].bare_label == true'
+assert_jq "unticked Merged row is not counted as owed delivery" "$TMPDIR_TEST/stale-merged.json" \
+  '.undelivered == []'
+transition stale-merged --delivery-pr-state MERGED --jira-state "done"
+assert_jq "merged path authorizes the Merged tick alongside the status write" \
+  "$TMPDIR_TEST/stale-merged-transition.json" \
+  '.transition.status == "awaiting-deploy" and (.transition.stale_canonical_rows | length) == 1'
+
+sed 's/^status: in-progress$/status: awaiting-deploy/' "$TMPDIR_TEST/stale-merged.md" \
+  > "$TMPDIR_TEST/stale-merged-synced.md"
+transition stale-merged-synced --delivery-pr-state MERGED --jira-state "done"
+assert_jq "already-awaiting-deploy still authorizes the lagging row" \
+  "$TMPDIR_TEST/stale-merged-synced-transition.json" \
+  '.transition.action == "none" and .transition.reason == "already-awaiting-deploy" and (.transition.stale_canonical_rows | length) == 1'
+
+transition stale-merged --delivery-pr-state OPEN --jira-state "done"
+assert_jq "an open delivery PR authorizes no tick" \
+  "$TMPDIR_TEST/stale-merged-transition.json" \
+  '.transition.reason == "open-delivery-pr" and (.transition | has("stale_canonical_rows") | not)'
+
+transition stale-merged --delivery-pr-state MERGED --jira-state not-done
+assert_jq "a not-done Jira authorizes no tick" \
+  "$TMPDIR_TEST/stale-merged-transition.json" \
+  '.transition.reason == "jira-not-done" and (.transition | has("stale_canonical_rows") | not)'
+
+cat > "$TMPDIR_TEST/stale-merged-ledger.md" <<'EOF'
+---
+status: in-progress
+repo: Widgets
+prs: https://github.com/acme/widget/pull/91
+---
+
+## Lifecycle
+- [x] PR opened - PR1 https://github.com/acme/widget/pull/91
+- [x] Merged - PR1 2026-02-01
+- [ ] Merged - PR2
+EOF
+classify stale-merged-ledger
+assert_jq "a per-PR Merged ledger offers no row to tick" "$TMPDIR_TEST/stale-merged-ledger.json" \
+  '.unticked_canonical_rows == []'
+
+cat > "$TMPDIR_TEST/stale-merged-multi.md" <<'EOF'
+---
+status: in-progress
+repo: Widgets
+pr: https://github.com/acme/widget/pull/91
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/91
+- [ ] Merged - PR1
+- [ ] Merged - PR2
+EOF
+classify stale-merged-multi
+assert_jq "several unticked Merged rows stay ambiguous" "$TMPDIR_TEST/stale-merged-multi.json" \
+  '.unticked_canonical_rows == []'
+
+cat > "$TMPDIR_TEST/stale-merged-clause.md" <<'EOF'
+---
+status: in-progress
+repo: Widgets
+pr: https://github.com/acme/widget/pull/91
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/91
+- [ ] Merged - PR-2 still pending
+EOF
+classify stale-merged-clause
+assert_jq "an outstanding clause withholds the Merged row" "$TMPDIR_TEST/stale-merged-clause.json" \
+  '.unticked_canonical_rows == []'
+transition stale-merged-clause --delivery-pr-state MERGED --jira-state "done"
+assert_jq "an outstanding unchecked Merged row blocks the merged transition" \
+  "$TMPDIR_TEST/stale-merged-clause-transition.json" \
+  '.transition.reason == "undelivered-lifecycle-rows"'
+
+sed 's/PR-2 still pending/PR-1 only/' "$TMPDIR_TEST/stale-merged-clause.md" \
+  > "$TMPDIR_TEST/stale-merged-only.md"
+classify stale-merged-only
+assert_jq "a partial Merged row ending in only is withheld" "$TMPDIR_TEST/stale-merged-only.json" \
+  '.unticked_canonical_rows == []'
+transition stale-merged-only --delivery-pr-state MERGED --jira-state "done"
+assert_jq "a partial unchecked Merged row blocks the merged transition" \
+  "$TMPDIR_TEST/stale-merged-only-transition.json" \
+  '.transition.reason == "undelivered-lifecycle-rows"'
+
+sed 's/- \[ \] Merged - PR-1 only/- [x] Merged - PR-1 only/' "$TMPDIR_TEST/stale-merged-only.md" \
+  > "$TMPDIR_TEST/stale-merged-withdrawn.md"
+transition stale-merged-withdrawn --delivery-pr-state MERGED --jira-state "done"
+assert_jq "a checked Merged PR-only row is not treated as outstanding work" \
+  "$TMPDIR_TEST/stale-merged-withdrawn-transition.json" \
+  '.transition.reason == "merged-awaiting-deploy"'
+
+# --- PR reference resolution ---
+
+cat > "$TMPDIR_TEST/pr-refs.md" <<'EOF'
+---
+status: in-progress
+repo: Widgets
+pr: https://github.com/acme/widget/pull/91
+phase_2_pr: acme/widget#92
+blocked-by: acme/widget#70
+---
+
+## Lifecycle
+- [x] PR opened - #93 (draft)
+EOF
+classify pr-refs
+assert_jq "delivery set spans pr, phase_*_pr and a Lifecycle bare number" \
+  "$TMPDIR_TEST/pr-refs.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"]
+   == ["acme/widget#91","acme/widget#92","acme/widget#93"]'
+assert_jq "blocked-by resolves into the dependency set, not delivery" \
+  "$TMPDIR_TEST/pr-refs.json" \
+  '[.pr_references.dependency[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#70"]'
+
+cat > "$TMPDIR_TEST/pr-refs-root-list.md" <<'EOF'
+---
+status: in-progress
+repo: Widgets
+prs:
+- acme/widget#94
+blocked-by:
+- "#71"
+---
+EOF
+classify pr-refs-root-list
+assert_jq "root-level YAML lists retain delivery and dependency PRs" \
+  "$TMPDIR_TEST/pr-refs-root-list.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#94"] and
+   [.pr_references.dependency[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#71"]'
+
+cat > "$TMPDIR_TEST/pr-refs-spaced-list.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+prs:
+- "#94"
+
+# second delivery
+- "#95"
+blocked-by:
+- "#70"
+
+# second dependency
+- "#71"
+---
+EOF
+classify pr-refs-spaced-list
+assert_jq "blank lines and comments retain every YAML list PR" \
+  "$TMPDIR_TEST/pr-refs-spaced-list.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#94","acme/widget#95"] and
+   [.pr_references.dependency[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#70","acme/widget#71"]'
+
+cat > "$TMPDIR_TEST/pr-refs-casefold.md" <<'EOF'
+---
+status: in-progress
+repo: Acme/Widget
+pr: Acme/Widget#95
+phase_2_pr: acme/widget#95
+---
+
+Target PR count: 2
+EOF
+classify pr-refs-casefold
+assert_jq "PR references dedupe GitHub owner and repository case" \
+  "$TMPDIR_TEST/pr-refs-casefold.json" \
+  '(.pr_references.delivery | length) == 1'
+transition pr-refs-casefold --delivery-pr-state MERGED --jira-state untracked
+assert_jq "case-only duplicate PRs cannot satisfy the target PR count" \
+  "$TMPDIR_TEST/pr-refs-casefold-transition.json" \
+  '.transition.reason == "undelivered-lifecycle-rows" and (.transition.undelivered | length) == 1'
+
+cat > "$TMPDIR_TEST/pr-refs-invalid-scalar.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+pr: "#1 #2"
+- "#3"
+---
+EOF
+classify pr-refs-invalid-scalar
+assert_jq "singular pr fields never yield multiple live references" \
+  "$TMPDIR_TEST/pr-refs-invalid-scalar.json" \
+  '.pr_references.delivery == [] and .pr_references.validation_errors == ["unresolved-pr"]'
+
+cat > "$TMPDIR_TEST/pr-refs-invalid-list.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+prs: [acme/widget#1, acme/widget#2]
+---
+EOF
+classify pr-refs-invalid-list
+assert_jq "inline prs values never yield live references" \
+  "$TMPDIR_TEST/pr-refs-invalid-list.json" \
+  '.pr_references.delivery == [] and .pr_references.validation_errors == ["invalid-prs"]'
+
+cat > "$TMPDIR_TEST/pr-refs-invalid-list-item.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+prs:
+- acme/widget#1
+- definitely-not-a-pr
+---
+EOF
+classify pr-refs-invalid-list-item
+assert_jq "malformed prs list entries fail closed" \
+  "$TMPDIR_TEST/pr-refs-invalid-list-item.json" \
+  '.pr_references.validation_errors == ["unresolved-prs"]'
+
+cat > "$TMPDIR_TEST/pr-refs-duplicates.md" <<'EOF'
+---
+status: in-progress
+repo: acme/a
+repo: acme/b
+pr: acme/a#1
+pr: acme/a#2
+prs:
+- acme/a#3
+prs:
+- acme/a#4
+blocked-by: acme/a#5
+blocked-by: acme/a#6
+---
+EOF
+classify pr-refs-duplicates
+assert_jq "duplicate structured keys fail closed before live transition" \
+  "$TMPDIR_TEST/pr-refs-duplicates.json" \
+  '.pr_references.delivery == [] and
+   .pr_references.dependency == [] and
+   .pr_references.validation_errors == ["invalid-blocked-by","invalid-pr","invalid-prs","invalid-repo"]'
+transition pr-refs-duplicates --delivery-pr-state MERGED --jira-state "done"
+assert_jq "invalid structured references block transition" \
+  "$TMPDIR_TEST/pr-refs-duplicates-transition.json" \
+  '.transition.reason == "invalid-pr-reference"'
+
+cat > "$TMPDIR_TEST/pr-refs-markdown-links.md" <<'EOF'
+---
+status: in-progress
+repo: Acme/Widget
+---
+
+## Lifecycle
+- [x] PR opened - [#4682](https://github.com/acme/widget/pull/4682); [#3012](https://github.com/acme/widget-monitoring/pull/3012)
+EOF
+classify pr-refs-markdown-links
+assert_jq "Markdown link labels do not create bare PR duplicates" \
+  "$TMPDIR_TEST/pr-refs-markdown-links.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"]
+   == ["acme/widget#4682","acme/widget-monitoring#3012"]'
+
+cat > "$TMPDIR_TEST/pr-refs-markdown-label-mismatch.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+---
+
+## Lifecycle
+- [x] PR opened - [#999](https://github.com/acme/widget/pull/1)
+EOF
+classify pr-refs-markdown-label-mismatch
+assert_jq "a Markdown label is never a second PR citation" \
+  "$TMPDIR_TEST/pr-refs-markdown-label-mismatch.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#1"]'
+
+cat > "$TMPDIR_TEST/pr-refs-markdown-qualified-label.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+---
+
+## Lifecycle
+- [x] PR opened - [acme/a#1](https://github.com/acme/b/pull/2)
+EOF
+classify pr-refs-markdown-qualified-label
+assert_jq "a qualified Markdown label is never a second PR citation" \
+  "$TMPDIR_TEST/pr-refs-markdown-qualified-label.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/b#2"]'
+
+cat > "$TMPDIR_TEST/pr-refs-invalid-number.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+pr: "#0"
+phase_2_pr: "#01"
+---
+EOF
+classify pr-refs-invalid-number
+assert_jq "zero and leading-zero PR numbers never become delivery evidence" \
+  "$TMPDIR_TEST/pr-refs-invalid-number.json" \
+  '.pr_references.delivery == [] and .stage != "in_review"'
+
+cat > "$TMPDIR_TEST/pr-refs-slash-list.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+prs:
+- "#101/#102/#103"
+---
+EOF
+classify pr-refs-slash-list
+assert_jq "slash-separated bare PRs retain every reference" \
+  "$TMPDIR_TEST/pr-refs-slash-list.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#101","acme/widget#102","acme/widget#103"]'
+
+cat > "$TMPDIR_TEST/pr-refs-nearest.md" <<'EOF'
+---
+status: in-progress
+repo: multiple
+prs:
+- acme/a#1, acme/b#2, #3
+---
+EOF
+classify pr-refs-nearest
+assert_jq "each bare number uses its nearest same-line repository context" \
+  "$TMPDIR_TEST/pr-refs-nearest.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"]
+   == ["acme/a#1","acme/b#2","acme/b#3"]'
+
+cat > "$TMPDIR_TEST/pr-refs-nearest-url.md" <<'EOF'
+---
+status: in-progress
+repo: multiple
+prs:
+- https://github.com/acme/very-long-repository-name/pull/1 acme/b#2 #3
+---
+EOF
+classify pr-refs-nearest-url
+assert_jq "same-line full URLs do not shift bare reference proximity" \
+  "$TMPDIR_TEST/pr-refs-nearest-url.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"]
+   == ["acme/b#2","acme/b#3","acme/very-long-repository-name#1"]'
+
+cat > "$TMPDIR_TEST/pr-refs-same-number.md" <<'EOF'
+---
+status: in-progress
+repo: multiple
+prs:
+- acme/a#1, acme/b#2, #1
+---
+EOF
+classify pr-refs-same-number
+assert_jq "a bare PR sharing another repository's number remains evidence" \
+  "$TMPDIR_TEST/pr-refs-same-number.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"]
+   == ["acme/a#1","acme/b#1","acme/b#2"]'
+
+cat > "$TMPDIR_TEST/pr-refs-denied-context.md" <<'EOF'
+---
+status: in-progress
+repo: multiple
+---
+
+## Lifecycle
+- [x] PR opened - #310
+
+## Notes
+Query numbers, **not** PR numbers: acme/wrong#5
+EOF
+classify pr-refs-denied-context
+assert_jq "denied shorthand does not supply bare PR repository context" \
+  "$TMPDIR_TEST/pr-refs-denied-context.json" \
+  '.pr_references.delivery == [] and
+   [.pr_references.discarded_bare[] | select(.number == 310).reason] == ["no-repo-context"]'
+
+cat > "$TMPDIR_TEST/pr-refs-denied.md" <<'EOF'
+---
+status: awaiting-deploy
+repo: Widgets
+---
+
+## Lifecycle
+- [x] PR opened - [#310](https://github.com/acme/widget/pull/310) - wraps queries 5/6/7 (query numbers, **not** PR numbers - a bare sweep resolved `#5` to the unrelated CLOSED `acme/widget#5`)
+EOF
+classify pr-refs-denied
+assert_jq "a row disclaiming its numbers keeps only the full URL" \
+  "$TMPDIR_TEST/pr-refs-denied.json" \
+  '[.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#310"]'
+assert_jq "the disclaimed numbers are reported as discarded" \
+  "$TMPDIR_TEST/pr-refs-denied.json" \
+  '[.pr_references.discarded_bare[] | .number] == [5] and
+   (.pr_references.discarded_bare[0].reason == "denied-in-row")'
+
+cat > "$TMPDIR_TEST/pr-refs-prose.md" <<'EOF'
+---
+status: in-progress
+---
+
+## Plan
+Ship it. Fixes #4321 per the CHANGELOG and closes grill #3.
+
+## Lifecycle
+- [x] Implementation started
+EOF
+classify pr-refs-prose
+assert_jq "bare numbers outside Lifecycle and without repo context stay out" \
+  "$TMPDIR_TEST/pr-refs-prose.json" \
+  '.pr_references.delivery == [] and .pr_references.dependency == []'
+
+cat > "$TMPDIR_TEST/pr-refs-freetext-blocker.md" <<'EOF'
+---
+status: blocked
+repo: widget
+blocked-by: Helen / PO - business element list definition; 3 DMs sent, no reply
+pr: https://github.com/acme/widget/pull/12
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/12
+EOF
+classify pr-refs-freetext-blocker
+assert_jq "a free-text scalar blocked-by is a legal shape, not a reference defect" \
+  "$TMPDIR_TEST/pr-refs-freetext-blocker.json" \
+  '.pr_references.validation_errors == [] and .pr_references.dependency == []'
+transition pr-refs-freetext-blocker --delivery-pr-state MERGED --jira-state untracked --blocked-by-unresolved
+assert_jq "a free-text blocker reports its own reason, never invalid-pr-reference" \
+  "$TMPDIR_TEST/pr-refs-freetext-blocker-transition.json" \
+  '.transition.reason != "invalid-pr-reference"'
+
+cat > "$TMPDIR_TEST/pr-refs-annotated-repo.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget (live; was greenfield at kickoff)
+---
+
+## Lifecycle
+- [x] PR opened - #21
+EOF
+classify pr-refs-annotated-repo
+assert_jq "trailing prose after an owner-qualified repo still resolves bare numbers" \
+  "$TMPDIR_TEST/pr-refs-annotated-repo.json" \
+  '.pr_references.validation_errors == [] and
+   [.pr_references.delivery[] | "\(.owner)/\(.repo)#\(.number)"] == ["acme/widget#21"]'
+
+cat > "$TMPDIR_TEST/pr-refs-annotated-alias.md" <<'EOF'
+---
+status: in-progress
+repo: widget (+ acme/frontend coordination)
+---
+
+## Lifecycle
+- [x] PR opened - #22
+EOF
+classify pr-refs-annotated-alias
+assert_jq "an annotated bare repo alias supplies no owner and is reported, not rejected" \
+  "$TMPDIR_TEST/pr-refs-annotated-alias.json" \
+  '.pr_references.validation_errors == [] and
+   .pr_references.delivery == [] and
+   [.pr_references.discarded_bare[] | .reason] == ["no-repo-context"]'
+
+cat > "$TMPDIR_TEST/pr-refs-malformed-repo.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget/extra
+---
+
+## Lifecycle
+- [x] PR opened - #23
+EOF
+classify pr-refs-malformed-repo
+assert_jq "a repo identifier that is not owner/repo still fails closed" \
+  "$TMPDIR_TEST/pr-refs-malformed-repo.json" \
+  '.pr_references.validation_errors == ["invalid-repo"]'
+
+cat > "$TMPDIR_TEST/pr-refs-no-lifecycle-section.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+---
+
+- [x] PR opened - #24
+EOF
+classify pr-refs-no-lifecycle-section
+assert_jq "a bare number on a canonical row outside any Lifecycle section is reported, not silently dropped" \
+  "$TMPDIR_TEST/pr-refs-no-lifecycle-section.json" \
+  '.pr_references.delivery == [] and
+   [.pr_references.discarded_bare[] | "\(.number):\(.reason)"] == ["24:outside-lifecycle"]'
 
 printf '\n--- %d pass, %d fail ---\n' "$((tests - failures))" "$failures"
 [ "$failures" -eq 0 ]
