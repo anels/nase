@@ -269,6 +269,23 @@ expect_guard_rc "dynamic executable variable is blocked" 10 'GH=gh; $GH pr creat
 expect_guard_rc "top-level alias is blocked" 10 "alias publish=gh; publish pr create --draft --title Example"
 expect_guard_rc "top-level shell function is blocked" 10 "publish() { gh pr create --draft --title Example; }; publish"
 expect_guard_rc "newline-separated mutation is blocked" 10 $'gh pr view 1\ngh pr create --draft --title Example'
+# A single-quoted span is one shlex argument and can never become an executable, so a literal
+# backtick or $( in prose must not read as a substitution. Markdown identifiers in a log or KB
+# append are the common case.
+expect_guard_rc "single-quoted backtick is literal" 0 \
+  "printf 'see \`AppRequests\` rows\n' >> workspace/logs/example.md"
+expect_guard_rc "single-quoted dollar-paren is literal" 0 "grep -n 'cost \$(one)' workspace/tmp/example.md"
+expect_guard_rc "single-quoted backtick in a sed replacement is literal" 0 \
+  "sed -i '' 's|old|new \`Foo.cs:12\`|' workspace/tmp/example.md"
+# Everything the shell would actually expand stays blocked.
+expect_guard_rc "unquoted backtick substitution is blocked" 10 'echo `whoami`'
+expect_guard_rc "double-quoted backtick still expands and is blocked" 10 'echo "user: `whoami`"'
+expect_guard_rc "double-quoted dollar-paren still expands and is blocked" 10 'echo "count: $(gh pr list)"'
+expect_guard_rc "backtick inside a nested bash -c script is blocked" 10 'bash -c '"'"'echo `whoami`'"'"''
+expect_guard_rc "unterminated single quote stays fail-closed" 10 "printf 'unterminated"
+expect_guard_rc "quoted executable mutation is blocked" 10 "'gh' pr create --draft --title Example"
+expect_guard_rc "mutation carrying a literal backtick argument is blocked" 10 \
+  "gh pr create --draft --title 'uses \`Foo\` here'"
 expect_guard_rc "Azure access-token output is blocked" 10 "az account get-access-token"
 expect_guard_rc "raw Azure login is blocked" 10 "az login"
 expect_guard_rc "raw Azure logout is blocked" 10 "az logout"

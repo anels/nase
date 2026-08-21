@@ -711,6 +711,53 @@ def shell_command(argv: list[str]) -> str | None:
     return None
 
 
+def blank_single_quoted_spans(command: str) -> str:
+    """Blank single-quoted spans, which the shell expands and executes as nothing.
+
+    `command_segments` lexes with `shlex` in POSIX mode, so a single-quoted span is already
+    collapsed into one argument and can never become an executable. The dynamic-construct scan
+    has to agree with that lexer, or a literal backtick in prose - `printf 'see `Foo` rows'` -
+    reads as a command substitution and blocks a command that touches nothing external.
+
+    Double-quoted spans are copied verbatim because `$(...)` and backticks still expand inside
+    them. An unterminated single quote leaves the remainder untouched, so a malformed command
+    keeps failing closed.
+    """
+    result: list[str] = []
+    index = 0
+    length = len(command)
+    while index < length:
+        char = command[index]
+        if char == "\\" and index + 1 < length:
+            result.append(command[index : index + 2])
+            index += 2
+            continue
+        if char == '"':
+            result.append(char)
+            index += 1
+            while index < length:
+                if command[index] == "\\" and index + 1 < length:
+                    result.append(command[index : index + 2])
+                    index += 2
+                    continue
+                result.append(command[index])
+                index += 1
+                if command[index - 1] == '"':
+                    break
+            continue
+        if char == "'":
+            end = command.find("'", index + 1)
+            if end == -1:
+                result.append(command[index:])
+                break
+            result.append(" " * (end - index + 1))
+            index = end + 1
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
 def is_dynamic_shell_command(command: str) -> bool:
     """Detect shell constructs whose executed command cannot be statically bound."""
     return bool(re.search(
@@ -719,7 +766,7 @@ def is_dynamic_shell_command(command: str) -> bool:
         r"function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|"
         r"[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)"
         r")\s*\{",
-        command,
+        blank_single_quoted_spans(command),
     ))
 
 
