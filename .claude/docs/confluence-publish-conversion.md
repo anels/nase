@@ -89,8 +89,8 @@ Rules are applied in this order; the first match wins.
 | `pre > code[class*="language-X"]` | `<pre><code class="language-X">`; inner markup flattened to escaped text |
 | `details` / `summary` | same → `expand` macro |
 | `div` whose class matches `warn\|caution` / `bad\|crit\|error\|danger` / `good\|ok\|success\|pass` / `note\|callout\|aside` | `<div data-type="panel-warning\|panel-error\|panel-success\|panel-note">`, first match wins in that order |
-| `svg` **with a `viewBox`** | rasterize → placeholder panel + `Chart data (text)` expand |
-| any element whose class the source lays out with `display: grid` | rasterize the whole subtree, same placeholder |
+| `svg` **with a `viewBox`** | rasterize → placeholder panel naming the PNG |
+| any element whose class the source lays out with `display: grid`, or a class named by `--rasterize-only` | rasterize the whole subtree, same placeholder |
 | class matching `bar\|bars\|track\|spark\|sparkline\|meter\|gauge` | **dropped** - decorative, and counted in `dropped_chart_subtrees` |
 | `svg` without a `viewBox`, `[aria-hidden=true]`, `style`, `script`, `head`, `nav`, `footer`, `canvas`, `button`, `select`, `textarea`, `form`, `dialog`, `noscript`, `template` | dropped |
 | any other `div`/`span`/`section`/`article`/`main`/`header`/`aside`/`figure`/`figcaption`/`i`/`b` | unwrapped, children kept |
@@ -173,6 +173,20 @@ Two things are captured whole and screenshotted rather than converted:
    source's own `<style>` blocks to learn which classes those are - no selector list to
    maintain. `--no-rasterize` turns this off and takes the unwrapped content instead.
 
+   The heuristic is deliberately blunt and over-collects: `display: grid` is as true of an
+   incident card or a themes index as of a bar chart, and imaging prose costs the reader
+   full-text search, copy-paste, and working links inside it. `--rasterize-only <class>`
+   (repeatable) replaces the heuristic with an explicit scope, so a report names its chart
+   containers and every other grid block converts to ordinary HTML. Prefer it on any source
+   whose visual language is mostly layout: a report with five bar groups and six grid-laid-out
+   prose sections otherwise ships as eleven images.
+
+   Two `warnings` keep that choice from failing silently, because both failure modes look like
+   a clean plan: a captured subtree holding no bar, track, meter or inline `svg` is reported as
+   prose-being-imaged, and a `--rasterize-only` class that matched nothing is reported as a
+   probable typo - that one images nothing at all while `CHART_CLASS` still drops the real bars,
+   leaving label soup where the chart was.
+
 `render` writes a standalone document per visual carrying the source `<style>`, and invokes
 Chrome through `subprocess` with an argv list - not through Bash, which
 `external-cli-write-guard.sh` fails closed on for unparseable command strings.
@@ -193,11 +207,14 @@ Chrome is optional. Per-visual `status` ends at `rendered`, or one of `skipped:n
 `skipped:unmeasurable`, `skipped:render-timeout`, `skipped:no-output` - and either way the
 placeholder still says what to attach.
 
-Each placeholder is followed by a collapsed `Chart data (text)` expand carrying the visual's
-text nodes (skipped under 20 characters). This is load-bearing for search, not a courtesy:
-Verified by CQL: a phrase that appears only inside a chart returns its page on a full-text
-search because the expand carries it, and returns nothing once the expand is removed. It also keeps the numbers reachable for screen
-readers, which a PNG is not.
+A rasterized subtree leaves **no text duplicate** on the page - the image already carries the
+labels a reader needs, and a second copy of the same numbers under every chart is clutter on
+every page view.
+
+The cost of that is verified by CQL: a phrase existing only inside a rasterized subtree does
+not come back on a full-text search, and a PNG says nothing to a screen reader. For a bar chart
+that phrase is a label the image shows anyway. For an incident card, a corrections list, or a
+themes index it is the whole content - scope the capture instead (`--rasterize-only`, above).
 
 ## Attaching the images
 
@@ -217,9 +234,17 @@ is the one subcommand that authenticates and writes over the network.
   page, then `attach`, then update the page with the returned body.
 - Placeholders are matched on the **PNG filename**, which is the only part of the panel that
   survives a re-plan unchanged.
-- Re-runs are safe in both directions: the page's existing attachments are read first and an
-  already-uploaded filename reuses its `fileId` instead of creating a second version, while
-  anything not yet `attached` is retried without hand-editing the plan.
+- Re-runs are safe in both directions: anything not yet `attached` is retried without
+  hand-editing the plan, and a filename the page already carries is **refreshed in place**
+  (`POST .../child/attachment/{attachmentId}/data`) rather than re-uploaded, because Confluence
+  refuses a second attachment under the same name. Chart filenames are positional
+  (`chart-01.png`), so a re-publish whose charts moved reuses every name with new content -
+  trusting the name and skipping the refresh is how a page renders last month's chart under
+  this month's caption.
+- **A refresh mints a new `fileId`**, verified against the live API, so the body must be
+  updated from the file `attach` rewrote *after* it ran. Reusing the id read from the
+  attachment listing embeds the superseded version: bytes current, page stale, status
+  `attached`.
 - Failures are per-visual and named: `attach-failed:missing-png`, `attach-failed:http-{code}`,
   `attach-failed:no-media-id`, `attach-failed:placeholder-not-found`. `attach` exits 1 if any
   pending visual did not land.

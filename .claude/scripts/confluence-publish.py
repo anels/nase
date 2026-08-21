@@ -87,10 +87,10 @@ NESTING_RULES = (
     ("cell", ("table",), "table inside a table cell"),
 )
 
-MIN_CHART_TEXT = 20
 DEFAULT_CONTENT_WIDTH = 1080
 
 GRID_RULE = re.compile(r"\.([a-z0-9_-]+)[^{]*\{([^}]*)\}", re.I)
+CLASS_ATTR = re.compile(r"""class=["']([^"']*)["']""")
 
 
 def layout_classes(source: str) -> set[str]:
@@ -107,6 +107,18 @@ def layout_classes(source: str) -> set[str]:
             if re.search(r"display:\s*grid", match.group(2)):
                 found.add(match.group(1).lower())
     return found
+
+
+def has_chart_primitive(markup: str) -> bool:
+    """Whether a captured subtree contains anything that draws.
+
+    No bar, track, meter or inline svg means the block is prose that merely
+    happens to be laid out with CSS grid, and rasterizing prose costs the page
+    full-text search - so `plan` warns instead of imaging it silently.
+    """
+    if "<svg" in markup:
+        return True
+    return any(CHART_CLASS.search(value) for value in CLASS_ATTR.findall(markup))
 
 
 def content_width(source: str) -> int:
@@ -160,7 +172,8 @@ class Block:
 
 
 class HtmlPlusEmitter(HTMLParser):
-    def __init__(self, source_text: str, rasterize: list[str], no_rasterize: bool):
+    def __init__(self, source_text: str, rasterize: list[str], no_rasterize: bool,
+                 rasterize_only: list[str] | None = None):
         super().__init__(convert_charrefs=True)
         self.source_text = source_text
         self.line_offsets = [0]
@@ -181,9 +194,15 @@ class HtmlPlusEmitter(HTMLParser):
         self.panel_starts: list[int] = []
         self.visual_seq = 0
         self.dropped_subtrees = 0
+        self.matched_grid_classes: set[str] = set()
         self.current_heading = ""
 
-        self.grid_classes = set() if no_rasterize else layout_classes(source_text)
+        if no_rasterize:
+            self.grid_classes: set[str] = set()
+        elif rasterize_only:
+            self.grid_classes = {name.lstrip(".").lower() for name in rasterize_only}
+        else:
+            self.grid_classes = layout_classes(source_text)
         self.capture_start: int | None = None
         self.capture_tag = ""
         self.capture_depth = 0
@@ -264,7 +283,9 @@ class HtmlPlusEmitter(HTMLParser):
             return
 
         class_set = set((attrs.get("class") or "").lower().split())
-        if class_set & self.grid_classes:
+        matched = class_set & self.grid_classes
+        if matched:
+            self.matched_grid_classes |= matched
             self.begin_capture(tag)
             return
 
@@ -491,11 +512,6 @@ class HtmlPlusEmitter(HTMLParser):
             " - attach <code>%s</code> here.</p></div>"
             % (escape(self.current_heading or "chart %d" % self.visual_seq), name)
         )
-        if len(chart_text) >= MIN_CHART_TEXT:
-            placeholder += (
-                "<details><summary>Chart data (text)</summary><p>%s</p></details>"
-                % escape(chart_text)
-            )
         if self.structural_depth() == 0:
             self.open_block()
         self.emit(placeholder)
@@ -639,11 +655,26 @@ def cmd_plan(args) -> int:
     threshold = args.split_threshold or DEFAULT_THRESHOLD[kind]
     warnings: list[str] = []
 
+    if args.rasterize_only and args.no_rasterize:
+        sys.stderr.write(
+            "--rasterize-only and --no-rasterize contradict each other: one names what to "
+            "image, the other images nothing. Pick one.\n"
+        )
+        return 2
+    if args.rasterize_only and kind == "markdown":
+        warnings.append(
+            "--rasterize-only was ignored: a Markdown source carries no <style>, so nothing "
+            "is ever rasterized. Publish the HTML edition when the charts matter."
+        )
+
     if kind == "markdown":
-        head_title, blocks, warnings = markdown_blocks(raw)
+        head_title, blocks, md_warnings = markdown_blocks(raw)
+        warnings.extend(md_warnings)
         dropped = 0
     else:
-        emitter = HtmlPlusEmitter(raw, args.rasterize or [], args.no_rasterize)
+        emitter = HtmlPlusEmitter(
+            raw, args.rasterize or [], args.no_rasterize, args.rasterize_only or []
+        )
         try:
             emitter.feed(raw)
         except NestingViolation as exc:
@@ -662,6 +693,35 @@ def cmd_plan(args) -> int:
                 "the source markup is malformed there: %s"
                 % (len(emitter.stray_table_text), ", ".join(emitter.stray_table_text[:6]))
             )
+        prose_images = [
+            visual["png"]
+            for block in emitter.blocks
+            for visual in block.visuals
+            if not has_chart_primitive(visual["markup"]) and visual["text_chars"]
+        ]
+        if prose_images:
+            warnings.append(
+                "%d rasterized block(s) contain no bar, track, spark, meter or svg, so they "
+                "are most likely prose being turned into an image - and an imaged block "
+                "stops being searchable, copyable and clickable: %s. Scope the capture with "
+                "--rasterize-only <class> if that is not intended."
+                % (len(prose_images), ", ".join(prose_images))
+            )
+        if args.rasterize_only:
+            # A named class that exists but never captured sits inside another named
+            # container - redundant, not a typo - so `present` excuses it.
+            present = {
+                token.lower()
+                for value in CLASS_ATTR.findall(raw)
+                for token in value.split()
+            }
+            missing = sorted(emitter.grid_classes - emitter.matched_grid_classes - present)
+            if missing:
+                warnings.append(
+                    "--rasterize-only named %s, which matched nothing in the source - a typo "
+                    "leaves the real charts unwrapped into label soup with no image to "
+                    "replace them" % ", ".join(missing)
+                )
 
     title = resolve_title(args.title, head_title, blocks, source_path)
     if kind == "html" and blocks and blocks[0].level == 1 and blocks[0].heading.strip() == title.strip():
@@ -984,12 +1044,10 @@ def multipart(fields: dict, filename: str, payload: bytes) -> tuple[bytes, str]:
     return b"".join(out), "multipart/form-data; boundary=%s" % boundary
 
 
-def upload_attachment(site: str, email: str, token: str, page_id: str, path: str) -> dict:
+def post_png(url: str, email: str, token: str, path: str) -> dict:
     name = os.path.basename(path)
     body, content_type = multipart({"minorEdit": "true"}, name, open(path, "rb").read())
-    request = urllib.request.Request(
-        "https://%s%s" % (site, ATTACH_PATH % page_id), data=body, method="POST"
-    )
+    request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("Content-Type", content_type)
     request.add_header("X-Atlassian-Token", "nocheck")
     request.add_header(
@@ -1000,9 +1058,37 @@ def upload_attachment(site: str, email: str, token: str, page_id: str, path: str
         return json.loads(response.read().decode())
 
 
+def upload_attachment(site: str, email: str, token: str, page_id: str, path: str) -> dict:
+    return post_png("https://%s%s" % (site, ATTACH_PATH % page_id), email, token, path)
+
+
+def update_attachment_data(
+    site: str, email: str, token: str, page_id: str, attachment_id: str, path: str
+) -> dict:
+    """Replace the bytes of an attachment already on the page.
+
+    Confluence refuses a second attachment under an existing filename, and chart
+    filenames are positional (`chart-01.png`), so a re-publish reuses every name
+    with new content.
+
+    Verified against the live API: the refresh mints a **new** `fileId`, so the
+    caller must take the media id from this response. Reusing the id from the
+    attachment listing embeds the superseded version - bytes current, page stale.
+    """
+    return post_png(
+        "https://%s%s/%s/data" % (site, ATTACH_PATH % page_id, attachment_id),
+        email,
+        token,
+        path,
+    )
+
+
 def existing_attachments(site: str, email: str, token: str, page_id: str) -> dict:
-    """Map filename -> fileId for attachments already on the page, so a re-run
-    does not upload a second version of an image that is already there."""
+    """Map filename -> {"id", "file_id"} for attachments already on the page.
+
+    Both ids matter: `file_id` is the media id the body node references, and `id`
+    is what addresses the attachment when its bytes need replacing.
+    """
     request = urllib.request.Request(
         "https://%s/wiki/api/v2/pages/%s/attachments?limit=250" % (site, page_id)
     )
@@ -1018,12 +1104,22 @@ def existing_attachments(site: str, email: str, token: str, page_id: str) -> dic
         # version, which Confluence handles; a traceback here would abort the
         # whole page instead.
         return {}
-    return {a["title"]: a.get("fileId", "") for a in data.get("results", []) if a.get("fileId")}
+    return {
+        a["title"]: {"id": a.get("id", ""), "file_id": a.get("fileId", "")}
+        for a in data.get("results", [])
+        if a.get("fileId")
+    }
 
 
 def media_id_of(result: dict) -> str:
+    """The media id a body node can reference, or "" when the response has none.
+
+    Only `extensions.fileId` is a media id; the attachment's own `att…` id is not,
+    and substituting it embeds a node that renders as a broken image while the
+    status still says attached. "" routes to `attach-failed:no-media-id` instead.
+    """
     node = (result.get("results") or [result])[0]
-    return (node.get("extensions") or {}).get("fileId") or node.get("id", "")
+    return (node.get("extensions") or {}).get("fileId") or ""
 
 
 PLACEHOLDER_RE = (
@@ -1100,19 +1196,27 @@ def cmd_attach(args) -> int:
         if not os.path.exists(png):
             visual["status"] = "attach-failed:missing-png"
             continue
-        media_id = already.get(visual["png"], "")
-        if not media_id:
-            try:
-                result = upload_attachment(site, args.account, token, args.page_id, png)
-            except urllib.error.HTTPError as exc:
-                visual["status"] = "attach-failed:http-%d" % exc.code
-                sys.stderr.write("upload %s failed: HTTP %d\n" % (visual["png"], exc.code))
-                continue
-            except (urllib.error.URLError, OSError) as exc:
-                visual["status"] = "attach-failed:network"
-                sys.stderr.write("upload %s failed: %s\n" % (visual["png"], exc))
-                continue
-            media_id = media_id_of(result)
+        prior = already.get(visual["png"]) or {}
+        media_id = prior.get("file_id", "")
+        try:
+            if media_id:
+                media_id = media_id_of(
+                    update_attachment_data(
+                        site, args.account, token, args.page_id, prior["id"], png
+                    )
+                )
+            else:
+                media_id = media_id_of(
+                    upload_attachment(site, args.account, token, args.page_id, png)
+                )
+        except urllib.error.HTTPError as exc:
+            visual["status"] = "attach-failed:http-%d" % exc.code
+            sys.stderr.write("upload %s failed: HTTP %d\n" % (visual["png"], exc.code))
+            continue
+        except (urllib.error.URLError, OSError) as exc:
+            visual["status"] = "attach-failed:network"
+            sys.stderr.write("upload %s failed: %s\n" % (visual["png"], exc))
+            continue
         if not media_id:
             visual["status"] = "attach-failed:no-media-id"
             continue
@@ -1150,6 +1254,19 @@ def cmd_attach(args) -> int:
 LEDGER = "workspace/confluence-publications.jsonl"
 
 
+def transient_source(path: str) -> bool:
+    """True when the ledger key would live in scratch space.
+
+    `ledger-lookup` resolves create-vs-update on this exact path, so a key under
+    workspace/tmp/ stops matching once scratch is cleaned.
+    """
+    parts = os.path.normpath(path).split(os.sep)
+    return any(
+        first == "workspace" and second == "tmp"
+        for first, second in zip(parts, parts[1:])
+    )
+
+
 def read_ledger(path: str) -> list[dict]:
     if not os.path.exists(path):
         return []
@@ -1166,9 +1283,19 @@ def read_ledger(path: str) -> list[dict]:
 
 
 def cmd_ledger_append(args) -> int:
+    source = os.path.abspath(args.source)
+    if transient_source(source) and not args.allow_transient_source:
+        sys.stderr.write(
+            "ERROR: transient ledger source: %s\n"
+            "Re-publishes key on this exact path, so a cleaned scratch dir turns every "
+            "page back into a create and duplicates the Confluence family. Pass the durable "
+            "artifact you published from (the promoted report), or --allow-transient-source "
+            "when the publication really is throwaway.\n" % source
+        )
+        return 2
     record = {
         "published_at": args.published_at,
-        "source_path": os.path.abspath(args.source),
+        "source_path": source,
         "source_sha256": args.source_sha256,
         "cloud_id": args.cloud_id,
         "space_key": args.space_key,
@@ -1248,6 +1375,7 @@ def main() -> int:
     plan_parser.add_argument("--title")
     plan_parser.add_argument("--rasterize", action="append", default=[])
     plan_parser.add_argument("--no-rasterize", action="store_true")
+    plan_parser.add_argument("--rasterize-only", action="append", default=[])
     plan_parser.add_argument("--split-threshold", type=int)
     plan_parser.set_defaults(func=cmd_plan)
 
@@ -1270,6 +1398,7 @@ def main() -> int:
     append_parser.add_argument("--published-body-sha256", default="")
     append_parser.add_argument("--published-at", required=True)
     append_parser.add_argument("--asset", action="append", default=[])
+    append_parser.add_argument("--allow-transient-source", action="store_true")
     append_parser.set_defaults(func=cmd_ledger_append)
 
     attach_parser = sub.add_parser("attach")

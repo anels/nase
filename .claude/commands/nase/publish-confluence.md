@@ -1,14 +1,14 @@
 ---
 name: nase:publish-confluence
 description: "Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts preserved. Use for publish to Confluence, share this report, put this on the wiki, or a local report path."
-argument-hint: "<path-to-md-or-html> [--space KEY] [--parent ID] [--no-rasterize]"
+argument-hint: "<path-to-md-or-html> [--space KEY] [--parent ID] [--rasterize-only CLASS]"
 pattern: pipeline
 category: Reporting
 ---
 
 Publish a finished local `.md`/`.html` artifact as a Confluence page, preserving structure and rendering charts that Confluence cannot express. Triggers: "publish to Confluence", "share this report on the wiki", "put this doc on Confluence", or a path to a local report.
 
-**Input:** `$ARGUMENTS` - an absolute path to a local `.md` or `.html` file. Optional: `--title`, `--space`, `--parent`, `--no-rasterize`, `--rasterize <selector>`.
+**Input:** `$ARGUMENTS` - an absolute path to a local `.md` or `.html` file. Optional: `--title`, `--space`, `--parent`, `--rasterize-only <class>`, `--no-rasterize`, `--rasterize <selector>`.
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/external-mutation-policy.md` - every Confluence write goes through draft-first plus an `AskUserQuestion` showing the concrete payload. Conversion rules live in `.claude/docs/confluence-publish-conversion.md`; format selection and ADF mechanics in `.claude/docs/confluence-adf-pattern.md`; the ledger write follows `.claude/docs/workspace-write-guard.md` (append-only exception).
 
@@ -34,9 +34,11 @@ python3 .claude/scripts/confluence-publish.py plan \
   --source "{source}" --out-dir "workspace/tmp/confluence-{slug}"
 ```
 
+**Scope what becomes an image.** With no flags, `plan` rasterizes every class the source lays out with `display: grid`, which cannot tell a bar chart from a grid-laid-out incident card - and an imaged card loses full-text search, copy-paste, and its inline links. Read the source's `<style>`, and when the grid classes include prose blocks, pass `--rasterize-only <class>` (repeatable) naming just the chart containers so everything else converts to ordinary HTML. Report in the confirm how many visuals each choice produces.
+
 Exit 3 = a single block exceeds the cap; exit 4 = a nesting construct Confluence rejects. Both name the cause - relay it and stop; do not restructure the user's document.
 
-Read `plan.json` for `title`, `pages[]`, `split_differs_without_visuals`, and `warnings`.
+Read `plan.json` for `title`, `pages[]`, `split_differs_without_visuals`, and `warnings` - `plan` flags a captured block that draws nothing (prose about to become an image) and a `--rasterize-only` class that matched nothing (a typo that images nothing at all). Relay either in the confirm; both otherwise look like a clean plan.
 
 ## Step 4 - Find the target (before asking anything)
 
@@ -79,13 +81,14 @@ Then per page, parent (index 0) before children, because a child needs its paren
      --plan "workspace/tmp/confluence-{slug}/plan.json" \
      --page-index {i} --page-id {id} --account "{atlassian-email}"
    ```
-   `--account` is the Atlassian account email; read it from `atlassianUserInfo` rather than guessing. Then update the page again with the rewritten body file. `attach` is re-runnable: it reuses an already-uploaded filename and retries anything still pending.
+   `--account` is the Atlassian account email; read it from `atlassianUserInfo` rather than guessing. `attach` is re-runnable: it retries anything still pending, and refreshes a filename the page already carries instead of re-uploading it. **Then update the page again from the body file `attach` just rewrote** - a refresh mints a new media id, so a body assembled before `attach` ran points at the superseded version and the page renders the old chart while every status says `attached`.
 3. Append the ledger record for that page **as it lands**, so an interrupted fan-out leaves an accurate trail:
    ```bash
    python3 .claude/scripts/confluence-publish.py ledger-append \
      --source "{source}" --page-index {i} --page-id {id} --page-url "{url}" \
      --published-at "{ISO-8601}" --published-body-sha256 "{sha}" --format html
    ```
+   `--source` must be the **durable** artifact, even when you planned from a derived copy (a redaction-scrubbed sidecar, a hand-split file). Re-publishes key on that exact path, so a scratch key stops matching once tmp is cleaned and the next run re-creates the whole family beside the old one. `ledger-append` refuses a `workspace/tmp/` source for that reason; pass `--allow-transient-source` only for a throwaway probe page.
 
 **Credential.** `attach` reads an Atlassian API token from the macOS keychain, falling back to `$CONFLUENCE_API_TOKEN` off macOS. Absent, it stops and prints both setup commands; relay them and let the user store the token. Never ask for the token in chat, never echo it, and never put it on a command line.
 
@@ -104,7 +107,7 @@ Append a daily-log line per `.claude/docs/daily-log-format.md`.
 ## Notes
 
 - Report any visual whose `status` is not `attached`; its placeholder panel is still on the page naming the PNG, so the reader is not left with a silent gap.
-- Each placeholder carries a collapsed `Chart data (text)` expand. Keep it: it is the only searchable copy of the numbers once the chart becomes an image.
+- A rasterized subtree leaves no text duplicate on the page; the image carries its own labels. That is why the Step 3 scope matters - whatever gets imaged stops being searchable.
 - `updateConfluencePage` replaces the whole body; this skill does not merge sections, and the confirm says so.
 - Markdown passthrough cannot express panels, expands, or inline cards, and is never rasterized. Use an HTML source when charts or those constructs matter.
 

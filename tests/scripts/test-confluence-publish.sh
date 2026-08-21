@@ -95,8 +95,8 @@ check "chart: viewBox width"  "$(jqp "$out/plan.json" "d['pages'][0]['visuals'][
 check "chart: viewBox height" "$(jqp "$out/plan.json" "d['pages'][0]['visuals'][0]['height']")" "200"
 body=$(cat "$out"/page-000.body.html)
 check_contains "chart: placeholder emitted" "$body" 'attach <code>chart-01.png</code>'
-check_contains "chart: chart text preserved" "$body" 'Chart data (text)'
-check_contains "chart: chart values searchable" "$body" '2025-10 $91k +4.0%'
+# the image already carries its labels, so a second text copy is page clutter
+check_absent   "chart: no text duplicate of the image" "$body" 'Chart data (text)'
 check_absent   "chart: svg markup not inlined" "$body" '<svg'
 
 # --- self-closing tags must not leak parser state --------------------------
@@ -121,7 +121,7 @@ check "grid: one block visual detected" \
 check "grid: classified as a block, not an svg" \
   "$(jqp "$out/plan.json" "d['pages'][0]['visuals'][0]['kind']")" "block"
 check_contains "grid: placeholder emitted"  "$body" 'attach <code>chart-01.png</code>'
-check_contains "grid: text stays searchable" "$body" "Runs 1,643,173 Failures 412"
+check_absent   "grid: rasterized block leaves no text duplicate" "$body" "Runs 1,643,173 Failures 412"
 check_absent   "grid: card markup not inlined" "$body" '<strong>Runs</strong>'
 # --no-rasterize must turn the block back into ordinary unwrapped content
 out="$WORK/selfclose-norast"
@@ -191,11 +191,11 @@ body = open(sys.argv[2], encoding="utf-8").read()
 node = '<figure data-type="media-single"><div data-type="media" data-id="X"></div></figure>'
 out, hit = cp.replace_placeholder(body, "chart-01.png", node)
 miss_out, miss = cp.replace_placeholder(body, "chart-99.png", node)
-print("hit=%s node=%s panel=%s expand=%s tail=%s miss=%s intact=%s" % (
+print("hit=%s node=%s panel=%s no_expand=%s tail=%s miss=%s intact=%s" % (
     hit,
     node in out,
     "attach <code>chart-01.png</code>" not in out,
-    "Chart data (text)" in out,
+    "Chart data (text)" not in out,
     "Nothing may swallow this." in out,
     miss,
     miss_out == body,
@@ -203,7 +203,118 @@ print("hit=%s node=%s panel=%s expand=%s tail=%s miss=%s intact=%s" % (
 PY
 )
 check "attach: placeholder swapped for the media node" "$swap" \
-  "hit=True node=True panel=True expand=True tail=True miss=False intact=True"
+  "hit=True node=True panel=True no_expand=True tail=True miss=False intact=True"
+
+# --- re-attach: a refreshed attachment mints a new media id -----------------
+# Embedding the id read from the attachment listing instead would leave the page
+# rendering the superseded version while the status still said attached.
+mkdir -p "$WORK/selfclose/assets" && : > "$WORK/selfclose/assets/chart-01.png"
+reattach=$(python3 - "$SCRIPT" "$WORK/selfclose/plan.json" <<'PY'
+import contextlib, importlib.util, io, json, sys, types
+spec = importlib.util.spec_from_file_location("cp", sys.argv[1])
+cp = importlib.util.module_from_spec(spec)
+sys.modules["cp"] = cp
+spec.loader.exec_module(cp)
+
+calls = []
+cp.api_token = lambda service, account: "token"
+cp.resolve_site = lambda site: "example.atlassian.net"
+cp.existing_attachments = lambda *a, **k: {
+    "chart-01.png": {"id": "att500", "file_id": "stale-media-id"}
+}
+def fake_update(site, email, token, page_id, attachment_id, path):
+    calls.append(("update", attachment_id))
+    return {"extensions": {"fileId": "fresh-media-id"}}
+def fake_upload(*a, **k):
+    calls.append(("upload", None))
+    return {"results": [{"extensions": {"fileId": "uploaded-media-id"}}]}
+cp.update_attachment_data = fake_update
+cp.upload_attachment = fake_upload
+
+args = types.SimpleNamespace(
+    plan=sys.argv[2], page_index=0, page_id="900", account="a@b.c",
+    site=None, keychain_service="svc",
+)
+with contextlib.redirect_stdout(io.StringIO()):
+    rc = cp.cmd_attach(args)
+body = open(json.load(open(sys.argv[2]))["pages"][0]["body_file"], encoding="utf-8").read()
+print("rc=%s calls=%s fresh=%s stale=%s" % (
+    rc, calls, "fresh-media-id" in body, "stale-media-id" in body,
+))
+PY
+)
+check "attach: refresh embeds the new media id" "$reattach" \
+  "rc=0 calls=[('update', 'att500')] fresh=True stale=False"
+
+# an attachment response with no fileId is a visible failure, not a broken <img>
+noid=$(python3 - "$SCRIPT" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cp", sys.argv[1])
+cp = importlib.util.module_from_spec(spec)
+sys.modules["cp"] = cp
+spec.loader.exec_module(cp)
+print("att_id=%r empty=%r" % (
+    cp.media_id_of({"results": [{"id": "att777"}]}),
+    cp.media_id_of({}),
+))
+PY
+)
+check "attach: att id is never used as a media id" "$noid" "att_id='' empty=''"
+
+# --- rasterize scope: image the charts, keep the prose as text --------------
+# The display:grid heuristic cannot tell a bar chart from a grid-laid-out incident
+# card, and an imaged card loses search, copy-paste and its Jira links.
+out="$WORK/scope-auto"; rc=$(plan_of "$FIX/rasterize-scope.html" "$out")
+check "scope: heuristic plan exits 0" "$rc" "0"
+check "scope: heuristic images both grid blocks" \
+  "$(jqp "$out/plan.json" "sum(len(p['visuals']) for p in d['pages'])")" "2"
+
+out="$WORK/scope-only"
+python3 "$SCRIPT" plan --source "$FIX/rasterize-scope.html" --out-dir "$out" \
+  --rasterize-only ba >/dev/null 2>&1
+check "scope: --rasterize-only images just the named container" \
+  "$(jqp "$out/plan.json" "sum(len(p['visuals']) for p in d['pages'])")" "1"
+body=$(cat "$out"/page-000.body.html)
+check_contains "scope: unnamed block keeps its prose" "$body" "a swallowed error surfaced"
+check_contains "scope: unnamed block keeps its links" "$body" "browse/SRE-624400"
+
+# an imaged block that draws nothing is prose: name it instead of letting the
+# caller discover it from a screenshot after the page is live
+warn=$(jqp "$WORK/scope-auto/plan.json" "' '.join(d['warnings'])")
+check_contains "scope: prose-shaped image is flagged" "$warn" "chart-02.png"
+check_absent   "scope: real chart is not flagged"     "$warn" "chart-01.png"
+check "scope: explicit scope plans clean" \
+  "$(jqp "$out/plan.json" "len(d['warnings'])")" "0"
+
+# a misspelled class silently images nothing and drops the chart subtrees, which
+# reads as a successful plan unless the mismatch is reported
+out="$WORK/scope-typo"
+python3 "$SCRIPT" plan --source "$FIX/rasterize-scope.html" --out-dir "$out" \
+  --rasterize-only baa >/dev/null 2>&1
+check "scope: typo images nothing" \
+  "$(jqp "$out/plan.json" "sum(len(p['visuals']) for p in d['pages'])")" "0"
+check_contains "scope: typo is reported" \
+  "$(jqp "$out/plan.json" "' '.join(d['warnings'])")" "matched nothing in the source"
+
+# naming a container and a class nested inside it is redundant, not a typo: a false
+# typo warning on a real class teaches the reader to ignore the warning
+out="$WORK/scope-nested"
+python3 "$SCRIPT" plan --source "$FIX/rasterize-scope.html" --out-dir "$out" \
+  --rasterize-only ba --rasterize-only bar >/dev/null 2>&1
+check "scope: nested named class is not called a typo" \
+  "$(jqp "$out/plan.json" "len(d['warnings'])")" "0"
+
+# contradictory scope flags discard one of the two intents, so refuse instead
+python3 "$SCRIPT" plan --source "$FIX/rasterize-scope.html" --out-dir "$WORK/scope-both" \
+  --rasterize-only ba --no-rasterize >/dev/null 2>&1
+check "scope: --rasterize-only with --no-rasterize is refused" "$?" "2"
+
+out="$WORK/scope-md"
+python3 "$SCRIPT" plan --source "$FIX/digest.md" --out-dir "$out" \
+  --rasterize-only ba >/dev/null 2>&1
+mdwarn=$(jqp "$out/plan.json" "' '.join(d['warnings'])")
+check_contains "scope: markdown source reports the ignored flag" "$mdwarn" "--rasterize-only was ignored"
+check_contains "scope: markdown converter warnings survive it" "$mdwarn" "markdown passthrough"
 
 # --- ledger: resume, drift detection, orphans ------------------------------
 LEDGER="$WORK/pubs.jsonl"
@@ -240,6 +351,49 @@ after=$(wc -l < "$LEDGER" | tr -d ' ')
 check "ledger: append-only (line added)" "$after" "$((before + 1))"
 res=$(python3 "$SCRIPT" ledger-lookup --ledger "$LEDGER" --source "$SRC" --pages 1)
 check_contains "ledger: lookup takes the latest record" "$res" '"published_body_sha256": "sha0-new"'
+
+# a scratch-space key stops matching once tmp is cleaned, so every page would
+# re-create instead of update: refuse it unless the caller says it is throwaway
+TRANSIENT="$WORK/workspace/tmp/scrubbed/report.html"
+mkdir -p "$(dirname "$TRANSIENT")"
+cp "$SRC" "$TRANSIENT"
+before=$(wc -l < "$LEDGER" | tr -d ' ')
+err=$(python3 "$SCRIPT" ledger-append --ledger "$LEDGER" --source "$TRANSIENT" \
+  --page-index 0 --page-id "900900" --page-url "https://wiki/x/t" \
+  --published-at "2026-08-21T00:00:00Z" --published-body-sha256 "sha-t" 2>&1 >/dev/null)
+rc=$?
+after=$(wc -l < "$LEDGER" | tr -d ' ')
+check "ledger: transient source refused" "$rc" "2"
+check "ledger: transient source appends nothing" "$after" "$before"
+check_contains "ledger: transient refusal names the fix" "$err" "durable artifact"
+python3 "$SCRIPT" ledger-append --ledger "$LEDGER" --source "$TRANSIENT" \
+  --page-index 0 --page-id "900900" --page-url "https://wiki/x/t" \
+  --published-at "2026-08-21T00:00:00Z" --published-body-sha256 "sha-t" \
+  --allow-transient-source >/dev/null
+after=$(wc -l < "$LEDGER" | tr -d ' ')
+check "ledger: transient source allowed with opt-in" "$after" "$((before + 1))"
+
+# "workspace" as the tail of a directory name is not scratch space: compare whole
+# path segments, or a durable /x/team-workspace/tmp/report.html gets refused
+segments=$(python3 - "$SCRIPT" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cp", sys.argv[1])
+cp = importlib.util.module_from_spec(spec)
+sys.modules["cp"] = cp
+spec.loader.exec_module(cp)
+print(" ".join(
+    "%s=%s" % (label, cp.transient_source(path))
+    for label, path in (
+        ("scratch", "/a/workspace/tmp/x.html"),
+        ("suffix", "/a/team-workspace/tmp/x.html"),
+        ("prefix", "/a/workspace/tmpfiles/x.html"),
+        ("durable", "/a/workspace/recaps/x.html"),
+    )
+))
+PY
+)
+check "ledger: scratch detection compares path segments" "$segments" \
+  "scratch=True suffix=False prefix=False durable=False"
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then
