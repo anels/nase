@@ -164,10 +164,36 @@ After the live reads, per active effort:
     `transition.destination_dir`.
 - If all readable delivery PRs are `CLOSED`-not-merged, set `status: wontfix` and
   move to `transition.destination_dir`.
+- **Tick the `Merged` row the same run.** On the merged path the helper also returns
+  `transition.stale_canonical_rows` when it has one: an unchecked canonical `Merged` row
+  the live PR states have just proven merged. The key is absent when there is nothing to
+  tick, so treat absent as none. Flip each named row to `- [x]`. Writing
+  `status: awaiting-deploy` from this evidence while leaving the row saying "not merged"
+  splits the doc against itself, and the split is self-perpetuating - the unticked row
+  holds `stage` at `in_review` against an `awaiting-deploy` frontmatter, so
+  `needs_live_verification` stays true and the next run re-reads the same PRs to
+  re-report the same conflict.
+
+  Keep the row's own words. Append `- {merge date} ({PR refs}, verified /nase:{skill}
+  {run date})` only when the existing text is the bare label `Merged`
+  (`transition.stale_canonical_rows[].bare_label` is `true`); a row that already carries
+  prose gets its checkbox flipped and nothing else, because the author wrote that text
+  about something the live PR read cannot see.
+
+  The helper withholds the row wherever the assertion would not be provable: on any
+  non-merged path, when a checked `Merged` row already exists, or when several unchecked
+  ones do - those are per-PR ledgers in a multi-PR effort, and delivery states cannot say
+  which row a given merge belongs to. A trailing outstanding clause
+  (`Merged - PR-1 only`) also withholds it. `classify`'s own
+  `unticked_canonical_rows` is a filtered candidate observation and authorizes nothing:
+  it requires one unambiguous unchecked `Merged` row and excludes outstanding clauses.
+  Only `transition.stale_canonical_rows` carries the merge proof.
 
 **Write path.** These transitions qualify for the `.claude/docs/workspace-write-guard.md`
 auto-accept path because their evidence and target are deterministic. Stage the
-frontmatter change under `workspace/tmp/`. Use the normal guarded `apply` when the file
+frontmatter change and any `transition.stale_canonical_rows` checkbox flip as one
+proposed file under `workspace/tmp/`, so a single guarded write covers both and the doc
+is never left half-updated. Use the normal guarded `apply` when the file
 stays active. For terminal transitions, use the guard's `apply-move` operation with
 `{destination_dir}/{slug}.md`; never run `apply` followed by `mv`. `apply-move` creates
 the destination parent, so a first-of-year archive folder needs no separate `mkdir`. If
@@ -249,22 +275,87 @@ must compute unblocked from `status` + `blocked-by`, never store it.
 
 ## PR Reference Resolution
 
-Any skill that live-checks an effort's PRs (drift check, stage classification, deploy
-state) must find **every** PR the doc names — not just the ones written as full URLs.
-Effort docs cite PRs three ways, and older docs lean on the shorthand:
+The classifier's delivery and dependency sets include only structured lifecycle inputs;
+report-only body references are context, never transition evidence. Within those inputs,
+effort docs cite PRs three ways, and older docs lean on the shorthand:
 
-1. **Full URL** — `https://github.com/{owner}/{repo}/pull/{n}` — anywhere in the body.
-2. **Qualified shorthand** — `{owner}/{repo}#{n}` (e.g. `UiPath/Insights#4640`) — anywhere.
-3. **Bare number** — `#{n}` (e.g. `#4640`) — resolve **only** inside the `## Lifecycle`
-   section and `blocked-by`, where a `#{n}` is definitionally a PR. Resolve its repo from
-   the nearest qualified/full reference in the doc, else from the `repo:` frontmatter under
-   the `UiPath` org (`UiPath/{repo}`). Do **not** treat bare `#{n}` in prose as a PR — bodies
+1. **Full URL** - `https://github.com/{owner}/{repo}/pull/{n}` - in `pr`, `prs`,
+   `phase_*_pr`, `blocked-by`, or a checked canonical `PR opened` lifecycle row.
+2. **Qualified shorthand** - `{owner}/{repo}#{n}` (e.g. `acme/widget#4640`) - in
+   those same structured locations.
+3. **Bare number** - `#{n}` (e.g. `#4640`) - only in those structured frontmatter
+   fields or a checked canonical `PR opened` lifecycle row. Resolve its repo from the
+   nearest qualified/full reference in the doc, else from explicit `repo: {owner}/{repo}`
+   frontmatter. Only the first token of that value is the identifier, so an annotated key
+   (`repo: acme/widget (live; was greenfield)`) still resolves. A bare repo name has no
+   owner context and is reported as `no-repo-context`.
+   Quote a bare frontmatter value, for example `pr: "#4640"` or `- "#4640"`, because YAML
+   otherwise treats the number as a comment.
+   Do **not** treat bare `#{n}` in prose as a PR - bodies
    are full of non-PR `#{n}` (CHANGELOG entries, `grill #3`, `Codex Q10`, RFC markers), so a
    greedy bare-`#` sweep produces false PRs.
 
-Normalize each hit to `{owner}/{repo}` + number and verify read-only with
+**Do not hand-roll the extraction.** `effort-state.py` returns the two sets the
+transition depends on, already normalized and deduped, in every classify call:
+
+```json
+"pr_references": {
+  "delivery":   [{"owner": "acme", "repo": "widget", "number": 4918,
+                  "source": "frontmatter", "line": 7}],
+  "dependency": [{"owner": "acme", "repo": "widget", "number": 4884,
+                  "source": "frontmatter", "line": 12}],
+  "discarded_bare": [{"number": 5, "line": 184, "reason": "denied-in-row"}],
+  "validation_errors": []
+}
+```
+
+`delivery` is the structured set defined above (`pr`, `prs`, `phase_*_pr`, plus checked
+canonical `PR opened` rows); `dependency` comes from `blocked-by`. Report-only body
+references stay the caller's job.
+
+**A malformed structured key stops the transition.** `validation_errors` names the key
+that cannot be read as written, and any entry makes `--evaluate-transition` return
+`action: none` with `reason: invalid-pr-reference`. That is fail-closed on purpose: a key
+the helper cannot parse might name the delivery PR that decides the transition, so
+guessing past it would archive on partial evidence. The errors and their repairs:
+
+| error | shape that produces it | repair |
+|---|---|---|
+| `invalid-{key}` | the same `pr`, `prs`, `phase_*_pr`, `blocked-by`, or `repo` key twice | keep one |
+| `invalid-prs` | `prs` carrying its value inline, or empty with no `- ` items under it | give it a block list of `- ` items |
+| `invalid-blocked-by` | `blocked-by` with an empty value and no list items | put the blocker inline or list it |
+| `invalid-repo` | a `repo` identifier holding `/` that is not `{owner}/{repo}` | write `{owner}/{repo}` |
+| `unresolved-{key}` | a singular `pr`/`phase_*_pr` naming zero or several PRs | one PR per key |
+| `unresolved-prs` | a `prs` item with no resolvable PR | qualify it or drop it |
+
+A scalar `blocked-by` is a legal shape per *Dependency & Discovery Fields*, including
+short free text with no PR in it: that reports as blocked, never as a reference error.
+
+**A row may disclaim its own numbers.** Effort docs label query, finding and step
+numbers as `#5`, and they document past mis-resolutions by name
+(`` a bare-`#` sweep resolved `#5` to the unrelated CLOSED `acme/widget-monitoring#5` ``).
+On a row carrying such a denial the helper keeps only full URLs and drops the shorthand
+and bare forms into `discarded_bare` - the shorthand there is the mistake being
+described, not the delivery PR. Nobody writes a full URL by accident while denying it,
+so form 1 survives. Read `discarded_bare` when a delivery set looks short; and note the
+cost of the carve-out: a row whose only citation of its real PR is shorthand *and* that
+also trips a denial phrase loses that PR, which reads as `no-delivery-pr` and leaves the
+effort active. That direction is deliberate - a missing delivery PR stalls a transition,
+a phantom one archives live work.
+
+`source: "lifecycle:PR opened"` covers only rows whose label *starts* with the canonical
+`PR opened` - a row written `- [x] W8 PR opened - <url>` is not canonical and contributes
+neither stage evidence nor a delivery PR. Give such a PR a `phase_*_pr:` frontmatter
+pointer, which is the supported way to name a per-phase delivery PR.
+
+Form 3 additionally needs the row to sit under a `## Lifecycle` heading, which is what
+makes `#{n}` definitionally a PR there. A canonical row outside any such section keeps
+its full and qualified citations and reports its bare ones as
+`reason: "outside-lifecycle"` - the number is not dropped quietly, because the effort
+would otherwise read `no-delivery-pr` with nothing pointing at the row that holds it.
+
+Verify each entry read-only with
 `gh pr view {n} --repo {owner}/{repo} --json state,reviewDecision,statusCheckRollup,mergedAt`.
-Dedupe across the three forms (the same PR often appears as both a URL and a `#{n}`).
 
 **Why this matters:** frontmatter `status:` drifts; PR state is the ground truth that
 corrects it. URL-only extraction misses shorthand and can mis-bucket shipped work as

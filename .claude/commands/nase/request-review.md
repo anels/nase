@@ -124,7 +124,7 @@ Follow `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routi
 
 ## Step 7 — Draft messages
 
-Write like a colleague asking a quick favour — start with the ask, one line on what the change does, then the link. No bullet points, no markdown, no formal sign-off.
+Write a single-PR DM like a colleague asking a quick favour - start with the ask, one line on what the change does, then the link. No formal sign-off. Cherry-pick groups are the exception: use the `- ` list format below.
 
 **No "Hey [name]," opener.** A Slack DM is already a 1:1 channel — Slack shows the recipient's name in the header, so naming them again in the body just adds noise. Open with the ask itself ("Could you help review [url] - [TLDR]"). This is purely a Slack-DM convention; if the skill ever drafts to a multi-person channel, an opener that names the target reviewer would be appropriate again.
 
@@ -136,7 +136,9 @@ The TLDR should complete one of these naturally (pick whichever fits):
 
 Derive it from the PR title and body; don't invent details.
 
-**Important: Slack mrkdwn auto-links URLs with `<>` — if a newline follows a URL, the next word gets swallowed into the link tag. Always put the URL and TLDR on the same line, joined by ` - `.**
+**Important: follow `.claude/docs/slack-draft-style.md → Formatting Mechanics`.** The rule that
+bites here: Slack's auto-linker swallows a newline that follows a URL, so always keep the URL and
+its TLDR on the same line, joined by ` - `.
 
 **Single PR (approval):**
 ```
@@ -151,11 +153,13 @@ Could you help review [url] - [TLDR]
 **Cherry-pick group:**
 ```
 Could you help approve these cherry-picks? [TLDR]
-• [url 1] → release/vX
-• [url 2] → release/vY
+- [url 1] → release/vX
+- [url 2] → release/vY
 ```
 
-Keep it short — people will read the PR description for details. No markdown in the actual DM.
+Keep it short - people will read the PR description for details. Bullets are `- `, which is the
+draft tool's list syntax; a literal `•` renders flat with no indent. Keep the branch name after
+the URL on the same line so the auto-linker cannot swallow the next bullet.
 
 ## Step 8 — Confirm recipient list and draft
 

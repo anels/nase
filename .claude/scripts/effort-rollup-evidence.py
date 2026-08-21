@@ -23,7 +23,7 @@ from typing import Any
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
-BASIS_VERSION = "effort-rollup-v1"
+BASIS_VERSION = "effort-rollup-v2"
 MAX_CAPTURE_AGE_SECONDS = 7200
 GH_TIMEOUT_SECONDS = 30
 GH_ATTEMPTS = 3
@@ -32,10 +32,8 @@ CONTEXT_REPO_RE = re.compile(
 )
 FULL_PR_RE = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)")
 QUALIFIED_PR_RE = re.compile(r"(?<![A-Za-z0-9_.-])([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)")
-BARE_PR_RE = re.compile(r"(?<![A-Za-z0-9])#([1-9][0-9]*)")
 JIRA_RE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]*)(?![A-Z0-9-])")
 PHASE_PR_KEY_RE = re.compile(r"^phase_[a-z0-9_-]+_pr$", re.I)
-CHECKED_PR_OPENED_RE = re.compile(r"^\s*-\s*\[[xX]\]\s+PR opened\b(.*)$", re.I)
 VALID_EFFORT_STATUSES = {
     "planned", "in-progress", "needs-revision", "blocked", "merge-ready",
     "awaiting-deploy", "tracked", "ready", "completed", "wontfix",
@@ -59,6 +57,9 @@ def load_module(name: str, path: Path) -> Any:
 
 FRONTMATTER = load_module(
     "nase_frontmatter_scalar", SCRIPT_ROOT / ".claude" / "scripts" / "frontmatter_scalar.py"
+)
+EFFORT_STATE = load_module(
+    "nase_effort_state", SCRIPT_ROOT / ".claude" / "scripts" / "effort-state.py"
 )
 SECRET = load_module(
     "nase_effort_rollup_secret_scan", SCRIPT_ROOT / ".claude" / "scripts" / "codex-verify-bundle.py"
@@ -161,7 +162,7 @@ def section_lines(text: str, heading: str) -> list[str]:
         return []
     selected: list[str] = []
     for line in lines[start:]:
-        if re.match(r"^#{1,2}\s+", line):
+        if re.match(r"^#{1,6}\s+", line):
             break
         selected.append(line)
     return selected
@@ -281,22 +282,28 @@ def pr_key(url: str) -> str:
     return f"{match.group(1).lower()}/{match.group(2).lower()}#{int(match.group(3))}"
 
 
-def extract_prs(value: str) -> list[str]:
-    found = [canonical_pr(*match.groups()) for match in FULL_PR_RE.finditer(value)]
-    found.extend(canonical_pr(*match.groups()) for match in QUALIFIED_PR_RE.finditer(value))
+def dedupe_prs(urls: list[str]) -> list[str]:
     deduped: dict[str, str] = {}
-    for url in found:
+    for url in urls:
         deduped.setdefault(pr_key(url), url)
     return list(deduped.values())
 
 
-def extract_scoped_prs(value: str, repo_name: str | None, github_org: str) -> list[str]:
-    urls = extract_prs(value)
-    without_qualified = FULL_PR_RE.sub("", value)
-    without_qualified = QUALIFIED_PR_RE.sub("", without_qualified)
-    if repo_name:
-        urls.extend(canonical_pr(github_org, repo_name, number) for number in BARE_PR_RE.findall(without_qualified))
-    return list({pr_key(url): url for url in urls}.values())
+def extract_prs(value: str) -> list[str]:
+    found = [canonical_pr(*match.groups()) for match in FULL_PR_RE.finditer(value)]
+    found.extend(canonical_pr(*match.groups()) for match in QUALIFIED_PR_RE.finditer(value))
+    return dedupe_prs(found)
+
+
+def context_prs(text: str) -> list[str]:
+    """Body references for reporting, excluding shorthand in rows that deny PR meaning."""
+    found: list[str] = []
+    for line in text.splitlines():
+        if EFFORT_STATE.BARE_PR_DENIAL_RE.search(EFFORT_STATE.deemphasize(line)):
+            found.extend(canonical_pr(*match.groups()) for match in FULL_PR_RE.finditer(line))
+        else:
+            found.extend(extract_prs(line))
+    return dedupe_prs(found)
 
 
 def frontmatter_block(text: str) -> list[str]:
@@ -317,9 +324,11 @@ def list_field(lines: list[str], key: str) -> tuple[list[str], bool]:
     for line in lines[index + 1 :]:
         if not line.strip():
             continue
-        if not line[:1].isspace():
+        if line.lstrip().startswith("#"):
+            continue
+        if not line[:1].isspace() and not re.match(r"^-\s+", line):
             break
-        match = re.match(r"^\s+-\s+(.+?)\s*$", line)
+        match = re.match(r"^\s*-\s+(.+?)\s*$", line)
         if not match or re.search(r"(^|\s)[A-Za-z0-9_-]+:\s", match.group(1)):
             return [], False
         values.append(match.group(1))
@@ -352,32 +361,7 @@ def effort_files(root: Path) -> list[tuple[Path, str]]:
     return files
 
 
-def lifecycle_delivery(text: str, repo_name: str | None, github_org: str) -> list[str]:
-    urls: list[str] = []
-    lines = text.splitlines()
-    in_lifecycle = False
-    lifecycle_level = 0
-    for line in lines:
-        heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
-        if heading:
-            if heading.group(2).strip().lower() == "lifecycle":
-                in_lifecycle = True
-                lifecycle_level = len(heading.group(1))
-                continue
-            if in_lifecycle and len(heading.group(1)) <= lifecycle_level:
-                in_lifecycle = False
-        if not in_lifecycle:
-            continue
-        match = CHECKED_PR_OPENED_RE.match(line)
-        if not match:
-            continue
-        value = match.group(1)
-        resolved = extract_scoped_prs(value, repo_name, github_org)
-        urls.extend(resolved)
-    return urls
-
-
-def parse_efforts(root: Path, config: dict[str, str]) -> list[dict[str, Any]]:
+def parse_efforts(root: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     slugs: set[str] = set()
     for path, location in effort_files(root):
@@ -402,43 +386,49 @@ def parse_efforts(root: Path, config: dict[str, str]) -> list[dict[str, Any]]:
         if tracking_only and not owner:
             errors.append("missing-owner")
 
-        delivery: list[str] = []
+        references = EFFORT_STATE.pr_references(text)
+        errors.extend(str(error) for error in references["validation_errors"])
+        resolved_delivery_numbers = {int(ref["number"]) for ref in references["delivery"]}
+
+        def resolves_delivery_bare(value: str, *, exactly_one: bool = False) -> bool:
+            numbers = [int(number) for number in EFFORT_STATE.BARE_PR_RE.findall(value)]
+            if not numbers or (exactly_one and len(numbers) != 1):
+                return False
+            return all(number in resolved_delivery_numbers for number in numbers)
+
         for key in ["pr", *sorted({line.split(":", 1)[0] for line in lines if PHASE_PR_KEY_RE.fullmatch(line.split(":", 1)[0])})]:
             raw = scalar(text, key, errors)
-            if raw:
-                parsed = extract_prs(raw)
-                if raw.lstrip().startswith(("{", "[")) or len(parsed) != 1:
-                    errors.append(f"unresolved-{key}")
-                delivery.extend(parsed)
+            if not raw:
+                continue
+            names_one_pr = len(extract_prs(raw)) == 1 or resolves_delivery_bare(raw, exactly_one=True)
+            if raw.lstrip().startswith(("{", "[")) or not names_one_pr:
+                errors.append(f"unresolved-{key}")
         prs, prs_valid = list_field(lines, "prs")
         if any(re.match(r"^prs\s*:", line, re.I) for line in lines) and not prs_valid:
             errors.append("invalid-prs")
         for raw in prs:
-            parsed = extract_prs(raw)
-            if not parsed:
+            if not extract_prs(raw) and not resolves_delivery_bare(raw):
                 errors.append("unresolved-prs")
-            delivery.extend(parsed)
-        delivery.extend(lifecycle_delivery(text, repo_name, config.get("github_org", "")))
-
         blocked_fields = [line for line in lines if re.match(r"^blocked-by\s*:", line, re.I)]
-        blocked_scalar = None
-        blocked_list: list[str] = []
         if len(blocked_fields) > 1:
             errors.append("invalid-blocked-by")
-        elif blocked_fields:
-            if blocked_fields[0].split(":", 1)[1].strip():
-                blocked_scalar = scalar(text, "blocked-by", errors)
-            else:
-                blocked_list, blocked_valid = list_field(lines, "blocked-by")
-                if not blocked_valid:
-                    errors.append("invalid-blocked-by")
-        dependencies = extract_scoped_prs(blocked_scalar or "", repo_name, config.get("github_org", ""))
-        for raw in blocked_list:
-            dependencies.extend(extract_scoped_prs(raw, repo_name, config.get("github_org", "")))
+        elif blocked_fields and not blocked_fields[0].split(":", 1)[1].strip():
+            _, blocked_valid = list_field(lines, "blocked-by")
+            if not blocked_valid:
+                errors.append("invalid-blocked-by")
+
+        delivery = [
+            canonical_pr(str(ref["owner"]), str(ref["repo"]), ref["number"])
+            for ref in references["delivery"]
+        ]
+        dependencies = [
+            canonical_pr(str(ref["owner"]), str(ref["repo"]), ref["number"])
+            for ref in references["dependency"]
+        ]
 
         delivery_map = {pr_key(url): url for url in delivery}
         dependency_map = {pr_key(url): url for url in dependencies}
-        all_body = {pr_key(url): url for url in extract_prs(text)}
+        all_body = {pr_key(url): url for url in context_prs(text)}
         context_only = {
             key: url
             for key, url in all_body.items()
@@ -476,12 +466,15 @@ def efforts_for_scope(efforts: list[dict[str, Any]], scope: list[dict[str, str]]
     repositories = {repo["full_name"].lower() for repo in scope}
     selected: list[dict[str, Any]] = []
     for effort in efforts:
+        repo_alias = EFFORT_STATE.repo_token(
+            FRONTMATTER.normalize_scalar(str(effort.get("repo_alias") or ""))
+        )
         delivery_repos = {
             "/".join(FULL_PR_RE.fullmatch(url).groups()[:2]).lower()
             for url in effort["delivery_prs"]
             if FULL_PR_RE.fullmatch(url)
         }
-        if effort.get("repo_alias") in aliases or delivery_repos & repositories:
+        if repo_alias in aliases or repo_alias.lower() in repositories or delivery_repos & repositories:
             if delivery_repos - repositories:
                 effort["classification_errors"] = sorted(
                     set(effort["classification_errors"] + ["delivery-pr-outside-scope"])
@@ -876,7 +869,7 @@ def collect(args: argparse.Namespace) -> int:
     collector = Collector(bundle)
     collector.captures.append(inventory_capture(root, args.month, bundle))
 
-    effort_records = efforts_for_scope(parse_efforts(root, config), scope)
+    effort_records = efforts_for_scope(parse_efforts(root), scope)
     candidates: dict[str, str] = {}
     for effort in effort_records:
         for field in ("delivery_prs", "report_only_prs", "dependency_prs", "context_only_prs"):
@@ -1363,7 +1356,7 @@ def validate(args: argparse.Namespace) -> int:
         for record in run["scope"].get("local_availability", [])
         if record["status"] != "available"
     ]
-    current_efforts = efforts_for_scope(parse_efforts(root, config), current_scope)
+    current_efforts = efforts_for_scope(parse_efforts(root), current_scope)
     required_views = {
         pr_key(url)
         for effort in current_efforts

@@ -20,7 +20,7 @@ Read this file on demand. It points to the maintained source instead of repeatin
 - Canonical pointer wording: `language-config.md → Canonical pointer` owns the language-preflight spelling every skill copies verbatim; `tests/check-canonical-pointers.sh` fails on any reworded or inlined copy.
 - Skill evaluation: `.claude/scripts/skill-eval-run.py` runs isolated routing and fixture-backed output probes, stores private hash-bound receipts, reports separate coverage dimensions, and records explicit human review.
 - Citation validation: `.claude/scripts/citation-validator.py` validates GitHub, Jira, Confluence, and multi-root source references with `OK`, `BROKEN`, and `UNKNOWN` outcomes before report promotion.
-- Effort-rollup evidence: `effort-rollup-integrity.md` owns staging and promotion; `.claude/scripts/effort-rollup-evidence.py` collects fresh scope-bound GitHub evidence and independently re-derives delivery roles, buckets, coverage, and critical totals.
+- Effort-rollup evidence: `effort-rollup-integrity.md` owns staging and promotion; `.claude/scripts/effort-rollup-evidence.py` collects fresh scope-bound GitHub evidence, reuses canonical delivery-role classification, and derives buckets, coverage, and critical totals.
 - Deterministic git preflights: `.claude/scripts/scope-files.sh` owns the modified-file scope selection `/nase:simplify` runs on; `.claude/scripts/git-commit-context.py` owns HEAD state, fail-closed publish state, and commitlint config discovery for `/nase:improve-commit-message`; `restore-workspace.py resolve-backup` owns backup-path canonicalization and containment for `/nase:restore`.
 
 ## Execution Style

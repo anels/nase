@@ -192,7 +192,7 @@ EVIDENCE_SHA=$(shasum -a 256 "$BUNDLE/evidence.json" | awk '{print $1}')
 cat > "$BUNDLE/report.fresh.md" <<EOF
 # Rollup
 Evidence SHA: $EVIDENCE_SHA
-Measurement basis: effort-rollup-v1
+Measurement basis: effort-rollup-v2
 Coverage: complete-for-declared-sources
 Delivered efforts: 3
 Merged delivery PRs in month: 1
@@ -373,7 +373,7 @@ assert_cmd "supplemental bytes cannot alter canonical totals" "$PYTHON_BIN" "$SC
 
 cat > "$BUNDLE/report.bad.md" <<'MD'
 Evidence SHA: wrong
-Measurement basis: effort-rollup-v1
+Measurement basis: effort-rollup-v2
 Coverage: complete-for-declared-sources
 Delivered efforts: 3
 Merged delivery PRs in month: 1
@@ -463,6 +463,112 @@ assert effort["bucket"] == "excluded" and "status-location-mismatch" in effort["
 assert data["totals"]["delivered_efforts"] == 3
 PY
 rm "$FIXTURE/workspace/efforts/done/effort-location.md"
+
+write_effort effort-denied '---
+status: completed
+repo: service
+---
+
+## Lifecycle
+- [x] PR opened - [#1](https://github.com/example/service/pull/1) - query numbers, **not** PR numbers; a bare sweep resolved `#5` to the unrelated CLOSED `example/service#5`'
+DENIED="$TMPDIR_TEST/denied-pr-reference"
+assert_cmd "denied bare PR numbers do not enter rollup delivery evidence" collect_bundle "$DENIED"
+assert_cmd "rollup reuses lifecycle PR reference resolution" "$PYTHON_BIN" - "$DENIED/evidence.json" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+effort = next(item for item in data["efforts"] if item["slug"] == "effort-denied")
+assert effort["delivery_prs"] == ["https://github.com/example/service/pull/1"]
+assert "https://github.com/example/service/pull/5" not in effort["delivery_prs"]
+assert effort["context_only_prs"] == []
+PY
+rm "$FIXTURE/workspace/efforts/done/effort-denied.md"
+
+write_effort effort-bare '---
+status: completed
+repo: example/service
+pr: "#1"
+prs:
+- "#2"
+
+# another delivery
+- "#3"
+blocked-by:
+- "#5"
+
+# another dependency
+- "#6"
+---'
+BARE="$TMPDIR_TEST/bare-pr-reference"
+assert_cmd "owner-qualified bare PR references remain valid rollup evidence" collect_bundle "$BARE"
+assert_cmd "rollup accepts canonical helper bare delivery and dependency references" "$PYTHON_BIN" - "$BARE/evidence.json" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+effort = next(item for item in data["efforts"] if item["slug"] == "effort-bare")
+assert effort["classification_errors"] == []
+assert effort["delivery_prs"] == [
+    "https://github.com/example/service/pull/1",
+    "https://github.com/example/service/pull/2",
+    "https://github.com/example/service/pull/3",
+]
+assert effort["dependency_prs"] == [
+    "https://github.com/example/service/pull/5",
+    "https://github.com/example/service/pull/6",
+]
+PY
+rm "$FIXTURE/workspace/efforts/done/effort-bare.md"
+
+write_effort effort-malformed-pr '---
+status: completed
+repo: service
+pr: definitely-not-a-pr
+---'
+MALFORMED_PR="$TMPDIR_TEST/malformed-pr"
+assert_cmd "malformed PR reference yields partial coverage" collect_bundle "$MALFORMED_PR"
+assert_cmd "malformed PR remains a classification error" "$PYTHON_BIN" - "$MALFORMED_PR/evidence.json" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+effort = next(item for item in data["efforts"] if item["slug"] == "effort-malformed-pr")
+assert "unresolved-pr" in effort["classification_errors"]
+assert data["coverage"]["status"] == "partial"
+PY
+rm "$FIXTURE/workspace/efforts/done/effort-malformed-pr.md"
+
+write_effort effort-malformed-qualified-repo '---
+status: completed
+repo: example/service
+pr: definitely-not-a-pr
+---'
+QUALIFIED_MALFORMED="$TMPDIR_TEST/malformed-qualified-repo"
+assert_cmd "owner-qualified repo keeps malformed effort in scoped coverage" collect_bundle "$QUALIFIED_MALFORMED"
+assert_cmd "owner-qualified malformed effort is explicit partial coverage" "$PYTHON_BIN" - "$QUALIFIED_MALFORMED/evidence.json" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+effort = next(item for item in data["efforts"] if item["slug"] == "effort-malformed-qualified-repo")
+assert "unresolved-pr" in effort["classification_errors"]
+assert data["coverage"]["status"] == "partial"
+PY
+rm "$FIXTURE/workspace/efforts/done/effort-malformed-qualified-repo.md"
+
+write_effort effort-multiple-pr-scalar '---
+status: completed
+repo: service
+pr: "example/service#1 example/service#2"
+---'
+MULTIPLE_SCALAR="$TMPDIR_TEST/multiple-pr-scalar"
+assert_cmd "multiple bare references in scalar pr yield partial coverage" collect_bundle "$MULTIPLE_SCALAR"
+assert_cmd "scalar pr retains its one-reference contract" "$PYTHON_BIN" - "$MULTIPLE_SCALAR/evidence.json" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+effort = next(item for item in data["efforts"] if item["slug"] == "effort-multiple-pr-scalar")
+assert "unresolved-pr" in effort["classification_errors"]
+assert data["coverage"]["status"] == "partial"
+PY
+rm "$FIXTURE/workspace/efforts/done/effort-multiple-pr-scalar.md"
 
 cp "$FIXTURE/.local-paths" "$TMPDIR_TEST/local-paths.original"
 printf 'ignored=%s\n' "$TMPDIR_TEST/ignored" > "$FIXTURE/.local-paths"
