@@ -139,7 +139,7 @@ Mandatory private evaluation before Step 3. The result must be surfaced early in
 Use this to answer four explicit questions about the PR before any specialist runs:
 
 **Pillar 1 — Scope alignment**
-- Extract Jira keys from PR body / title / branch name. Match `[A-Z]+-\d+` (most UiPath projects use `IN-####`); also accept Linear keys when the repo KB references Linear.
+- Extract Jira keys from PR body / title / branch name. Match `[A-Z]+-\d+`; also accept Linear keys when the repo KB references Linear.
 - If a Jira key is found: fetch the ticket via Atlassian MCP `getJiraIssue` (`cloudId` from `workspace/config.md`). Compare ticket summary + description + acceptance criteria against diff scope.
   - Diff is a strict subset of Jira AC and PR body does not document the partial delivery → flag as ⚠️ partial scope.
   - Diff exceeds Jira AC (extra files, unrelated edits) and PR body does not justify the extension → flag as ⚠️ scope creep.
