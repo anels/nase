@@ -26,6 +26,11 @@ assert_cmd "slack-draft-style warns that a blank line after bullets is dropped" 
   grep -Eqi 'blank line (immediately )?after a bullet block' "$STYLE_DOC"
 assert_cmd "slack-draft-style keeps the bare-URL rule against \`[label](url)\`" \
   grep -q 'Keep bare URLs' "$STYLE_DOC"
+# The scan below only inspects fenced templates. The doc is what a drafter actually reads, so if
+# the prose narrows back to "next line is a bullet" the scan keeps passing while drafts break on
+# the prose case again - which is exactly how 2026-08-23 happened.
+assert_cmd "slack-draft-style states the trailing-URL rule for any non-empty next line" \
+  grep -Eqi 'bare URL when the next line is non-empty' "$STYLE_DOC"
 
 # Both checks below are scoped to Slack-drafting surfaces - files that actually call
 # `slack_send_message_draft`. The rules describe what Slack's renderer does to draft text, so
@@ -57,13 +62,14 @@ if offenders:
     sys.exit(1)
 PY
 
-assert_cmd "Slack draft templates never put a bare URL above a bullet" "$PYTHON_BIN" - <<'PY'
+assert_cmd "Slack draft templates never end a line with a bare URL above non-empty text" "$PYTHON_BIN" - <<'PY'
 import pathlib, re, sys
 
-# The auto-linker consumes the URL, the newline and the following bullet marker into one span, so
-# Slack renders the raw <https://...> instead of a link. Prose after the URL bounds the span.
+# The auto-linker consumes the URL, the newline and the start of the following line into one span,
+# so Slack renders a raw <https://...\nWord> instead of a link. This happens whatever follows, not
+# only a bullet: a two-line "Parent: {url}" / "Child: {url}" block corrupted the same way
+# (2026-08-23). A blank line is a valid boundary and survives; anything else is not.
 # Only fenced blocks are checked: those are the literal message bodies handed to the draft tool.
-BULLET = re.compile(r"^\s*(?:[-*•]\s|\d+\.\s)")
 TRAILING_URL = re.compile(r"https?://\S+$")
 
 offenders = []
@@ -88,14 +94,17 @@ for root in (pathlib.Path(".claude/commands"), pathlib.Path(".claude/docs"), pat
             # A markdown link or an angle-bracketed URL is already a bounded span.
             if stripped.endswith(")") or stripped.endswith(">"):
                 continue
-            if BULLET.match(lines[idx + 1]):
-                offenders.append(f"{path}:{idx + 1}: {stripped}")
+            nxt = lines[idx + 1]
+            # A blank line ends the span. So does the closing fence - the message body stops there.
+            if not nxt.strip() or nxt.lstrip().startswith("```"):
+                continue
+            offenders.append(f"{path}:{idx + 1}: {stripped}")
 
 if offenders:
-    print("bare URL at end of a template line with a bullet on the next line:", file=sys.stderr)
+    print("bare URL at end of a template line with non-empty text on the next line:", file=sys.stderr)
     for item in offenders:
         print(f"  {item}", file=sys.stderr)
-    print("Put prose after the URL on the same line.", file=sys.stderr)
+    print("Put content after the URL on the same line, or leave a blank line before what follows.", file=sys.stderr)
     sys.exit(1)
 PY
 

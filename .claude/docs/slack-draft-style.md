@@ -3,7 +3,7 @@ name: slack-draft-style
 description: Style rules for Slack messages drafted on behalf of the EM. Read before finalizing any Slack DM or channel message draft.
 ---
 
-Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` or `surface=slack-channel`. Read `workspace/communication-style.md` when the routing capsule says the full profile is needed or the message is high-stakes.
+Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` or `surface=slack-channel`. Read `workspace/communication-style.md` when the routing capsule says the full profile is needed or the message is high-stakes. (Arriving here *from* that routing table? You are in the right place - read Formatting Mechanics and the Quick Checklist below and do not bounce back.)
 
 After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 4e batches pending deltas into approved style-doc edits.
 
@@ -21,9 +21,14 @@ it.
 
 - **Write `- item` for bullets, never a literal `•`.** A literal `•` is plain text; the
   Markdown-converting draft path uses `- item` to produce a list.
-- **Avoid ending a line with a bare URL when the next line is a bullet.** The current draft
-  renderer has produced malformed link spans in that shape. Keep prose after the URL on the
-  same line: `Merged in https://github.com/Org/Repo/pull/1 - the window sort is gone.`
+- **Never end a line with a bare URL when the next line is non-empty.** The auto-linker eats the
+  URL, the newline, and the start of the next line as one span - whatever follows, not only
+  bullets. A bullet next renders `<https://…\n•>`; prose next renders `<https://…\nChild>` with
+  the closing `>` stranded mid-sentence. Put content after the URL on the same line, which means
+  writing a link list as sentences rather than `Label: {url}` rows:
+  `Parent https://example.com/a covers sections 0-3` / `Merged in https://example.com/b - fixed.`
+  A blank line after the URL is also a valid boundary and survives, but only outside a bullet
+  block - see the next rule.
 - **Do not rely on a blank line after a bullet block for separation.** A blank line immediately
   after a bullet block is dropped by the current draft conversion, so the next section runs into
   the list. Separate sections with a non-empty text line instead.
@@ -40,7 +45,7 @@ explicitly what the draft should look like so the user can spot a mismatch at a 
 Apply before presenting the draft to the user:
 
 - [ ] Bullets are `- item`, not a literal `•` (see Formatting Mechanics - a literal `•` never indents)
-- [ ] No line ends with a bare URL while the next line is a bullet - prose follows the URL on the same line
+- [ ] No line ends with a bare URL while the next line is non-empty (bullet *or* prose) - put content after the URL on the same line
 - [ ] No opening greeting ("Hi", "Hello", "Hope you're well") — jump straight to content
 - [ ] No AI filler words ("certainly", "absolutely", "I'd be happy to", "I wanted to reach out") — delete
 - [ ] Technical content: use bullets, not prose paragraphs

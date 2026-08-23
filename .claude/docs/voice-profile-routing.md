@@ -16,14 +16,24 @@ Source of truth: `workspace/communication-style.md`.
 
 | Surface | Load | Shape |
 |---------|------|-------|
-| `slack-dm` | Slack + AI checklist sections from `workspace/communication-style.md` when needed | No opener, very short, raw URL, `pls` in informal asks, English unless the recipient is a Chinese-native colleague. For PR asks, write `Could you help review {url} - {TLDR}` or `{url} @{reviewer} pls help review`; do not write `review this?` when the URL is already present. |
-| `slack-channel` | Slack + incident / announcement rules | English, direct context first, bullets for technical updates, `cc:` / mentions for affected people, no blame. Incident shape: symptom -> cause -> current status -> action request. |
+| `slack-dm` | **`.claude/docs/slack-draft-style.md` → Formatting Mechanics + Quick Checklist (mandatory)**, plus AI checklist sections from `workspace/communication-style.md` when needed | No opener, very short, raw URL, `pls` in informal asks, English unless the recipient is a Chinese-native colleague. For PR asks, write `Could you help review {url} - {TLDR}` or `{url} @{reviewer} pls help review`; do not write `review this?` when the URL is already present. |
+| `slack-channel` | **`.claude/docs/slack-draft-style.md` → Formatting Mechanics + Quick Checklist (mandatory)**, plus incident / announcement rules | English, direct context first, bullets for technical updates, `cc:` / mentions for affected people, no blame. Incident shape: symptom -> cause -> current status -> action request. |
 | `github-pr-body` | PR body rules + AI banned list | Follow `.claude/docs/pr-creation-pattern.md` for template/default structure and `.claude/docs/ai-attribution.md` for attribution. Keep reviewer-facing prose concise and concrete. Never mention local workspace paths, and never carry plan-internal labels (`Phase 0`, `case C`, `Option 2`, `REQ-003`) into the body or title - name what they denote instead. |
 | `github-review-comment` | Review/comment rules + no-blame rules | One to two sentences. Lead with the concrete failure mode, cite the path or behavior, and include a fix direction only when it is clear. Avoid vague asks like `consider improving this`. |
 | `github-review-reply` | Review/comment rules + no-blame rules | For declines or reply-only threads, stay direct and non-defensive. Cite concrete evidence for this thread. Keep each reply at three lines or less. **When the reviewer is a bot / AI (Copilot, Codex/`chatgpt-codex-connector`, `claude`, CodeRabbit, Sonar, any `*[bot]`), skip courtesy openers entirely — no "good catch", "nice catch", "good job", "thanks for bringing this up". A bot does not read tone, so the opener is pure noise that buries the evidence and reads as AI filler. Open on the substance: the finding, the disagreement, or the fix. Warmth stays available for human reviewers.** |
 | `jira-ticket` | Jira + external doc rules | Context -> evidence -> scope -> acceptance -> references. Include full Jira/GitHub/Confluence URLs. Make the ticket directly actionable without chat history. |
 | `confluence-doc` | Confluence / RFC / strategy rules | Metadata, TLDR, tradeoffs, open questions, decision owners, and proof gates. Credit named contributors when summarizing shipped work. |
 | `announcement` | People/process announcement rules | Background -> process/change -> time/scope -> optionality. Warmth goes up for people/team events; do not use generic farewell or celebration copy. |
+
+## Why the Slack rows name a second doc
+
+The Slack rows hard-require `slack-draft-style.md` because its Formatting Mechanics describe what
+the draft tool and Slack's renderer do to the message body - a separate failure mode from voice,
+and one that lands as a visibly broken message the sender has to repair by hand.
+
+`tests/scripts/test-slack-draft-templates.sh` enforces those mechanics, but **only against fenced
+templates committed to the repo**. It cannot see a body assembled on the fly for a one-off
+`slack_send_message_draft` call, so for an ad-hoc draft the Quick Checklist is the only gate.
 
 ## Caller Contract
 
