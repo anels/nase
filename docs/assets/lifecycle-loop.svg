@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lifecycle-loop-title lifecycle-loop-desc">
+      <title id="lifecycle-loop-title">The nase operating loop</title>
+      <desc id="lifecycle-loop-desc">Six nase skill stations run clockwise from knowledge intake through daily planning, building, reflection, day close and skill extraction, and each one writes durable state back to the shared git-ignored workspace record at the centre.</desc>
+      <defs>
+        <style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap');</style>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+        <marker id="arrow-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#7a8399"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- ===== ring flow: clockwise arcs on the station circle, C=(480,272) R=200 ===== -->
+      <g fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)">
+        <path d="M 552 85.410 A 200 200 0 0 1 632.870 143.100"/>
+        <path d="M 666.590 200 A 200 200 0 0 1 667.050 342.880"/>
+        <path d="M 633.680 400 A 200 200 0 0 1 553.110 458.140"/>
+        <path d="M 408 458.590 A 200 200 0 0 1 327.180 400.960"/>
+        <path d="M 293.410 344 A 200 200 0 0 1 292.950 201.120"/>
+        <path d="M 326.320 144 A 200 200 0 0 1 406.890 85.860"/>
+      </g>
+
+      <!-- ===== dashed write-back spokes: station inner edge to 6px outside the hub ===== -->
+      <g fill="none" stroke="#7a8399" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-soft)">
+        <line x1="480" y1="100" x2="480" y2="226"/>
+        <line x1="603.50" y1="200" x2="554.48" y2="229"/>
+        <line x1="603.50" y1="344" x2="554.48" y2="315"/>
+        <line x1="480" y1="444" x2="480" y2="318"/>
+        <line x1="356.50" y1="344" x2="405.52" y2="315"/>
+        <line x1="356.50" y1="200" x2="405.52" y2="229"/>
+      </g>
+
+      <!-- ===== spoke labels: opaque mask, clear of every station box and the hub ===== -->
+      <g font-family="'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="8" fill="#7a8399" letter-spacing="0.08em" text-anchor="middle">
+        <rect x="488" y="156" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="502" y="164">KB</text>
+
+        <rect x="564" y="224" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="232">EFFORTS</text>
+
+        <rect x="572" y="308" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="316">LOGS</text>
+
+        <rect x="488" y="376" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="512" y="384">LESSONS</text>
+
+        <rect x="348" y="308" width="52" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="374" y="316">JOURNALS</text>
+
+        <rect x="352" y="224" width="40" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="372" y="232">SKILLS</text>
+      </g>
+
+      <!-- ===== station boxes ===== -->
+      <g stroke-width="1">
+        <rect x="408" y="44"  width="144" height="56" rx="6" fill="#f5f5f5" stroke="#2d3142"/>
+        <rect x="580" y="144" width="144" height="56" rx="6" fill="#f5f5f5" stroke="#2d3142"/>
+        <rect x="580" y="344" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="580" y="344" width="144" height="56" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"/>
+        <rect x="408" y="444" width="144" height="56" rx="6" fill="#f5f5f5" stroke="#2d3142"/>
+        <rect x="236" y="344" width="144" height="56" rx="6" fill="#f5f5f5" stroke="#2d3142"/>
+        <rect x="236" y="144" width="144" height="56" rx="6" fill="#f5f5f5" stroke="#2d3142"/>
+      </g>
+
+      <!-- ===== hub: the one dark element ===== -->
+      <rect x="400" y="232" width="160" height="80" rx="6" fill="#2d3142"/>
+
+      <!-- ===== station text ===== -->
+      <g text-anchor="middle">
+        <g font-family="'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#2d3142">
+          <text x="480" y="68">Ingest knowledge</text>
+          <text x="652" y="168">Plan the day</text>
+          <text x="652" y="368" fill="#eb6c36">Build &amp; verify</text>
+          <text x="480" y="468">Name the lessons</text>
+          <text x="308" y="368">Close the day</text>
+          <text x="308" y="168">Distill patterns</text>
+        </g>
+        <g font-family="'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#4f5d75">
+          <text x="480" y="88">onboard · learn</text>
+          <text x="652" y="188">today</text>
+          <text x="652" y="388">fsd · discuss-pr</text>
+          <text x="480" y="488">reflect</text>
+          <text x="308" y="388">wrap-up</text>
+          <text x="308" y="188">extract-skills</text>
+        </g>
+        <!-- hub text -->
+        <text x="480" y="268" font-family="'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#f5f5f5">Workspace record</text>
+        <text x="480" y="288" font-family="'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="9" fill="#bfc0c0">workspace/</text>
+      </g>
+
+      <!-- ===== legend strip ===== -->
+      <line x1="32" y1="540" x2="928" y2="540" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+      <g font-family="'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="8" fill="#4f5d75" letter-spacing="0.08em">
+        <text x="32" y="560" letter-spacing="0.14em">LEGEND</text>
+
+        <rect x="112" y="552" width="12" height="12" rx="2" fill="#f5f5f5" stroke="#2d3142" stroke-width="1"/>
+        <text x="132" y="560">Skill station</text>
+
+        <rect x="280" y="552" width="12" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+        <text x="300" y="560">Focal work</text>
+
+        <rect x="448" y="552" width="12" height="12" rx="2" fill="#2d3142"/>
+        <text x="468" y="560">Shared record</text>
+
+        <line x1="616" y1="558" x2="636" y2="558" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="648" y="560">Loop flow</text>
+
+        <line x1="784" y1="558" x2="804" y2="558" stroke="#7a8399" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-soft)"/>
+        <text x="816" y="560">Write-back</text>
+      </g>
+    </svg>
