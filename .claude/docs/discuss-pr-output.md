@@ -247,6 +247,7 @@ Reached only after Step 8 submits successfully. Emit a single chat block (labels
 - Inline comments: <N>
 - Reactions: <N>  (omit line if 0)
 - Replies: <N>    (omit line if 0)
+- KB: <target file + one-line summary of what was written | none>
 - Daily log: <appended | skipped>
 ```
 
@@ -259,16 +260,22 @@ Get the review URL from the execute response (`html_url`, or build `https://gith
 - **Private repo / 404**: verify the repo exists and the user has access. Suggest `gh auth status` if unclear.
 - **Rate limit (HTTP 429)**: wait and retry once. If still limited, report and stop.
 
-## Ongoing - KB update (on confirmed findings)
+## Ongoing - KB auto-write (on confirmed findings)
 
 During any discussion - whether from your own analysis or from engaging with existing comments - watch for moments where something is **confirmed and non-obvious**:
 - Author clarifies an intentional design decision that isn't obvious from the code
 - A pattern is confirmed as the team's convention (e.g. "we always separate these types for call-site safety")
 - A bug is confirmed to exist or not to exist with a concrete reason
 
-When this happens, immediately offer: _"This seems worth capturing in the KB - want me to run `/nase:kb-update`?"_
+When this happens, run `/nase:kb-update [domain]` immediately - do **not** ask first. Asking is round-trip cost on a decision the user has already delegated; a conclusion that clears the admission gates is a conclusion worth writing. Don't wait until the end of the session either.
 
-If the user agrees (or proactively says "add this to KB"), run `/nase:kb-update [domain]` with a concise summary of what was learned. Don't wait until the end of the session.
+Write only what passes `.claude/docs/kb-template.md → Verification triad`: cited source paths / command output, non-obvious, durable. A finding still under discussion, refuted, or resting on an unverified premise stays out of the KB and lives in the daily log instead.
+
+Stop and ask in exactly two cases:
+- The `/nase:kb-update` Step 2a conflict check hits similar content in a **different** KB file - duplicate / update / distinct is the user's call.
+- The content carries a `[CONFIDENTIAL]` marker (`.claude/docs/confidential-marker.md`).
+
+Report the write in one line at the end of the flow: target file, what was added. Never surface it as a proposal.
 
 ## Notes
 
