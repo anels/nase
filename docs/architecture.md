@@ -19,6 +19,7 @@ How hooks, skills, KB, and feedback loops fit together. For setup and command re
   settings.json        hook registrations
   settings.local.json  local settings overrides (git-ignored)
 docs/                  architecture and reference docs
+  assets/              diagram SVGs embedded by architecture.md
 evals/                 offline eval cases for high-frequency skills
 tests/                 local/CI validation gates
 workspace/             git-ignored; per-user content
@@ -34,6 +35,8 @@ The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) is checked in, except lo
 ---
 
 ## Hooks that gate tool calls
+
+![How a nase tool call is gated: the prompt contract shapes a Claude Code tool call, PreToolUse hooks either deny it or route it down a staged workspace write or a payload-bound external manifest, and PostToolUse hooks append telemetry.](assets/control-flow.svg)
 
 Hooks are registered in `.claude/settings.json`. Shell output and exit codes feed back into model context.
 
@@ -197,58 +200,41 @@ Default to `worker`; do not use `architect` for `lookup` work. Each role also ca
 
 ## Lifecycle: knowledge → daily workflow → knowledge
 
-```mermaid
-flowchart TD
-    %% External Sources
-    subgraph sources ["External Sources"]
-        direction LR
-        web(["Web & Articles"])
-        repos(["GitHub Repos"])
-        docs(["Confluence"])
-        news(["Tech News"])
-    end
+![The nase operating loop: six skill stations run clockwise from knowledge intake to skill extraction, each writing durable state back to the shared workspace record.](assets/lifecycle-loop.svg)
 
-    %% Knowledge Layer
-    subgraph knowledge ["Knowledge Growth"]
-        direction LR
-        onboard["/nase:onboard"]
-        learn["/nase:learn"]
-        reflect["/nase:reflect"]
-        digest["/nase:tech-digest"]
-    end
+- Ring: `/nase:onboard` and `/nase:learn` bring context in, `/nase:today` plans against live effort state, `/nase:fsd` and `/nase:discuss-pr` do the work, `/nase:reflect` names the lessons, `/nase:wrap-up` closes the day, and `/nase:extract-skills` distills repeated workflows. Extracted skills and unanswered questions feed the next intake pass.
+- Hub: every station writes durable state back to `workspace/` - `kb/`, `efforts/`, `logs/`, `tasks/lessons.md`, `journals/`, `skills/`. Nothing in the loop is durable outside that directory, and `workspace/` is git-ignored.
+- Off-ring: `/nase:tech-digest` writes `workspace/recaps/tech-digest-{YYYY-MM-DD}.md` on request; its KB write is a separate gated follow-up, so it is not part of the daily cadence.
 
-    web & repos & docs --> learn
-    news --> digest
-    onboard & learn & reflect & digest --> KB[("Knowledge Base")]
+---
 
-    %% Daily Work Cycle
-    subgraph daily ["Daily Workflow"]
-        today["/nase:today"]
-        pick["Pick next task"]
-        impl["Plan & Implement"]
-        done{Done?}
-        tasks[("Task List")]
-        wrapup["/nase:wrap-up"]
-        extract["/nase:extract-skills"]
+## Effort lifecycle
 
-        today --> pick --> impl --> done
-        done -- "complete" --> tasks
-        done -- "blocked" --> tasks
-        tasks -- "next" --> pick
-        tasks -- "all done" --> wrapup --> extract
-    end
+An effort is one file, `workspace/efforts/{slug}.md`. `/nase:design` creates it, later skills
+edit it in place, and `.claude/scripts/effort-state.py` is the only classifier allowed to decide
+what stage it is in. `.claude/docs/effort-lifecycle.md` owns the full rules.
 
-    KB -- "context" --> today
-    wrapup -- "lessons" --> KB
-    done -. "questions" .-> learn
+### Who does what
 
-    skills[("Learned Skills")]
-    extract --> skills
-    skills -. "enhance" .-> impl
-```
+![Effort delivery flow: ten steps from design and grill through human approval, implementation, review, merge, post-deploy validation and the monthly rollup, split across the AI engineer, the human, and GitHub.](assets/effort-delivery.svg)
 
-- Knowledge growth: `/nase:onboard`, `/nase:learn`, `/nase:reflect`, and `/nase:tech-digest` feed the KB.
-- Daily loop: `/nase:today` → pick task → implement → complete/block → update task list. `/nase:wrap-up` closes the day, writes lessons, and runs `/nase:extract-skills`.
+Two steps need you at the keyboard: approving the plan and merging the PR. Reviewers and CI sit
+in the GitHub lane; every other step is a skill, and each one hands on either the effort document
+or the pull request. Two skills are deliberately off the diagram because they sit beside the
+hand-off rather than in it: `/nase:request-review` stages the reviewer DM after BUILD, and
+`/nase:discuss-pr` drafts findings on a PR without changing its state.
+
+### Status transitions
+
+![Effort lifecycle states: planned, in-progress, merge-ready, awaiting-deploy and completed on the main path, with return paths through needs-revision and blocked.](assets/effort-states.svg)
+
+- The forward path is deterministic: `/nase:today` and `/nase:efforts` run the Drift Auto-Sync rule
+  and take `transition.action` and `transition.status` from `effort-state.py` verbatim.
+- An effort leaves `workspace/efforts/` only on a terminal transition. `transition.destination_dir`
+  picks the target, so `tracking_only: true` efforts skip `done/` and file straight into
+  `archive/{YYYY}/` instead of inflating the delivery record.
+- `/nase:effort-rollup` reads `done/` as the month's delivery, which is why an effort must not be
+  closed before its post-deploy validation rows are checked.
 
 ---
 
@@ -260,7 +246,7 @@ flowchart TD
 nase/
   .claude/
     agents/             project-level Claude Code subagents
-    commands/nase/      slash commands (30+ built-in)
+    commands/nase/      slash commands (35 built-in)
       workspace/        generated /nase:workspace:* wrappers (git-ignored)
     hooks/              hook scripts (called by settings.json)
     skills/             local Claude Code skills (git-ignored)
@@ -273,6 +259,7 @@ nase/
     workflows/validate.yml
     CODEOWNERS
   docs/                 this directory
+    assets/             diagram SVGs embedded by architecture.md
   evals/                offline eval cases and fixtures
   tests/                CI gates
   CLAUDE.md
@@ -335,5 +322,6 @@ Restore is a directory transaction owned by `.claude/scripts/restore-workspace.p
 - Shared and phase docs: `.claude/docs/*.md` - algorithms loaded only by the workflow phase that needs them
 - Offline evals: `evals/pr-review/` covers PR/review and `evals/core-workflows/` covers high-frequency lifecycle workflows; `.claude/scripts/pr-review-eval.py` validates and scores both schema-v1 sets.
 - Skill context telemetry: `.claude/scripts/skill-usage-report.py` converts activation/outcome JSONL into tier counts and approximate entrypoint context hotspots without treating estimates as billing truth.
+- Diagrams: `docs/assets/*.svg` are hand-maintained inline SVG, edited in place. Keep each one's `<title>`/`<desc>` and its `id` prefix in sync with the file name.
 - Hook regression tests: `tests/hooks/` — exercise every block/allow case for `block-dangerous-git.sh`
 - CI gates: `.github/workflows/validate.yml` and `tests/check-all.sh`

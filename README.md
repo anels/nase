@@ -124,7 +124,7 @@ hooks gate risky tool calls, scripts provide deterministic checks, and
 `workspace/` holds human-readable state.
 
 - **Human-readable memory** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and tasks load only relevant files instead of dumping the whole repo into context.
-- **30+ Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
+- **35 Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
 - **Lifecycle hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
 - **Evidence loops** — PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and optional read-only Codex checks when configured.
 - **Offline skill evals** - `evals/pr-review/` covers PR/review flows; `evals/core-workflows/` covers design, daily, learning, onboarding, incident, and deployment flows.
@@ -330,7 +330,8 @@ The `Stop` hook reads `backup-target` from `.local-paths` (set by `/nase:init`).
 ```
 nase/
   .claude/             kit — subagents, slash commands, hooks, scripts, settings (tracked; local settings/skills and generated wrappers ignored)
-  docs/                deeper docs (architecture, internals)
+  docs/                deeper docs (architecture, internals); assets/ holds diagram sources and rendered SVGs
+  evals/               offline eval cases for high-frequency skills
   tests/               CI gates
   CLAUDE.md            AI identity + operating rules (tracked)
   README.md            this file
@@ -340,7 +341,7 @@ nase/
 
 | Path | In git? | Reason |
 |------|---------|--------|
-| `.claude/`, `docs/`, `CLAUDE.md`, `README.md`, `tests/` | Yes, except `.claude/settings.local.json`, `.claude/skills/`, and `.claude/commands/nase/workspace/` | Shared kit + docs; local settings/skills and generated wrappers stay local |
+| `.claude/`, `docs/`, `evals/`, `tests/`, `CLAUDE.md`, `README.md` | Yes, except `.claude/settings.local.json`, `.claude/skills/`, and `.claude/commands/nase/workspace/` | Shared kit + docs; local settings/skills and generated wrappers stay local |
 | `.local-paths` | No | Machine-specific paths |
 | `workspace/` | No | Per-user content |
 
@@ -371,7 +372,7 @@ Found a bug or have a suggestion? [Open an issue](https://github.com/anels/nase/
 
 ## Further reading
 
-- [`docs/architecture.md`](docs/architecture.md) — how nase is wired: hooks, feedback loops in skills, cross-repo awareness, model routing, full workspace layout
+- [`docs/architecture.md`](docs/architecture.md) — how nase is wired: how a tool call is gated, hooks, the effort lifecycle, feedback loops in skills, cross-repo awareness, model routing, full workspace layout
 - [`CLAUDE.md`](CLAUDE.md) — operating rules loaded into every Claude Code session
 - `.claude/commands/nase/*.md` — source for each slash command
 - `.claude/docs/*.md` — shared algorithm docs referenced by skills (`kb-template`, `daily-log-format`, `repo-resolution`, `skill-contract`, etc.)
