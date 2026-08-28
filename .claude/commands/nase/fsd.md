@@ -32,7 +32,7 @@ Follow:
 
 Preserve these names across phase documents:
 
-`success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `qa_round`, `tested_candidate_tree_oid`, `changed_path_count`, `candidate_tree_oid`, `bundle_sha256`, `contract_inventory_sha256`, `quality_action`, `spec_action`, and `approved_candidate_tree_oid`.
+`success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `worktree_report`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints`, `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `qa_round`, `tested_candidate_tree_oid`, `changed_path_count`, `candidate_tree_oid`, `bundle_sha256`, `contract_inventory_sha256`, `review_action`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, and `approved_candidate_tree_oid`.
 
 ## Phase map
 
@@ -41,7 +41,7 @@ Preserve these names across phase documents:
 | 0 | This entrypoint: validate input. |
 | 1-3 and 3.7 | Read `.claude/docs/fsd-intake-and-setup.md` when entering Phase 1. |
 | 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. |
-| 6.25 and 6.5 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.25 and follow the named sections. |
+| 6.4 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.4 and follow the named sections. |
 | 7 | This entrypoint plus `commit-push-pattern.md`. |
 | 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. |
 | 8b | `effort-lifecycle.md -> FSD Update`. |
@@ -57,13 +57,13 @@ Read `.claude/docs/fsd-intake-and-setup.md` once, then execute its phases in ord
 
 Before Phase 3.5, confirm that the applicable state above is populated. If phase isolation completes implementation, skip Phase 4 as directed by that document.
 
-## Phases 3.5-6.5: Implementation and final QA
+## Phases 3.5-6.4: Implementation and final QA
 
 At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its research, preflight, Direct/Team/TDD implementation, initial build/test loop, simplification, post-edit deterministic gates, final size guard, and candidate bundle rules in order.
 
-At Phase 6.25, read `.claude/docs/fsd-delivery-gates.md`. Run its fresh independent quality review and deterministic reducer, then the independent spec review on the same bundle. Quality and spec share three total QA rounds. A local, reversible, bounded failure is autofixed without asking, then the full finalization chain restarts at Phase 6. Only reducer-approved human blockers or terminal infrastructure/evidence states interrupt the user.
+At Phase 6.4, read `.claude/docs/fsd-delivery-gates.md`. Run its one fresh independent review covering both code quality and spec conformance, then the deterministic reducer. The review happens once and its verdict is applied rather than re-run: a bounded `AUTOFIX` repair lands, the deterministic gates re-run over the repaired tree, and the run continues without a second review. Because nothing re-examines the repaired lines, carry `disclose_unreviewed_repair` to Phase 10 so the report says the shipped tree is not the reviewed one. Only reducer-approved human blockers or terminal infrastructure/evidence states interrupt the user.
 
-Run the operator preflight in that document before every reducer call. If the preflight finds a malformed inventory, reviewer result, or bundle hash, fix the input and re-request from the provider before calling `reduce`. Once invoked, reducer-input `INVALID` follows the shared state machine and may consume the round.
+Run the operator preflight in that document before the reducer call. If the preflight finds a malformed inventory, reviewer result, or bundle hash, fix the input and re-request from the provider before calling `reduce`. A reducer-input `INVALID` buys one free re-request at the same round, because a result the reducer cannot parse says nothing about the candidate; a second one is `blocked-infrastructure`.
 
 ## Phase 7: Commit & Push
 
@@ -83,7 +83,7 @@ After the initial commit and again after `/nase:improve-commit-message`, assert:
 test "$(git -C {worktree_or_repo} rev-parse 'HEAD^{tree}')" = "$approved_candidate_tree_oid"
 ```
 
-Any mismatch invalidates `quality_action`, `spec_action`, and the approved tree. Do not push. Restart at Phase 6 and repeat deterministic gates plus both fresh reviews.
+Any mismatch invalidates `review_action` and the approved tree. Do not push. Restart at Phase 6 and repeat the deterministic gates plus a fresh review.
 
 ---
 

@@ -18,7 +18,16 @@ from nase_time import parse_ts
 
 
 LOG_NAME_RE = re.compile(r"^(20\d\d-\d\d-\d\d)\.md$")
-CANONICAL_SESSION_RE = re.compile(r"^- \d{2}:\d{2} \| [a-z0-9][a-z0-9:-]*: .+")
+# A session entry is `- HH:MM | summary`. The skill tag (`- HH:MM | fsd: ...`) is
+# conventional but optional: nothing machine-reads it, and requiring it flagged 226
+# well-formed August entries whose summary simply did not start with a lowercase
+# skill name. What actually breaks the stream is a missing time or a missing pipe,
+# so that is what this matches.
+CANONICAL_SESSION_RE = re.compile(r"^- \d{2}:\d{2} \| \S.*")
+# `- **Type**: ...` / `- **Source**: ...` are detail bullets belonging to the entry
+# above them, not entries in their own right. Counting them as entries produced 26
+# false positives in August alone.
+SESSION_DETAIL_RE = re.compile(r"^- \*\*[^*]+\*\*:")
 PLACEHOLDER_RE = re.compile(r"\b(FILL_IN|TBD|TO_BE_FILLED|FIXME_PLACEHOLDER)\b", re.I)
 REFRESH_RE = re.compile(r"^###\s+20\d\d-\d\d-\d\d\s+[—-]\s+refresh\b", re.I)
 HEARTBEAT_RE = re.compile(
@@ -31,7 +40,11 @@ STATUS_HEARTBEAT_RE = re.compile(
     r"(?:unchanged|\d+\s+commits?\s+since|no new commits)\b",
     re.I,
 )
-SESSION_LINE_LIMIT = 500
+# Measured over 2,584 live session entries: median 281, p75 497, p99 2,435, max 4,083.
+# The old 500 sat at p75, so it flagged a quarter of every entry ever written and never
+# once caught a real defect. 5000 clears every entry on record and still trips on a
+# runaway paste, which is the only thing a length guard is for.
+SESSION_LINE_LIMIT = 5000
 UNKNOWN_RATE_THRESHOLD = 0.20
 TMP_STALE_DAYS = 30
 EFFORT_REF_RE = re.compile(r"workspace/efforts/[A-Za-z0-9_./-]+\.md")
@@ -121,12 +134,14 @@ def scan_daily_logs(root: pathlib.Path, days: int) -> list[dict[str, Any]]:
                 in_sessions = False
             if not in_sessions or not line.startswith("- "):
                 continue
+            if SESSION_DETAIL_RE.match(line):
+                continue
             if not CANONICAL_SESSION_RE.match(line):
                 issues.append(
                     finding(
                         "daily_log_noncanonical_session",
                         rel,
-                        "Session entry must use '- HH:MM | skill: summary'.",
+                        "Session entry must use '- HH:MM | summary'.",
                         idx,
                     )
                 )

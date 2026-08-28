@@ -67,10 +67,19 @@ python3 "$NASE_ROOT/.claude/scripts/restore-workspace.py" inspect \
   --root "$NASE_ROOT" \
   --archive "$ZIP_PATH" \
   --manifest-out "$MANIFEST"
-jq -r '.local_only[]?' "$MANIFEST"
+jq -r '.local_only[]? | select(startswith("tmp/") | not)' "$MANIFEST"
+jq -r '[.local_only[]? | select(startswith("tmp/"))] | length' "$MANIFEST"
 ```
 
-If `local_only` contains files, warn: "The following files exist locally but not in the backup and will be removed from the restored workspace. They remain in the pre-restore snapshot."
+`workspace/tmp/` is excluded from the archive by design (`stop-backup.sh` passes `-x!tmp`),
+so every `tmp/` path is `local_only` on **every** restore - thousands of them on an active
+workspace. Listing them buries the entries that actually matter, so show the non-`tmp/`
+paths individually and `tmp/` only as a count.
+
+If the non-`tmp/` list is non-empty, warn: "The following files exist locally but not in the
+backup and will be removed from the restored workspace. They remain in the pre-restore
+snapshot." Then add one line for the scratch bucket: "Plus {N} files under `workspace/tmp/`,
+which no backup contains; they are also retained in the pre-restore snapshot."
 
 Then confirm:
 ```

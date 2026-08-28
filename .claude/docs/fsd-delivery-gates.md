@@ -4,162 +4,113 @@ This reference owns the conditional delivery controls used by `/nase:fsd`. It pr
 
 ## Contents
 
-- [Phase 6.25: Candidate Quality Review](#phase-625-candidate-quality-review)
-- [Phase 6.5: Candidate Spec Review](#phase-65-candidate-spec-review)
-- [Shared QA State Machine](#shared-qa-state-machine)
+- [Phase 6.4: Candidate Review](#phase-64-candidate-review)
 - [Phase 8: Draft Pull Request and Verification Matrix](#phase-8-pull-request-if-pr--yes)
 - [Phase 8c: KB Update](#phase-8c-kb-update)
 - [Phase 10: Report](#phase-10-report)
 
-## Phase 6.25: Candidate Quality Review
+## Phase 6.4: Candidate Review
 
-This is the single authoritative code-quality review. It runs after simplification, formatters, focused tests, canonical tests, flake checks, and the final size guard. Do not retain or reuse any earlier quality verdict.
+One review covers both code quality and spec conformance, and its verdict is applied rather than re-litigated. Two reviews over three rounds re-read the same candidate up to six times to reach a decision that was usually available on the first read; the cost of that was paid in tokens and wall-clock on every FSD run, while the extra rounds mostly re-confirmed the first verdict. A single pass keeps the part that catches real defects and drops the part that was re-reading its own conclusions.
 
-### Fresh reviewer and exact contract
+Run this after simplification, formatters, focused tests, canonical tests, flake checks, and the final size guard. Do not retain or reuse an earlier verdict.
 
-Generate the reviewer contract from the parser that will reduce the result:
+### What one pass costs you, and how to hold it
+
+The pass happens once, so a repair applied after it is never seen by a reviewer. The deterministic gates still re-run over the repaired tree and will catch a build or test regression, but nothing re-examines design, naming, or test quality in the repaired lines. That is an accepted trade, not an invisible one: when the reducer returns `AUTOFIX` it sets `disclose_unreviewed_repair`, and Phase 10 must then state that the reviewed tree is not the tree that shipped and name the files the repair touched. A reader of the PR can then weigh it. Silently shipping an unreviewed repair is the one outcome this design must not produce.
+
+Two attempts do not consume the pass, because neither says anything about the candidate:
+- a result the reducer cannot parse is a format slip by the reviewer
+- a context request means the reviewer could not see a blob the bundle should have carried
+
+Each is allowed once. Anything beyond that is an infrastructure problem, not a quality signal.
+
+### Generate the contract
 
 ```bash
-python3 .claude/scripts/fsd-review-gate.py contract --kind quality \
-  > "{nase_workspace}/workspace/tmp/fsd-quality-contract.json"
+python3 .claude/scripts/fsd-review-gate.py contract --kind combined \
+  > "{nase_workspace}/workspace/tmp/fsd-review-contract.json"
 ```
 
 ### Operator preflight - run before every reducer call
 
-Prevent malformed operator input from reaching the reducer. Validate locally first; only call `reduce` once these hold:
+Validate locally first; only call `reduce` once these hold:
 
-- **Inventory shape**: `ref` values are `REQ-001`, `REQ-002`, ... in exact order, `id` values unique, every `summary` non-empty. The reducer rejects anything else outright.
-- **Reviewer result shape**: parses as one JSON object and `artifact` echoes the four identity fields verbatim. For quality, every contract-declared axis and lens is present, and every `FAIL` axis or lens has a linked `P0`/`P1` finding. For spec, the inventory assessment and requirement rows match the exact inventory. `UNVERIFIABLE` needs a linked context request or an allowed human blocker.
-- **Bundle binding**: `expected-bundle-sha256` equals `shasum -a 256` of the bundle file you are passing, and the result's `bundle_sha256` equals it too.
+- **Inventory shape**: `ref` values are `REQ-001`, `REQ-002`, ... in exact order, `id` values unique, every `summary` non-empty.
+- **Result shape**: parses as one JSON object; `artifact` echoes the four identity fields verbatim; `requirements` has exactly the inventory refs in order; every non-`SATISFIED` requirement has one matching `requirement_exceptions` entry; every `FAIL` axis or lens has a linked finding.
+- **Bundle binding**: `expected-bundle-sha256` equals `shasum -a 256` of the bundle you are passing, and the result's `bundle_sha256` equals it too.
 
-If a local check fails, fix the input and re-request from the provider without calling `reduce` or incrementing `qa_round`. Record it as `operator-retry: {what was malformed}`. Cap these pre-reducer retries at 3 per round, then stop as `blocked-infrastructure`. If `reduce` is called and returns `INVALID`, follow the shared state machine below; that attempt consumes the round.
+A local check that fails is fixed and re-requested from the provider without calling `reduce`. Cap those pre-reducer retries at 3, then stop as `blocked-infrastructure`.
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context, read-only `verifier` with Read/Grep/Glob/Bash and no Edit/Write. Give either reviewer only:
+### Run the reviewer
 
-- the generated quality contract
-- the trusted artifact identity JSON generated with the bundle; instruct the reviewer to copy it exactly into `result.artifact`
-- the exact candidate bundle from Phase 6.1
-- the instruction to return one JSON object matching the contract, without Markdown fences
+Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context, read-only reviewer with Read/Grep/Glob/Bash and no Edit/Write.
+
+Give the reviewer exactly four things:
+
+1. the generated contract
+2. the trusted artifact identity JSON written with the bundle, to copy verbatim into `result.artifact`
+3. the candidate bundle from Phase 6.1
+4. **the requirement inventory as its own file**
+
+`codex-verify-bundle.py` binds the inventory by hash but does not render it into the bundle, so a reviewer told the inventory is "in the bundle" will correctly report it cannot enumerate the requirements. Name the inventory file in the reviewer's read-list.
 
 Do not include implementation reasoning, a proposed verdict, or prior reviewer text. Persist the returned bytes as the round result. Missing or malformed output is a reducer input failure, not a product decision.
 
 ### Review depth
 
-Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design search, architecture boundaries, security/privacy, reliability/data integrity, concurrency, compatibility/migration, performance, UI/accessibility, deployment/operability, testability, and comment quality. P0 and P1 need concrete evidence. P2 is deferred and does not gate.
+Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design search, architecture boundaries, security/privacy, reliability/data integrity, concurrency, compatibility/migration, performance, UI/accessibility, deployment/operability, testability, and comment quality.
 
-The `comment_quality` lens judges comment necessity and concision as well as truth, against `.claude/docs/code-comment-policy.md`: a comment that restates the code, narrates the change, or asserts an unanchored *why* is a finding even when it is accurate, and a mandated public-API doc comment is not.
+The result shape is deliberately asymmetric about where prose is required, because prose is where the tokens go and most of it was being spent on axes that passed. A conditional axis that passes proves it was actually looked at with one short evidence string; the three required axes and anything that is not `PASS` still carry a full reason, because those are the ones a human will have to act on.
 
-When a comment and the code disagree, decide which one is wrong before repairing anything. If the code is wrong, the finding belongs on `correctness` at its own severity - rewriting the comment to match buggy code cements the bug and hides the last remaining evidence of the intended behavior.
-
-Severity on this lens is a routing choice, not a statement of importance. P2 is deferred without repair and reaches the final report as a bare count, so a P2 comment finding ships silently in the PR - never use it to register a comment you actually want gone. Report clearly unearned, stale, or contradicting comments as a single P1 whose `smallest_fix` is the deletion or rewrite: `AUTOFIX` then applies it with no user prompt. Cluster every occurrence in the candidate into that one finding - anchor `path`/`line` at the first, enumerate the siblings in `evidence` - so a handful of comments costs one round rather than one round each. Leave a genuinely borderline comment unreported instead of manufacturing a finding.
+`findings` holds only `P0` and `P1` — things that must change before this ships. Everything else worth mentioning goes in `deferred` as a one-line string with `path:line`. A deferred note has no severity, no repair fields, and no blocker, so the rule that a non-blocking finding must not claim to be autofixable has nothing left to violate. That rule used to be enforced in prose and was violated in practice, costing a whole round to a review whose substance was fine.
 
 The `test_quality` axis is blocking. It must judge observable behavioral contracts, plausible failure power or a mutation seam, risk-appropriate positive/negative/boundary/error paths, regression fidelity, concrete assertions over values/state/side effects/absence, isolation of nondeterministic inputs, mock fidelity, retry/order/concurrency/locale/timezone determinism, and whether parameterized cases add distinct behavior. Source-text grep, incidental snapshots, test count, and line coverage cannot alone prove behavior.
 
+The `comment_quality` lens judges comment necessity and concision as well as truth, against `.claude/docs/code-comment-policy.md`: a comment that restates the code, narrates the change, or asserts an unanchored *why* is a finding even when it is accurate, and a mandated public-API doc comment is not. When a comment and the code disagree, decide which one is wrong before repairing anything — if the code is wrong, the finding belongs on `correctness` at its own severity, because rewriting the comment to match buggy code cements the bug and destroys the last evidence of intended behavior.
+
+Since a `deferred` note is never repaired, use it only for things you are content to ship. A comment you actually want gone is a `P1` whose `smallest_fix` is the deletion; cluster every occurrence into that one finding, anchored at the first with the siblings in `evidence`.
+
 For bug fixes, reuse strict-TDD RED evidence or the original reproduction. Without that evidence, the reviewer must name the smallest plausible mutation the test would reject. Mutation, property, and fuzz tools may run only when already configured in the target repository and clearly relevant. Never install them for FSD.
+
+The reviewer also audits the canonical task and design criteria against the inventory through `inventory_assessment`. A criterion the inventory omits is `INCOMPLETE` and blocks even when every submitted requirement is satisfied.
 
 ### Deterministic reduction
 
 ```bash
 python3 .claude/scripts/fsd-review-gate.py reduce \
-  --kind quality --round "{qa_round}" \
+  --kind combined --round "{qa_round}" \
   --repo "{worktree_or_repo}" \
   --inventory "{inventory_json}" \
   --bundle "{bundle_path}" \
   --expected-bundle-sha256 "{captured_bundle_sha256}" \
   --expected-base-oid "$BASE" \
-  --result "{quality_result_json}" \
+  --result "{result_json}" \
   --state "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-state.json" \
-  > "{quality_decision_json}"
+  > "{decision_json}"
 ```
 
-The reducer rejects unknown keys, invalid enum values, contradictory axis/finding states, unsafe paths, stale artifact identity, a bundle that differs from the SHA-256 captured before review, and a result that does not echo that exact hash. Required axes are `correctness`, `test_quality`, and `verification_evidence`. Conditional axes are emitted by `contract` and must be assessed or explicitly marked `NOT_APPLICABLE` with a reason. The generated `lens_coverage` contract also makes problem fit, simple design, architecture boundaries, and comment quality explicit instead of relying on free-form reviewer prose.
-
-Only a quality `PROCEED` result may advance to Phase 6.5 on the same bundle.
-
-## Phase 6.5: Candidate Spec Review
-
-Generate the spec contract from the same reducer:
-
-```bash
-python3 .claude/scripts/fsd-review-gate.py contract --kind spec \
-  > "{nase_workspace}/workspace/tmp/fsd-spec-contract.json"
-```
-
-Run a new fresh-context, read-only reviewer. Give it exactly **four** inputs: the spec contract, the trusted artifact identity JSON, **the requirement inventory as its own file**, and the same candidate bundle already approved by Phase 6.25.
-
-`codex-verify-bundle.py` does **not** render `--inventory-file` into the bundle - it only binds it through `contract_inventory_sha256`. A spec reviewer told the inventory is "in the bundle" will correctly return `INCOMPLETE` and burn a round. Name the inventory file in the reviewer's read-list. Instruct it to copy the trusted identity exactly into `result.artifact`. The bundle's canonical task must include the original request and every Phase 2/design criterion used to derive the inventory. Require raw JSON matching the contract.
-
-The reviewer first audits the canonical task/design criteria against the inventory through `inventory_assessment`. An omitted criterion is `INCOMPLETE` and blocks even when every submitted requirement is satisfied. It then returns every requirement in the inventory. The reducer compares count, order, `ref`, `id`, and `summary` exactly. Omission, duplicate, rewrite, reorder, or addition is `INVALID`. `SATISFIED` needs evidence. `MISSING` must be autofixable or carry an allowed human blocker. `UNVERIFIABLE` must carry an exact linked context request or allowed human blocker. Scope-creep items use the same evidence and repair rules.
-
-Reduce it with the same state file:
-
-```bash
-python3 .claude/scripts/fsd-review-gate.py reduce \
-  --kind spec --round "{qa_round}" \
-  --repo "{worktree_or_repo}" \
-  --inventory "{inventory_json}" \
-  --bundle "{bundle_path}" \
-  --expected-bundle-sha256 "{captured_bundle_sha256}" \
-  --expected-base-oid "$BASE" \
-  --result "{spec_result_json}" \
-  --state "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-state.json" \
-  > "{spec_decision_json}"
-```
-
-Set `approved_candidate_tree_oid` only when both reducers return `PROCEED` for the same `candidate_tree_oid`, `bundle_sha256`, and `contract_inventory_sha256`.
-
-## Shared QA State Machine
-
-Quality and spec share one `qa_round` budget of 1 through 3. They do not each receive three rounds.
-
-The state file enforces the sequence: quality round 1 starts the machine, spec may run only after quality `PROCEED` in the same round and on the same artifact, and any non-proceed review advances the next attempt to quality in the next round. A terminal result or completed spec review rejects further reducer calls.
+The reducer rejects unknown keys, invalid enum values, contradictory axis/finding states, unsafe paths, stale artifact identity, a bundle that differs from the SHA-256 captured before review, and a result that does not echo that exact hash. Required axes are `correctness`, `test_quality`, and `verification_evidence`. Conditional axes must be assessed or explicitly marked `NOT_APPLICABLE` with a reason.
 
 ### Actions
 
-The reducer emits `PROCEED`, `AUTOFIX`, `NEEDS_HUMAN`, `STALE`, `INVALID`, or internal `CONTEXT`.
-
 | Action | FSD behavior |
 |---|---|
-| `PROCEED` | Quality advances to spec. Spec approves this candidate. |
-| `AUTOFIX` | Apply every bounded P0/P1, missing-requirement, or scope repair after the round. Do not ask the user, and do not report the finding as a blocker - repair it and keep going. Then increment the shared round and restart at Phase 6. |
-| `CONTEXT` | Deduplicate requests and automatic bundle gaps by bound tree and canonical path. Build the next bundle with `--context-request-file "{reducer_output_json}"` when requests exist, increment the shared round, and restart at Phase 6. |
-| `NEEDS_HUMAN` | Stop only for the allowed blocker named by the reducer. |
-| `STALE` or reducer-input `INVALID` | Consume the round. Do not reinterpret it as a product choice. Retry the finalization chain with a fresh provider result when a round remains. A call rejected before a valid state transition does not start or consume a round. |
-
-Any code edit, test edit, formatter write, staging mismatch, commit-tree mismatch, or new context bundle makes all previous results stale. Never reuse a PASS for a similar diff or descendant commit.
-
-The reducer owns no-progress identity. Reviewer finding refs, summaries, or paraphrases cannot change it. If `no_progress` or `no_change` is non-empty, do not repeat the same repair strategy. A malformed, stale, missing-provider-result, no-result, or no-change attempt still consumes the shared round. The five-iteration build/test budget remains cumulative and is not reset.
-
-Context is always read from the bound Git tree. `codex-verify-bundle.py` resolves the requested path with `git ls-tree` against `base_oid` or `candidate_tree_oid`, then reads the exact resolved blob OID with `git cat-file`; it never reads the live worktree. Symlinks, gitlinks, missing blobs, special files, non-UTF-8 blobs, and context-cap exhaustion become evidence gaps. Bundle-declared gaps enter `CONTEXT` even when the reviewer did not request them. The reducer accepts at most 64 requests per result before any Git lookup. Each payload is capped at 64 KiB and total context at 256 KiB, with byte count and SHA-256 retained.
-
-### Round 3 terminal behavior
-
-Round 3 must not modify code or tests. Its reducer result closes the run as follows:
-
-- verified remaining P0/P1, missing requirement, or scope defect: `NEEDS_HUMAN` with `QA_REPAIR_EXHAUSTED`
-- explicit allowed human blocker: `NEEDS_HUMAN` with that blocker
-- remaining context or non-blob evidence gap: `blocked-evidence`
-- invalid, stale, provider/tool failure, or no result: `blocked-infrastructure`
-- P2 only: `PROCEED` and defer it
-
-This prevents a last-round edit from creating an unreviewed candidate.
-
-### Human blocker taxonomy
-
-The only reducer-approved human blockers are:
-
-- `PRODUCT_DECISION`
-- `CONTRACT_CONFLICT`
-- `CREDENTIAL_OR_PERMISSION`
-- `EXTERNAL_OR_CROSS_OWNER`
-- `DESTRUCTIVE_OR_IRREVERSIBLE`
-- `SECRET_UNCERTAINTY`
-- `TEST_ORACLE_AMBIGUITY`
-- `QA_REPAIR_EXHAUSTED`
+| `PROCEED` | Set `approved_candidate_tree_oid` and continue to Phase 7. |
+| `AUTOFIX` | Apply every bounded finding, missing requirement, and scope repair. Do not ask the user and do not report them as blockers. Re-run the Phase 6.1 deterministic gates over the repaired tree, refreeze the candidate, then continue to Phase 7 — there is no second review. Carry `disclose_unreviewed_repair` into Phase 10. |
+| `CONTEXT` | Rebuild the bundle with `--context-request-file "{decision_json}"`, increment the round, and re-run the reviewer once. A second `CONTEXT` is `blocked-evidence`. |
+| `NEEDS_HUMAN` | Stop for the allowed blocker the reducer named. |
+| `INVALID` or `STALE` | Re-request a fresh result from the provider at the same round, once. A second one is `blocked-infrastructure`. |
 
 Ordinary quality or spec failure is never an `AskUserQuestion`. Existing external mutation gates, the >1500-line scope decision, and secret uncertainty remain explicit human checkpoints.
 
-After a human resolves a `NEEDS_HUMAN` blocker, record the decision, discard the terminal state and every prior review result, create a fresh QA state, and restart Phase 6 at `qa_round=1`. The cumulative five-iteration build/test budget does not reset.
+Any code edit, test edit, formatter write, staging mismatch, or commit-tree mismatch after the review invalidates it. The only sanctioned post-review edit is the `AUTOFIX` repair itself.
+
+### Human blocker taxonomy
+
+The only reducer-approved human blockers are `PRODUCT_DECISION`, `CONTRACT_CONFLICT`, `CREDENTIAL_OR_PERMISSION`, `EXTERNAL_OR_CROSS_OWNER`, `DESTRUCTIVE_OR_IRREVERSIBLE`, `SECRET_UNCERTAINTY`, and `TEST_ORACLE_AMBIGUITY`.
+
+After a human resolves one, record the decision, discard the terminal state and the prior result, create a fresh QA state, and restart Phase 6 at `qa_round=1`. The cumulative five-iteration build/test budget does not reset.
 
 ---
 
@@ -280,11 +231,13 @@ For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
 - `blocked` - named blocker.
 
 Derive `closure_state`:
-- `done` - every required criterion is `proven`; quality and spec are `PROCEED` for the same final candidate and bundle; the staged and committed trees equal `approved_candidate_tree_oid`; and final command evidence is newer than the last modification.
+- `done` - every required criterion is `proven`; the review returned `PROCEED` for the final candidate and bundle; the staged and committed trees equal `approved_candidate_tree_oid`; and final command evidence is newer than the last modification.
 - `conditional` - every required criterion is `proven` or `waived`, with waiver reasons named.
 - `not-closed` - any required criterion is `blocked` or unproven.
 
-Never print `done ✓` when a criterion or final QA condition is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger, but still require the quality/spec and tree-binding conditions. Note only the user-facing verification deferral.
+Never print `done ✓` when a criterion or final QA condition is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger, but still require the review and tree-binding conditions. Note only the user-facing verification deferral.
+
+**When the decision carried `disclose_unreviewed_repair`,** the tree that shipped is not the tree that was reviewed. Say so in the report and name the files the repair touched, so whoever reads the PR can weigh it. A repair applied after the only review is defensible; one that goes unmentioned is not.
 
 Print a concise summary:
 
@@ -294,13 +247,12 @@ FSD {done ✓ | conditional ⚠ | not-closed ✗}
   Repo:        {repo_name}
   Branch:      {branch_name}
   Test iters:  {N} (passed on iteration N)
-  QA rounds:   {qa_round}/3
   Candidate:   {approved_candidate_tree_oid}
+  Reviewed:    {reviewed_candidate_tree_oid} - append "(repaired after review, unreviewed)" when disclose_unreviewed_repair
   Bundle SHA:  {bundle_sha256}
-  Quality:     {quality_action}
-  Spec:        {spec_action}
+  Review:      {review_action} - note the retry or context refill when the pass used one
   Tests:       {focused and canonical command evidence}
-  QA fixes:    {P0/P1 auto-fixed count}; {P2 deferred count} P2 deferred
+  QA fixes:    {P0/P1 auto-fixed count}; {deferred count} deferred
   Context:     {context batch count}
   QA blocker:  {infrastructure/evidence blocker or "none"}
   PR:          {PR URL} - or "not opened"
@@ -346,7 +298,7 @@ Skip failed or routine no-surprise runs; routine wins dilute downstream skill-op
 - **Protected branches** - never commit directly to `main`, `master`, `develop`, or `release/*`. FSD always works on a feature branch.
 - **Worktree path** - always take it from `.claude/docs/worktree-pattern.md -> Naming Convention` (`$HOME/.nase-worktrees/{repo_name}-{suffix}`). Never create it inside the repo, which causes git nesting issues, and never under `/tmp`, which the OS sweeps.
 - **Secrets** - if unsure about a file during the staging scan, stop and ask rather than committing and reverting later.
-- **Test loop bound** - 5 cumulative iterations is a hard cap and QA rounds do not reset it. Exhaust automatic repairs before surfacing `QA_REPAIR_EXHAUSTED` or an evidence/infrastructure terminal state.
+- **Test loop bound** - 5 cumulative iterations is a hard cap and the review pass does not reset it. Exhaust automatic repairs before surfacing an evidence or infrastructure terminal state.
 - **PR is always draft** - FSD never opens a ready-for-review PR. Promotion is a human decision.
 
 </error_handling>

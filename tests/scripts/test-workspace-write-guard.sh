@@ -607,6 +607,44 @@ assert_cmd "design uses helper" grep -q 'workspace-write-guard.py stage' "$ROOT/
 assert_cmd "kb-update uses helper" grep -q 'workspace-write-guard.py stage' "$ROOT/.claude/commands/nase/kb-update.md"
 assert_cmd "wrap-up uses helper" grep -q 'workspace-write-guard.py stage' "$ROOT/.claude/commands/nase/wrap-up.md"
 
+# --- artifact destinations named by skill-contract.md must be guardable ---------
+# recaps/ and stats/ were missing from ALLOWED_DIRS while skill-contract.md named
+# them as canonical artifact paths, so /nase:kb-review, /nase:recap, /nase:stats and
+# /nase:skill-usage all had to write unguarded - no staging, no drift check.
+mkdir -p "$TMPROOT/workspace/recaps" "$TMPROOT/workspace/stats"
+
+python3 "$SCRIPT" stage \
+  --root "$TMPROOT" \
+  --target workspace/recaps/kb-review-2031-01-01.md \
+  --content-file "$proposal" \
+  --skill kb-review > "$TMPROOT/recaps.out" 2> "$TMPROOT/recaps.err"
+recaps_rc=$?
+assert_cmd "recaps target is managed" test "$recaps_rc" = "0"
+assert_cmd "recaps target actually staged" \
+  test -f "$(json_field "$TMPROOT/recaps.out" staged_abs)"
+
+python3 "$SCRIPT" stage \
+  --root "$TMPROOT" \
+  --target workspace/stats/report-2031-01-01.md \
+  --content-file "$proposal" \
+  --skill stats > "$TMPROOT/stats.out" 2> "$TMPROOT/stats.err"
+stats_rc=$?
+assert_cmd "stats target is managed" test "$stats_rc" = "0"
+
+# The widened allowlist must not become a free-for-all.
+python3 "$SCRIPT" stage \
+  --root "$TMPROOT" \
+  --target workspace/notes/loose.md \
+  --content-file "$proposal" \
+  --skill bad > "$TMPROOT/loose.out" 2> "$TMPROOT/loose.err"
+loose_rc=$?
+assert_cmd "an unlisted workspace dir is still rejected" test "$loose_rc" = "2"
+
+assert_cmd "guard doc lists recaps" \
+  grep -q 'workspace/recaps/' "$ROOT/.claude/docs/workspace-write-guard.md"
+assert_cmd "guard doc lists stats" \
+  grep -q 'workspace/stats/' "$ROOT/.claude/docs/workspace-write-guard.md"
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nworkspace-write-guard tests passed.\n'
   exit 0

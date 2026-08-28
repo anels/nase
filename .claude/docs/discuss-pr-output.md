@@ -160,15 +160,28 @@ Behavior per choice:
 **Draft format** (used by Draft + post and Draft + discuss):
 
 - **Voice profile**: before drafting, follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`; read `workspace/communication-style.md` for high-stakes or ambiguous comments. Keep no-blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), and no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` - don't over-escalate severity, prefer measured assessments.
-- **1–2 sentences max** - state the point directly, no preamble or verbose explanation
-- Conversational peer tone - not formal or gatekeeper
-- Lead with the specific concern
-- Include the fix direction only if unambiguous
-- Prefix every comment with exactly one intent label: `issue (blocking):`, `issue (non-blocking):`, `suggestion (non-blocking):`, `nit (non-blocking):`, `question (non-blocking):`, or `question (needs-answer):`
-- `nit` is always non-blocking. Cluster repeated instances into one representative comment and mention sibling occurrences briefly.
+- **No intent-label prefix.** The chat report already carries `kind` and `disposition`; opening the posted comment with `nit (non-blocking):` or `question (needs-answer):` spends the first line restating a classification the author cannot act on. Severity lives in the review state and in how the comment reads, not in a tag. Start on the claim itself.
+- **Ship the claim, not your homework.** Post the minimum an author needs to verify the finding and fix it: what is wrong, the one or two references that make it checkable, and the fix direction. Corroborating evidence you gathered while convincing *yourself* - a second confirming source, an upstream cross-check, a correction to the PR description - belongs in the chat report. It reads as thoroughness while writing and as a wall of text on arrival, and it buries the sentence the author actually needs. Hold it in reserve for a reply if they push back.
+- **Two sentences, roughly 60 words.** Sentence count alone is a weak guard - two 55-word sentences are still a wall. If the draft runs long, the fix is almost always cutting a supporting citation, not compressing grammar.
+- Backtick every identifier, path, `path:line`, column, and code fragment. Bare `QUEUEITEMS.ID` or `views/jobs.view.lkml:506` in prose is hard to scan and GitHub may mangle the punctuation.
+- Conversational peer tone - not formal or gatekeeper.
+- Lead with the concrete failure mode, then the fix direction when it is unambiguous. Omit the fix rather than guess at one.
+- Cluster repeated instances into one representative comment and mention sibling occurrences briefly. A nit is always non-blocking regardless of confidence.
 - Keep the private record private. Include only the minimum safe evidence needed for the author; never include secrets, credentials, unredacted scanner matches, private document excerpts, or unnecessary internal URLs.
 - For findings that went through `pr-review-verification.md` §7 (citation/triage verification of a bot claim): append one short line with the verification command + result (e.g. `shellcheck exited 0 on this file`) so the author can audit instead of re-litigating
 - **Language:** `output:` value from `workspace/config.md` (drafts are paste-ready for GitHub)
+
+**Worked example** - the same finding, over-packed and then shipped:
+
+Too long (117 words; three citations, a PR-body correction, and an upstream cross-check the author does not need in order to act):
+
+> issue (non-blocking): `fieldType: "percentage"` here pairs with a `100.0 *` scale, but the repo's only other percentage measures (`JOBS.SUCCESS_RATE`, `JOBS.FAULTED_RATE`) and the canonical example in `docs/data-model-spec.md` all emit a `1.0 *` fraction, and the FE has one formatter per `fieldType` - so one of the two families renders 100x off. LookerML splits them the same way (`views/jobs.view.lkml:506` is `percent_2` on a fraction, `views/queue_queueevent1_queueevent2.view.lkml:12` is `decimal_2` on a pre-multiplied value); note its sql at line 13 is `100.0 * n / NULLIF(d, 0)`, identical to ours rather than the `n / d * 100` the PR body describes, so `1.0 * ...` keeps the convention without giving up integer-division safety.
+
+Shipped (62 words; same claim, same fix, one citation that settles it):
+
+> `fieldType: "percentage"` with a `100.0 *` scale renders 100x off - `JOBS.SUCCESS_RATE`, `JOBS.FAULTED_RATE` and the example at `docs/data-model-spec.md:133` all pair `percentage` with a `1.0 *` fraction, and the FE has one formatter per `fieldType`. Suggest `1.0 * ${QUEUEITEMS.FIRST_PASS_COUNT} / NULLIF(${QUEUEITEMS.TRANSACTION_COUNT}, 0)` - the leading float is what avoids integer division, not the `100`.
+
+The LookerML cross-check and the PR-body correction are still worth having; they go in the chat report, and into a thread reply if the author disagrees.
 
 ```
 **File:** `path/to/file.ts` line <N>
@@ -213,7 +226,7 @@ For a non-owned PR with a confirmed blocking issue, `REQUEST_CHANGES` is the onl
 
 - Recompute state eligibility from the confirmed findings immediately before manifest creation. If the selected state is no longer eligible, do not build or authorize a manifest; return to review-state selection with the changed evidence.
 - Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`, name the unresolved question, missing domain evidence, or self-review verdict without calling it blocking. For `REQUEST_CHANGES`, name the confirmed must-not-merge concern in one or two sentences.
-- Inline comments: same 1–2 sentence rule as the drafts, `output:` language, voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
+- Inline comments: post the drafts verbatim - the Step 7 **Draft format** rules (no label prefix, ~60 words, backticked identifiers, supporting evidence held back for chat) are the posting contract, not a drafting-only style. Use `output:` language and the voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
 - Build the review payload as a private file, prepare the manifest, show it, get the immediate `AskUserQuestion` approval of that exact manifest, then authorize and execute:
 
 ```bash

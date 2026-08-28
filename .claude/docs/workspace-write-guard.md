@@ -123,9 +123,14 @@ commands fail closed rather than use a weaker write path.
 
 Allowed targets are durable workspace paths under `workspace/kb/`,
 `workspace/tasks/`, `workspace/skills/`, `workspace/efforts/`,
-`workspace/journals/`, `workspace/logs/`, `workspace/context.md`,
+`workspace/journals/`, `workspace/logs/`, `workspace/recaps/`,
+`workspace/stats/`, `workspace/context.md`,
 `workspace/communication-style.md`, and generated workspace skill wrappers
 under `.claude/commands/nase/workspace/`.
+`workspace/recaps/` and `workspace/stats/` are here because
+`.claude/docs/skill-contract.md` names them as artifact destinations; a skill
+writing there gets the same staging, diff and drift check as any other durable
+target.
 `workspace/tmp/` and arbitrary paths outside the allowlist are intentionally rejected as targets.
 
 ## Append-Only Exceptions
