@@ -367,6 +367,46 @@ fi
 assert_jq "clean fixture has zero findings" "$clean_out" \
   '(.summary.total == 0) and (.summary.kb_usage.malformed == 0)'
 
+# --- session-line rules: what actually breaks the stream, and what does not ----
+SESSFIX=$(mktemp -d)
+mkdir -p "$SESSFIX/.claude/docs" "$SESSFIX/workspace/logs" "$SESSFIX/workspace/tasks" \
+  "$SESSFIX/workspace/kb" "$SESSFIX/workspace/stats" "$SESSFIX/workspace/tmp" \
+  "$SESSFIX/workspace/efforts"
+cp "$FIXTURE/.claude/docs/effort-lifecycle.md" "$SESSFIX/.claude/docs/effort-lifecycle.md"
+printf '# Tasks\n' > "$SESSFIX/workspace/tasks/todo.md"
+
+long_entry="- 09:05 | fsd: $(python3 -c 'print("x" * 600)')"
+runaway_entry="- 09:06 | fsd: $(python3 -c 'print("x" * 6000)')"
+{
+  printf '# Work Log — 2026-06-01\n\n## Sessions\n'
+  printf -- '- 09:00 | fsd: tagged entry, the documented shape\n'
+  printf -- '- 09:01 | GetValue p90 root cause NAILED - untagged but well formed\n'
+  printf -- '- **Type**: how-to / migration mechanics\n'
+  printf -- '- **Source**: https://example.invalid/thread\n'
+  printf -- '- 09:02 no pipe at all, this one really is malformed\n'
+  printf -- '- prose bullet with no timestamp whatsoever\n'
+  printf '%s\n' "$long_entry"
+  printf '%s\n' "$runaway_entry"
+} > "$SESSFIX/workspace/logs/2026-06-01.md"
+
+sess_json=$(python3 "$SCRIPT" --root "$SESSFIX" --days 100000 --json 2>/dev/null)
+
+assert_jq "tagged entry is accepted" "$sess_json" \
+  '[.findings[] | select(.category == "daily_log_noncanonical_session" and .line == 4)] | length == 0'
+assert_jq "untagged '- HH:MM | summary' is accepted" "$sess_json" \
+  '[.findings[] | select(.category == "daily_log_noncanonical_session" and .line == 5)] | length == 0'
+assert_jq "'- **Key**: value' detail bullets are not session entries" "$sess_json" \
+  '[.findings[] | select(.category == "daily_log_noncanonical_session" and (.line == 6 or .line == 7))] | length == 0'
+assert_jq "a timestamp with no pipe is still reported" "$sess_json" \
+  'any(.findings[]; .category == "daily_log_noncanonical_session" and .line == 8)'
+assert_jq "a bullet with no timestamp is still reported" "$sess_json" \
+  'any(.findings[]; .category == "daily_log_noncanonical_session" and .line == 9)'
+assert_jq "a 600-char entry is not oversized" "$sess_json" \
+  '[.findings[] | select(.category == "daily_log_oversized_session" and .line == 10)] | length == 0'
+assert_jq "a 6000-char entry is still oversized" "$sess_json" \
+  'any(.findings[]; .category == "daily_log_oversized_session" and .line == 11)'
+rm -rf "$SESSFIX"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

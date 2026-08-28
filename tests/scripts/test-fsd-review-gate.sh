@@ -278,6 +278,190 @@ class ReviewGateTests(unittest.TestCase):
             "human_blocker": blocker,
         }
 
+    def combined_axes(self) -> dict[str, object]:
+        required = ("correctness", "test_quality", "verification_evidence")
+        axes: dict[str, object] = {}
+        for axis in QUALITY_AXES:
+            node: dict[str, object] = {
+                "status": "PASS",
+                "evidence": ["app.py:2 and test_app.py:3 reviewed together"],
+            }
+            if axis in required:
+                node["reason"] = "The candidate satisfies this axis."
+            axes[axis] = node
+        return axes
+
+    def combined_with_finding(self, **overrides: object) -> dict[str, object]:
+        finding = overrides.pop("finding", None) or self.finding()
+        axes = self.combined_axes()
+        axes[finding["axis"]] = {
+            "status": "FAIL",
+            "evidence": ["app.py:2"],
+            "reason": "The candidate does not satisfy this axis.",
+        }
+        lenses = {
+            lens: {"status": "PASS", "evidence": ["app.py and test_app.py reviewed together"]}
+            for lens in ("problem_fit", "simple_design", "architecture_boundaries", "comment_quality")
+        }
+        return self.combined(axes=axes, lenses=lenses, findings=[finding], **overrides)
+
+    def combined(self, **overrides: object) -> dict[str, object]:
+        result = {
+            "schema_version": 1,
+            "kind": "combined",
+            "artifact": self.artifact(),
+            "axes": self.combined_axes(),
+            "lenses": {
+                lens: {"status": "PASS", "evidence": ["app.py and test_app.py reviewed together"]}
+                for lens in ("problem_fit", "simple_design", "architecture_boundaries", "comment_quality")
+            },
+            "findings": [],
+            "deferred": [],
+            "requirements": {item["ref"]: "SATISFIED" for item in self.inventory_data},
+            "requirement_exceptions": [],
+            "inventory_assessment": {
+                "status": "COMPLETE",
+                "evidence": ["task criterion value change -> REQ-001; regression test -> REQ-002"],
+                "reason": "Every canonical task criterion is represented exactly once.",
+                "autofixable": False,
+                "human_blocker": None,
+            },
+            "scope_creep": [],
+            "context_requests": [],
+        }
+        result.update(overrides)
+        return result
+
+    def test_combined_contract_cannot_express_a_deferred_repair(self) -> None:
+        contract = json.loads(run("python3", str(GATE), "contract", "--kind", "combined").stdout)
+        # The old schema let a reviewer file a non-blocking finding carrying repair
+        # fields, which the reducer then rejected on a rule the reviewer could not
+        # see. Deferred notes are now plain strings, so that slip is unrepresentable.
+        self.assertEqual(contract["finding_severities"], ["P0", "P1"])
+        self.assertEqual(
+            set(contract["result_schema"]),
+            {
+                "schema_version",
+                "kind",
+                "artifact",
+                "axes",
+                "lenses",
+                "findings",
+                "deferred",
+                "requirements",
+                "requirement_exceptions",
+                "inventory_assessment",
+                "scope_creep",
+                "context_requests",
+            },
+        )
+        self.assertIsInstance(contract["result_schema"]["deferred"][0], str)
+        self.assertNotIn("QA_REPAIR_EXHAUSTED", contract["human_blockers"])
+
+    def test_combined_clean_result_proceeds_in_one_pass(self) -> None:
+        decision = self.reduce("combined", 1, self.combined())
+        self.assertEqual(decision["action"], "PROCEED")
+        self.assertEqual(decision["reviewed_candidate_tree_oid"], decision["candidate_tree_oid"])
+        self.assertFalse(decision["disclose_unreviewed_repair"])
+
+    def test_combined_deferred_notes_are_counted_but_never_gate(self) -> None:
+        decision = self.reduce(
+            "combined",
+            1,
+            self.combined(deferred=["app.py:2 - the helper name could be clearer", "test_app.py:3 - fixture is broad"]),
+        )
+        self.assertEqual(decision["action"], "PROCEED")
+        self.assertEqual(decision["p2_deferred"], 2)
+        self.assertEqual(decision["repair_signatures"], [])
+
+    def test_combined_p2_severity_is_rejected_outright(self) -> None:
+        decision = self.reduce(
+            "combined", 1, self.combined_with_finding(finding=self.finding(severity="P2", autofixable=False))
+        )
+        self.assertEqual(decision["action"], "INVALID")
+
+    def test_combined_autofix_flags_disclosure_and_ends_the_pass(self) -> None:
+        state = self.artifacts / "combined-autofix-state.json"
+        decision = self.reduce("combined", 1, self.combined_with_finding(), state=state)
+        self.assertEqual(decision["action"], "AUTOFIX")
+        # The repaired tree is never re-reviewed, so the decision must carry the flag
+        # Phase 10 uses to say the shipped tree is not the reviewed one.
+        self.assertTrue(decision["disclose_unreviewed_repair"])
+        again = self.reduce("combined", 1, self.combined(), state=state)
+        self.assertEqual(again["action"], "INVALID")
+
+    def test_combined_malformed_result_buys_exactly_one_retry(self) -> None:
+        state = self.artifacts / "combined-retry-state.json"
+        broken = self.combined()
+        del broken["deferred"]
+        first = self.reduce("combined", 1, broken, state=state)
+        self.assertEqual(first["action"], "INVALID")
+        # A result the reducer cannot parse says nothing about the candidate, so it
+        # must not consume the only pass.
+        recovered = self.reduce("combined", 1, self.combined(), state=state)
+        self.assertEqual(recovered["action"], "PROCEED")
+
+    def test_combined_second_malformed_result_exhausts_the_pass(self) -> None:
+        state = self.artifacts / "combined-retry-exhausted-state.json"
+        broken = self.combined()
+        del broken["deferred"]
+        self.assertEqual(self.reduce("combined", 1, broken, state=state)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, broken, state=state)["action"], "INVALID")
+        third = self.reduce("combined", 1, self.combined(), state=state)
+        self.assertEqual(third["action"], "INVALID")
+        self.assertIn("retry", third["reason"])
+
+    def test_combined_requirements_must_enumerate_the_inventory_exactly(self) -> None:
+        partial = self.combined()
+        partial["requirements"] = {self.inventory_data[0]["ref"]: "SATISFIED"}
+        self.assertEqual(self.reduce("combined", 1, partial)["action"], "INVALID")
+
+    def test_combined_unsatisfied_requirement_needs_a_matching_exception(self) -> None:
+        orphan = self.combined()
+        ref = self.inventory_data[-1]["ref"]
+        orphan["requirements"][ref] = "MISSING"
+        self.assertEqual(self.reduce("combined", 1, orphan)["action"], "INVALID")
+        repaired = self.combined()
+        repaired["requirements"][ref] = "MISSING"
+        repaired["requirement_exceptions"] = [
+            {
+                "ref": ref,
+                "status": "MISSING",
+                "evidence": ["app.py:2 has no regression assertion"],
+                "autofixable": True,
+                "human_blocker": None,
+            }
+        ]
+        decision = self.reduce("combined", 1, repaired)
+        self.assertEqual(decision["action"], "AUTOFIX")
+        self.assertTrue(decision["disclose_unreviewed_repair"])
+
+    def test_combined_state_rejects_a_legacy_kind(self) -> None:
+        state = self.artifacts / "combined-kind-lock-state.json"
+        self.assertEqual(self.reduce("combined", 1, self.combined_with_finding(), state=state)["action"], "AUTOFIX")
+        crossed = self.reduce("quality", 2, self.quality(), state=state)
+        self.assertEqual(crossed["action"], "INVALID")
+
+    def test_combined_tolerates_an_unrequested_reason_on_a_passing_axis(self) -> None:
+        # Failing a reviewer for supplying more than the contract asked for is the
+        # exact class of slip this schema exists to stop, so an extra reason is
+        # accepted and simply not required.
+        generous = self.combined()
+        generous["axes"]["performance"]["reason"] = "No hot path changed."
+        self.assertEqual(self.reduce("combined", 1, generous)["action"], "PROCEED")
+
+    def test_combined_requirements_ignore_key_order(self) -> None:
+        shuffled = self.combined()
+        shuffled["requirements"] = dict(reversed(list(shuffled["requirements"].items())))
+        self.assertEqual(self.reduce("combined", 1, shuffled)["action"], "PROCEED")
+
+    def test_combined_overlong_deferred_is_trimmed_not_rejected(self) -> None:
+        noisy = self.combined(deferred=[f"app.py:{index} - " + "x" * 400 for index in range(40)])
+        decision = self.reduce("combined", 1, noisy)
+        self.assertEqual(decision["action"], "PROCEED")
+        self.assertEqual(decision["p2_deferred"], 25)
+        self.assertTrue(all(len(note) <= 240 for note in decision["deferred"]))
+
     def test_contract_exposes_test_quality_lenses_and_exact_axes(self) -> None:
         completed = run("python3", str(GATE), "contract", "--kind", "quality")
         contract = json.loads(completed.stdout)

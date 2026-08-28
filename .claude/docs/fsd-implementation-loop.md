@@ -80,7 +80,7 @@ Carry `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findi
 Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present - implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
 If `design_pr_plan` exists, preserve it unless the diff-size hard gate, repo boundary, release boundary, or a reviewer-owner boundary clearly forces a split. Implementation phases are not PR boundaries by themselves.
 
-**Comments - follow `.claude/docs/code-comment-policy.md`.** Default to none; apply the deletion test before writing one, prefer a better name or an extracted function over prose, and when a comment is warranted keep it to one anchored sentence about *why*. Never narrate the diff (`// added per review feedback`). Phase 6.25's `comment_quality` lens scores necessity and concision alongside accuracy, so unearned comments come back as findings.
+**Comments - follow `.claude/docs/code-comment-policy.md`.** Default to none; apply the deletion test before writing one, prefer a better name or an extracted function over prose, and when a comment is warranted keep it to one anchored sentence about *why*. Never narrate the diff (`// added per review feedback`). Phase 6.4's `comment_quality` lens scores necessity and concision alongside accuracy, so unearned comments come back as findings.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**
@@ -229,7 +229,7 @@ python3 .claude/scripts/codex-verify-bundle.py \
   --output "{nase_workspace}/workspace/tmp/fsd-qa-{branch_slug}-r{qa_round}.md"
 ```
 
-Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects stale evidence, secret-like candidate/evidence content, silently omitted text paths, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.25 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
+Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects stale evidence, secret-like candidate/evidence content, silently omitted text paths, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.4 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
 
 ### Anti-rationalization gate (apply before deciding to skip any sub-step in Phases 5–7)
 

@@ -26,6 +26,14 @@ ALLOWED_DIRS = (
     "workspace/efforts",
     "workspace/journals",
     "workspace/logs",
+    # `skill-contract.md` names journals/, recaps/, stats/ and tmp/ as the canonical
+    # artifact destinations. recaps/ and stats/ were missing here, so every skill that
+    # writes a recap, a scorecard or a usage report had to bypass the guard entirely -
+    # no staging, no diff, no drift check - and a re-run silently clobbered the prior
+    # artifact. tmp/ stays out on purpose: it is scratch, and DISALLOWED_DIRS below
+    # rejects it explicitly.
+    "workspace/recaps",
+    "workspace/stats",
     ".claude/commands/nase/workspace",
 )
 ALLOWED_FILES = (

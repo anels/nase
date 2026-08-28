@@ -82,6 +82,53 @@ env -u CLAUDE_SESSION_ID -u CLAUDE_SESSIONID python3 "$LOGGER" record \
 assert_cmd "an expired context falls back to unknown" \
   test "$(skill_of_last_event)" = "unknown"
 
+# --- reaper: activate must bound workspace/tmp, not just append to it ----------
+# Before this, `activate` was write-only and every session left its context file
+# behind for good (149 files, 70 past the TTL, on a live workspace).
+reap_fixture="$TMPROOT/reap"
+mkdir -p "$reap_fixture/workspace/kb/projects" "$reap_fixture/workspace/stats" \
+  "$reap_fixture/workspace/tmp"
+printf '# notes\n' > "$reap_fixture/workspace/kb/projects/example.md"
+
+python3 - "$reap_fixture/workspace/tmp" <<'PY'
+import json
+import pathlib
+import sys
+from datetime import datetime, timedelta, timezone
+
+tmp = pathlib.Path(sys.argv[1])
+now = datetime.now(timezone.utc)
+
+
+def write(name, age_hours):
+    ts = (now - timedelta(hours=age_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    payload = {"ts": ts, "skill": "fsd", "source": "prompt",
+               "session": name, "sessionless": False}
+    (tmp / name).write_text(json.dumps(payload, separators=(",", ":")) + "\n")
+
+
+write("kb-active-skill-aaaaaaaaaaaaaaaa.json", 13)   # past the 12h TTL
+write("kb-active-skill-bbbbbbbbbbbbbbbb.json", 99)   # long past it
+write("kb-active-skill-cccccccccccccccc.json", 1)    # still live
+(tmp / "kb-active-skill-dddddddddddddddd.json").write_text("{not json\n")  # unparseable
+PY
+
+CLAUDE_SESSION_ID="reaper-session" python3 "$LOGGER" activate \
+  --root "$reap_fixture" --skill "/nase:fsd" --source prompt >/dev/null 2>&1
+
+assert_cmd "reaper removes a context past the TTL" \
+  test ! -f "$reap_fixture/workspace/tmp/kb-active-skill-aaaaaaaaaaaaaaaa.json"
+assert_cmd "reaper removes a long-expired context" \
+  test ! -f "$reap_fixture/workspace/tmp/kb-active-skill-bbbbbbbbbbbbbbbb.json"
+assert_cmd "reaper keeps a context inside the TTL" \
+  test -f "$reap_fixture/workspace/tmp/kb-active-skill-cccccccccccccccc.json"
+assert_cmd "reaper removes an unparseable context" \
+  test ! -f "$reap_fixture/workspace/tmp/kb-active-skill-dddddddddddddddd.json"
+assert_cmd "reaper never removes the shared fallback" \
+  test -f "$reap_fixture/workspace/tmp/kb-active-skill-current.json"
+assert_cmd "reaper never removes the context this activation just wrote" \
+  bash -c 'ls "$1"/workspace/tmp/kb-active-skill-[0-9a-f]*.json >/dev/null 2>&1' _ "$reap_fixture"
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nkb-usage-attribution tests passed.\n'
   exit 0

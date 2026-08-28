@@ -81,6 +81,48 @@ def fallback_context_path(root: pathlib.Path) -> pathlib.Path:
     return root / "workspace" / "tmp" / "kb-active-skill-current.json"
 
 
+# A context older than this resolves to "unknown" rather than attributing a stale
+# skill, so past the TTL the file is inert and only takes up space.
+CONTEXT_TTL_SECONDS = 12 * 60 * 60
+
+
+def reap_stale_contexts(root: pathlib.Path, now: datetime) -> int:
+    """Delete per-session context files past the TTL. Returns how many were removed.
+
+    Without this, `activate` is write-only: every session leaves a
+    `kb-active-skill-{slug}.json` behind for good. A live workspace had accumulated
+    149 of them, 70 already past the TTL. They never corrupted attribution -
+    `read_context` ages them out - but nothing ever bounded the directory.
+
+    Best-effort by construction: a failure here must never break the activation
+    that triggered it, and a concurrent reaper deleting the same file is a no-op,
+    not an error.
+    """
+    removed = 0
+    keep = fallback_context_path(root).name
+    try:
+        entries = sorted((root / "workspace" / "tmp").glob("kb-active-skill-*.json"))
+    except OSError:
+        return 0
+    for entry in entries:
+        if entry.name == keep:
+            continue
+        try:
+            payload = json.loads(entry.read_text(encoding="utf-8"))
+            ts = parse_ts(str(payload.get("ts", "")))
+        except Exception:
+            ts = None
+        try:
+            if ts is None or (now - ts).total_seconds() > CONTEXT_TTL_SECONDS:
+                entry.unlink()
+                removed += 1
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+    return removed
+
+
 def normalize_skill(skill: str | None) -> str:
     value = (skill or "").strip()
     if value.startswith("/nase:"):
@@ -142,6 +184,11 @@ def activate(args: argparse.Namespace) -> int:
         fallback_context_path(root).write_text(serialized, encoding="utf-8")
     except Exception:
         return 0
+    # After the write, so a reaper failure can never cost us this activation.
+    try:
+        reap_stale_contexts(root, utc_now())
+    except Exception:
+        pass
     return 0
 
 
@@ -153,7 +200,7 @@ def read_context(path: pathlib.Path, now: datetime) -> tuple[str, bool]:
         return "unknown", False
 
     ts = parse_ts(str(payload.get("ts", "")))
-    if ts is None or (now - ts).total_seconds() > 12 * 60 * 60:
+    if ts is None or (now - ts).total_seconds() > CONTEXT_TTL_SECONDS:
         return "unknown", False
     return normalize_skill(str(payload.get("skill", ""))), bool(payload.get("sessionless", True))
 
