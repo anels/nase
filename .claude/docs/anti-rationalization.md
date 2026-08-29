@@ -12,6 +12,8 @@ Source pattern: [addyosmani/agent-skills](https://github.com/addyosmani/agent-sk
 | "I'm confident, skip the verify gate." | Confidence correlates poorly with correctness on novel code. The gate is cheap; the prod bug is not. |
 | "I already reviewed it, a second pass is redundant." | Self-review in the same context validates your own conclusions. Use a fresh-context reviewer that never saw your reasoning. |
 | "It's a small change, scope check is overkill." | Scope creep is the single biggest determinant of whether a PR stays mergeable. Touch only what was asked. |
+| "I know the SHA / line / count, I'll type it." | A value you typed is a claim. Read it from a command and paste the output. A truncated display (a short SHA, `head` output, a table cell) is not the value. |
+| "The verifier refuted it / the gate failed / the search returned nothing." | A negative verdict is evidence about the run, not about the claim. Check what the harness actually read: which source, which ref, which toolset. Then drop the claim, or not. |
 
 ## `/nase:fsd` — Phase 6.5 Pre-Push Verification Gate
 

@@ -248,6 +248,10 @@ def check_specificity(doc: Document, rule: Rule) -> list[Finding]:
 
 
 def check_review_anchor(doc: Document, rule: Rule) -> list[Finding]:
+    """Whether a comment is attached to a hunk lives in the API payload, not in
+    the body, so this can only notice that the prose names no file at all. That
+    is a hint worth counting, never a defect worth blocking: a well-anchored
+    inline comment has no reason to restate its own path."""
     if re.search(r"[\w./-]+\.\w{1,5}:\d+", doc.text):
         return []
     if re.search(
@@ -541,11 +545,11 @@ RULES: list[Rule] = _vocab_rules() + [
     ),
     Rule(
         "REV-ANCHOR",
-        "gate",
-        "",
+        "marker",
+        "SYNTAX",
         ("github-review-comment",),
-        "no file anchor; file-level comments go unaddressed 87.0% of the time against 51.9% hunk-level",
-        "anchor the comment to `path:line`",
+        "prose names no file; attachment is what decides this and the linter cannot see it",
+        "attach the comment to the hunk (file-level goes unaddressed 87.0% of the time against 51.9%)",
         checker=check_review_anchor,
     ),
     Rule(
@@ -556,7 +560,7 @@ RULES: list[Rule] = _vocab_rules() + [
         "non-actionable suggestion",
         "name the concrete change you want",
         re.compile(
-            r"\b(consider improving|test(ing)? (this )?thoroughly|make sure to|it would be good to|"
+            r"\b(consider improving|test(ing)? (this )?thoroughly|it would be good to|"
             r"it might be worth|as appropriate|where appropriate|consider adding more)\b",
             re.I,
         ),
@@ -572,11 +576,11 @@ RULES: list[Rule] = _vocab_rules() + [
     ),
     Rule(
         "REV-COURTESY",
-        "gate",
-        "",
+        "marker",
+        "TEMPLATE",
         REVIEW,
-        "courtesy opener; drop it when replying to a bot reviewer, which cannot read tone",
-        "open on the finding",
+        "courtesy opener; noise in front of a bot reviewer, but warmth to a human is deliberate",
+        "drop it when the reviewer is a bot; keep it when the reviewer is a person",
         re.compile(
             r"^\s*(Good catch|Nice catch|Great catch|Good job|Nice work|"
             r"Thanks for (bringing this up|catching|flagging))\b",
