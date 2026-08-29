@@ -7,6 +7,8 @@ Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md
 
 After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 4e batches pending deltas into approved style-doc edits.
 
+`.claude/hooks/prose-lint-guard.sh` enforces three Formatting Mechanics rules below (`- item` bullets, no `<url|label>` embed, no bare URL ending a line whose next line is non-empty) on every `slack_send_message_draft` call. **This doc stays their source of truth**: if `prose-lint.py` and Formatting Mechanics ever disagree, fix the linter.
+
 ## Formatting Mechanics
 
 The rest of this doc governs what to say. This section governs what survives

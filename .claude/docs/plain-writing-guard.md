@@ -51,7 +51,7 @@ Shape first, then words. A structurally wrong message with clean vocabulary is s
 - First line is the topic or the ask. Never a standalone greeting or ping.
 - Self-contained: carry all the context the recipient needs to act. This matters most across time zones, where nobody can ask a quick follow-up.
 - Structured formatting is fine in longer messages. The tell is the mechanical three-parallel-item list, not the existence of a list.
-- Mechanics that break the rendered message live in `.claude/docs/slack-draft-style.md`, and the guard enforces three of them: no `<url|label>` embed, no bare URL at the end of a line that has content after it, no ASCII bullet.
+- Mechanics that break the rendered message live in `.claude/docs/slack-draft-style.md`, which stays their source of truth. `prose-lint.py` enforces three of them: no `<url|label>` embed, no bare URL ending a line whose next line is non-empty, and `- item` for bullets rather than a literal bullet character, which is plain text and never renders as a list. If this doc and Formatting Mechanics ever disagree, Formatting Mechanics wins - it describes what the draft tool does to the body.
 
 ### `github-pr-body`
 

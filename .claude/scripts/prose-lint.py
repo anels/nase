@@ -288,11 +288,15 @@ def check_long_paragraph(doc: Document, rule: Rule) -> list[Finding]:
 
 
 def check_trailing_url(doc: Document, rule: Rule) -> list[Finding]:
+    """Flag a bare URL at end of line only when the *immediately* following line
+    is non-empty. `slack-draft-style.md` Formatting Mechanics treats a blank line
+    after the URL as a valid boundary that survives the draft conversion."""
     lines = doc.text.split("\n")
     findings: list[Finding] = []
     offset = 0
     for idx, line in enumerate(lines):
-        if re.search(r"https?://\S+\s*$", line) and any(later.strip() for later in lines[idx + 1 :]):
+        following = lines[idx + 1] if idx + 1 < len(lines) else ""
+        if re.search(r"https?://\S+\s*$", line) and following.strip():
             findings.append(doc.finding(rule, offset, line.strip()[-60:]))
         offset += len(line) + 1
     return findings
@@ -528,9 +532,9 @@ RULES: list[Rule] = _vocab_rules() + [
         "gate",
         "",
         SLACK,
-        "ASCII bullet in a Slack message",
-        "use the bullet character",
-        re.compile(r"^\s*[-*]\s+\S", re.M),
+        "literal bullet character; it is plain text and never renders as a list",
+        "write `- item`, per slack-draft-style.md Formatting Mechanics",
+        re.compile(r"^\s*•", re.M),
     ),
     Rule(
         "REV-ANCHOR",

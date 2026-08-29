@@ -118,6 +118,22 @@ if [ "$?" = "2" ]; then pass "missing --file exits 2"; else fail "missing --file
 python3 "$SCRIPT" --list-rules >"$TMP/rules.txt" 2>&1
 assert_contains "--list-rules prints the gate column" "$TMP/rules.txt" "REV-ANCHOR"
 
+# --- Slack bullet direction matches slack-draft-style.md -------------------
+# Formatting Mechanics: `- item` is the list syntax; a literal bullet character
+# is plain text and never renders as a list. The gate must flag the latter.
+
+printf -- '- fix in `a.py:8` moves the check\n- rerun at 09:20 finished green\n' >"$TMP/dashbullets.md"
+run slack-channel "$TMP/dashbullets.md" "$TMP/dashbullets.json" >/dev/null
+n=$(jq_count "$TMP/dashbullets.json" SLK-BULLET)
+if [ "$n" = "0" ]; then pass "dash bullets are the correct Slack syntax"; else fail "dash bullets are the correct Slack syntax"; fi
+
+# --- a bare URL followed by a blank line is a valid boundary ---------------
+
+printf 'Runbook is at https://example.com/runbook\n\nRerun finished at 09:20 on host 12.\n' >"$TMP/urlblank.md"
+run slack-channel "$TMP/urlblank.md" "$TMP/urlblank.json" >/dev/null
+n=$(jq_count "$TMP/urlblank.json" SLK-TRAILURL)
+if [ "$n" = "0" ]; then pass "blank line after a trailing URL is a valid boundary"; else fail "blank line after a trailing URL is a valid boundary"; fi
+
 # --- paragraph offsets survive wide blank-line separators ------------------
 
 printf 'first line here with enough words to matter\n\n   \n\nSecond block of prose that carries no concrete referent at all and simply keeps going without ever naming a thing or a count anywhere in it.\n' >"$TMP/offsets.md"
