@@ -259,6 +259,51 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIsNone(module.secret_kind(source))
 
+    def test_embedded_command_substitution_is_not_a_credential(self):
+        # A value that splices command output into a larger string is generated at run time,
+        # so the surrounding literal text cannot make it a hardcoded credential. The
+        # full-match forms above only cover a value that IS the substitution.
+        for source in (
+            b"SQL_TEST_PASS" + b'WORD="Sql-$(openssl rand -hex 16)-Aa1!"',
+            b"pass" + b'word="$(cat /run/secrets/db).suffix"',
+            b"client_" + b"secret" + b"=prefix-$(vault read -field=value secret/app)",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_empty_or_numeric_substitution_does_not_launder_a_literal(self):
+        # `$()` names no command and `$(1)` is a capture reference, so neither proves the
+        # value is generated; the literal around them must stay flagged.
+        for source in (
+            b"pass" + b"word=abcdefgh12345678$()",
+            b"client_" + b"secret" + b"=abcdefgh12345678$(1)",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_embedded_substitution_does_not_mask_a_later_secret(self):
+        source = (
+            b"SQL_TEST_PASS" + b'WORD="Sql-$(openssl rand -hex 16)-Aa1!"\n'
+            + b"client_secret"
+            + b"=abcdefgh12345678\n"
+        )
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_connection_string_reference_pair_is_not_a_credential(self):
+        # The value of a `;`-delimited pair ends at the `;`. Without that cut the span ran on
+        # into `Encrypt=false...`, so a referenced password never matched the bare shape.
+        for source in (
+            b"export CONN=" + b'"Server=db,1433;Pass' + b"word" + b"=${SQL_PASSWORD};Encrypt=false\"",
+            b"Pass" + b"word" + b"=$(vault read -field=value secret/db);Encrypt=false",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_literal_in_a_connection_string_pair_stays_flagged(self):
+        # Narrowing the span must not launder a literal that sits before the `;`.
+        source = b"Pass" + b"word" + b"=abcdefgh12345678;Encrypt=false"
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_parenthesised_literal_is_still_flagged(self):
         # Bare parens are weak evidence: without a command word plus an argument they must
         # not launder a literal.

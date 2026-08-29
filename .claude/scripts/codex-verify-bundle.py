@@ -72,6 +72,11 @@ SAFE_EXPRESSION_VALUE = re.compile(
 # run time. Arguments are allowed, so this cannot reuse REFERENCE_VALUE's bare `$(NAME)`
 # alternative. Nested parens are excluded so the span stays anchored to one substitution.
 COMMAND_SUBSTITUTION_VALUE = re.compile(rb"^\$\([^()\r\n]*\)$")
+# The same substitution embedded in a larger value (`"Sql-$(openssl rand -hex 16)-Aa1!"`,
+# `"$(cat token).suffix"`). A value that splices in command output is generated at run time,
+# so it cannot be the literal credential no matter what surrounds it. The substitution must
+# name something — a leading letter or underscore — so `$()` cannot launder a literal.
+EMBEDDED_COMMAND_SUBSTITUTION = re.compile(rb"\$\([A-Za-z_][^()\r\n]*\)")
 # PowerShell also groups a command with a bare paren (`$password = (az ... )`). Bare parens
 # are far weaker evidence than `$(`, so require a command word *plus* at least one argument —
 # that keeps `(az keyvault secret show ...)` while `(azurePassword123XY)` stays a literal.
@@ -183,6 +188,7 @@ def reference_like(value: bytes) -> bool:
             REFERENCE_VALUE.fullmatch(candidate)
             or SAFE_EXPRESSION_VALUE.fullmatch(candidate)
             or COMMAND_SUBSTITUTION_VALUE.fullmatch(candidate)
+            or EMBEDDED_COMMAND_SUBSTITUTION.search(candidate)
             or BARE_COMMAND_SUBSTITUTION.fullmatch(candidate)
             or OPEN_COMMAND_SUBSTITUTION.fullmatch(candidate)
             or ACTIONS_EXPRESSION_VALUE.fullmatch(candidate)
@@ -499,6 +505,14 @@ def parsed_assignment(data: bytes, match: re.Match[bytes]) -> tuple[bytes, bytes
     comment = re.search(rb"[ \t]+(?:#|//|/\*|--)", raw)
     if comment:
         raw = raw[: comment.start()]
+    # A `;` ends the value in both shapes that reach here unquoted: a connection string's
+    # `Password=<value>;Encrypt=false` pair list, and a shell command separator. Without the
+    # cut the value swallowed the remaining pairs, so `Password=${VAR};Encrypt=false` never
+    # matched the bare-reference shape. This only shortens the span, so no literal is
+    # laundered: a literal written before the `;` is still what the matcher sees.
+    semicolon = raw.find(b";")
+    if semicolon >= 0:
+        raw = raw[:semicolon]
     candidate = raw.strip().rstrip(b",;").strip()
     if reference_like(candidate):
         value = candidate
