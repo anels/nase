@@ -212,7 +212,10 @@ def check_uniform_sentence_length(doc: Document, rule: Rule) -> list[Finding]:
     return [doc.finding(rule, 0, f"sentence lengths {min(lengths)}-{max(lengths)} words")]
 
 
-_TRIAD = re.compile(r"\b([a-z]{4,}), ([a-z]{4,}),? and ([a-z]{4,})\b")
+# The lookbehind keeps a longer enumeration from matching on its last three
+# items: `register, vocabulary, template, and rhythm` is a four-item list, not a
+# triad, and flagging it would push the author to delete real information.
+_TRIAD = re.compile(r"(?<!,\s)\b([a-z]{4,}), ([a-z]{4,}),? and ([a-z]{4,})\b")
 
 
 def check_triad(doc: Document, rule: Rule) -> list[Finding]:

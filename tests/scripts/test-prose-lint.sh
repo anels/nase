@@ -134,6 +134,18 @@ run slack-channel "$TMP/urlblank.md" "$TMP/urlblank.json" >/dev/null
 n=$(jq_count "$TMP/urlblank.json" SLK-TRAILURL)
 if [ "$n" = "0" ]; then pass "blank line after a trailing URL is a valid boundary"; else fail "blank line after a trailing URL is a valid boundary"; fi
 
+# --- a four-item list is not a triad ---------------------------------------
+
+printf 'It counts register, vocabulary, template, and rhythm signals on host 12.\n' >"$TMP/four.md"
+run github-pr-body "$TMP/four.md" "$TMP/four.json" >/dev/null
+n=$(jq_count "$TMP/four.json" TPL-TRIAD)
+if [ "$n" = "0" ]; then pass "a four-item list is not counted as a triad"; else fail "a four-item list is not counted as a triad"; fi
+
+printf 'The rollout was fast, cheap, and reliable on host 12.\n' >"$TMP/three.md"
+run github-pr-body "$TMP/three.md" "$TMP/three.json" >/dev/null
+n=$(jq_count "$TMP/three.json" TPL-TRIAD)
+if [ "$n" = "1" ]; then pass "a genuine triad is still counted"; else fail "a genuine triad is still counted (got $n)"; fi
+
 # --- paragraph offsets survive wide blank-line separators ------------------
 
 printf 'first line here with enough words to matter\n\n   \n\nSecond block of prose that carries no concrete referent at all and simply keeps going without ever naming a thing or a count anywhere in it.\n' >"$TMP/offsets.md"
