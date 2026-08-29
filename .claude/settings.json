@@ -125,6 +125,15 @@
         ]
       },
       {
+        "matcher": "mcp__.*__slack_send_message_draft$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && NASE_ROOT=\"$WORKSPACE\" bash \"$WORKSPACE/.claude/hooks/prose-lint-guard.sh\"'"
+          }
+        ]
+      },
+      {
         "matcher": "mcp__.*__(update|create)ConfluencePage$",
         "hooks": [
           {

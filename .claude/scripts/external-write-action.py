@@ -638,7 +638,103 @@ def load_manifest(root: Path, path: Path) -> tuple[Path, dict[str, Any]]:
     return resolved, data
 
 
+PROSE_SURFACES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("pr", "create"), "github-pr-body"),
+    (("pr", "edit"), "github-pr-body"),
+    (("pr", "comment"), "github-review-reply"),
+    (("pr", "review"), "github-review-reply"),
+    (("issue", "comment"), "github-review-reply"),
+)
+PROSE_TEXT_SUFFIXES = {"", ".md", ".txt", ".markdown"}
+PROSE_BODY_KEYS = {"body", "body_text"}
+# `gh api .../pulls/{n}/reviews` is how a review is actually submitted, so the
+# endpoint form has to be recognized too, not just the `gh pr` porcelain.
+PROSE_API_ENDPOINTS = re.compile(r"/(pulls|issues)/", re.I)
+
+
+def prose_surface(argv: list[str]) -> str | None:
+    if not argv or Path(argv[0]).name != "gh":
+        return None
+    words = [token for token in argv[1:] if not token.startswith("-")]
+    if not words:
+        return None
+    if words[0] == "api":
+        return "github-review-reply" if any(PROSE_API_ENDPOINTS.search(w) for w in words[1:]) else None
+    for prefix, surface in PROSE_SURFACES:
+        if tuple(words[: len(prefix)]) == prefix:
+            return surface
+    return None
+
+
+def prose_bodies(path: Path) -> list[tuple[str, str]]:
+    """Return (label, text) pairs to lint from one payload file.
+
+    A JSON payload is a review envelope, so the prose lives at `body` keys rather
+    than in the file as a whole; linting the serialized JSON would flag its own
+    punctuation. Returns an empty list for anything unparseable.
+    """
+    if path.suffix.lower() in PROSE_TEXT_SUFFIXES:
+        try:
+            return [(path.name, path.read_text(encoding="utf-8"))]
+        except OSError:
+            return []
+    if path.suffix.lower() != ".json":
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+    found: list[tuple[str, str]] = []
+
+    def walk(node: Any, trail: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in PROSE_BODY_KEYS and isinstance(value, str) and value.strip():
+                    found.append((f"{path.name}{trail}.{key}", value))
+                else:
+                    walk(value, f"{trail}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{trail}[{index}]")
+
+    walk(payload, "")
+    return found
+
+
+def prose_gate_findings(root: Path, path: Path, surface: str) -> list[str]:
+    """Return gate-level prose findings. Never raises: the linter is a quality
+    check, not a security control, so a broken linter must not block a write."""
+    if os.environ.get("NASE_PROSE_LINT") == "0":
+        return []
+    lint = root / ".claude" / "scripts" / "prose-lint.py"
+    if not lint.is_file():
+        return []
+    findings: list[str] = []
+    for label, text in prose_bodies(path):
+        try:
+            completed = subprocess.run(
+                [sys.executable, str(lint), "--surface", surface, "--file", "-", "--format", "json"],
+                input=text,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+            report = json.loads(completed.stdout)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            continue
+        findings.extend(
+            f"{label}:{item['line']} {item['rule']} {item['message']} -> fix: {item['fix']}"
+            for item in report.get("findings", [])
+            if item.get("kind") == "gate"
+        )
+    return findings
+
+
 def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
+    surface = prose_surface(action.get("argv") or [])
+    findings: list[str] = []
     for entry in action.get("payload_files", []):
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise ActionError("manifest payload file entry is invalid")
@@ -647,6 +743,16 @@ def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
             path = resolve_payload_path(root, entry["path"])
         if not path.is_file() or file_sha256(path) != entry.get("sha256"):
             raise ActionError(f"payload file changed after approval: {entry['path']}")
+        if surface:
+            findings.extend(prose_gate_findings(root, path, surface))
+    if findings:
+        detail = "\n  ".join(findings)
+        raise ActionError(
+            "payload fails the plain-writing gate; fix and re-authorize:\n  "
+            + detail
+            + "\n  (gates are mechanical defects only; see .claude/docs/plain-writing-guard.md)"
+            + "\n  Set NASE_PROSE_LINT=0 only when the flagged text is a quote from someone else."
+        )
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:

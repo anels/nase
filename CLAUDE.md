@@ -25,7 +25,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Keep memory human-readable. Durable knowledge goes to Markdown/JSONL under `workspace/`; avoid opaque summaries that a human cannot inspect, diff, or delete.
 - Slice context before reading broadly. Use repo KB, domain maps, `gh`, `rg`, `ast-grep`, focused diffs, and workspace scan scripts before loading large logs or whole directories.
 - Require evidence for technical claims. PR findings, architecture notes, and audit conclusions need source paths, diffs, tests, logs, or command output; drop candidates that cannot be verified.
-- External writes stay gated: Slack drafts, Jira write tokens after approval (single-shot or batch), Confluence size guards, and GitHub/Azure/Kubernetes/Terraform CLI mutations through payload-bound `external-write-action.py` manifests. The CLI Hook blocks raw writes and fails closed for unrecognized guarded CLI invocations.
+- External writes stay gated: Slack drafts, Jira write tokens after approval (single-shot or batch), Confluence size guards, and GitHub/Azure/Kubernetes/Terraform CLI mutations through payload-bound `external-write-action.py` manifests. The CLI Hook blocks raw writes and fails closed for unrecognized guarded CLI invocations. Slack draft bodies and `gh` payload prose additionally pass `prose-lint.py`, which fails open when unavailable because a quality check must never block a write on its own breakage.
 - New commands and skills should reuse shared docs/scripts first. Add a new abstraction only when it removes real repeated workflow complexity and include a local validation path.
 
 ---
@@ -103,6 +103,7 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 ## Communication
 
 - **Voice profile**: before drafting Slack, PR, Jira, Confluence, or other external text, follow `.claude/docs/voice-profile-routing.md` for the output surface; read `workspace/communication-style.md` when the routing capsule calls for the full profile or the draft is high-stakes
+- **Plain writing**: `.claude/docs/plain-writing-guard.md` is the cross-surface readability floor - fix shape, then syntax, then register, then templated shapes, and read its Part 5 non-rules before overcorrecting. `python3 .claude/scripts/prose-lint.py --surface <surface> --file <draft>` is its mechanical pass, and it blocks: gate findings fail Slack drafts and `gh` payload writes. Markers above the threshold mean the shape needs a rewrite, not a word swap. Escape with `NASE_PROSE_LINT=0` only when the flagged text is a quote from someone else. Never treat its output as evidence of authorship
 - **Slack messages**: keep concise and conversational; avoid verbose/formal drafts
 - **Jira links**: always include full Jira links (e.g. `https://your-org.atlassian.net/browse/PROJ-123`), never bare ticket numbers
 - **Review requests**: one short paragraph max; mention reviewer by name, link the PR

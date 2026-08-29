@@ -64,7 +64,9 @@ Rules:
 
 ## Section Mapping
 
-Map each `rule` to the right section of `workspace/communication-style.md` before drafting an edit. If a rule fits multiple sections, pick the most specific. New rules that fit none -> propose a new sub-bullet under the closest match; never invent new top-level sections without explicit user approval.
+First decide which document owns the rule. A rule about **Ruilin's voice** (tone, wording habits, per-surface register, personal anti-patterns) goes to `workspace/communication-style.md` using the table below. A **generic readability rule** that would hold for anyone writing the same artifact goes to `.claude/docs/plain-writing-guard.md` instead, and a rule about what survives the Slack draft tool goes to `.claude/docs/slack-draft-style.md → Formatting Mechanics`. Both of those are tracked files, so they follow normal repo review rather than the Tier B style-doc gate.
+
+Map each voice `rule` to the right section of `workspace/communication-style.md` before drafting an edit. If a rule fits multiple sections, pick the most specific. New rules that fit none -> propose a new sub-bullet under the closest match; never invent new top-level sections without explicit user approval.
 
 | Rule kind | Target |
 |-----------|--------|
