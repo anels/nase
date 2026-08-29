@@ -118,6 +118,40 @@ if [ "$?" = "2" ]; then pass "missing --file exits 2"; else fail "missing --file
 python3 "$SCRIPT" --list-rules >"$TMP/rules.txt" 2>&1
 assert_contains "--list-rules prints the gate column" "$TMP/rules.txt" "REV-ANCHOR"
 
+# --- the gate set is pinned ------------------------------------------------
+# Which rules block is the load-bearing decision in this linter: a gate must be a
+# mechanical defect with a concrete failure, never a judgment call. Pin the set so
+# promoting a rule to blocking has to be a deliberate edit to this list.
+
+python3 "$SCRIPT" --list-rules | awk -F'\t' '$2 == "gate" {print $1}' | sort >"$TMP/gates.txt"
+cat >"$TMP/gates.expected" <<'EOF'
+FMT-BOLDDEF
+FMT-DASH
+FMT-EMOJI
+JIR-SECTIONS
+REV-VAGUE
+REV-YOU
+SLK-BULLET
+SLK-EMBED
+SLK-TRAILURL
+EOF
+if diff -u "$TMP/gates.expected" "$TMP/gates.txt" >"$TMP/gates.diff"; then
+  pass "the set of blocking gates is unchanged"
+else
+  fail "the set of blocking gates changed: $(cat "$TMP/gates.diff")"
+fi
+
+# Warmth toward a human reviewer is deliberate, so a courtesy opener is counted,
+# never blocked - the linter cannot tell a bot reviewer from a person.
+printf 'Good catch. `a.py:8` still drops the retry on timeout.\n' >"$TMP/courtesy.md"
+run github-review-reply "$TMP/courtesy.md" "$TMP/courtesy.json" >/dev/null
+kind=$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(next((f["kind"] for f in d["findings"] if f["rule"] == "REV-COURTESY"), "absent"))
+' "$TMP/courtesy.json")
+if [ "$kind" = "marker" ]; then pass "courtesy opener is counted, not blocked"; else fail "courtesy opener is counted, not blocked (kind=$kind)"; fi
+
 # --- Slack bullet direction matches slack-draft-style.md -------------------
 # Formatting Mechanics: `- item` is the list syntax; a literal bullet character
 # is plain text and never renders as a list. The gate must flag the latter.

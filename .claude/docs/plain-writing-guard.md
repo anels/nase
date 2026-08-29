@@ -66,8 +66,8 @@ Shape first, then words. A structurally wrong message with clean vocabulary is s
 - **Say the concrete change.** `Suggest to test thoroughly` is a measurable failure class, not a mild one: across 16 AI review tools, 178 repositories, and 22,000+ comments, valid human comments led to code changes 60% of the time against 0.9%-19.2% for AI comments.
 - **Comment on the code, never on the developer.** Google's own contrastive example rejects `Why did you use threads here` in favor of a statement about the code's properties.
 - **Point out the problem; the author decides the fix.** Reviewers are not required to design the solution. This bounds the model's habit of writing a full replacement implementation in every comment.
-- **Label severity explicitly** with `Nit:`, `Optional:` / `Consider:`, or `FYI:` so the author can prioritize. Severity belongs in a prefix, not in softened prose.
-- **No courtesy opener when replying to a bot reviewer.** A bot does not read tone, so `Good catch` is pure noise in front of the evidence. Warmth stays available for human reviewers.
+- **No intent-label prefix.** Google's guide recommends `Nit:` / `Optional:` / `FYI:`, and this workspace deliberately does not follow it. `.claude/docs/discuss-pr-output.md` carries `kind` and `disposition` in the chat report and in the review state, so opening the posted comment with the label spends the first line restating a classification the author cannot act on. Start on the claim. The problem the prefix solves elsewhere - severity buried in softened prose - is solved here by dropping the softeners instead.
+- **No courtesy opener when replying to a bot reviewer.** A bot does not read tone, so `Good catch` is pure noise in front of the evidence. Warmth stays available for human reviewers, so this is a judgment call the linter cannot make for you.
 
 ### `jira-ticket`
 
@@ -203,7 +203,7 @@ python3 .claude/scripts/prose-lint.py --list-rules
 
 Two classes of finding:
 
-- **gate** - a mechanical defect with a concrete failure and near-zero false-positive rate. An embed link renders wrong; a trailing bare URL swallows the next line; an unanchored review comment goes unaddressed. Gates fail the run.
+- **gate** - a mechanical defect with a concrete failure and near-zero false-positive rate. An embed link renders wrong; a trailing bare URL swallows the next line; a literal bullet character never becomes a list. Gates fail the run. A rule earns this only when the text alone proves the defect: a courtesy opener is right for a human reviewer and wrong for a bot, and whether a comment is attached to a hunk lives in the API payload, so neither can be decided from the body and neither blocks.
 - **marker** - register, vocabulary, template, and rhythm signals, counted by tier and judged against a threshold (default 5). Never decisive individually.
 
 Fenced blocks, inline code, and URLs are masked before matching. Quoted prose from someone else is not, so read the hits before acting.
@@ -237,7 +237,7 @@ When the user corrects a draft in a way that implies a reusable rule, follow `.c
 | arXiv:2505.01877, human identification of LLM text (n=254) | verified | 55.4% untrained / 65.1% trained accuracy; specificity as the only cue surviving training (p=0.044); AI text judged more readable |
 | AI code-review effectiveness study (16 tools, 178 repos, 22,000+ comments) | extracted | Hunk vs file anchoring (51.9% vs 87.0% unaddressed); comment length rho=-0.24; code ratio rho=+0.89; human 60% vs AI 0.9-19.2% |
 | Microsoft Writing Style Guide, *Scannable content* and *Top 10 tips* | manual | Three to seven line paragraphs; get to the point then stop; front-load keywords per structural unit; verb-first statements; contractions; unspaced em dash as house style |
-| Google engineering practices, *Code Review Comments* | manual | Nit / Optional / Consider / FYI severity prefixes; comment on the code never the developer; author owns the fix |
+| Google engineering practices, *Code Review Comments* | manual | Comment on the code never the developer; author owns the fix. Its severity-prefix recommendation is quoted accurately and deliberately not adopted, see below |
 | Google developer documentation style guide, *Voice and tone* | extracted | Active voice with a named actor, and its three sanctioned passive exceptions; conditions before instructions; list semantics by type |
 | Conventional Comments | manual | Severity declared by an enumerated token rather than by softened prose (format itself not adopted here) |
 | Wikipedia:Signs of AI writing / WikiProject AI Cleanup | extracted | Words-to-watch list; antithesis frame; formatting tells; detector output rejected as grounds for action; tell lists decay as models change |
@@ -245,6 +245,7 @@ When the user corrects a draft in a way that implies a reusable rule, follow `.c
 
 **Claims deliberately not used.** Recorded so they are not reintroduced.
 
+- **Google's `Nit:` / `Optional:` / `FYI:` severity prefixes.** Quoted correctly from the source, adopted here at first, and wrong for this workspace: `.claude/docs/discuss-pr-output.md` and `workspace/communication-style.md` had already ruled the prefix out with a dated rationale, and because `voice-profile-routing.md` runs this guard as the final pass, the imported rule would have won every time. The general failure is worth more than the specific fix: an external style guide is evidence about its own house, so grep for a local rule on the same behaviour before importing one. The same mistake shipped the inverted Slack bullet gate.
 - **"Passive voice is an LLM tell."** The opposite is measured: models use agentless passive at about half the human rate. Active voice stays in Part 1 as a readability rule only.
 - **Google's alleged "second person over first-person plural" rule.** Flagged by two independent extraction runs, refuted by both verification passes, never confirmed by hand. Not a rule here.
 - **GitLab's 15-word sentence ceiling and the 150/250-word paragraph limits from plainlanguage.gov.** Both source pages are gone: the GitLab handbook page was deleted 2025-12-01 and plainlanguage.gov/guidelines now redirects. Re-confirm from an archive before adopting either.
