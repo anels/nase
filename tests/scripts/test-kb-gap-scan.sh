@@ -40,22 +40,22 @@ cat > "$FIXTURE/logs/2026-04-01.md" <<'EOF'
 - 不确定 this should not appear in the output (out of range)
 EOF
 
-# Repo-filter probe — only this file mentions "Insights-Monitoring"
+# Repo-filter probe — only this file mentions "Platform-Monitoring"
 cat > "$FIXTURE/logs/2026-05-03.md" <<'EOF'
 # Work Log — 2026-05-03
 
-- 10:00 | Insights-Monitoring: 不清楚 sampling override on TelemetryClient
+- 10:00 | Platform-Monitoring: 不清楚 sampling override on TelemetryClient
 EOF
 
 cat > "$FIXTURE/tasks/lessons.md" <<'EOF'
 # Lessons Learned
 
 ## code -- 2026-05-01 -- in-range literal lesson
-**When:** Insights-Monitoring deploy
+**When:** Platform-Monitoring deploy
 **Do:** not sure whether the owner field is populated before alert render.
 
 ## code -- 2026-04-01 -- old literal lesson
-**When:** Insights-Monitoring deploy
+**When:** Platform-Monitoring deploy
 **Do:** not sure this old lesson should not appear for a May-only scan.
 EOF
 
@@ -115,7 +115,7 @@ assert_exit "T2: exit 2 when no logs in range" 2 "$rc"
 
 # ── Test 3: --repo filter restricts to matching files ────────────────────────
 out=$(bash "$SCRIPT" --logs-dir "$FIXTURE/logs" --no-lessons \
-  --since 2026-05-01 --until 2026-05-03 --repo "Insights-Monitoring" 2>&1)
+  --since 2026-05-01 --until 2026-05-03 --repo "Platform-Monitoring" 2>&1)
 rc=$?
 assert_exit "T3: exit 0 with repo filter match" 0 "$rc"
 assert_contains "T3: matching file kept"           "$out" "2026-05-03.md"
@@ -142,7 +142,7 @@ assert_not_contains "T6: old lesson excluded" "$out" "old lesson should not appe
 
 # ── Test 7: --repo is applied per lesson section, not whole file ─────────────
 out=$(bash "$SCRIPT" --logs-dir "$FIXTURE/logs" --lessons "$FIXTURE/tasks/lessons.md" \
-  --since 2026-05-01 --until 2026-05-01 --repo "Insights-Monitoring" 2>&1)
+  --since 2026-05-01 --until 2026-05-01 --repo "Platform-Monitoring" 2>&1)
 rc=$?
 assert_exit "T7: repo-filtered lessons scan exits 0" 0 "$rc"
 assert_contains "T7: matching lesson section kept" "$out" "owner field is populated"

@@ -215,7 +215,7 @@ After replies + resolves succeed, offer to Slack-ping any human reviewers whose 
 
 - Ends with `[bot]` - covers `dependabot[bot]`, `github-actions[bot]`, `claude[bot]`, etc.
 - Ends with `-bot`
-- Matches `pr-github-helper.py` `BOT_LOGINS`, including suffix-less reviewers such as `claude` and `uipathepixa`.
+- Matches `pr-github-helper.py` `BOT_LOGINS`, including suffix-less reviewers such as `claude`, plus any login listed in the `NASE_BOT_LOGINS` environment variable.
 
 Also drop the PR author's own login (they don't ping themselves). Use `gh api user --jq .login` once if you don't already know it.
 

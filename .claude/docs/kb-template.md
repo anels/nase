@@ -190,7 +190,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 <!-- Top-3 high-risk integration / contract / data boundaries an AI agent should know about BEFORE touching code. Refreshed by /nase:onboard Step 3h. Rationale: change-absorption capacity comes from explicit contracts at brittle boundaries (CATS framework — see workspace/kb/general/llm.md → AI Code Quality & Velocity). -->
 | Boundary | Why brittle | Last incident / drift | Touch protocol |
 |----------|------------|----------------------|----------------|
-| `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing — e.g. "run contract tests against insights-monitoring", "check Looker partition before COALESCE", "validate Avro schema vs LogExport target"} |
+| `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing — e.g. "run contract tests against platform-monitoring", "check Looker partition before COALESCE", "validate Avro schema vs LogExport target"} |
 
 ## Change Playbook
 | Change type | Inspect first | Minimum verification | Cross-repo checks | Release concerns |

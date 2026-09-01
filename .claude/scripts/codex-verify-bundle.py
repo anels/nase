@@ -68,6 +68,17 @@ SAFE_EXPRESSION_VALUE = re.compile(
     rb"[A-Z_][A-Z0-9_.]*\.(?:get|read|fetch|retrieve)_secret"
     rb")[ \t]*\([^\r\n]*\)$"
 )
+# `secret = find_one(...)` / `token = fetch()` - a call under any name whose argument list
+# holds no alphanumeric character. Two facts absolve it: a value produced by a call is
+# computed at run time (the COMMAND_SUBSTITUTION_VALUE argument), and an argument list
+# without alphanumerics cannot carry a credential, since every format in SECRET_PATTERNS and
+# every literal the assignment branch flags needs them. Prose quoting a code line is what
+# needs this: a daily log describing this scanner's own `secret = find_one(...)` failed the
+# workspace scan. The bar is alphanumeric-free rather than merely quote-free so that no call
+# wrapper can launder a literal - `SecretStr("abc")` and `decrypt(letmein12)` stay flagged.
+# Nested parens are excluded so the span stays anchored to one call. Calls with real
+# arguments are covered, by name, by SAFE_EXPRESSION_VALUE and REFERENCE_VALUE above.
+CALL_EXPRESSION_VALUE = re.compile(rb"^[A-Za-z_][A-Za-z0-9_.]*\([^A-Za-z0-9()\r\n]*\)$")
 # `$(cmd --flag value)` — a shell/ADO command substitution that fetches the credential at
 # run time. Arguments are allowed, so this cannot reuse REFERENCE_VALUE's bare `$(NAME)`
 # alternative. Nested parens are excluded so the span stays anchored to one substitution.
@@ -187,6 +198,7 @@ def reference_like(value: bytes) -> bool:
         if (
             REFERENCE_VALUE.fullmatch(candidate)
             or SAFE_EXPRESSION_VALUE.fullmatch(candidate)
+            or CALL_EXPRESSION_VALUE.fullmatch(candidate)
             or COMMAND_SUBSTITUTION_VALUE.fullmatch(candidate)
             or EMBEDDED_COMMAND_SUBSTITUTION.search(candidate)
             or BARE_COMMAND_SUBSTITUTION.fullmatch(candidate)
