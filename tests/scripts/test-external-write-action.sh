@@ -127,6 +127,30 @@ expect_rc "equals-form GitHub field mutation is blocked" 10 \
 expect_rc "equals-form GitHub input mutation is blocked" 10 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" guard --command \
     "gh api repos/owner/example/issues --input=payload.json"
+printf 'reply prose\n' > "$TMPDIR_TEST/reply.md"
+jq -n --rawfile body "$TMPDIR_TEST/reply.md" '{body:$body}' > "$TMPDIR_TEST/payload.json"
+REPLY_ENDPOINT="/repos/owner/example/pulls/1/comments/2/replies"
+
+expect_rc "raw-field @file body is blocked because gh sends it literally" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system github --summary "reply with literal path" -- \
+    gh api --method POST "$REPLY_ENDPOINT" -f "body=@$TMPDIR_TEST/reply.md"
+if grep -q -- '--input' "$TMPDIR_TEST/err"; then
+  report 0 "raw-field @file rejection names the --input replacement"
+else
+  report 1 "raw-field @file rejection names the --input replacement" "$(cat "$TMPDIR_TEST/err")"
+fi
+
+expect_rc "attached raw-field @file body is blocked" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system github --summary "reply with literal path" -- \
+    gh api --method POST "$REPLY_ENDPOINT" "--raw-field=body=@$TMPDIR_TEST/reply.md"
+
+expect_rc "jq-built --input reply payload is accepted" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system github --github-owner owner --summary "reply to review comment 2" -- \
+    gh api --method POST "$REPLY_ENDPOINT" --input "$TMPDIR_TEST/payload.json"
+
 expect_rc "duplicate GitHub target selectors are blocked" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
     --system github --summary "conflicting target" -- \

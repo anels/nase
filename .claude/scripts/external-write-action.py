@@ -309,6 +309,35 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
     return files
 
 
+def literal_at_file_fields(root: Path, argv: list[str]) -> list[str]:
+    """Find `gh api -f key=@path` fields that would post the path as literal text.
+
+    `-f/--raw-field` adds a string parameter verbatim; only `-F/--field` expands
+    `@path`. A reply drafted to a file and passed with `-f` therefore publishes the
+    local path instead of the prose, and the manifest still looks correct because
+    `payload_files` hashes the file it can see.
+    """
+    if not argv or Path(argv[0]).name.lower() != "gh" or argv[1:2] != ["api"]:
+        return []
+    offenders: list[str] = []
+    index = 2
+    while index < len(argv):
+        value = argv[index]
+        field: str | None = None
+        if value in {"-f", "--raw-field"} and index + 1 < len(argv):
+            field = argv[index + 1]
+            index += 1
+        elif value.startswith("--raw-field="):
+            field = value.split("=", 1)[1]
+        if field:
+            key, delimiter, text = field.partition("=")
+            if delimiter and text.startswith("@") and len(text) > 1:
+                if resolve_payload_path(root, text[1:]).is_file():
+                    offenders.append(f"{key}=@{text[1:]}")
+        index += 1
+    return offenders
+
+
 def github_repo_selector(value: str) -> tuple[str | None, str]:
     match = re.match(r"(?:https?|ssh)://(?:git@)?([^/]+)/([^/]+)/[^/]+", value)
     if match:
@@ -582,6 +611,15 @@ def action_payload(
         raise ActionError(f"system must be {actual_system} for this command")
     if github_owner and system != "github":
         raise ActionError("--github-owner is valid only for GitHub actions")
+    offenders = literal_at_file_fields(root, argv)
+    if offenders:
+        raise ActionError(
+            "gh api -f/--raw-field does not read files, so "
+            f"{', '.join(offenders)} would post the path as the body text; "
+            "build the payload with `jq -n --rawfile body \"$FILE\" '{body:$body}'` "
+            "and pass `--input \"$PAYLOAD_FILE\"` instead "
+            "(see .claude/docs/github-queries.md -> Reply To A Review Thread)"
+        )
     files = payload_files(root, argv, system)
     payload = {"argv": argv, "payload_files": files}
     action = {

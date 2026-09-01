@@ -246,7 +246,7 @@ python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
-- After the review submits, post any Step 3 batched reactions/replies the user agreed to. Each reaction/reply/resolve is its own `external-write-action.py` manifest with its own one-shot token - follow `.claude/docs/github-queries.md -> Resolve Review Threads` for the reply/resolve shapes; reply through the REST endpoint with the integer `databaseId`. Reactions use `gh api "repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions" --method POST --raw-field content="+1"` wrapped in the same manifest gate. Honor the 30-mutation throttle rule in that doc.
+- After the review submits, post any Step 3 batched reactions/replies the user agreed to. Each reaction/reply/resolve is its own `external-write-action.py` manifest with its own one-shot token - follow `.claude/docs/github-queries.md -> Reply To A Review Thread` for the reply shape (jq-built `--input` payload, integer `databaseId`, mandatory read-back check) and `-> Resolve Review Threads` for the resolve shape. Reactions use `gh api "repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions" --method POST --raw-field content="+1"` wrapped in the same manifest gate. Honor the 30-mutation throttle rule in that doc.
 
 ## Step 9 - Stage 5: completion message
 
