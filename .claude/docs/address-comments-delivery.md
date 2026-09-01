@@ -201,7 +201,7 @@ options:
 
 If skipped, report the pending reply/resolve payload and stop before Phase 9b.
 
-Prepare, show, authorize, and execute each reply and resolve separately with `external-write-action.py`; each action gets its own one-shot token. Reply through the REST endpoint with integer `databaseId`. Resolve with Shape A from `.claude/docs/github-queries.md -> Resolve Review Threads` and the GraphQL opaque `id`.
+Prepare, show, authorize, and execute each reply and resolve separately with `external-write-action.py`; each action gets its own one-shot token. Reply with the exact shape in `.claude/docs/github-queries.md -> Reply To A Review Thread` (jq-built `--input` payload, integer `databaseId`) - never improvise the `gh api` field flag, because `-f body=@FILE` silently posts the file path instead of the reply. Run that section's read-back verification after each reply: a mismatch means the reply did not land, so report the comment ID and leave the thread unresolved. Resolve with Shape A from `.claude/docs/github-queries.md -> Resolve Review Threads` and the GraphQL opaque `id`.
 
 Process `accept` and `reply-only` threads using this pattern (reply + resolve). For `decline` threads: **reply only, do NOT resolve** - the reviewer may want to respond or push back. Resolving a declined thread shuts down the conversation prematurely.
 

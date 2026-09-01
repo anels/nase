@@ -4,6 +4,7 @@
 
 - PR Metadata
 - Unresolved Review Threads
+- Reply To A Review Thread
 - Resolve Review Threads
 
 Shared query definitions referenced by nase skills.
@@ -70,6 +71,57 @@ python3 .claude/scripts/pr-github-helper.py review-threads "$PR_URL" --unresolve
 ```
 
 Filter threads where `isResolved == false`.
+
+---
+
+## Reply To A Review Thread
+
+Replying to an existing review comment is a REST write against the integer `databaseId` of the thread's first comment. Use this exact shape - the flag choice is not a style question, it decides whether the reviewer sees your text or a local file path.
+
+```bash
+REPLY_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-reply.XXXXXXXX.md")
+PAYLOAD_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-reply-payload.XXXXXXXX.json")
+chmod 600 "$REPLY_FILE" "$PAYLOAD_FILE"
+# write the drafted reply text into "$REPLY_FILE" first, then:
+jq -n --rawfile body "$REPLY_FILE" '{body:$body}' > "$PAYLOAD_FILE"
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --github-owner "{owner}" \
+  --summary "reply to review comment {databaseId}" -- \
+  gh api --method POST "/repos/{owner}/{repo}/pulls/{pr_number}/comments/{databaseId}/replies" \
+    --input "$PAYLOAD_FILE" | jq -r .manifest)
+jq . "$MANIFEST"
+# AskUserQuestion approved this exact manifest. Then:
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+NEW_ID=$(python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST" | jq -r .id)
+```
+
+### Read-back verification (mandatory)
+
+The reply body only exists correctly if GitHub stored what you wrote, so confirm at the consumer boundary before reporting the thread as answered or resolving it:
+
+```bash
+POSTED_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-reply-posted.XXXXXXXX.md")
+gh api "repos/{owner}/{repo}/pulls/comments/$NEW_ID" --jq .body | tr -d '\r' > "$POSTED_FILE"
+if [[ "$(cat "$POSTED_FILE")" == "$(tr -d '\r' < "$REPLY_FILE")" ]]; then
+  printf 'reply %s verified\n' "$NEW_ID"
+else
+  diff "$REPLY_FILE" "$POSTED_FILE" || true
+  printf 'POSTED BODY MISMATCH for comment %s - inspect before resolving\n' "$NEW_ID"
+fi
+```
+
+`$(cat …)` strips trailing newlines on both sides and `tr -d '\r'` absorbs line-ending normalization, so this compares content only and does not fire on cosmetic differences. On mismatch, report the comment ID and the diff, do not resolve the thread, and fix the body with a gated `--method PATCH` on `repos/{owner}/{repo}/pulls/comments/$NEW_ID` using the same `--input` payload shape.
+
+### Never use `-f body=@FILE`
+
+`gh api -f/--raw-field` adds a **literal string** parameter and performs no `@` expansion (`gh api --help`: only `-F/--field` documents `use "@<path>" or "@-" to read value from file or stdin`). `-f body=@/tmp/reply.md` therefore posts the path itself as the comment body, publishes a local scratchpad path to the PR, and loses the drafted reply.
+
+`external-write-action.py` does not save you here: it recognizes `body=@path` as a payload file and records its sha256, so the manifest looks correct while the argv still sends the literal text. Treat the manifest's `payload_files` entry as proof the file exists, never as proof the file's contents are what gets sent. The `prepare` step now hard-blocks this specific mistake, but the read-back check above is what catches the general class.
+
+Notes:
+- `databaseId` is the integer from `reviewThreads.nodes[].comments.nodes[0].databaseId` - **not** the GraphQL opaque `id`, which is only for `resolveReviewThread`.
+- The same `--input` payload shape applies to any `gh api` write whose body is prose: PR review submissions, issue comments, comment edits.
+- Do not `trap ... EXIT` on these files. Prepare, execute, and read-back run in separate shells, so an EXIT trap deletes the payload before `execute` re-hashes it and the action fails on payload drift. `rm -f "$REPLY_FILE" "$PAYLOAD_FILE" "$POSTED_FILE"` explicitly after the read-back passes.
 
 ---
 
