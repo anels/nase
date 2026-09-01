@@ -8,6 +8,7 @@
 - Terminal Destination
 - Drift Auto-Sync
 - Multi-Deliverable Efforts
+- Classifier Blind Spots
 - Dependency & Discovery Fields
 - PR Reference Resolution
 - Single-File Invariant
@@ -247,6 +248,56 @@ started", "remains pending", "yet to be opened") and a novel wording will slip p
 into `## Lifecycle`, or a row nobody ticked after the work shipped — fix the document:
 tick it, reword it, or move it out of the section. Do not work around the gate; the
 row is the contract, and a wrong row will mislead the next reader too.
+
+## Classifier Blind Spots
+
+`effort-state.py` is the source of truth for the transition, but three things it reports
+are silences rather than facts. Each has produced a confident wrong answer, so a caller
+that reads the JSON and stops will repeat them. Run
+`python3 .claude/scripts/effort-pr-sweep.py --check-reverts` before trusting a
+sweep-wide read; it covers the first and the revert trap mechanically in one pass.
+
+**1. The delivery set only sees canonically-labelled rows.** It is built from `pr:`/`prs:`
+frontmatter plus rows whose label starts with `PR opened`. A row labelled `PR2 opened`,
+`PR-3b`, `W8 PR opened` or `PR 2 — ` cites a real delivery PR and is invisible, so a
+six-PR effort can classify and transition as a one-PR effort. Measured 2026-08-31: 14 of
+52 active efforts had at least one invisible PR, and four had a materially wrong state as
+a result. This - not a flaw in the rule - is why multi-PR initiatives appeared to
+"misjudge": the rule was reading a one-PR document correctly.
+
+Repair by keeping the canonical label and moving the effort's own number into the body:
+
+```markdown
+- [x] PR opened — **PR-2** — https://github.com/acme/platform/pull/102
+```
+
+Do **not** relabel every cited PR. Cherry-picks, withdrawn PRs, sibling-effort
+dependencies, spikes, `Follow-up:` rows and "Phase N completed" summaries all name PRs
+the delivery set should not carry, and pulling them in fires transitions on evidence that
+is not this effort's delivery. The sweep hints at each class; the caller still classifies.
+
+**2. `pending_followups: 0` and an empty `undelivered` do not mean nothing is owed.**
+Outstanding work written as prose *inside* a long row is invisible to both. `Deployed`
+rows in particular accumulate hundreds of characters of ring evidence and then end with
+the actual blocker - "what is still owed is a first-time deploy on a fresh cluster",
+"the only live item left is the Repair v2". A truncated grep of the lifecycle section
+shows the reassuring first half. Before reporting any effort as complete or closeable,
+read the **full text** of every unchecked row (`sed -n '<N>p' <file>`, not a truncated
+grep).
+
+**3. The hold only scans `## Lifecycle`.** Unchecked implementation-plan checkboxes are
+ignored by design, because authors leave them stale after the work lands. The cost is
+that an effort whose remaining deliverable is recorded *only* there will auto-close the
+moment its last Lifecycle row is ticked. When real outstanding work lives in the plan,
+promote it to a Lifecycle row - that is the only place the gate can see it.
+
+**Ancestry cannot see a revert.** A reverted PR's merge commit stays an ancestor of every
+ring forever, so `--is-ancestor`, `--contains` and the compare API all report it as
+shipped. `--check-reverts` finds the revert commit by PR number; confirm by grepping a
+symbol the PR *added* at the ring commit, because that is the only check that
+distinguishes "in history" from "in the build". Resolve merge SHAs with
+`gh pr view <n> --json mergeCommit` and never `git log --grep='(#N)'`, which matches the
+revert's own subject and cherry-pick backports.
 
 ## Dependency & Discovery Fields
 

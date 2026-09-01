@@ -2,12 +2,12 @@
 # kb-domain-resolve.sh — Resolve a repo name or domain key to its KB file path
 #
 # Usage: bash .claude/scripts/kb-domain-resolve.sh <repo-name-or-domain-key>
-# Output (stdout): relative path to KB file, e.g. workspace/kb/projects/insights-monitoring.md
+# Output (stdout): relative path to KB file, e.g. workspace/kb/projects/platform-monitoring.md
 # Exit 0: found; Exit 1: not found (error on stderr)
 #
 # Examples:
-#   bash .claude/scripts/kb-domain-resolve.sh "Insights-Monitoring"
-#   bash .claude/scripts/kb-domain-resolve.sh "insights-monitoring"
+#   bash .claude/scripts/kb-domain-resolve.sh "Platform-Monitoring"
+#   bash .claude/scripts/kb-domain-resolve.sh "platform-monitoring"
 #   bash .claude/scripts/kb-domain-resolve.sh "SRE"
 
 set -euo pipefail
@@ -35,7 +35,7 @@ fi
 # Normalize: lowercase, collapse spaces/underscores to hyphens
 DOMAIN_KEY=$(echo "$INPUT" | tr '[:upper:]' '[:lower:]' | tr '_' '-' | tr ' ' '-')
 
-# Match lines like: - insights-monitoring → workspace/kb/projects/insights-monitoring.md
+# Match lines like: - platform-monitoring → workspace/kb/projects/platform-monitoring.md
 # Also handles: - sre → workspace/kb/ops/sre.md
 KB_PATH=$(grep -E "^[[:space:]]*-[[:space:]]+${DOMAIN_KEY}[[:space:]]+→" "$DOMAIN_MAP" \
   | sed -E 's/.*→[[:space:]]*//' \

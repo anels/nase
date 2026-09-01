@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -527,17 +528,28 @@ BOT_LOGINS = {
     "codex-bot",
     "claude",
     "claude[bot]",
-    # epixa severity bot: re-posts declined findings as new threads per push, and
-    # its login has no [bot]/-bot suffix, so the suffix rule below misses it.
-    "uipathepixa",
 }
+# Org review bots whose login carries no `[bot]`/`-bot` suffix have to be named, and the
+# suffix rule below cannot infer them. Naming one org's accounts in a shared file would ship
+# that org's internals to every other user, so they come from the environment instead:
+# `NASE_BOT_LOGINS=severity-reviewer,another-bot` (comma-separated, case-insensitive).
+EXTRA_BOT_LOGINS = frozenset(
+    entry.strip().lower()
+    for entry in os.environ.get("NASE_BOT_LOGINS", "").split(",")
+    if entry.strip()
+)
 
 
 def is_bot_login(login: str | None) -> bool:
     if not login:
         return False
     lowered = login.lower()
-    return lowered in BOT_LOGINS or lowered.endswith("[bot]") or lowered.endswith("-bot")
+    return (
+        lowered in BOT_LOGINS
+        or lowered in EXTRA_BOT_LOGINS
+        or lowered.endswith("[bot]")
+        or lowered.endswith("-bot")
+    )
 
 
 def bot_decline_candidates(threads: list[dict[str, Any]], max_body_chars: int) -> list[dict[str, Any]]:

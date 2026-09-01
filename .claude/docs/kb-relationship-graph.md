@@ -8,7 +8,7 @@ Used by `/nase:kb-review` under *Deep review -> Content and relationships*. Buil
 
 **Explicit links** — count existing `> See also:` lines in each file. Parse the markdown link target to identify which KB file is referenced. Record inbound and outbound counts per file.
 
-**Implicit mentions** — for each KB file, extract its basename without extension (e.g., `insights-monitoring` from `insights-monitoring.md`). Then scan every OTHER file's content for that basename string (case-insensitive). A match means the other file implicitly references this one. Exclude:
+**Implicit mentions** — for each KB file, extract its basename without extension (e.g., `platform-monitoring` from `platform-monitoring.md`). Then scan every OTHER file's content for that basename string (case-insensitive). A match means the other file implicitly references this one. Exclude:
 
 - Self-references (file mentioning its own basename)
 - Matches inside `> See also:` lines (already counted as explicit)
@@ -37,7 +37,7 @@ Each subsection is capped to prevent output bloat. The caller parses `--verbose`
 ### 🔗 Hub files (top 5 by total connections)
 | File | In (explicit) | In (implicit) | Out (explicit) | Out (implicit) | Total |
 |------|--------------|--------------|----------------|----------------|-------|
-| projects/insights.md | 5 | 12 | 9 | 3 | 29 |
+| projects/platform.md | 5 | 12 | 9 | 3 | 29 |
 | ... | ... | ... | ... | ... | ... |
 
 ### 🏝️ Orphans (zero inbound references — max 10)
@@ -45,7 +45,7 @@ Each subsection is capped to prevent output bloat. The caller parses `--verbose`
 - ...
 
 ### 🔄 Clusters (groups of 3+ mutually-referencing files — max 5)
-- **insights-* family:** insights.md ↔ insights-monitoring.md ↔ insights-containerimages.md ↔ insights-dashboarding.md ↔ insights-ops.md
+- **platform-* family:** platform.md ↔ platform-monitoring.md ↔ platform-containerimages.md ↔ platform-dashboarding.md ↔ platform-ops.md
 - ...
 
 ### ➡️ Missing reciprocal links (A links to B, but B doesn't link back — max 10)

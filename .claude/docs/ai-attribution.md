@@ -41,7 +41,7 @@ Workspace-root `.local-paths` stores one line per repo:
 - `on` — include AI attribution (commit trailer + PR description footer)
 - `off` — strip AI attribution
 
-`{RepoName}` matches the existing repo key in `.local-paths` (e.g., `Insights`, `service-fabric-packaging`).
+`{RepoName}` matches the existing repo key in `.local-paths` (e.g., `Platform`, `service-fabric-packaging`).
 
 ---
 

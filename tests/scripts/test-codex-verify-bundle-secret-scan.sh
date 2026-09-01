@@ -425,6 +425,36 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(module.secret_kind(source), "credential-assignment")
 
+    def test_call_expression_values_are_not_credentials(self):
+        # Prose quoting a code line is the common source: the daily log that reported
+        # `secret = find_one(...)` failed the workspace scan before this rule.
+        for source in (
+            b"fails closed on a `client_" + b"secret" + b" = find_one(...)` line",
+            b"pass" + b"word = fetch()",
+            b"api_" + b"key" + b"=lookup.api_key(...)",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_call_expression_rule_stays_narrow(self):
+        # An alphanumeric argument keeps the value flagged, so no call wrapper can launder a
+        # pasted literal, and a trailing tail is not a call at all.
+        for source in (
+            b"client_" + b"secret" + b" = wrap(hardcoded-canary-4831)",
+            b"pass" + b"word = wrap('hardcoded-canary-4831')",
+            b"pass" + b"word = decrypt(letmein12)",
+            b"api_" + b"key" + b" = fetch()extra",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_call_expression_does_not_mask_a_later_secret(self):
+        source = (
+            b"secret" + b" = find_one(...)\n"
+            + b"client_secret" + b'="hardcoded-canary-4831"\n'
+        )
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_dictionary_password_sample_is_still_flagged(self):
         # A short word+digits value carries no reference or placeholder shape. Accepting it
         # would blind the scanner to exactly the weak credentials it exists to catch.

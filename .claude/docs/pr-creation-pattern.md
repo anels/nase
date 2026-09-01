@@ -63,7 +63,7 @@ This applies to every section of the PR body (Summary, Changes, Test Plan, Verif
 - Link to a committed in-repo doc (e.g. `docs/...` that exists on the branch).
 
 **Example — wrong:**
-> Implements Phase 2.3 from effort doc: `workspace/efforts/insights-increase-code-coverage.md`.
+> Implements Phase 2.3 from effort doc: `workspace/efforts/platform-increase-code-coverage.md`.
 
 **Example — right:**
 > Implements Phase 2.3 of the coverage initiative ([PROJ-1234](https://your-org.atlassian.net/browse/PROJ-1234)): raise `BuildHandler` unit-test coverage from 42% → 70%.

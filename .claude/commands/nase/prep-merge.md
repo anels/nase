@@ -12,7 +12,7 @@ Prepare one PR without merging it. Follow `.claude/docs/language-config.md` → 
 
 1. Parse the PR and repository, verify `gh` identity/access, load the repo KB/CLAUDE.md, and fetch current PR/base/head state.
 2. Stop on a closed/merged PR, missing head, inaccessible repo, dirty target worktree, or unexpected branch ownership.
-3. Fetch unresolved review threads and current-head CI. Auto-resolve only explicitly obsolete bot-declined threads after showing the exact set and receiving immediate approval. The `uipathepixa` severity bot re-fires declined findings after a push; surface a repeated finding and stop instead of silently resolving it again. Any remaining actionable thread blocks history rewriting.
+3. Fetch unresolved review threads and current-head CI. Auto-resolve only explicitly obsolete bot-declined threads after showing the exact set and receiving immediate approval. A severity bot (any login in `BOT_LOGINS` or `NASE_BOT_LOGINS`) re-fires declined findings after a push; surface a repeated finding and stop instead of silently resolving it again. Any remaining actionable thread blocks history rewriting.
 4. Run the repo's required verification before rebase/squash. Apply `.claude/docs/build-test-loop.md` and `.claude/docs/anti-rationalization.md`; environment-only gaps remain explicit.
 5. Create an isolated worktree through `.claude/docs/worktree-pattern.md`. Rebase on the fetched base and re-run focused verification when conflict resolution changes code.
 6. Inspect `origin/{base}..HEAD`. If multiple commits remain, derive one truthful conventional message and squash from the verified merge base. Never use a stale base or destructive reset outside the isolated worktree.

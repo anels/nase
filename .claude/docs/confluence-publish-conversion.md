@@ -50,7 +50,7 @@ runnable regressions are in `tests/fixtures/confluence-publish/`. On the same in
 | Source | Emitted | Pages | Visuals |
 |---|---|---|---|
 | `retro-q2-2026-share.html` | 30 569 B (23 657 B without placeholders) | 1 | 7 |
-| `Insights_Cost_Report-2026-07.html` | 40 720 B (34 581 B without placeholders) | 1 | 11 |
+| `Platform_Cost_Report-2026-07.html` | 40 720 B (34 581 B without placeholders) | 1 | 11 |
 | `effort-rollup-2026-07.html` | 133 893 B (119 338 B without placeholders) | 4 | 11 |
 | `tech-digest-2026-08-09.md` | 14 116 B | 1 | 0 |
 
@@ -108,7 +108,7 @@ stranded `<hr>`, which is what a separator inside a dropped container leaves beh
 resolves from the leading `# Title`. Titles are clamped to 255 chars, heading fragments to 60.
 
 **Count anything only after `<style>`, `<script>`, and comments are stripped.** A raw regex
-over `Insights_Cost_Report-2026-07.html` finds 12 `<svg>`; the twelfth is the literal text
+over `Platform_Cost_Report-2026-07.html` finds 12 `<svg>`; the twelfth is the literal text
 `<svg>` inside a CSS comment.
 
 ## Void elements

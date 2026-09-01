@@ -79,7 +79,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
   - `security` — auth, secrets, vulnerability patterns
   - `workflow` — dev process, tool usage, habits
   - `debugging` — diagnostic technique, root-cause pattern
-- `**Applies-to:**` — only when the insight is narrower than the KB file's scope (e.g., a `general/` file entry that only applies to `insights` and `uipathctl`); omit if obvious from the file's context
+- `**Applies-to:**` — only when the insight is narrower than the KB file's scope (e.g., a `general/` file entry that only applies to `platform` and its CLI); omit if obvious from the file's context
 - `**Confidence:**` — `medium` for web-sourced or single-observation patterns; `low` for unverified hypotheses; omit entirely for well-tested, directly observed patterns (high confidence is the default)
 
 5. If the learning is cross-cutting (affects multiple KB files), update all relevant files.

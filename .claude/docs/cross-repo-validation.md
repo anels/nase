@@ -22,7 +22,7 @@ The three checks below are independent. Skip any that the user opts out of. In b
 ## Inputs
 
 - All `workspace/kb/projects/*.md` files (one per repo)
-- `workspace/kb/cross-project/insights-integrations.md` (or the configured cross-project tracker file)
+- `workspace/kb/cross-project/platform-integrations.md` (or the configured cross-project tracker file)
 - `workspace/context.md` (team roster + declared focus areas)
 - `.local-paths` (repo paths for git operations)
 
@@ -81,7 +81,7 @@ Never silently update either file — the user owns the truth-source.
 
 ## 6b. Auto-Update Cross-Project Tracker
 
-Re-derive the cross-project tracker (e.g. `workspace/kb/cross-project/insights-integrations.md`) from per-repo KB content so it stays in sync with reality.
+Re-derive the cross-project tracker (e.g. `workspace/kb/cross-project/platform-integrations.md`) from per-repo KB content so it stays in sync with reality.
 
 ### When to run
 
