@@ -31,7 +31,7 @@ Follow `.claude/docs/pr-input-guard.md`. On empty input, ask for one PR URL with
 - The final post-Phase-4 dossier/action map is the only category source for delivery.
 - Every `accept` thread must produce the planned code diff and adequate test evidence. A no-diff accept blocks delivery.
 - `decline` threads receive a reply but stay unresolved. `accept` and `reply-only` threads reply first, then resolve.
-- PR Gates are skipped. Do not run `gh pr checks`, poll CI, or claim PR gates are green.
+- PR Gates are skipped. Do not run `gh pr checks`, poll CI, or claim PR gates are green. A post-push CI failure surfaces on the PR like any other; the user runs another round or fixes it directly.
 - Slack messages are drafts only. This command never sends them.
 - Never force-push and never weaken tests to make them pass.
 

@@ -1,6 +1,6 @@
 # Codex Verification Bundle
 
-This document owns the local artifact passed to FSD quality and spec reviewers. Review invocation and action reduction live in `.claude/docs/fsd-delivery-gates.md` and `.claude/scripts/fsd-review-gate.py`.
+This document owns the local artifact passed to the FSD reviewer that covers both code quality and spec conformance. Review invocation and action reduction live in `.claude/docs/fsd-delivery-gates.md` and `.claude/scripts/fsd-review-gate.py`.
 
 ## Build
 

@@ -21,7 +21,7 @@ Do not treat "AI-looking code" as AI-authored. Guessing authorship creates noisy
 Record `ai_provenance = explicit` only when at least one concrete artifact says so:
 - Git author, committer, co-author, or trailer names a known AI agent or bot.
 - PR body, commit message, branch metadata, review comment, session log, or tool log says the change was AI-generated or AI-assisted.
-- GitHub login is a known bot or AI-reviewer account such as `copilot-pull-request-reviewer`, `chatgpt-codex-connector`, `coderabbitai`, `claude`, `sonarcloud`, or a login ending in `[bot]` / `-bot`.
+- GitHub login is a known bot or AI-reviewer account. `is_bot_login` in `.claude/scripts/pr-github-helper.py` is the authority - it covers `copilot-pull-request-reviewer`, `chatgpt-codex-connector`, `coderabbitai`, `claude`, `sonarcloud`, the `[bot]` / `-bot` suffixes, and any login in `NASE_BOT_LOGINS`. Add a newly seen account there rather than judging it here, so the review skills and this check cannot disagree.
 - Local workspace logs explicitly connect the session to the change under review.
 
 Otherwise record `ai_provenance = none-found`. Never infer AI provenance from style, formatting, verbosity, or perceived code shape.

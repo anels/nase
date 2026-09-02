@@ -5,25 +5,20 @@ This reference owns the conditional delivery controls used by `/nase:fsd`. It pr
 ## Contents
 
 - [Phase 6.4: Candidate Review](#phase-64-candidate-review)
-- [Phase 8: Draft Pull Request and Verification Matrix](#phase-8-pull-request-if-pr--yes)
+- [Phase 8: Pull Request](#phase-8-pull-request-if-pr--yes)
+- [Phase 8.5: Verification Matrix](#phase-85-verification-matrix)
 - [Phase 8c: KB Update](#phase-8c-kb-update)
 - [Phase 10: Report](#phase-10-report)
 
 ## Phase 6.4: Candidate Review
 
-One review covers both code quality and spec conformance, and its verdict is applied rather than re-litigated. Two reviews over three rounds re-read the same candidate up to six times to reach a decision that was usually available on the first read; the cost of that was paid in tokens and wall-clock on every FSD run, while the extra rounds mostly re-confirmed the first verdict. A single pass keeps the part that catches real defects and drops the part that was re-reading its own conclusions.
+One review covers both code quality and spec conformance, and its verdict is applied rather than re-litigated.
 
 Run this after simplification, formatters, focused tests, canonical tests, flake checks, and the final size guard. Do not retain or reuse an earlier verdict.
 
-### What one pass costs you, and how to hold it
+Because the pass happens once, an `AUTOFIX` repair applied after it is never reviewed: the deterministic gates re-run and catch a build or test regression, but nothing re-examines design, naming, or test quality in the repaired lines. That is why `AUTOFIX` sets `disclose_unreviewed_repair` and Phase 10 must name the repaired files. Silently shipping an unreviewed repair is the one outcome this design must not produce.
 
-The pass happens once, so a repair applied after it is never seen by a reviewer. The deterministic gates still re-run over the repaired tree and will catch a build or test regression, but nothing re-examines design, naming, or test quality in the repaired lines. That is an accepted trade, not an invisible one: when the reducer returns `AUTOFIX` it sets `disclose_unreviewed_repair`, and Phase 10 must then state that the reviewed tree is not the tree that shipped and name the files the repair touched. A reader of the PR can then weigh it. Silently shipping an unreviewed repair is the one outcome this design must not produce.
-
-Two attempts do not consume the pass, because neither says anything about the candidate:
-- a result the reducer cannot parse is a format slip by the reviewer
-- a context request means the reviewer could not see a blob the bundle should have carried
-
-Each is allowed once. Anything beyond that is an infrastructure problem, not a quality signal.
+An `INVALID` result or a `CONTEXT` request does not consume the pass, because neither says anything about the candidate - one is a reviewer format slip, the other a blob the bundle should have carried. Each is allowed once. Past that it is not a quality signal but a terminal state the Actions table names: `blocked-infrastructure` for a second `INVALID`, `blocked-evidence` for a second `CONTEXT`.
 
 ### Generate the contract
 
@@ -61,13 +56,13 @@ Do not include implementation reasoning, a proposed verdict, or prior reviewer t
 
 Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design search, architecture boundaries, security/privacy, reliability/data integrity, concurrency, compatibility/migration, performance, UI/accessibility, deployment/operability, testability, and comment quality.
 
-The result shape is deliberately asymmetric about where prose is required, because prose is where the tokens go and most of it was being spent on axes that passed. A conditional axis that passes proves it was actually looked at with one short evidence string; the three required axes and anything that is not `PASS` still carry a full reason, because those are the ones a human will have to act on.
+A conditional axis that passes proves it was looked at with one short evidence string; the three required axes and anything that is not `PASS` carry a full reason, because those are the ones a human acts on.
 
-`findings` holds only `P0` and `P1` — things that must change before this ships. Everything else worth mentioning goes in `deferred` as a one-line string with `path:line`. A deferred note has no severity, no repair fields, and no blocker, so the rule that a non-blocking finding must not claim to be autofixable has nothing left to violate. That rule used to be enforced in prose and was violated in practice, costing a whole round to a review whose substance was fine.
+`findings` holds only `P0` and `P1` - things that must change before this ships. Everything else worth mentioning goes in `deferred` as a one-line string with `path:line`, carrying no severity, no repair fields, and no blocker.
 
 The `test_quality` axis is blocking. It must judge observable behavioral contracts, plausible failure power or a mutation seam, risk-appropriate positive/negative/boundary/error paths, regression fidelity, concrete assertions over values/state/side effects/absence, isolation of nondeterministic inputs, mock fidelity, retry/order/concurrency/locale/timezone determinism, and whether parameterized cases add distinct behavior. Source-text grep, incidental snapshots, test count, and line coverage cannot alone prove behavior.
 
-The `comment_quality` lens judges comment necessity and concision as well as truth, against `.claude/docs/code-comment-policy.md`: a comment that restates the code, narrates the change, or asserts an unanchored *why* is a finding even when it is accurate, and a mandated public-API doc comment is not. When a comment and the code disagree, decide which one is wrong before repairing anything — if the code is wrong, the finding belongs on `correctness` at its own severity, because rewriting the comment to match buggy code cements the bug and destroys the last evidence of intended behavior.
+The `comment_quality` lens scores necessity and concision as well as truth, against `.claude/docs/code-comment-policy.md` - an accurate comment that the policy says never earns its place is still a finding. When a comment and the code disagree, the policy's *Existing comments* rule decides which one is wrong; if the code is wrong, the finding belongs on `correctness` at its own severity, not here.
 
 Since a `deferred` note is never repaired, use it only for things you are content to ship. A comment you actually want gone is a `P1` whose `smallest_fix` is the deletion; cluster every occurrence into that one finding, anchored at the first with the siblings in `evidence`.
 
@@ -97,7 +92,7 @@ The reducer rejects unknown keys, invalid enum values, contradictory axis/findin
 | Action | FSD behavior |
 |---|---|
 | `PROCEED` | Set `approved_candidate_tree_oid` and continue to Phase 7. |
-| `AUTOFIX` | Apply every bounded finding, missing requirement, and scope repair. Do not ask the user and do not report them as blockers. Re-run the Phase 6.1 deterministic gates over the repaired tree, refreeze the candidate, then continue to Phase 7 — there is no second review. Carry `disclose_unreviewed_repair` into Phase 10. |
+| `AUTOFIX` | Apply every bounded finding, missing requirement, and scope repair. Do not ask the user and do not report them as blockers. Re-run the Phase 6.1 deterministic gates over the repaired tree, refreeze the candidate, then continue to Phase 7 - there is no second review. Carry `disclose_unreviewed_repair` into Phase 10. |
 | `CONTEXT` | Rebuild the bundle with `--context-request-file "{decision_json}"`, increment the round, and re-run the reviewer once. A second `CONTEXT` is `blocked-evidence`. |
 | `NEEDS_HUMAN` | Stop for the allowed blocker the reducer named. |
 | `INVALID` or `STALE` | Re-request a fresh result from the provider at the same round, once. A second one is `blocked-infrastructure`. |
@@ -118,7 +113,7 @@ After a human resolves one, record the decision, discard the terminal state and 
 
 Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors (relevant in team mode).
 
-Then apply `.claude/docs/pr-gates-consumption.md` §3 with the Phase 1 `gate_profile`: ensure a required ticket key sits in the documented PR-title position, every required PR-body section exists at its minimum length, and — if the diff crossed a `gate_profile.size` threshold that mandates it — `## How to Review` is filled. Never invent a ticket key; keep the placeholder and flag it if unknown.
+Then apply `.claude/docs/pr-gates-consumption.md` §3 with the Phase 1 `gate_profile`: ensure a required ticket key sits in the documented PR-title position, every required PR-body section exists at its minimum length, and - if the diff crossed a `gate_profile.size` threshold that mandates it - `## How to Review` is filled. Never invent a ticket key; keep the placeholder and flag it if unknown.
 
 Before the GitHub actions below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`. Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command.
 

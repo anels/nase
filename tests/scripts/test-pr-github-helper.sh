@@ -300,6 +300,11 @@ assert 'return "head"' in t1["headExcerpt"]["content"]
 assert t1["baseExcerpt"]["available"] is True
 assert t1["diffAvailable"] is True
 assert t1["comments"][0]["body"].endswith("...")
+# The reviewer-facing branches (no courtesy opener for a bot decline, no Slack re-review
+# ping for a bot) read this flag instead of re-deriving the bot set in prose.
+assert t1["comments"][0]["authorIsBot"] is True, "suffix-less bot login 'claude'"
+assert t1["firstComment"]["authorIsBot"] is True
+assert data["threads"][1]["comments"][0]["authorIsBot"] is False, "human login 'carol'"
 PY
 
 prep_out="$TMPDIR_TEST/prep-state.json"
@@ -336,6 +341,11 @@ assert mod.is_bot_login("github-actions[bot]") is True
 assert mod.is_bot_login("some-bot") is True
 assert mod.is_bot_login("carol") is False
 assert mod.is_bot_login(None) is False
+
+# Suffix-less AI reviewers the shared docs name as bots must be in the default set, or the
+# Phase 9b reviewer-ping filter would Slack-DM them.
+for suffixless_ai_reviewer in ("chatgpt-codex-connector", "coderabbitai", "sonarcloud"):
+    assert mod.is_bot_login(suffixless_ai_reviewer) is True, suffixless_ai_reviewer
 
 # a bot-authored thread with a human decline is a bot-decline candidate.
 threads = [

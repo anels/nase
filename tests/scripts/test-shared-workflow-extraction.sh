@@ -59,7 +59,7 @@ done
 
 assert_contains "address-comments loads analysis on demand" .claude/commands/nase/address-comments.md 'address-comments-analysis\.md'
 assert_contains "address-comments loads delivery after confirmation" .claude/commands/nase/address-comments.md 'address-comments-delivery\.md'
-assert_contains "address-comments delivery skips PR gates" .claude/docs/address-comments-delivery.md 'PR Gates .* Skip'
+assert_contains "address-comments entrypoint skips PR gates" .claude/commands/nase/address-comments.md 'PR Gates are skipped'
 assert_not_contains "address-comments delivery does not run gh pr checks" .claude/docs/address-comments-delivery.md 'gh pr checks'
 assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/docs/address-comments-delivery.md 'pr-gate-remediation'
 assert_not_contains "address-comments does not claim PR gates green" .claude/docs/address-comments-delivery.md 'PR gates: all green'
