@@ -80,7 +80,7 @@ Carry `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findi
 Use the `task_type`, `principle_order`, `reuse_findings`, and `pre_impl_grep_findings` captured in Phase 3.6, plus `design_constraints` and `success_criteria_from_design` from Phase 1 when present - implementation must satisfy the design's constraints or stop and report the conflict, never silently diverge. Do not re-run the preflight unless the implementation scope changed.
 If `design_pr_plan` exists, preserve it unless the diff-size hard gate, repo boundary, release boundary, or a reviewer-owner boundary clearly forces a split. Implementation phases are not PR boundaries by themselves.
 
-**Comments - follow `.claude/docs/code-comment-policy.md`.** Default to none; apply the deletion test before writing one, prefer a better name or an extracted function over prose, and when a comment is warranted keep it to one anchored sentence about *why*. Never narrate the diff (`// added per review feedback`). Phase 6.4's `comment_quality` lens scores necessity and concision alongside accuracy, so unearned comments come back as findings.
+**Comments - follow `.claude/docs/code-comment-policy.md`.** Default to none. Phase 6.4's `comment_quality` lens scores against that policy, so an unearned comment comes back as a finding.
 
 **If execution mode = Team:**
 Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent prompt MUST include:**
@@ -156,17 +156,13 @@ Run these steps in order. Any candidate write restarts Phase 6. A read-only fail
 
 ### 1. CLI and formatter gates
 
-Follow `.claude/docs/cli-tooling.md`. Probe optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`, then run only gates matching changed files:
+Probe optional tools, then run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) plus any repo-specific gate named by `gate_profile.lint_gates`:
 
-- shell: `shellcheck` and `shfmt -d` when available
-- GitHub Actions: `actionlint`
-- Dockerfiles: `hadolint`
-- secret-risk changes: redacted `gitleaks detect`
-- edited YAML, TOML, XML, HCL, or JSON: parse the exact depended-on fields with an available native or repo tool
-- repeated structural edits: `ast-grep` when available
-- repo-specific gates named by `gate_profile.lint_gates`
+```bash
+python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json
+```
 
-Missing optional tools are warning-only unless the task explicitly depends on their evidence. Verify tool findings against the changed source before editing.
+For edited YAML, TOML, XML, HCL, or JSON, parse the exact depended-on fields rather than only linting the file. Missing optional tools are warning-only unless the task explicitly depends on their evidence.
 
 ### 2. Freeze the base and tested candidate
 
@@ -235,11 +231,10 @@ Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects s
 
 | Rationalization | Reality |
 |---|---|
-| "Linting / format warning is a false positive - leave it." | The CI gate doesn't read intent. Either silence with a justified `// noqa: <code>`-style comment or fix it. Re-running CI on a known-red diff burns minutes per cycle. |
-| "Failing CI test is flaky / unrelated - I'll re-run it." | Per `feedback_ci-unrelated-test-check-develop-first.md`: first `git log --since='48 hours ago' origin/{default} -- <test-path>` and rebase. That *attributes* the failure - it never excuses it. Per the **Engineering Excellence Bar**, a real failure or a flake gets fixed (root-cause the flake; quarantine + tracked follow-up only when the true fix is out of scope), even if pre-existing. Re-running until green is not a fix. |
-| "This comment / TODO is obvious - Phase 6 doesn't need to touch it." | Code/comment drift is the #1 source of stale review-cycles. If the comment no longer matches the post-Phase-4 code, fix it now - the reviewer will catch it and you'll re-push anyway. |
+| "Linting / format warning is a false positive - leave it." | The CI gate doesn't read intent. Either silence it with a justified `// noqa: <code>`-style comment or fix it. |
+| "Failing CI test is flaky / unrelated - I'll re-run it." | The **Engineering Excellence Bar** above already answers this: attribute, then fix either way. Re-running until green is not a fix. |
+| "This comment / TODO is obvious - Phase 6 doesn't need to touch it." | `.claude/docs/code-comment-policy.md -> Existing comments` owns this: editing code under a comment makes that comment yours. |
 | "Simplifier didn't find anything - diff is already clean." | Verify by reading the simplifier's output, not by inferring from silence. If the run produced no diff, log `simplify: no changes` once and proceed. Skipping the invocation is not equivalent. |
-| "I already squashed once today, second prep-merge can reuse." | Per `feedback_prep-merge-upstream-check.md`: `git log origin/{default}..HEAD` first. Base may have shifted; refresh PR body if so. |
-| "I'm confident the change is small enough to skip final QA." | Follow `.claude/docs/fsd-delivery-gates.md`; both final reviews are mandatory and bind to the candidate tree. |
+| "I'm confident the change is small enough to skip final QA." | Follow `.claude/docs/fsd-delivery-gates.md`; the candidate review is mandatory and binds to the candidate tree. |
 
 ---

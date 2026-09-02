@@ -27,6 +27,8 @@
 #   D21. discuss-pr loses outgoing-comment quality or review-state gates
 #   D22. KB writers regress to append-only refreshes, heartbeat facts, or placeholders
 #   D23. fsd/address-comments/simplify lose the code-comment default or the gate that scores it
+#   D24. a pipeline skill's phase number disagrees between its heading, its document's
+#        Contents list, and the cross-references that route to it
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -1051,6 +1053,107 @@ if [[ -n "$d23_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': fsd, address-comments, and simplify write against the code comment policy\n'
+fi
+
+# ---------- D24: pipeline phase numbering stays internally consistent ------
+section "D24: pipeline skills' phase numbers agree across heading, Contents, and cross-refs"
+d24_hits=$(python3 - <<'PY'
+import re
+from pathlib import Path
+
+# fsd and address-comments each spread their phases over an entrypoint plus two or three
+# phase documents, so one phase number lives in three places: the heading that owns it,
+# its document's Contents list, and every cross-reference that routes to it. Nothing else
+# compares those, and the drift reads as ordinary prose - a `## Phase 8.5` absent from its
+# Contents list, or a `Phase 6.5` reference surviving the phase being folded away. Both
+# shipped before this gate existed.
+SKILLS = {
+    "fsd": (
+        ".claude/commands/nase/fsd.md",
+        (
+            ".claude/docs/fsd-intake-and-setup.md",
+            ".claude/docs/fsd-implementation-loop.md",
+            ".claude/docs/fsd-delivery-gates.md",
+        ),
+    ),
+    "address-comments": (
+        ".claude/commands/nase/address-comments.md",
+        (
+            ".claude/docs/address-comments-analysis.md",
+            ".claude/docs/address-comments-delivery.md",
+        ),
+    ),
+}
+
+# A phase label is numeric with an optional decimal and an optional letter suffix (8b, 8c).
+LABEL = r"[0-9]+(?:\.[0-9]+)?[a-z]?"
+HEADING = re.compile(rf"^#{{2,3}} Phase ({LABEL})\b")
+TOC_ENTRY = re.compile(rf"^[-*] \[?Phase ({LABEL})")
+REFERENCE = re.compile(rf"\bPhase ({LABEL})\b")
+
+hits = []
+
+
+def contents_labels(lines):
+    """Phase labels listed in the document's own `## Contents` block."""
+    labels, inside = [], False
+    for line in lines:
+        if line.strip() == "## Contents":
+            inside = True
+            continue
+        if inside and line.startswith("## "):
+            break
+        if inside:
+            match = TOC_ENTRY.match(line)
+            if match:
+                labels.append(match.group(1))
+    return labels
+
+
+for skill, (entrypoint, phase_docs) in SKILLS.items():
+    files = (entrypoint, *phase_docs)
+    texts = {}
+    for name in files:
+        path = Path(name)
+        if not path.exists():
+            hits.append(f"  {name}: missing")
+            continue
+        texts[name] = path.read_text(encoding="utf-8")
+    if len(texts) != len(files):
+        continue
+
+    owner = {}
+    for name, text in texts.items():
+        for line in text.splitlines():
+            match = HEADING.match(line)
+            if match:
+                owner.setdefault(match.group(1), name)
+
+    for name in phase_docs:
+        lines = texts[name].splitlines()
+        listed = contents_labels(lines)
+        headings = [m.group(1) for line in lines if (m := HEADING.match(line))]
+        if listed != headings:
+            hits.append(
+                f"  {name}: Contents lists {listed} but the headings are {headings}"
+            )
+
+    for name, text in texts.items():
+        for label in sorted(set(REFERENCE.findall(text))):
+            if label not in owner:
+                hits.append(
+                    f"  {name}: 'Phase {label}' has no heading anywhere in /nase:{skill}"
+                )
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d24_hits" ]]; then
+  red "FAIL"; printf ': phase numbering drifted between headings, Contents lists, and cross-references:\n'
+  printf '%s\n' "$d24_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': fsd and address-comments phase numbers resolve consistently\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

@@ -9,7 +9,6 @@
 - Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
 - Phase 8: Commit & Push
 - Phase 8b: Update PR Description to Match Template
-- Phase 8.7: PR Gates - Skip
 - Phase 9: Reply & Resolve Comments
 - Phase 9b: Optional Reviewer Ping (Human Reviewers Only)
 - Phase 10: Learn
@@ -41,31 +40,36 @@ Read referenced file/line range. Apply the planned minimal change using repo sta
 
 If accepted change alters logic/adds path, ensure test coverage; add/update test if needed.
 
-**Code comments - follow `.claude/docs/code-comment-policy.md`.** Default to none. A thread that asks for a comment reports confusion, not the fix: comment only *why* facts anchored outside the code, and prefer a rename, an extraction, or a named test when the confusion is about *what* - then name that choice in the reply. Never add change-narration comments (`// per review feedback`, `// fixed in PR #123`); the diff already carries that. If you edit code under an existing comment, update or delete that comment in the same change.
+**Code comments - follow `.claude/docs/code-comment-policy.md`.** Default to none; its *When a reviewer asks for a comment* section owns this case.
 
-**Multi-case malformed-input checklist:** when a comment names multiple input cases that must land differently ("`null` and `[…]` both look like 'no value'", "string and list both should be malformed", "X / Y / Z should all surface as errors"):
-1. Write each named value as a checklist line.
-2. Map each value to its code landing site: `malformed` / `read_errors` / `silent` / `kept`.
-3. If any reviewer-named value lands in `silent`, the fix is not done. Revise until every named case reaches the intended branch.
-4. Verify with a fixture per named case before resolving.
+**Treat a reviewer's example as a bug class, not a line.** Two thread shapes need a sweep
+rather than a point fix, and the second is easy to miss because the reviewer names only one
+instance:
 
-Watch for per-type short-circuits (`if x is None: continue`) before the new gate; they can make a visible check unreachable.
+- The comment names several cases that must land differently - "`null` and `[...]` both
+  look like 'no value'", "string and list should both be malformed".
+- The comment names one instance of something that plausibly repeats - a wrong
+  `Constraint #N` reference, a stale call site, an outdated identifier.
 
-**AI-reviewer assertion-value guard:** apply `.claude/docs/pr-review-verification.md` §1. If the test fails at the suggested expected value, keep the structural improvement (e.g. null-safe cast on the indexer) but restore the original expected value, and note the runtime constraint in the reply. A pattern that survives both null and empty-string is `string.IsNullOrEmpty((string?)token["k"]).Should().BeTrue(...)`.
+Either way: enumerate what was named, derive the pattern shape from it, grep the whole file
+for siblings, and check each hit against where it should land - the intended branch for an
+input case, the source of truth for a reference. Any hit still landing in the old branch or
+still pointing at the wrong target means the fix is not done. Watch for a per-type
+short-circuit above the new gate (`if x is None: continue`), which makes a visible check
+unreachable for exactly the case the reviewer named. Verify each with its own fixture before
+resolving, fix every broken instance in the same commit, and state the sweep's scope in the
+reply (`cross-checked every {pattern} ref in this file, fixed {N}`) so the reviewer can
+spot-check.
 
-**Cross-reference identifier audit:** if a reviewer flags an incorrect doc/comment identifier, treat it as a bug class, not one line.
-
-1. Derive the pattern shape from the flagged token - language/doc-style dependent (`Constraint #[0-9]+`, `Foo\.\w+:[0-9]+`, `§[0-9]+(\.[0-9]+)?`, etc. are illustrative, not prescriptive).
-2. Grep the whole file: `grep -nE "{pattern}" {file}`.
-3. Cross-check every occurrence against the source of truth.
-4. Fix all broken instances in the same commit.
-5. In the reply, mention the broader audit so the reviewer can spot-check: `"cross-checked every {pattern-name} ref in this file, fixed {N} broken ones (lines {L1}, {L2}, …)"`.
+**Expected values a reviewer changed:** apply `.claude/docs/pr-review-verification.md` §1.
+If the test fails at the suggested value, keep the structural improvement but restore the
+original expected value and name the runtime constraint in the reply.
 
 ### For decline threads:
 
 Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply`. Draft a direct reply: clear reason, technical context if needed, no defensive tone.
 
-**Bot/AI reviewers get no courtesy opener.** When the thread author is a bot/AI (the same set the Phase 9b filter drops - Copilot, `chatgpt-codex-connector`, `claude`, CodeRabbit, Sonar, `*[bot]`), open straight on the substance - no "good catch", "nice catch", "good job", "thanks for bringing this up". A bot doesn't read tone, so the opener is pure filler that buries the evidence. Warmth stays fine for human reviewers.
+The `github-review-reply` row there owns the bot/AI no-courtesy-opener rule. Read the thread's `comments[].authorIsBot` from the dossier rather than judging the login by eye; `is_bot_login` in `.claude/scripts/pr-github-helper.py` owns that verdict and already covers the suffix-less AI reviewers.
 
 Example: "The current approach handles X because [reason]. Changing to Y would [specific downside]."
 
@@ -91,18 +95,13 @@ On success: proceed to Phase 7.5.
 
 ## Phase 7.25: Optional Post-Edit CLI Gates
 
-Follow `.claude/docs/cli-tooling.md`. Probe local optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json`, then run only the gates that match files changed while addressing accepted review threads. Missing optional tools are warning-only and must not block replies or thread resolution when the code/test evidence is otherwise adequate.
+Probe optional tools, then run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) against the diff vs `origin/{pr_branch}`:
 
-Classify the current diff against `origin/{pr_branch}`:
+```bash
+python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json
+```
 
-- Shell files (`*.sh`, hooks, generated script fixes): run `shellcheck` when available; run `shfmt -d` when available and apply formatting only if it stays within the accepted thread scope.
-- GitHub Actions workflows (`.github/workflows/*.{yml,yaml}`): run `actionlint` when available.
-- Dockerfiles: run `hadolint` when available and only apply fixes within accepted thread scope.
-- Secret-risk changes: run `gitleaks detect --redact --report-format json --report-path -` when available, keeping findings redacted.
-- YAML / TOML / XML / HCL / JSON config touched by a reviewer request: use `yq` when available to parse or extract the fields under review.
-- Repeated structural edits across multiple files: use `ast-grep` when available to confirm every intended call site was updated.
-
-Scanner/tool output is not reviewer intent by itself. Verify findings against the review thread, diff scope, and source lines before expanding the patch.
+Apply a formatter or scanner fix only when it stays inside the accepted thread's scope. Missing optional tools are warning-only and must not block replies or thread resolution when the code/test evidence is otherwise adequate. Scanner output is not reviewer intent: verify findings against the review thread, diff scope, and source lines before expanding the patch.
 
 ## Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
 
@@ -163,10 +162,6 @@ Write the approved body to a mode-600 `PR_BODY_FILE`; install `trap 'rm -f "$PR_
 
 If the description already follows the template, skip this phase.
 
-## Phase 8.7: PR Gates - Skip
-
-Do not read, wait on, or poll PR pipeline gates. After the review-comment fix lands, proceed straight to Phase 9. Do not claim gates are green or CI passed; you have not checked. If CI fails after this push, it surfaces on the PR like any other failure; the user can run another `/nase:address-comments` round or fix it directly.
-
 ## Phase 9: Reply & Resolve Comments
 
 Before any `gh` mutation in this phase, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`.
@@ -205,19 +200,13 @@ Prepare, show, authorize, and execute each reply and resolve separately with `ex
 
 Process `accept` and `reply-only` threads using this pattern (reply + resolve). For `decline` threads: **reply only, do NOT resolve** - the reviewer may want to respond or push back. Resolving a declined thread shuts down the conversation prematurely.
 
-**Category source-of-truth**: use the post-Phase-4 dossier/action map - NOT the initial Phase 3c classification. If a thread was reclassified during Phase 4 user override (e.g., decline → accept), it goes into the resolve set here. Confirm by reading the final dossier/action map once before iterating.
+**Category source-of-truth**: use the post-Phase-4 dossier/action map - NOT the initial Step 3c classification. If a thread was reclassified during Phase 4 user override (e.g., decline → accept), it goes into the resolve set here. Confirm by reading the final dossier/action map once before iterating.
 
 ## Phase 9b: Optional Reviewer Ping (Human Reviewers Only)
 
 After replies + resolves succeed, offer to Slack-ping any human reviewers whose comments were addressed. Bots don't need a ping - they don't read Slack and re-reviews from them re-trigger automatically on the next push.
 
-**Step 9b.1 - Filter to human reviewers.** From the threads addressed in Phase 9 (i.e. `accept` + `reply-only`; excluding declined since those threads stay open intentionally), collect the unique `author.login` values of the *first* comment in each thread (the original review comment, not your reply). Drop any login matching a bot pattern:
-
-- Ends with `[bot]` - covers `dependabot[bot]`, `github-actions[bot]`, `claude[bot]`, etc.
-- Ends with `-bot`
-- Matches `pr-github-helper.py` `BOT_LOGINS`, including suffix-less reviewers such as `claude`, plus any login listed in the `NASE_BOT_LOGINS` environment variable.
-
-Also drop the PR author's own login (they don't ping themselves). Use `gh api user --jq .login` once if you don't already know it.
+**Step 9b.1 - Filter to human reviewers.** From the threads addressed in Phase 9 (i.e. `accept` + `reply-only`; excluding declined since those threads stay open intentionally), collect each thread's `firstComment` (the original review comment, not your reply) and drop every one whose `firstComment.authorIsBot` is true. That flag comes from `is_bot_login` in `.claude/scripts/pr-github-helper.py`, which owns the whole rule - the named set, the `[bot]`/`-bot` suffixes, and `NASE_BOT_LOGINS` - so do not re-derive it from the login text. Keep the unique remaining `author` values, and also drop the PR author's own login; use `gh api user --jq .login` once if you don't already know it.
 
 If the remaining set is empty, skip this phase silently - no message to the user.
 
@@ -238,13 +227,9 @@ options:
 
 If the user picks "None - skip all" (or doesn't select any reviewers), skip the rest of this phase.
 
-**Step 9b.3 - Resolve each selected GitHub login to a Slack user.** Use `slack_search_users` with the GitHub login first (it sometimes matches profile fields). If that returns no hits, fetch the GitHub display name via `gh api users/{login} --jq .name` and search Slack with that. For uncommon given names, follow the [feedback_slack-dm-no-name-opener] / `slack-user-search` lesson - bare given name often beats `"{Given} {Surname}"`.
+**Step 9b.3 - Resolve each selected GitHub login to a Slack user.** Get the real name from the repo KB's handle mappings first, then `gh api users/{login} --jq .name`, and search Slack with the query shape `/nase:request-review` Step 4 documents (bare given name for an uncommon one, `"{Given} {Surname}"` for a common one, never the corporate suffix). If a login stays unresolved after both name sources, surface `"Couldn't resolve {login} on Slack - skipping ping"` and move on.
 
-If a Slack user can't be resolved after two tries, surface `"Couldn't resolve {login} on Slack - skipping ping"` and move on.
-
-**Step 9b.4 - Draft (do NOT send) one Slack DM per resolved reviewer.** Use `slack_send_message_draft`. Follow `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm`. One short sentence + bare PR URL on its own line (no `<URL|label>` embed, per `feedback_slack-full-url-not-embed`).
-
-Body template:
+**Step 9b.4 - Draft (do NOT send) one Slack DM per resolved reviewer.** Use `slack_send_message_draft`, per `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm`. The body is one opener line, a blank line, then the bare PR URL on its own line:
 
 ```
 {ping_opener}
@@ -252,11 +237,9 @@ Body template:
 {pr_url}
 ```
 
-Use `ping_opener = "Pushed fixes for your comments on the PR - ready for another look when you get a minute."` when a commit was pushed. If `no_commit=true`, use `ping_opener = "Responded to your comments on the PR - ready for another look when you get a minute."`.
+This is a re-review ping, not a review request, so the opener names what changed: `"Pushed fixes for your comments on the PR - ready for another look when you get a minute."`, or `"Responded to your comments on the PR - ready for another look when you get a minute."` when `no_commit=true`.
 
-After staging each draft, print: `"Slack DM draft staged for @{login} (Slack: {slack_handle}) - review + send manually."`
-
-The user reviews and sends each draft themselves - this skill never sends.
+After staging each draft, print: `"Slack DM draft staged for @{login} (Slack: {slack_handle}) - review + send manually."` The user reviews and sends each draft themselves; this skill never sends.
 
 ## Phase 10: Learn
 

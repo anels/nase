@@ -298,10 +298,14 @@ def first_value(value: dict[str, Any], *keys: str) -> Any:
 
 
 def summarize_comment(value: dict[str, Any], max_body_chars: int) -> dict[str, Any]:
+    author = login_from(value, "author.login", "user.login")
     return {
         "id": value.get("id"),
         "databaseId": value.get("databaseId"),
-        "author": login_from(value, "author.login", "user.login"),
+        "author": author,
+        # Emitted so the reviewer-facing branches in address-comments Phase 6 and Phase 9b
+        # read one verdict instead of re-deriving the bot set from the login text.
+        "authorIsBot": is_bot_login(author),
         "createdAt": first_value(value, "createdAt", "created_at", "submitted_at"),
         "path": value.get("path"),
         "line": first_value(value, "line", "original_line", "originalLine"),
@@ -526,6 +530,9 @@ BOT_LOGINS = {
     "copilot-pull-request-reviewer",
     "github-actions[bot]",
     "codex-bot",
+    "chatgpt-codex-connector",
+    "coderabbitai",
+    "sonarcloud",
     "claude",
     "claude[bot]",
 }
