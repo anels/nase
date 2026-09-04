@@ -63,6 +63,8 @@ Confirm the HEAD SHA changed from the pre-commit SHA. Never chain `commit && pus
 git -C {repo_or_worktree} push origin {branch}
 ```
 
+**`Repository not found` on a repo you reached earlier in the same session is auth, not a missing repo.** `external-write-action.py` injects the manifest-bound account's token for `gh` API mutations only - the git credential helper follows whichever `gh` account is currently active, so a flipped account breaks the branch push while `gh pr view` still looks fine. Diagnose with `gh auth status` for the active account and `gh api repos/{owner}/{repo}`, which 404s for an account without access. The workspace guard blocks `gh auth switch` and it is not allowlisted, so report the active account and hand the switch back to the user - do not retry the push or rewrite the remote. A `push_state: unknown` from `.claude/scripts/git-commit-context.py` before the push is the same signal one step earlier.
+
 ---
 
 ## Rules That Apply to All Skills

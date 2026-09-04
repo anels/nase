@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # PreToolUse guard for Confluence page writes: enforce an accepted format and a size cap.
 # The Atlassian MCP can truncate or fail on very large page bodies; block at
-# 60K bytes to leave headroom for storage-format expansion. Note that headroom
+# 70K bytes to leave headroom for storage-format expansion. The figure is
+# calibrated against a published page the site already accepts, whose body is
+# 64084 characters, so a cap below that rejects bodies Confluence stores fine.
+# Keep it in step with CAP_BYTES in .claude/scripts/confluence-publish.py.
+# Note that headroom
 # was calibrated when ADF was the only accepted format - markdown is far terser
 # per input byte, so callers publishing markdown should split well below the cap
 # (see .claude/docs/confluence-publish-conversion.md).
@@ -12,7 +16,7 @@
 # see .claude/docs/confluence-adf-pattern.md.
 set -euo pipefail
 
-LIMIT=60000
+LIMIT=70000
 
 block() {
   local reason="$1"

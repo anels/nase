@@ -46,7 +46,7 @@ Use the shared helper to collect the first-pass GitHub context and KB path menti
 python3 .claude/scripts/pr-github-helper.py review-context "$PR_URL" --max-body-chars 600 --max-kb-paths 10 > "$TMPDIR/pr-review-context.json"
 ```
 
-Use `pr`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `changedFilesOmitted`, `reviewComments`, `reviews`, and `kbMentions` from that JSON. The helper intentionally truncates bodies/excerpts and never emits a full diff. If `changedFilesOmitted` is greater than zero, fetch the paginated path list with `gh api "repos/{owner}/{repo}/pulls/{number}/files" --paginate --jq '.[].filename'` before selecting files to review. If its count still differs from `metadata.changedFiles`, report partial coverage and do not claim a full-file review.
+Use `pr`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `changedFilesOmitted`, `reviewComments`, `reviews`, `issueComments`, and `kbMentions` from that JSON. `reviews` and `issueComments` are the two non-thread feedback surfaces: a bot verdict often lands there rather than on an inline thread, so read both before judging what existing review has already covered. The helper intentionally truncates bodies/excerpts and never emits a full diff. If `changedFilesOmitted` is greater than zero, fetch the paginated path list with `gh api "repos/{owner}/{repo}/pulls/{number}/files" --paginate --jq '.[].filename'` before selecting files to review. If its count still differs from `metadata.changedFiles`, report partial coverage and do not claim a full-file review.
 
 Use `sizeGate.total_lines` and `sizeGate.diff_mode` before fetching the diff:
 

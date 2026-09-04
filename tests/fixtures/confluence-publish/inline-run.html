@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Inline Run Regression</title>
+<style>
+  /* Grid classes, deliberately left out of the rasterize scope so the
+     converter has to turn them into semantic HTML rather than an image. */
+  .meta { display: grid; grid-template-columns: repeat(4, 1fr) }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr) }
+  .card { display: grid; grid-template-columns: 82px 1fr }
+  .bars { display: grid }
+  .bar { height: 7px }
+</style>
+</head><body>
+
+<!-- A metadata strip: label/value pairs the source placed with the grid. -->
+<div class="meta">
+  <span><b>Generated</b> 2026-09-03</span>
+  <span><b>Coverage</b> partial</span>
+  <span><b>Evidence SHA</b> abc123</span>
+</div>
+
+<!-- The same strip written without whitespace between the spans, so the run ends
+     at a tag and no text node is left to settle the deferred separator. -->
+<div class="meta"><span><b>Basis</b> rollup-v2</span><span><b>Window</b> 2026-08</span></div>
+
+<!-- A KPI board: the value and its label are separate wrappers. -->
+<div class="stats">
+  <div class="stat"><div class="v">26</div><div class="k">efforts delivered</div></div>
+  <div class="stat"><div class="v">42</div><div class="k">PRs merged</div></div>
+</div>
+
+<h2>Narrative</h2>
+
+<!-- The defect this fixture exists for: a sentence carrying inline <code>
+     inside a definition list, which is neither passthrough nor unwrap. -->
+<dl class="card">
+  <dt>Problem</dt>
+  <dd>The SDK collected the URL, so <code>first_name</code> and
+      <code>user_attributes</code> landed verbatim in <code>AppDependencies.Data</code>
+      - roughly 1.98 M rows, still emitting.</dd>
+  <dt>Fix</dt>
+  <dd>Redact the values and stamp a <code>?redacted=1</code> sentinel. See
+      <a href="https://github.com/acme/platform/pull/4884">platform#4884</a>.</dd>
+</dl>
+
+<p>An ordinary paragraph with <code>inline code</code> stays one paragraph.</p>
+
+<!-- Inline elements the emitter does not pass through are still inline: ending
+     one must not end the sentence carrying it. -->
+<div class="card">Latency was <small>p95</small> above target, so we rolled back.</div>
+
+<!-- A bare inline run followed by a block-level wrapper. The block has to end
+     the run's paragraph on the way in, not only on the way out. -->
+<span class="tag">Draft</span>
+<div class="section">Body text follows the tag.</div>
+
+<!-- Two panels in a row. A panel's own content needs the same implicit
+     paragraph, and its close has to survive one being open. -->
+<div class="incident crit">
+  <div class="hd"><b>First card</b> still live</div>
+  <div class="lbl">Problem</div>
+  <div class="txt">The gate rejected <code>isHardDelete=false</code>.</div>
+  <div class="lbl">Fix</div>
+  <div class="txt">Accept benign parameters.</div>
+</div>
+<div class="incident crit">
+  <div class="hd"><b>Second card</b> resolved</div>
+  <div class="txt">Follows the first, and is not nested inside it.</div>
+</div>
+
+<!-- A real chart: has a bar primitive, so it is imaged even out of scope. -->
+<div class="bars"><div class="bar"><i style="width:40%"></i></div></div>
+
+</body></html>

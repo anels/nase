@@ -72,7 +72,7 @@ highest-risk rules even when a future skill forgets the prompt contract:
 |------|--------|
 | `slack-send-guard.sh` | direct `slack_send_message`; use `slack_send_message_draft` |
 | `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
-| `confluence-size-guard.sh` | Confluence page bodies over 60 KB; page writes not sent as `contentFormat: "adf"` (see `.claude/docs/confluence-adf-pattern.md`) |
+| `confluence-size-guard.sh` | Confluence page bodies over 70 KB; page writes not sent as `contentFormat: "adf"` (see `.claude/docs/confluence-adf-pattern.md`) |
 | `block-dangerous-git.sh` | destructive or protected-branch git commands |
 | `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
 

@@ -20,6 +20,10 @@ Because the pass happens once, an `AUTOFIX` repair applied after it is never rev
 
 An `INVALID` result or a `CONTEXT` request does not consume the pass, because neither says anything about the candidate - one is a reviewer format slip, the other a blob the bundle should have carried. Each is allowed once. Past that it is not a quality signal but a terminal state the Actions table names: `blocked-infrastructure` for a second `INVALID`, `blocked-evidence` for a second `CONTEXT`.
 
+**The review is a gate on quality, not a gate on delivery.** A reviewer that cannot produce a usable result says nothing about the candidate, so `blocked-infrastructure` does not stop the run: set `review_outcome = not-run` and continue to Phase 7. This is the one terminal state that yields, because it is the only one whose cause lies entirely outside the candidate. `blocked-evidence` still stops, because a bundle that failed to carry what the reviewer asked for is a defect in our own payload and proceeding past it means never fixing it. `NEEDS_HUMAN` still stops, because its taxonomy covers product decisions, secret uncertainty and irreversible actions - things that are unsafe to decide by default.
+
+Treat that yield as a real cost, not a formality. In practice a flaky reviewer means the gate is skipped most of the time, so a silent skip would quietly convert "reviewed" into "assumed fine" across a whole series of PRs. That is why `review_outcome = not-run` is stated in both places a reader arrives from: the PR body at Phase 8 and the Phase 10 report. Someone reading the PR months later should not have to reconstruct whether anyone looked at it.
+
 ### Generate the contract
 
 ```bash
@@ -35,11 +39,15 @@ Validate locally first; only call `reduce` once these hold:
 - **Result shape**: parses as one JSON object; `artifact` echoes the four identity fields verbatim; `requirements` has exactly the inventory refs in order; every non-`SATISFIED` requirement has one matching `requirement_exceptions` entry; every `FAIL` axis or lens has a linked finding.
 - **Bundle binding**: `expected-bundle-sha256` equals `shasum -a 256` of the bundle you are passing, and the result's `bundle_sha256` equals it too.
 
-A local check that fails is fixed and re-requested from the provider without calling `reduce`. Cap those pre-reducer retries at 3, then stop as `blocked-infrastructure`.
+A local check that fails is fixed and re-requested from the provider without calling `reduce`. Cap those pre-reducer retries at 3, then set `review_outcome = not-run` and continue.
+
+A reviewer that returns nothing at all - an empty turn, an idle signal, no JSON - never reaches `reduce`, so it is this cap that catches it rather than the reducer. Re-request once with the missing-output problem named explicitly, because an empty turn is often a reviewer declining the task shape rather than failing at it, and a second attempt with the four input paths restated frequently succeeds. Do not record an empty turn as a passing review; there is no verdict to record.
 
 ### Run the reviewer
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context, read-only reviewer with Read/Grep/Glob/Bash and no Edit/Write.
+Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context read-only reviewer.
+
+**Route it through the `verifier` role in `.claude/roles.yaml`**, which already encodes what this reviewer needs: `tools: [Read, Grep, Glob, Bash]` with no Edit/Write, and a `prompt_prefix` that asks for faithful reporting rather than a soft pass. Naming the role matters because the tool shape alone does not identify a usable agent. A search-oriented agent whose own definition says it locates code and does not review or audit it will accept the spawn and then return an empty turn - which reads exactly like an infrastructure failure and consumes the retry budget for a reason that is really agent selection. If a project-level or plugin reviewer agent is available and is review-capable, it is a fine substitute, but check its tool whitelist: an agent with Edit/Write is read-only only by instruction, which is weaker than the role's whitelist, and the Phase 10 report should say which of the two guarantees applied.
 
 Give the reviewer exactly four things:
 
@@ -95,9 +103,19 @@ The reducer rejects unknown keys, invalid enum values, contradictory axis/findin
 | `AUTOFIX` | Apply every bounded finding, missing requirement, and scope repair. Do not ask the user and do not report them as blockers. Re-run the Phase 6.1 deterministic gates over the repaired tree, refreeze the candidate, then continue to Phase 7 - there is no second review. Carry `disclose_unreviewed_repair` into Phase 10. |
 | `CONTEXT` | Rebuild the bundle with `--context-request-file "{decision_json}"`, increment the round, and re-run the reviewer once. A second `CONTEXT` is `blocked-evidence`. |
 | `NEEDS_HUMAN` | Stop for the allowed blocker the reducer named. |
-| `INVALID` or `STALE` | Re-request a fresh result from the provider at the same round, once. A second one is `blocked-infrastructure`. |
+| `INVALID` or `STALE` | Re-request a fresh result from the provider at the same round, once. A second one sets `review_outcome = not-run` and continues to Phase 7. |
 
 Ordinary quality or spec failure is never an `AskUserQuestion`. Existing external mutation gates, the >1500-line scope decision, and secret uncertainty remain explicit human checkpoints.
+
+### When the review did not run
+
+`review_outcome = not-run` means no verdict exists for this candidate. Three things follow, and they are what keep the skipped gate from becoming invisible:
+
+- **Phase 7 binds `tested_candidate_tree_oid`** rather than `approved_candidate_tree_oid`, which no action set. The tree assertions still run and still have to match exactly; what is missing is a review of that tree, not the guarantee that the tree which shipped is the tree the gates ran against.
+- **`closure_state` cannot be `done`.** Its definition requires a `PROCEED` verdict for the final candidate, so the best available outcome is `conditional`, with "candidate review did not run" as the named waiver reason. A run whose review never happened has not met the bar `done` describes, and printing `done` for it would make the ledger unreadable as a signal.
+- **The candidate artifacts are retained and named.** The bundle, requirement inventory, evidence and reviewer identity are already bound to the candidate tree by hash, so the review can still be run later against exactly this candidate without redoing the work. Say where they are, so that is a real option rather than a theoretical one.
+
+Report what actually failed, in one line: which provider was tried, how many attempts, and what came back. "Two attempts returned an idle signal with no output" tells the next reader something; "review unavailable" does not, and it hides the agent-selection cause described above.
 
 Any code edit, test edit, formatter write, staging mismatch, or commit-tree mismatch after the review invalidates it. The only sanctioned post-review edit is the `AUTOFIX` repair itself.
 
@@ -114,6 +132,8 @@ After a human resolves one, record the decision, discard the terminal state and 
 Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors (relevant in team mode).
 
 Then apply `.claude/docs/pr-gates-consumption.md` §3 with the Phase 1 `gate_profile`: ensure a required ticket key sits in the documented PR-title position, every required PR-body section exists at its minimum length, and - if the diff crossed a `gate_profile.size` threshold that mandates it - `## How to Review` is filled. Never invent a ticket key; keep the placeholder and flag it if unknown.
+
+If `review_outcome = not-run`, the PR body states it in whichever section carries verification for this repo's template, alongside the deterministic gates that did pass. The reviewer on the PR is the person who most needs to know that nothing independent has looked at it yet, and they are the one reader who cannot find that out from the Phase 10 report.
 
 Before the GitHub actions below, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`. Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command.
 
@@ -227,12 +247,15 @@ For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
 
 Derive `closure_state`:
 - `done` - every required criterion is `proven`; the review returned `PROCEED` for the final candidate and bundle; the staged and committed trees equal `approved_candidate_tree_oid`; and final command evidence is newer than the last modification.
+  - `review_outcome = not-run` fails this by definition, since there is no `PROCEED` and no `approved_candidate_tree_oid`. Such a run is at best `conditional`.
 - `conditional` - every required criterion is `proven` or `waived`, with waiver reasons named.
 - `not-closed` - any required criterion is `blocked` or unproven.
 
 Never print `done ✓` when a criterion or final QA condition is unproven. If `success_criteria` = "Manual verify" (no explicit criteria), skip the ledger, but still require the review and tree-binding conditions. Note only the user-facing verification deferral.
 
 **When the decision carried `disclose_unreviewed_repair`,** the tree that shipped is not the tree that was reviewed. Say so in the report and name the files the repair touched, so whoever reads the PR can weigh it. A repair applied after the only review is defensible; one that goes unmentioned is not.
+
+**When `review_outcome = not-run`,** nothing was reviewed at all, which is the wider version of the same problem. The report says so, names the provider and what came back, and states which deterministic gates did pass - the build, the suite against its baseline, the lint and format gates, the flake evidence - because those are the whole basis for shipping in that case and the reader deserves to see the actual basis rather than infer it. Point at the retained candidate artifacts too. `disclose_unreviewed_repair` and `not-run` can both be set; report both rather than letting the larger one absorb the smaller. In the summary below, `Candidate` carries `tested_candidate_tree_oid`, `Reviewed` reads `not reviewed`, and `Review` names the provider and what came back rather than an action the reducer never returned.
 
 Print a concise summary:
 

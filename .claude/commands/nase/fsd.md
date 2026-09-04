@@ -39,7 +39,7 @@ tell whether a missing value is a skipped step or a dropped one.
 | 0 | This entrypoint: validate input. | - |
 | 1-3 and 3.7 | Read `.claude/docs/fsd-intake-and-setup.md` when entering Phase 1. | `success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints` |
 | 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `bundle_sha256`, `contract_inventory_sha256` |
-| 6.4 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
+| 6.4 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
 | 7 | This entrypoint plus `commit-push-pattern.md`. | - |
 | 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. | - |
 | 8b | `effort-lifecycle.md -> FSD Update`. | - |
@@ -59,13 +59,15 @@ Before Phase 3.5, confirm that the applicable state above is populated. If phase
 
 At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its research, preflight, Direct/Team/TDD implementation, initial build/test loop, simplification, post-edit deterministic gates, final size guard, and candidate bundle rules in order.
 
-At Phase 6.4, read `.claude/docs/fsd-delivery-gates.md`. It owns the single fresh independent review covering both code quality and spec conformance, the operator preflight that must pass before the reducer call, the deterministic reducer, and the retry budget. Only reducer-approved human blockers or terminal infrastructure/evidence states interrupt the user.
+At Phase 6.4, read `.claude/docs/fsd-delivery-gates.md`. It owns the single fresh independent review covering both code quality and spec conformance, the operator preflight that must pass before the reducer call, the deterministic reducer, and the retry budget. Only reducer-approved human blockers and `blocked-evidence` interrupt the user. A reviewer that cannot return a usable result sets `review_outcome = not-run` and the run continues - see that document's *When the review did not run* section for what Phase 7 binds instead, why `closure_state` cannot be `done`, and where the skip has to be disclosed.
 
 ## Phase 7: Commit & Push
 
 Before committing, conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope` set, no `fixup!`/`squash!`). Pass those constraints into `/nase:improve-commit-message` so the polished subject still clears the repo's commit-lint gate.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`. Deviation: use `push -u origin {branch_name}` on first push (sets upstream tracking).
+
+Both assertions below bind `approved_candidate_tree_oid`. When `review_outcome = not-run` no action set it, so bind `tested_candidate_tree_oid` from Phase 6.1 instead and read "reviewed tree" as "gated tree" throughout - the assertions are unchanged and still have to match exactly, because what the skipped review costs is a judgment on the tree, not the guarantee that the tree which ships is the tree the gates ran against.
 
 After its explicit-file staging step and before commit, assert the real index matches the reviewed tree:
 
@@ -79,7 +81,7 @@ After the initial commit and again after `/nase:improve-commit-message`, assert:
 test "$(git -C {worktree_or_repo} rev-parse 'HEAD^{tree}')" = "$approved_candidate_tree_oid"
 ```
 
-Any mismatch invalidates `review_action` and the approved tree. Do not push. Restart at Phase 6 and repeat the deterministic gates plus a fresh review.
+Any mismatch invalidates `review_action` and the bound tree. Do not push. Restart at Phase 6 and repeat the deterministic gates plus a fresh review.
 
 ---
 

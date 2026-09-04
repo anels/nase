@@ -43,7 +43,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 EXIT_OVERSIZE = 3
 EXIT_NESTING = 4
 
-CAP_BYTES = 60000
+CAP_BYTES = 70000
 DEFAULT_THRESHOLD = {"html": 55000, "markdown": 35000}
 
 # html.parser reports a starttag and never an endtag for these, so counting them
@@ -58,12 +58,32 @@ PASSTHROUGH = frozenset(
     "blockquote pre details summary a".split()
 )
 
+# Elements that belong inside a paragraph rather than beside one. Emitting one
+# of these at block level makes Confluence wrap it in a paragraph of its own,
+# which is how a sentence carrying inline <code> ends up shattered into
+# one-word lines.
+INLINE_PASSTHROUGH = frozenset("strong em code a br".split())
+
 DROP_TREE = frozenset(
     "style script head nav footer canvas svg button select textarea form "
     "dialog noscript template".split()
 )
 
-UNWRAP = frozenset("div span section article main header aside figure figcaption i b".split())
+UNWRAP = frozenset("div span section article main header aside figure figcaption".split())
+
+# Unwrapped wrappers that are inline. They neither open nor close the implicit
+# paragraph their siblings share: closing on `</span>` puts a label/value strip
+# back to one line per piece, and closing on `</small>` splits the sentence that
+# carries it. Every other unwrapped wrapper is block-level and does both.
+UNWRAP_INLINE = frozenset(
+    "span small abbr sup sub mark kbd samp var time cite q u s strike big tt "
+    "del ins label font nobr data dfn output bdi bdo".split()
+)
+
+# `<b>`/`<i>` are the presentational spellings of emphasis. Unwrapping them threw
+# the emphasis away, which is what left a metadata strip's labels
+# indistinguishable from its values once the grid was gone.
+TAG_ALIAS = {"b": "strong", "i": "em"}
 
 CHART_CLASS = re.compile(r"(?:^|[\s-])(bar|bars|track|spark|sparkline|meter|gauge)(?:$|[\s-])")
 PANEL_CLASS = (
@@ -192,6 +212,7 @@ class HtmlPlusEmitter(HTMLParser):
         self.stray_table_text: list[str] = []
         self.auto_cells: set[int] = set()
         self.panel_starts: list[int] = []
+        self.autop_starts: list[int] = []
         self.visual_seq = 0
         self.dropped_subtrees = 0
         self.matched_grid_classes: set[str] = set()
@@ -238,12 +259,85 @@ class HtmlPlusEmitter(HTMLParser):
         the following run already starts with whitespace, which corrupts <pre>."""
         self.gap_pending = True
 
+    def flush_gap(self) -> None:
+        """Settle a deferred separator that an inline tag, not a text run, follows.
+        `emit_gap` lets the next text decide, but a run can also end at a tag -
+        `</span><strong>Measurement basis</strong>` - and leaving it to the text
+        welds the two pairs into `2026-09-03Measurement basis`. Only reachable
+        while a paragraph already holds content: opening one emits `<p>`, and
+        every emit clears the pending gap."""
+        if not self.gap_pending:
+            return
+        self.gap_pending = False
+        if self.last_char and not self.last_char.isspace():
+            self.emit(" ")
+
     def open_block(self, level=None, heading="") -> None:
         if self.block.html or self.block.visuals:
             self.blocks.append(Block(level, heading))
         else:
             self.block.level = level
             self.block.heading = heading
+
+    # ---- implicit paragraphs ---------------------------------------------
+    def bare_run_context(self) -> bool:
+        """Whether a bare inline run here needs a paragraph of its own. True in
+        the page body and inside a panel - the two places ADF puts block content
+        directly. An open `~autop` counts as structure, so a nested wrapper never
+        opens a second paragraph."""
+        structural = [entry for entry in self.stack if entry != "~unwrap"]
+        return not structural or structural == ["panel"]
+
+    def in_auto_p(self) -> bool:
+        return "~autop" in self.stack
+
+    def open_auto_p(self) -> None:
+        """Open one paragraph for a run of bare inline content.
+
+        A card laid out with CSS put its label, its value and its inline
+        `<code>` in sibling wrappers and let the grid place them. Unwrapping
+        those wrappers leaves the run at the top level of the body, where every
+        piece needs to sit inside a paragraph - but closing a paragraph around
+        each piece is what shattered a sentence into one-word lines and pushed
+        inline `<code>` to block level, where Confluence renders it as its own
+        paragraph. So the paragraph opens once and stays open until a real block
+        element, a rasterized subtree or the end of the document closes it.
+        """
+        if not self.bare_run_context():
+            return
+        if self.structural_depth() == 0:
+            # Only body-level content starts a splittable block; a paragraph
+            # inside a panel belongs to the block that panel already opened.
+            self.open_block()
+        self.stack.append("~autop")
+        self.emit("<p>")
+        self.autop_starts.append(len(self.block.html))
+
+    def close_auto_p(self) -> None:
+        if not (self.stack and self.stack[-1] == "~autop"):
+            return
+        self.stack.pop()
+        start = self.autop_starts.pop() if self.autop_starts else len(self.block.html)
+        if "".join(self.block.html[start:]).strip():
+            self.emit("</p>")
+        else:
+            # Nothing but whitespace landed in it - a wrapper that held only
+            # another wrapper. Drop the paragraph rather than ship an empty one.
+            del self.block.html[start - 1:]
+
+    def open_unwrapped(self, tag: str) -> None:
+        """Enter a wrapper that emits nothing of its own.
+
+        A block-level wrapper ends the implicit paragraph on the way in, not
+        only on the way out: `<span>Draft</span><div>Body</div>` otherwise welds
+        two blocks into one paragraph, while the same pair in the other order
+        splits correctly. An inline wrapper leaves the paragraph alone at both
+        ends, which is what keeps `was <small>p95</small> above` one sentence.
+        """
+        if tag not in UNWRAP_INLINE:
+            self.close_auto_p()
+        self.stack.append("~unwrap")
+        self.emit_gap()
 
     # ---- nesting detection ------------------------------------------------
     def check_nesting(self, tag: str) -> None:
@@ -259,6 +353,7 @@ class HtmlPlusEmitter(HTMLParser):
     # ---- parser callbacks -------------------------------------------------
     def handle_starttag(self, tag, attrs):
         attrs = {k: (v or "") for k, v in attrs}
+        tag = TAG_ALIAS.get(tag, tag)
 
         if self.capture_start is not None:
             if tag == self.capture_tag and tag not in VOID:
@@ -290,8 +385,12 @@ class HtmlPlusEmitter(HTMLParser):
             return
 
         if tag in VOID:
-            if tag in ("br", "hr"):
-                self.emit("<%s />" % tag)
+            if tag == "br":
+                self.open_auto_p()
+                self.emit("<br />")
+            elif tag == "hr":
+                self.close_auto_p()
+                self.emit("<hr />")
             return
 
         if tag in DROP_TREE:
@@ -317,6 +416,7 @@ class HtmlPlusEmitter(HTMLParser):
                         panel = kind
                         break
             if panel:
+                self.close_auto_p()
                 self.check_nesting("panel")
                 self.stack.append("panel")
                 if self.structural_depth() == 1:
@@ -324,14 +424,18 @@ class HtmlPlusEmitter(HTMLParser):
                 self.emit('<div data-type="%s">' % panel)
                 self.panel_starts.append(len(self.block.html))
             else:
-                self.stack.append("~unwrap")
-                self.emit_gap()
+                self.open_unwrapped(tag)
             return
 
         if tag not in PASSTHROUGH:
-            self.stack.append("~unwrap")
-            self.emit_gap()
+            self.open_unwrapped(tag)
             return
+
+        if tag in INLINE_PASSTHROUGH:
+            self.open_auto_p()
+            self.flush_gap()
+        else:
+            self.close_auto_p()
 
         if self.stack and self.stack[-1] in ("table", "thead", "tbody", "tr") and tag not in (
             "tr", "td", "th", "thead", "tbody"
@@ -407,6 +511,7 @@ class HtmlPlusEmitter(HTMLParser):
         self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
+        tag = TAG_ALIAS.get(tag, tag)
         if self.capture_start is not None:
             if tag == self.capture_tag:
                 self.capture_depth -= 1
@@ -426,11 +531,17 @@ class HtmlPlusEmitter(HTMLParser):
         if tag in VOID:
             return
 
+        if tag == "div" and self.stack[-1:] == ["~autop"] and self.stack[-2:-1] == ["panel"]:
+            # The panel's own implicit paragraph. Close it before the branch
+            # below looks at the top of the stack, or the panel never closes and
+            # the next panel reads as a panel nested inside this one.
+            self.close_auto_p()
         if self.stack and self.stack[-1] == "panel" and tag == "div":
             self.stack.pop()
             start = self.panel_starts.pop() if self.panel_starts else len(self.block.html)
             inner = "".join(self.block.html[start:])
-            # A panel holding only inline runs gets one paragraph per run from
+            # Fallback for a panel whose content the implicit-paragraph rule did
+            # not reach: bare inline runs get one paragraph per run from
             # Confluence, which fragments a sentence across lines. Wrap the whole
             # run in a single <p> instead. Panels containing real blocks are left
             # alone - nesting a <p> around them would be invalid.
@@ -440,8 +551,16 @@ class HtmlPlusEmitter(HTMLParser):
             self.emit("</div>")
             return
         if tag in UNWRAP or tag not in PASSTHROUGH:
-            if self.stack and self.stack[-1] == "~unwrap":
-                self.stack.pop()
+            # Pop the wrapper's marker from under any open implicit paragraph
+            # rather than off the top: the paragraph deliberately outlives the
+            # wrapper so consecutive siblings stay in one paragraph, and popping
+            # the top here would strand the marker and corrupt the depth count.
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i] == "~unwrap":
+                    del self.stack[i]
+                    break
+            if tag not in UNWRAP_INLINE:
+                self.close_auto_p()
             self.emit_gap()
             return
         if tag == "tr" and self.stack and self.stack[-1] == "td" \
@@ -482,19 +601,32 @@ class HtmlPlusEmitter(HTMLParser):
             # rather than silently shipping malformed markup.
             self.stray_table_text.append(data.strip()[:40])
             return
-        if self.structural_depth() == 0:
+        if self.bare_run_context() or self.in_auto_p():
             # Bare text with only unwrapped layout wrappers above it still needs
             # a paragraph; emitting it loose leaves inline text at the top level
-            # of the page body.
-            self.open_block()
-            self.emit("<p>%s</p>" % escape(data.strip()))
+            # of the page body. One paragraph for the whole run, not one per run.
+            self.open_auto_p()
+            start = self.autop_starts[-1] if self.autop_starts else len(self.block.html)
+            if "".join(self.block.html[start:]).strip():
+                # Mid-paragraph: the trailing space before an inline <code> is
+                # load-bearing, so only the paragraph's first run is trimmed.
+                self.emit(escape(data))
+            else:
+                self.emit(escape(data.lstrip()))
             return
         if self.stack[-1] in HEADINGS:
             self.current_heading += data.strip()
         self.emit(escape(data))
 
+    def close(self) -> None:
+        """Flush a paragraph the document ended inside, so the body never ships
+        an unclosed <p>."""
+        super().close()
+        self.close_auto_p()
+
     # ---- visuals ----------------------------------------------------------
     def begin_capture(self, tag: str) -> None:
+        self.close_auto_p()
         self.capture_start = self.abs_offset()
         self.capture_tag = tag
         self.capture_depth = 1
@@ -677,6 +809,7 @@ def cmd_plan(args) -> int:
         )
         try:
             emitter.feed(raw)
+            emitter.close()
         except NestingViolation as exc:
             sys.stderr.write(
                 "NESTING: %s, under %s.\n"

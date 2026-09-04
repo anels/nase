@@ -168,16 +168,19 @@ msg=$(python3 "$SCRIPT" plan --source "$big" --out-dir "$out" 2>&1 >/dev/null)
 check_contains "oversize: names the cause" "$msg" "largest single block"
 
 # --- every emitted body stays under the hard cap ---------------------------
+# Read the cap from the script so this assertion cannot drift from the constant
+# it guards.
+cap=$(grep -Eo '^CAP_BYTES = [0-9]+' "$SCRIPT" | grep -Eo '[0-9]+')
 overs=0
 for plan in "$WORK"/*/plan.json; do
   [ -f "$plan" ] || continue
   for body in "$(dirname "$plan")"/page-*.body.*; do
     [ -f "$body" ] || continue
     size=$(wc -c < "$body" | tr -d ' ')
-    [ "$size" -gt 60000 ] && overs=$((overs + 1))
+    [ "$size" -gt "$cap" ] && overs=$((overs + 1))
   done
 done
-check "every emitted body is under the 60000 cap" "$overs" "0"
+check "every emitted body is under the $cap-byte cap" "$overs" "0"
 
 # --- attach: the placeholder -> media-node swap ----------------------------
 # The only part of `attach` that needs no network, and the part that silently
@@ -394,6 +397,53 @@ PY
 )
 check "ledger: scratch detection compares path segments" "$segments" \
   "scratch=True suffix=False prefix=False durable=False"
+
+# --- inline runs: the failure that shattered sentences into one-word lines ---
+# A grid-laid-out card left out of the rasterize scope has to convert to
+# semantic HTML. Emitting one closed paragraph per text run pushed every inline
+# <code> to block level, where Confluence wraps it in a paragraph of its own.
+out="$WORK/inline"
+python3 "$SCRIPT" plan --source "$FIX/inline-run.html" --out-dir "$out" \
+  --rasterize-only bars >/dev/null 2>&1
+check "inline: plan exits 0" "$?" "0"
+body=$(cat "$out"/page-000.body.html)
+
+check_absent "inline: no code at block level" "$body" "</p><code>"
+check_absent "inline: no code opening a block" "$body" "</code><p>"
+check_contains "inline: sentence keeps its inline code" "$body" \
+  "so <code>first_name</code> and"
+check_contains "inline: space before inline code survives" "$body" "stamp a <code>?redacted=1</code>"
+check_contains "inline: sentence continues after the code" "$body" "sentinel. See"
+check_absent "inline: link is not its own block" "$body" '</p> <a href="https://github.com/acme'
+check_contains "inline: b becomes strong" "$body" "<strong>Generated</strong>"
+check_contains "inline: label and value share one paragraph" "$body" \
+  "<p><strong>Generated</strong> 2026-09-03 <strong>Coverage</strong>"
+check_contains "inline: separator survives a run ending at a tag" "$body" \
+  "rollup-v2 <strong>Window</strong>"
+check_absent "inline: adjacent spans do not weld" "$body" "rollup-v2<strong>"
+check_contains "inline: ordinary paragraph untouched" "$body" \
+  "<p>An ordinary paragraph with <code>inline code</code> stays one paragraph.</p>"
+check_contains "inline: real chart still imaged" "$body" "chart-01.png"
+check_contains "inline: panel content splits into paragraphs" "$body" \
+  "<p>Problem</p> <p>The gate rejected <code>isHardDelete=false</code>.</p>"
+check_absent "inline: panel content is not one welded run" "$body" "still live Problem"
+panels=$(printf '%s' "$body" | grep -o 'data-type="panel-error"' | wc -l | tr -d ' ')
+check "inline: consecutive panels both emitted, neither nested" "$panels" "2"
+
+opens=$(printf '%s' "$body" | grep -o '<p>' | wc -l | tr -d ' ')
+closes=$(printf '%s' "$body" | grep -o '</p>' | wc -l | tr -d ' ')
+check "inline: paragraphs balance" "$opens" "$closes"
+check_absent "inline: no empty paragraph" "$body" "<p></p>"
+
+# An inline element outside INLINE_PASSTHROUGH is still inline: closing it must
+# not end the sentence. A block-level wrapper must end it on the way in too, or
+# the run before it welds onto the block's first line.
+check_contains "inline: unknown inline tag keeps its sentence whole" "$body" \
+  "<p>Latency was p95 above target, so we rolled back.</p>"
+check_absent "inline: bare run does not weld onto the next block" "$body" \
+  "Draft Body text follows"
+check_contains "inline: block after a bare run gets its own paragraph" "$body" \
+  "<p>Body text follows the tag.</p>"
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

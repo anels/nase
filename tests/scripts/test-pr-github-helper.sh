@@ -244,7 +244,14 @@ JSON
     ;;
   *"repos/acme/widgets/pulls/42/reviews"*)
     cat <<'JSON'
-[{"id":601,"state":"COMMENTED","body":"review body","user":{"login":"lead"},"submitted_at":"2026-06-01T00:10:00Z"}]
+[{"id":601,"state":"COMMENTED","body":"review body","user":{"login":"lead"},"submitted_at":"2026-06-01T00:10:00Z"},{"id":602,"state":"APPROVED","body":"","user":{"login":"dana"},"submitted_at":"2026-06-01T00:20:00Z"}]
+JSON
+    ;;
+  # SonarCloud posts its quality-gate verdict here, not on a review thread, so a
+  # thread-only read reports an honest zero while this is outstanding.
+  *"repos/acme/widgets/issues/42/comments"*)
+    cat <<'JSON'
+[{"id":701,"body":"Quality Gate failed","user":{"login":"sonarcloud[bot]"},"created_at":"2026-06-01T00:30:00Z"}]
 JSON
     ;;
   *threadId=T1*commentCursor=COMMENT_PAGE_2*)
@@ -284,6 +291,8 @@ assert data["reviewComments"][0]["path"] == "src/a.ts"
 assert data["reviewComments"][0]["line"] == 2
 assert data["reviewComments"][0]["inReplyToId"] == 500
 assert data["reviews"][0]["author"] == "lead"
+assert data["issueComments"][0]["author"] == "sonarcloud[bot]"
+assert data["issueComments"][0]["authorIsBot"] is True
 assert data["kbMentions"] == []
 PY
 
@@ -305,6 +314,9 @@ assert t1["comments"][0]["body"].endswith("...")
 assert t1["comments"][0]["authorIsBot"] is True, "suffix-less bot login 'claude'"
 assert t1["firstComment"]["authorIsBot"] is True
 assert data["threads"][1]["comments"][0]["authorIsBot"] is False, "human login 'carol'"
+# Feedback also lands off the thread surface, so a zero here is only one third of an answer.
+assert [item["id"] for item in data["reviewSubmissions"]] == [601], "empty-body approval carries nothing"
+assert data["issueComments"][0]["author"] == "sonarcloud[bot]"
 PY
 
 prep_out="$TMPDIR_TEST/prep-state.json"
@@ -320,6 +332,9 @@ assert data["priorAbort"]["exists"] is True
 assert data["priorAbort"]["matchesCurrent"] is False
 assert data["adjacentSameFileOverlap"]["scanRan"] is True
 assert any(item["path"] == "src/a.ts" for item in data["adjacentSameFileOverlap"]["files"])
+# Merge readiness reads all three feedback surfaces, not threads alone.
+assert [item["id"] for item in data["reviewSubmissions"]] == [601]
+assert data["issueComments"][0]["body"] == "Quality Gate failed"
 PY
 
 assert_cmd "is_bot_login classifies configured and suffix bots but not humans" \

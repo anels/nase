@@ -105,6 +105,7 @@ After agents finish, immediately run configured gates. Failures count as Phase 5
 | **GREEN** | After implementation: test must GREEN + full suite zero new failures. Full suite failures: fix before proceeding - no deferrals. |
 | **Refactor** | Re-run full suite after each refactor pass. All green before Phase 5. |
 | **Non-testable** | Config/docs/infra → skip RED gate. Mark `[RED skip: non-testable]` in progress notes and proceed directly to implementation. |
+| **Prospective assertion** | A tripwire that is green the moment it is written - a debt cap, a count assertion, an inventory ceiling - cannot produce a RED. Mark `[RED skip: prospective assertion]`, then substitute two named mutations: neutralise the filter the count depends on, and blank one field a per-row assertion reads. Each must fail, and you record its exact failure message. Revert and confirm the file is byte-identical before proceeding. Carry both mutations and their messages into the PR body - an assertion's value is which mutation it rejects, not that it is green today. |
 
 **Vertical-slice rule:** one test → one implementation → repeat. Never write all tests up front. See `workspace/kb/general/system-design.md` § Vertical Slices.
 
