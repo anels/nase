@@ -93,7 +93,8 @@ Rules are applied in this order; the first match wins.
 | any element whose class the source lays out with `display: grid`, or a class named by `--rasterize-only` | rasterize the whole subtree, same placeholder |
 | class matching `bar\|bars\|track\|spark\|sparkline\|meter\|gauge` | **dropped** - decorative, and counted in `dropped_chart_subtrees` |
 | `svg` without a `viewBox`, `[aria-hidden=true]`, `style`, `script`, `head`, `nav`, `footer`, `canvas`, `button`, `select`, `textarea`, `form`, `dialog`, `noscript`, `template` | dropped |
-| any other `div`/`span`/`section`/`article`/`main`/`header`/`aside`/`figure`/`figcaption`/`i`/`b` | unwrapped, children kept |
+| `b` / `i` | `strong` / `em` - the presentational spellings of emphasis, aliased rather than unwrapped |
+| any other `div`/`span`/`section`/`article`/`main`/`header`/`aside`/`figure`/`figcaption` | unwrapped, children kept |
 | any remaining unknown tag | unwrapped, children kept |
 
 Interactive chrome is in the drop list for a reason: an export menu unwraps into loose
@@ -144,6 +145,44 @@ Unwrapping inline elements concatenates their text, because the source relied on
 Rule: unwrapping records that a separator *may* be needed; the next text decides. Emitting
 the space eagerly doubles it whenever the following run already begins with whitespace,
 which corrupts `<pre>` content.
+
+## Implicit paragraphs
+
+Unwrapping a grid container leaves its text and its inline elements at block level, where
+Confluence has to wrap each one in a paragraph of its own. A sentence like
+`so <code>first_name</code> and <code>user_attributes</code> landed` then ships as five
+separate paragraphs, and the reader sees it shattered into one-word lines. Measured on the
+published `effort-rollup-2026-08` page, which is why
+`tests/fixtures/confluence-publish/inline-run.html` exists.
+
+Rule: in the page body and inside a panel - the two places ADF puts block content directly -
+the emitter keeps **one** implicit paragraph open across a run of bare inline content instead
+of closing a paragraph per run.
+
+- `INLINE_PASSTHROUGH` (`strong em code a br`) opens the implicit paragraph and stays inside it.
+- Any other tag closes it first, so a heading or a table never lands inside a paragraph.
+- `UNWRAP_INLINE` (`span`, `small`, `abbr`, `sup`, `sub`, `mark`, `time`, `del`, `ins` and the
+  rest of the unwrapped inline set) is the exception at both ends: an inline wrapper neither
+  opens nor closes the paragraph its siblings share. Closing on `</span>` puts a label/value
+  strip back to one line per piece, and closing on `</small>` splits the sentence carrying it.
+- Every other unwrapped wrapper is block-level and ends the paragraph on the way **in** as
+  well as on the way out. Only closing it leaves `<span>Draft</span><div>Body</div>` welded
+  into one paragraph while the same pair in the other order splits correctly.
+- Only the paragraph's **first** run is left-trimmed. The trailing space before an inline
+  `<code>` is load-bearing; trimming every run welds `so` onto `first_name`.
+- A paragraph that ends up holding nothing but whitespace - a wrapper that held only another
+  wrapper - is deleted rather than shipped empty.
+- `close()` flushes a paragraph the document ended inside, and `begin_capture` closes one
+  before a rasterized subtree opens.
+- A panel's own paragraph is closed before its `</div>` is examined. Leaving it open hides
+  the `panel` marker under it, the panel never closes, and the **next** panel then reads as a
+  panel nested inside it - `plan` exits 4 on a document that is actually valid.
+- Only body-level content starts a splittable block. A paragraph inside a panel belongs to
+  the block the panel already opened, or a page split can land mid-panel.
+
+This does not resolve a block-level pair the source drew with a grid: a KPI board whose value
+and label are separate `<div>`s still converts to two paragraphs, because both are block-level.
+Rasterize that class instead of reaching for a semantic guess.
 
 ## Nesting violations: detect, do not rewrite
 

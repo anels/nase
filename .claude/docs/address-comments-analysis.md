@@ -71,7 +71,7 @@ git -C {repo_path} rev-parse --verify origin/{headRefName}
 
 Capture both thread `id` (GraphQL resolve) and `databaseId` (REST reply); they are not interchangeable.
 
-If there are zero unresolved threads: report "No unresolved comments found" and stop.
+PR feedback has three surfaces: inline review threads, review *submission* bodies, and issue comments. Read `reviewSubmissions` and `issueComments` from the same dossier JSON before reporting a zero. Stop with "No unresolved comments found" only when all three carry no actionable item; a bot verdict counts as actionable, and bots split across surfaces - SonarCloud posts its verdict as an issue comment, `claude-code-review` posts findings in a submission body. Actionable items outside the thread surface have no thread to resolve: handle them in the code and say in the final report which surface each came from. Neither surface has a resolved flag, so a bot's verdict is only its **newest** comment - an older "Quality Gate failed" superseded by a later pass is history, not work.
 
 ## Phase 3: Build Dossiers, Evaluate, & Present Plan
 

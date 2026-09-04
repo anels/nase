@@ -78,10 +78,15 @@ expect_rc "slack draft allowed" .claude/hooks/slack-send-guard.sh "$slack_draft"
 expect_rc "slack malformed JSON blocked" .claude/hooks/slack-send-guard.sh "{" 2 "could not parse"
 
 small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"adf"}}')
-large_body=$(printf '%*s' 60001 '' | tr ' ' x)
+# Size the oversize fixtures from the guard's own cap so they stay oversize
+# whenever that cap moves.
+confluence_limit=$(grep -Eo '^LIMIT=[0-9]+' .claude/hooks/confluence-size-guard.sh | grep -Eo '[0-9]+')
+large_body=$(printf '%*s' "$((confluence_limit + 1))" '' | tr ' ' x)
 large_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
 large_confluence_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
-wide_body=$(printf '中%.0s' {1..20001})
+# One 中 is 3 UTF-8 bytes, so this stays just over the byte cap while its
+# character count stays well under it - that is the case the guard must catch.
+wide_body=$(printf "中%.0s" $(seq 1 $((confluence_limit / 3 + 1))))
 wide_confluence=$(jq -cn --arg body "$wide_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
 markdown_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"markdown"}}')
 html_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluencePage",tool_input:{body:"<p>short</p>",contentFormat:"html"}}')

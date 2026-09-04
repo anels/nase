@@ -184,6 +184,10 @@ def gh_reviews_args(pr: dict[str, Any]) -> list[str]:
     return ["gh", "api", f"repos/{pr['repo_full_name']}/pulls/{pr['number']}/reviews", "--paginate"]
 
 
+def gh_issue_comments_args(pr: dict[str, Any]) -> list[str]:
+    return ["gh", "api", f"repos/{pr['repo_full_name']}/issues/{pr['number']}/comments", "--paginate"]
+
+
 def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> list[str]:
     args = [
         "gh",
@@ -220,6 +224,7 @@ def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
         ],
         "review_comments": gh_review_comments_args(pr),
         "reviews": gh_reviews_args(pr),
+        "issue_comments": gh_issue_comments_args(pr),
         "review_threads": gh_threads_args(pr),
     }
 
@@ -484,6 +489,23 @@ def thread_dossier(
     }
 
 
+def other_feedback_surfaces(pr: dict[str, Any], max_body_chars: int) -> dict[str, Any]:
+    """The two PR feedback surfaces that are not inline review threads.
+
+    Bots split across all three: SonarCloud posts its verdict as an issue comment and
+    `claude-code-review` posts findings in a review submission body, so a thread-only
+    read returns an honest zero while real feedback sits one API call away.
+    Submissions with an empty body carry nothing a thread does not already hold.
+    """
+    reviews = flatten_json_items(run_gh(gh_reviews_args(pr)))
+    issue_comments = flatten_json_items(run_gh(gh_issue_comments_args(pr)))
+    submissions = [summarize_review(item, max_body_chars) for item in reviews]
+    return {
+        "reviewSubmissions": [item for item in submissions if item["body"]],
+        "issueComments": [summarize_comment(item, max_body_chars) for item in issue_comments],
+    }
+
+
 def review_context(pr: dict[str, Any], max_body_chars: int, max_kb_paths: int) -> dict[str, Any]:
     metadata = json.loads(run_gh(gh_metadata_args(pr, "light")))
     paths = changed_file_paths(metadata)
@@ -499,6 +521,10 @@ def review_context(pr: dict[str, Any], max_body_chars: int, max_kb_paths: int) -
         "diffStat": render_diff_stat(metadata),
         "reviewComments": [summarize_comment(item, max_body_chars) for item in comments],
         "reviews": [summarize_review(item, max_body_chars) for item in reviews],
+        "issueComments": [
+            summarize_comment(item, max_body_chars)
+            for item in flatten_json_items(run_gh(gh_issue_comments_args(pr)))
+        ],
         "kbMentions": kb_mentions_for_paths(paths, max_kb_paths),
     }
 
@@ -522,6 +548,7 @@ def comment_dossiers(
             thread_dossier(local_repo, base_ref, head_ref, thread, context_lines, max_body_chars)
             for thread in response["threads"]
         ],
+        **other_feedback_surfaces(pr, max_body_chars),
     }
 
 
@@ -640,6 +667,7 @@ def prep_state(pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_c
             "unresolved": [summarize_thread(thread, max_body_chars) for thread in unresolved],
             "botDeclineCandidates": bot_decline_candidates(threads, max_body_chars),
         },
+        **other_feedback_surfaces(pr, max_body_chars),
         "priorAbort": read_abort_state(state_dir, pr, remote_sha, base_sha),
         "adjacentSameFileOverlap": adjacent_same_file_overlap(
             local_repo,

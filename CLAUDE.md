@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
-
 ---
 
 # AI Engineer Operating Manual
@@ -72,8 +70,7 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
 
 ### CI Pipeline
-- `.github/workflows/validate.yml` runs on push/PR to `main`.
-- Local gate: `bash tests/check-all.sh` covers hook shell syntax/shellcheck, JSON, GitHub Actions lint when `actionlint` exists, hook wiring, command inventory, skill bash checks, an advisory skill trigger-overlap scan, hook/script regressions, local sensitive artifact scanning, warn-only workspace quality drift, and shared-doc references. `bash tests/check-all.sh --links` runs the optional local `lychee` check.
+- Local gate: `bash tests/check-all.sh`. Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
 
 ### Runtime Dependencies
 - Required: `git`, `gh`, `jq`, and `python3`. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.

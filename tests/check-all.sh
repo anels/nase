@@ -295,6 +295,11 @@ run_canonical_pointers() {
   run_gate "check-canonical-pointers.sh" bash tests/check-canonical-pointers.sh
 }
 
+run_review_gate_optionality() {
+  section "FSD review-gate optionality contract"
+  run_gate "check-review-gate-optionality.sh" bash tests/check-review-gate-optionality.sh
+}
+
 run_skill_doctrine() {
   section "skill doctrine"
   run_gate "check-skill-doctrine.sh" bash tests/check-skill-doctrine.sh
@@ -401,6 +406,7 @@ run_fast() {
   run_command_catalog
   run_shared_doc_refs
   run_canonical_pointers
+  run_review_gate_optionality
   run_skill_doctrine
   run_skill_overlap
   run_fast_script_tests
@@ -422,6 +428,7 @@ run_full() {
   run_script_tests
   run_shared_doc_refs
   run_canonical_pointers
+  run_review_gate_optionality
   run_skill_doctrine
   run_skill_overlap
 }
