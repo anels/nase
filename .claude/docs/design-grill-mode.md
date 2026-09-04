@@ -8,10 +8,8 @@
 - Step 2.5: Ground the mechanism premise
 - Step 3: Build Decision Tree
 - Step 3.4: Persona Lenses (multi-perspective grill)
-- Step 3.5: Codex Mutual Grill Round 1 (cross-model questions)
 - Step 4: Grill Loop (frontier rounds)
 - Step 5: Termination
-- Step 5.5: Codex Mutual Grill Round 2 (answer Claude's questions)
 - Step 5.6: Convergence loop
 - Step 6: Write Back to Effort Doc
 - Grill Session - {YYYY-MM-DD}
@@ -116,28 +114,6 @@ Lead with whichever personas matter most for this design (a CLI util needs littl
 
 When recording resolutions (Step 6), keep the `persona` tag and a **severity** — `blocking` (real correctness/security/data risk), `suggestion`, or `nit` — so downstream skills can triage. Don't over-escalate: `blocking` needs concrete evidence the design is broken, not a stylistic preference.
 
-## Step 3.5: Codex Mutual Grill Round 1 (cross-model questions)
-
-**Gate per `.claude/docs/codex-review.md → Prerequisite`** — skip cleanly to Step 4 if the MCP isn't loaded; never use a Claude fallback (the value here is finding attacks Claude's own training would miss).
-
-Invoke the Codex MCP with the `mutual-questioner` mode contract from `.claude/docs/codex-review.md`:
-
-- `cwd` = `repo_path` (so Codex can sanity-check claims against actual files)
-- `prompt` = the full effort doc body (the design under review), plus a bullet list of known KB / past-decision constraints surfaced during Step 1
-- `developer-instructions` = the `mutual-questioner` template verbatim
-- `sandbox` = `read-only`
-- `config` = `{"model_reasoning_effort": "xhigh"}` (grill is the right place to spend the extra thinking budget — adversarial design review is the exact task this model setting was tuned for)
-
-Capture both `content` and `threadId`; hold the thread id as `codex_grill_thread_id` for Step 5.5.
-
-Parse `content` as a numbered list of questions (`QUESTION / WHY / EVIDENCE NEEDED / DEFAULT IF EVIDENCE MATCHES`). For each question:
-
-1. **Deduplicate** against the existing `branches` list. If the question maps to a branch already extracted in Step 3, merge it, mark the existing branch with source `[claude+codex]` for a confidence bump, and preserve the union of their `depends_on` edges.
-2. **Append new questions as branches**, each tagged `[codex]`, with a stable `id`, `topic` = a short label, `why-it-matters` = the WHY line, `evidence_needed` = the EVIDENCE NEEDED line, `recommended_default` = the DEFAULT line when present, and `depends_on` inferred by the Step 3 rule.
-3. **Respect the 15-branch cap**. If Codex pushes total branches past 15, keep the highest-load-bearing dependency-closed set and move the rest, plus their transitive dependents, into `## Open after grill`. Revalidate dependency ids and acyclicity after the merge/cap. Never silently drop a Codex question; surface it.
-
-Step 4 then runs unchanged except for one rule: for `[codex]` branches, exhaust the evidence named by Codex (`codebase / config / CLI / pipeline / KB / Jira`) before asking the user. The user should only see a question when both Claude/NASE and Codex cannot answer from available evidence or when a stakeholder decision is genuinely required.
-
 ## Step 4: Grill Loop (frontier rounds)
 
 Work the decision tree in **rounds**, not one question at a time. Compute the **frontier** from the branch graph: it is every unresolved branch whose `depends_on` ids are all resolved. These are the decisions you can resolve *now* without guessing at answers you haven't heard yet. A branch whose resolution depends on another still-open branch is not on the frontier; it belongs to a later round. If a branch is deferred, move all of its transitive dependents to `open_after_grill` instead of treating the missing decision as settled. Resolve the whole current frontier each round (facts first, then a single batched ask), then recompute the frontier and repeat. This front-loads evidence lookups and cuts the user's turn count versus asking serially. (Adapted from mattpocock/skills `batch-grill-me`; see `workspace/kb/general/workflow.md` §2026-07-16.)
@@ -192,7 +168,7 @@ After each round's answers:
 
 The loop ends when the frontier is empty — every branch resolved/deferred — or when the user explicitly stops the grill.
 
-If every branch has been handled by evidence lookup, user answer, or `open_after_grill`, proceed to Step 5.5 with `termination = branches exhausted`. Do not ask a synthetic final question just to collect a stop token.
+If every branch has been handled by evidence lookup, user answer, or `open_after_grill`, proceed to Step 5.6 with `termination = branches exhausted`. Do not ask a synthetic final question just to collect a stop token.
 
 If a user-facing question batch is active, the user can also stop via any question's harness-added `Other` free-form. Evaluate each returned answer independently and match each trimmed `Other` payload (case-insensitive) against this exact-token list:
 
@@ -211,51 +187,20 @@ If any answer matches, record the other non-termination answers returned in the 
 
 Hard cap: 25 user-answerable branches resolved total (across all rounds). If reached without an empty frontier, say so and ask whether to continue or stop. This is a safety bound, not a normal exit.
 
-## Step 5.5: Codex Mutual Grill Round 2 (answer Claude's questions)
-
-Run this step only if Step 3.5 produced `codex_grill_thread_id`. Skip cleanly if the Codex MCP was unavailable or round 1 failed.
-
-Before writing the effort doc, build an updated design snapshot in memory:
-- The effort doc body
-- The `grill_resolutions` gathered in Step 4
-- The implementation constraints distilled so far
-- Evidence gathered while resolving branches (file/line, CLI output summary, pipeline/KB/Jira references)
-
-Create 3-7 round-2 questions for Codex. Ask about the revised design, not the original plan. Good questions look like:
-- "Given the resolved constraints, is the rollback path still complete?"
-- "Does the updated ordering leave any race or partial-deploy hole?"
-- "Which remaining question requires human input rather than codebase evidence?"
-
-Invoke `mcp__codex__codex-reply` using the `mutual-answerer` round-2 prompt from `.claude/docs/codex-review.md`:
-
-- `threadId` = `codex_grill_thread_id`
-- `prompt` = updated design snapshot + evidence gathered + Claude's round-2 questions
-
-Parse each answer:
-- `ANSWER` with `NEW RISK: none` → append a `[codex]` confirmation to `grill_resolutions` only if it adds a concrete implementation constraint.
-- `NEW RISK` present → classify and resolve it through the same Step 4 research ladder. If codebase/config/CLI/pipeline/Jira can answer it, resolve it without asking the user. If not, add it to `open_after_grill`.
-- `HUMAN INPUT NEEDED` present → first run the research ladder. Only keep it for the user if both Claude/NASE and Codex cannot answer it.
-- `BLOCKED` → treat as unresolved only after evidence lookup also fails; otherwise write the evidence-backed answer and note that Codex was blocked.
-
-Do not start a new Codex thread for round 2. The point is to make Codex re-check the updated design against its own first-round questions.
-
 ## Step 5.6: Convergence loop
 
-Fixed two rounds under-converge. Empirically (nase design sessions), each successive Codex round can still surface NEW blocking/correctness findings — a design grilled twice was still shipping latent bugs (lagging-atom reads, invalid readiness signals, deeper coupling) that a third round caught. So loop; do not hard-code the round count.
+Fixed two rounds under-converge. Empirically (nase design sessions), each successive round can still surface NEW blocking/correctness findings — a design grilled twice was still shipping latent bugs (lagging-atom reads, invalid readiness signals, deeper coupling) that a third round caught. So loop; do not hard-code the round count.
 
-After Step 5.5, if the Codex round produced any NEW `blocking` or `suggestion`-severity finding (a real correctness/design gap, not a nit), revise the design and run another `codex-reply` round on the same `codex_grill_thread_id` with the updated snapshot plus a convergence-check prompt ("ask ONLY where a real blocking/correctness gap remains; otherwise state CONVERGED explicitly"). Repeat.
-
-If Codex was unavailable, start after Step 4 instead: revise the design, then rerun the relevant Step 3.4 persona lenses against the updated snapshot. Record those findings in `grill_resolutions` and repeat only when they add a NEW `blocking` or `suggestion` finding.
+Each round revises the design, then reruns the relevant Step 3.4 persona lenses against the updated snapshot. Record those findings in `grill_resolutions` and repeat only when a round adds a NEW `blocking` or `suggestion`-severity finding (a real correctness/design gap, not a nit).
 
 Stop when either:
-- a full round yields **zero new `blocking`/`suggestion` findings** (only nits, or an explicit `CONVERGED`) — the design is stable, or
-- **5 Codex rounds total** have run (hard cap).
+- a full round yields **zero new `blocking`/`suggestion` findings** (only nits) — the design is stable, or
+- **5 rounds total** have run (hard cap).
 
 Rules:
 - **Severity gate** — only `blocking`/`suggestion` re-open the loop; `nit`s are recorded but never trigger another round (else it chases wording forever).
 - **Structural-stability check** — evaluate convergence only after the design's shape is stable. A round that changes the shape (new component, new seam, scope change) opens new surface; its findings are the *first* round of the new shape, not proof the old shape "failed to converge". Expect the loop to run longer whenever a round restructures the design.
 - **Non-convergence = decompose signal** — if the cap is hit with blocking findings still appearing, do NOT keep grinding: that means the design is too large / entangled to converge as one doc. Recommend splitting into separate, independently-grillable efforts, record the still-open findings in `## Open after grill`, and say so.
-- When the Codex MCP is unavailable, the **same loop-until-no-new-blocking rule** governs the persona/self grill: keep running persona passes until one adds no new blocking finding, same 5-pass cap.
 
 ## Step 6: Write Back to Effort Doc
 
@@ -291,14 +236,6 @@ Distill the resolutions into ≤7 imperative constraints downstream skills (e.g.
 Anything still unresolved (codebase exploration was inconclusive, or user deferred):
 - {item, if any — else "None."}
 
-### Codex convergence
-
-Include only when Codex rounds ran:
-- Rounds completed: {count, 1-5}
-- Outcome: {converged / cap reached / blocked}
-- Confirmed: {count}
-- New risks resolved by evidence: {count}
-- Still needs human input: {count}
 ```
 
 Update lifecycle: append a checked item if the doc didn't already track grill:
@@ -335,7 +272,6 @@ Record the result in the Grill Session block's `**Cleaned:**` line (N auto-remov
 Report to the user (conversation language):
 - Path of effort doc
 - Number of branches walked + lookups + auto-resolutions
-- Codex mutual grill status: skipped / {N} rounds / converged / cap reached, plus unresolved human-input count
 - 1-line summary of the most load-bearing constraint added
 - Only suggest `/nase:fsd {slug}` when `freshness_outcome = continue`; otherwise report the blocker or shipped evidence and no implementation handoff.
 
@@ -344,7 +280,7 @@ Daily log entry per `.claude/docs/daily-log-format.md` (tag: `grill` — ad-hoc,
 
 ## Step 8: Follow-up Human Grill Recommendation (when applicable)
 
-For non-trivial designs — 8+ branches in the human grill loop, or designs touching CI/CD pipelines, infra, or cross-team coordination — recommend a **follow-up human grill pass** after the design body is updated with all current resolutions. The first human pass surfaces structural risks (constraints, dependencies, missing requirements); the later follow-up pass — re-reading the updated body — surfaces representational drift that only appears against the revised body: cache key format mismatch between body and resolution, dependsOn ordering, hardcoded artifact names, conditional-cleanup gaps. This is separate from Codex Mutual Grill Round 2 in Step 5.5.
+For non-trivial designs — 8+ branches in the human grill loop, or designs touching CI/CD pipelines, infra, or cross-team coordination — recommend a **follow-up human grill pass** after the design body is updated with all current resolutions. The first human pass surfaces structural risks (constraints, dependencies, missing requirements); the later follow-up pass — re-reading the updated body — surfaces representational drift that only appears against the revised body: cache key format mismatch between body and resolution, dependsOn ordering, hardcoded artifact names, conditional-cleanup gaps. This is separate from the Step 5.6 convergence loop, which re-runs persona lenses against the revised snapshot rather than re-reading the written body with a human.
 
 Trigger output (append to Step 7 report when applicable):
 > "Recommend a follow-up human grill once the design body is updated — this pass caught {N} structural issues; a later reread typically surfaces representational drift (cache keys, ordering, hardcoded names) only visible against the revised body."
@@ -357,4 +293,4 @@ Skip recommendation when the human grill loop had ≤4 branches or the design is
 - If the effort doc already contains a `## Grill Session — {today's date}` block, append resolutions to it rather than creating a duplicate same-day block.
 - Never ask the user something the codebase or KB can answer (Q5 contract). When in doubt, explore first.
 - Recommendations must be opinionated — "I don't know, you choose" is a failure mode. If you genuinely can't form an opinion, that's a signal the branch needs more codebase exploration before asking.
-- Codex is a challenger, not the owner. Claude/NASE owns evidence gathering and final write-back; Codex's output is tagged and treated as untrusted until checked.
+- A persona lens is a challenger, not the owner. Claude/NASE owns evidence gathering and final write-back; a lens question is tagged with its `persona` and treated as unverified until it is resolved against the codebase, config, or KB.

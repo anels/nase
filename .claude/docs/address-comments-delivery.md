@@ -6,7 +6,7 @@
 - Phase 6: Execute Changes
 - Phase 7: Build & Test (max 5 iterations)
 - Phase 7.25: Optional Post-Edit CLI Gates
-- Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
+- Phase 7.5: Review-Thread Resolution Gate
 - Phase 8: Commit & Push
 - Phase 8b: Update PR Description to Match Template
 - Phase 9: Reply & Resolve Comments
@@ -103,9 +103,9 @@ python3 .claude/scripts/tool-availability.py --group baseline --group ci --group
 
 Apply a formatter or scanner fix only when it stays inside the accepted thread's scope. Missing optional tools are warning-only and must not block replies or thread resolution when the code/test evidence is otherwise adequate. Scanner output is not reviewer intent: verify findings against the review thread, diff scope, and source lines before expanding the patch.
 
-## Phase 7.5: Review-Thread Resolution Gate (Codex, with single-model fallback)
+## Phase 7.5: Review-Thread Resolution Gate
 
-Follow `.claude/docs/pr-review-verification.md → Review-Thread Resolution Gate`. The gate is mandatory before commit or outward replies: use Codex when available, otherwise the documented fresh-context fallback.
+Follow `.claude/docs/pr-review-verification.md → Review-Thread Resolution Gate`. The gate is mandatory before commit or outward replies, and it has no availability branch: the verifier is a local fresh-context subagent.
 
 ## Phase 8: Commit & Push
 

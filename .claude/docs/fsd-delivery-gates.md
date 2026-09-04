@@ -45,7 +45,10 @@ A reviewer that returns nothing at all - an empty turn, an idle signal, no JSON 
 
 ### Run the reviewer
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is unavailable, skip cleanly past only that invocation and spawn one fresh-context read-only reviewer.
+Spawn one fresh-context read-only reviewer. The reviewer is a local subagent, so
+there is no availability branch here: the gate always runs, and the only ways it
+yields are the result-shape failures described above. Its instructions are
+`Mode: verify` in `.claude/docs/review-modes.md`, handed over verbatim.
 
 **Route it through the `verifier` role in `.claude/roles.yaml`**, which already encodes what this reviewer needs: `tools: [Read, Grep, Glob, Bash]` with no Edit/Write, and a `prompt_prefix` that asks for faithful reporting rather than a soft pass. Naming the role matters because the tool shape alone does not identify a usable agent. A search-oriented agent whose own definition says it locates code and does not review or audit it will accept the spawn and then return an empty turn - which reads exactly like an infrastructure failure and consumes the retry budget for a reason that is really agent selection. If a project-level or plugin reviewer agent is available and is review-capable, it is a fine substitute, but check its tool whitelist: an agent with Edit/Write is read-only only by instruction, which is weaker than the role's whitelist, and the Phase 10 report should say which of the two guarantees applied.
 
@@ -56,7 +59,7 @@ Give the reviewer exactly four things:
 3. the candidate bundle from Phase 6.1
 4. **the requirement inventory as its own file**
 
-`codex-verify-bundle.py` binds the inventory by hash but does not render it into the bundle, so a reviewer told the inventory is "in the bundle" will correctly report it cannot enumerate the requirements. Name the inventory file in the reviewer's read-list.
+`verify-bundle.py` binds the inventory by hash but does not render it into the bundle, so a reviewer told the inventory is "in the bundle" will correctly report it cannot enumerate the requirements. Name the inventory file in the reviewer's read-list.
 
 Do not include implementation reasoning, a proposed verdict, or prior reviewer text. Persist the returned bytes as the round result. Missing or malformed output is a reducer input failure, not a product decision.
 

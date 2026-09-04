@@ -31,7 +31,7 @@ make_repo() {
   mkdir -p "$repo_path/.claude/hooks" "$repo_path/.claude/scripts" "$repo_path/tests" "$repo_path/workspace"
   git -C "$repo_path" init -q
   cp "$HOOK" "$repo_path/.claude/hooks/stop-backup.sh"
-  cp "$ROOT/.claude/scripts/codex-verify-bundle.py" "$repo_path/.claude/scripts/codex-verify-bundle.py"
+  cp "$ROOT/.claude/scripts/verify-bundle.py" "$repo_path/.claude/scripts/verify-bundle.py"
   cp "$ROOT/tests/check-local-sensitive-artifacts.sh" "$repo_path/tests/check-local-sensitive-artifacts.sh"
   printf '# Workspace Context\n' > "$repo_path/workspace/context.md"
 }

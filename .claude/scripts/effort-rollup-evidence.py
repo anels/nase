@@ -62,7 +62,7 @@ EFFORT_STATE = load_module(
     "nase_effort_state", SCRIPT_ROOT / ".claude" / "scripts" / "effort-state.py"
 )
 SECRET = load_module(
-    "nase_effort_rollup_secret_scan", SCRIPT_ROOT / ".claude" / "scripts" / "codex-verify-bundle.py"
+    "nase_effort_rollup_secret_scan", SCRIPT_ROOT / ".claude" / "scripts" / "verify-bundle.py"
 )
 
 

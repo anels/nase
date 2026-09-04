@@ -15,15 +15,33 @@ Create a concise daily plan from current evidence. Follow `.claude/docs/language
 
 Resolve the date, optional focus, logs, tasks, active efforts, recent lessons, KB staleness, and today's commits. Use `nase-workspace-state-scanner` for bounded local reads and `.claude/docs/repo-resolution.md` for repo/KB lookup.
 
+Read the day's skill-usage counts from the helper rather than having the scanner derive them from logs:
+
+```bash
+python3 .claude/scripts/today-stats.py --date "{resolved_date}"
+```
+
+It prints `total_invocations=` and `unique_skills=`, then one `skill <name> <count>` line per skill, and exits 0 with zeros for a date that has no telemetry. Hold that output for Step 2. Leave the scanner to tasks, efforts, and lessons, which need judgment rather than counting.
+
 ### 1. Live status sync
 
 Normalize every structured effort/todo PR field into a unique normalized PR reference. Keep the three PR sets separate: delivery, report-only, and dependency. Do not treat arbitrary body URLs as delivery evidence.
 
-Use `nase-pr-metadata-reader` for GitHub metadata. Read failures stay visible and block automatic lifecycle changes for the affected item. Apply `.claude/docs/effort-lifecycle.md` and `.claude/scripts/effort-state.py`; route any local update through `.claude/docs/workspace-write-guard.md`.
+Batch the live reads for effort-file PRs in one pass instead of one agent per PR:
+
+```bash
+python3 .claude/scripts/effort-pr-sweep.py --format json
+```
+
+Top-level `live` is the PR-state source for every PR cited by `workspace/efforts/*.md`: a map keyed by PR reference carrying state, reviewDecision, mergedAt, mergeCommit, and failing/pending checks. Each `efforts[]` entry also carries an `invisible` list; handle it per `.claude/docs/effort-lifecycle.md → Classifier Blind Spots`, which owns the rule for which hints are actionable.
+
+The sweep globs effort files only, so a PR cited solely by `workspace/tasks/todo.md` appears in neither `live` nor the unreadable set. Use `nase-pr-metadata-reader` for those and for any PR the sweep reports as unreadable. With no active effort files the sweep exits 0 having written nothing to stdout, so treat empty output as "no efforts to sync" rather than parsing it.
+
+Read failures stay visible and block automatic lifecycle changes for the affected item. Apply `.claude/docs/effort-lifecycle.md` and `.claude/scripts/effort-state.py`; route any local update through `.claude/docs/workspace-write-guard.md`.
 
 ### 2. Maintenance and context
 
-Run the bounded KB staleness/gap checks, scheduled maintenance checks, and today's local activity. Keep maintenance behind active delivery work unless it is overdue or blocking.
+Run the bounded KB staleness/gap checks, scheduled maintenance checks, and today's local activity. Take the skill-usage counts from the Step 0 helper output rather than re-deriving them; commits and log activity still come from Step 0's scanner reads. Keep maintenance behind active delivery work unless it is overdue or blocking.
 
 ### 3. Jira, Slack, and Confluence pulse
 

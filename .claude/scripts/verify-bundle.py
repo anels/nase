@@ -1179,7 +1179,7 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
     untracked = redact_sensitive_lines(git_text(repo, "ls-files", "--others", "--exclude-standard"))
     lines = [
         f"<!-- fsd-artifact: {canonical_bytes(metadata).decode('utf-8')} -->",
-        "# Codex Verification Bundle",
+        "# Verification Bundle",
         "",
         f"Repo: `{repo}`",
         f"Base OID: `{base_oid}`",

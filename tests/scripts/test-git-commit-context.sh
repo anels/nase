@@ -164,6 +164,62 @@ out=$(context "$REPO" --no-fetch)
 assert_cmd "unparseable JSON config is reported, not fatal" \
   test "$(field "$out" '.commitlint.candidates[] | select(.file == ".commitlintrc.json") | .parsed')" = false
 
+# --- protected-branch detection ----------------------------------------------
+# `--auto-accept` used to hang off push_state alone, so an unpushed commit on
+# main was amended with no prompt. These cover the branch axis separately.
+BREPO="$TMPROOT/branches"
+new_repo "$BREPO"
+printf 'one\n' > "$BREPO/a.txt"
+git -C "$BREPO" add -A
+git -C "$BREPO" commit --quiet -m "feat: first"
+
+for protected in main master develop release/2026.10; do
+  git -C "$BREPO" checkout --quiet -B "$protected"
+  out=$(context "$BREPO" --no-fetch)
+  assert_cmd "$protected is protected" test "$(field "$out" .is_protected)" = true
+  assert_cmd "$protected is reported by name" test "$(field "$out" .branch)" = "$protected"
+done
+
+# A bare `release` and a capitalized `MAIN` are still protected: git refs are
+# case-sensitive and `release/*` does not cover `release`, but letting an
+# unattended amend through on either is not a tradeoff worth making.
+for protected in release MAIN Develop; do
+  git -C "$BREPO" checkout --quiet -B "$protected"
+  out=$(context "$BREPO" --no-fetch)
+  assert_cmd "$protected is protected" test "$(field "$out" .is_protected)" = true
+done
+
+# Names that merely resemble a protected branch must stay unprotected.
+for open_branch in releases hotfix/release main-ish feature/widget; do
+  git -C "$BREPO" checkout --quiet -B "$open_branch"
+  out=$(context "$BREPO" --no-fetch)
+  assert_cmd "$open_branch is not protected" test "$(field "$out" .is_protected)" = false
+done
+
+# A detached HEAD moves no branch ref, so amending it cannot rewrite a protected
+# branch; push_state remains the gate there.
+git -C "$BREPO" checkout --quiet --detach
+out=$(context "$BREPO" --no-fetch)
+assert_cmd "detached HEAD is not protected" test "$(field "$out" .is_protected)" = false
+# `jq -r .branch` prints "null" for a payload with no `branch` key at all, so
+# assert the key exists and is null rather than comparing the rendered string.
+assert_cmd "detached HEAD reports an explicit null branch" \
+  test "$(printf '%s' "$out" | jq -e 'has("branch") and .branch == null' >/dev/null 2>&1; echo $?)" = 0
+
+# An ambiguous ref cannot be cleared as unprotected. `refs/heads/HEAD` makes
+# `rev-parse --abbrev-ref HEAD` fail, which must fail closed rather than reading
+# as the detached case, whose sentinel is the same literal string.
+AREPO="$TMPROOT/ambiguous"
+new_repo "$AREPO"
+printf 'one\n' > "$AREPO/a.txt"
+git -C "$AREPO" add -A
+git -C "$AREPO" commit --quiet -m "feat: first"
+git -C "$AREPO" update-ref refs/heads/HEAD "$(git -C "$AREPO" rev-parse HEAD)"
+git -C "$AREPO" symbolic-ref HEAD refs/heads/HEAD
+out=$(context "$AREPO" --no-fetch)
+assert_cmd "an ambiguous ref fails closed as protected" test "$(field "$out" .is_protected)" = true
+assert_cmd "an ambiguous ref reports no branch name" test "$(field "$out" .branch)" = null
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\ngit-commit-context tests passed.\n'
   exit 0

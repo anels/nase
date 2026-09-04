@@ -7,8 +7,8 @@
 #   D3. files claiming "at HEAD" in a verifier role but greping the working tree without
 #       `git show HEAD:` (regression guard for doc-pr-head-ground-scan.md)
 #   D4. skill files missing a language preflight / language-config reference
-#   D5. Codex MCP caller files missing the canonical prerequisite / clean-skip gate,
-#       either directly or in a directly referenced shared workflow document
+#   D5. verification-gate callers that still frame the gate as conditional on an
+#       external provider, which would make a mandatory gate optional again
 #   D6. restore archive flow missing path traversal / symlink hardening
 #   D7. kb-merge external import flow missing canonical path / symlink hardening
 #   D8. kb-merge generated skill wrappers missing frontmatter sanitization
@@ -195,48 +195,51 @@ else
   green "PASS"; printf ': all skills declare language handling\n'
 fi
 
-# ---------- D5: Codex MCP stays optional ----------------------------------
-section "D5: Codex MCP callers have clean-skip gate"
-has_codex_gate() {
-  local file="$1"
-  grep -qF '.claude/docs/codex-review.md → Prerequisite' "$file" 2>/dev/null && grep -qi 'skip cleanly' "$file" 2>/dev/null
-}
-
-codex_gate_ready() {
-  local candidate="$1" reference
-  if has_codex_gate "$candidate"; then
-    return 0
-  fi
-
-  while IFS= read -r reference; do
-    [[ -n "$reference" && -f "$reference" ]] || continue
-    if has_codex_gate "$reference"; then
-      return 0
-    fi
-  done < <(grep -oE '\.claude/docs/[A-Za-z0-9._/-]+\.md' "$candidate" 2>/dev/null | sort -u)
-
-  return 1
-}
-
+# ---------- D5: the verification gate stays mandatory ----------------------
+section "D5: gate owners declare the gate unconditional"
+# The gate used to route through an external MCP provider, so the old doctrine
+# required every caller to degrade cleanly when that provider was absent. The
+# gate now runs one local read-only verifier, which is always available, so the
+# opposite failure is the live one: a doc that reframes the check as conditional
+# turns a mandatory outward-facing gate back into an optional one.
+#
+# "Is this prose conditional?" is not decidable by grep - a search for "optional"
+# flags unrelated text, and an absence-of-residue check passes any newly written
+# conditional wording. So each gate owner is named here and must carry an
+# explicit unconditional marker: a positive token the author has to delete before
+# the gate can become optional again, which a reviewer will see in the diff.
+declare -a D5_OWNERS=(
+  ".claude/docs/pr-review-verification.md"
+  ".claude/docs/address-comments-delivery.md"
+  ".claude/docs/fsd-delivery-gates.md"
+)
+D5_MARKER='no availability branch|gate is unconditional|always runs'
 d5_hits=""
+for f in "${D5_OWNERS[@]}"; do
+  if [[ ! -f "$f" ]]; then
+    d5_hits+="  $f: missing"$'\n'
+  elif ! grep -qE "$D5_MARKER" "$f" 2>/dev/null; then
+    d5_hits+="  $f: no unconditional marker"$'\n'
+  fi
+done
+# Second, cheaper assertion: the provider is gone, so its wording must not
+# reappear anywhere. This is a rename-residue lint, not an optionality check.
+# Only Codex-identifying tokens belong here. A generic "MCP is unavailable"
+# would flag the Atlassian and Slack MCPs, which are legitimately optional.
+D5_RESIDUE='Codex MCP|mcp__codex__|codex-reply'
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  if ! codex_gate_ready "$f"; then
-    d5_hits+="  $f"$'\n'
-  fi
+  d5_hits+="  $f: provider residue"$'\n'
 done < <(
-  grep -rlE 'Codex MCP|mcp__codex__|codex-reply|codex-review\.md' \
-    .claude/commands/nase .claude/docs workspace/skills 2>/dev/null \
-    | grep -v 'check-skill-doctrine.sh' \
-    | grep -v '^\.claude/docs/reference\.md$' \
-    | grep -v '^\.claude/docs/codex-review\.md$' || true
+  grep -rlE "$D5_RESIDUE" .claude/commands/nase .claude/docs workspace/skills 2>/dev/null \
+    | grep -v 'check-skill-doctrine.sh' || true
 )
 if [[ -n "$d5_hits" ]]; then
-  red "FAIL"; printf ': Codex MCP callers missing prerequisite reference or clean-skip wording:\n'
+  red "FAIL"; printf ': verification-gate doctrine broke:\n'
   printf '%s' "$d5_hits"
   failed=$((failed+1))
 else
-  green "PASS"; printf ': Codex MCP callers degrade cleanly when unavailable\n'
+  green "PASS"; printf ': gate owners declare the gate unconditional, no provider residue\n'
 fi
 
 # ---------- D6: restore archive extraction is hardened ---------------------
@@ -1021,7 +1024,7 @@ required = {
     ".claude/docs/pr-review-verification.md": [
         ".claude/docs/code-comment-policy.md",
     ],
-    ".claude/docs/codex-review.md": [
+    ".claude/docs/review-modes.md": [
         "restates the code or narrates the change",
     ],
     ".claude/commands/nase/simplify.md": [

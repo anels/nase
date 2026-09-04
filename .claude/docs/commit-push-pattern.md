@@ -44,10 +44,12 @@ When passing the message via a file in a worktree (`git -C {worktree} commit -F 
 Skip this step unless the skill's deviation row below explicitly includes it.
 
 ```
-/nase:improve-commit-message --auto-accept
+/nase:improve-commit-message --auto-accept --repo {work_root}
 ```
 
-This polishes the message without pausing for confirmation.
+This polishes the message without pausing for confirmation. `--repo` is not optional for a worktree-based flow: the skill defaults it to the current directory, Bash resets `cwd` between calls, and an amend against the wrong checkout rewrites a commit nobody asked about.
+
+`--auto-accept` is honored only when the target HEAD is both unpushed and off a protected branch; on `main`, `master`, `develop`, `release`, or `release/*` (case-insensitive) the skill falls back to its explicit approval step instead of amending.
 
 ### 5. Push
 

@@ -14,10 +14,10 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1])
 sys.argv[:] = [sys.argv[0]]
-BUNDLE = ROOT / ".claude/scripts/codex-verify-bundle.py"
+BUNDLE = ROOT / ".claude/scripts/verify-bundle.py"
 PLACEHOLDER_CREDENTIAL = b"api_" + b'key: "' + b"AKIAIOSFODNN7EX" + b'AMPLE1"'
 
-spec = importlib.util.spec_from_file_location("codex_verify_bundle", BUNDLE)
+spec = importlib.util.spec_from_file_location("verify_bundle", BUNDLE)
 assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -468,7 +468,7 @@ class SecretScanTest(unittest.TestCase):
     def test_scanner_sources_do_not_trip_their_own_preflight(self):
         for path in (
             BUNDLE,
-            ROOT / "tests/scripts/test-codex-verify-bundle-secret-scan.sh",
+            ROOT / "tests/scripts/test-verify-bundle-secret-scan.sh",
             ROOT / "tests/hooks/test-stop-backup-safety.sh",
         ):
             with self.subTest(path=path):

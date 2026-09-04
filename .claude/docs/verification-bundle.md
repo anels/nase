@@ -1,11 +1,11 @@
-# Codex Verification Bundle
+# Verification Bundle
 
 This document owns the local artifact passed to the FSD reviewer that covers both code quality and spec conformance. Review invocation and action reduction live in `.claude/docs/fsd-delivery-gates.md` and `.claude/scripts/fsd-review-gate.py`.
 
 ## Build
 
 ```bash
-python3 .claude/scripts/codex-verify-bundle.py \
+python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" \
   --base "$BASE" \
   --task "$canonical_task_spec" \
@@ -43,7 +43,7 @@ All stat, name-status, changed-line, sample, and full-diff sections compare `bas
 To resolve only the candidate identity:
 
 ```bash
-python3 .claude/scripts/codex-verify-bundle.py \
+python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" \
   --base "$BASE" \
   --inventory-file "{canonical_inventory_json}" \
@@ -74,7 +74,7 @@ Before writing any reviewer artifact, the helper runs a redacted, high-confidenc
 When the reducer returns `CONTEXT`, pass its output to the next bundle:
 
 ```bash
-python3 .claude/scripts/codex-verify-bundle.py \
+python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" \
   --base "$BASE" \
   --task "$canonical_task_spec" \

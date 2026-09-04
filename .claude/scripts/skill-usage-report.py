@@ -12,7 +12,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 
-LEGACY_DEDUPE = timedelta(seconds=60)
+USE_DEDUPE = timedelta(seconds=60)
 
 
 @dataclass(frozen=True)
@@ -82,9 +82,14 @@ def read_events(path: Path) -> tuple[list[dict[str, object]], int]:
 def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, dict[str, object]]:
     uses: defaultdict[str, list[datetime]] = defaultdict(list)
     outcomes: defaultdict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "failure": 0})
-    legacy_uses: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
+    prompt_times: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
+    legacy_times: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
     end = datetime.combine(report_date, time.max).astimezone()
 
+    # A skill reached through the Skill tool - model-triggered, or nested inside
+    # another skill's flow - only ever emits tool_succeeded/tool_failed, because
+    # `activated` comes from UserPromptExpansion and so requires a user-typed
+    # /nase:x. Counting `activated` alone reports such a skill as never used.
     for event in events:
         skill = str(event["skill"])
         event_type = str(event["event_type"])
@@ -95,20 +100,36 @@ def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, d
         if timestamp > end:
             continue
 
-        if event_type:
-            if event_type == "activated":
-                uses[skill].append(timestamp)
-            elif event_type == "tool_succeeded":
-                outcomes[skill]["success"] += 1
-            elif event_type == "tool_failed":
-                outcomes[skill]["failure"] += 1
+        key = (skill, session)
+
+        if event_type == "activated":
+            # The two hooks are mutually exclusive per invocation, so an
+            # `activated` is never the duplicate of anything - only the anchor a
+            # tool outcome may be the duplicate of.
+            prompt_times[key].append(timestamp)
+            uses[skill].append(timestamp)
             continue
 
-        key = (skill, session)
-        if any(timedelta(0) <= timestamp - prior <= LEGACY_DEDUPE for prior in legacy_uses[key]):
+        if event_type in ("tool_succeeded", "tool_failed"):
+            outcomes[skill]["success" if event_type == "tool_succeeded" else "failure"] += 1
+            if any(timedelta(0) <= timestamp - prior <= USE_DEDUPE for prior in prompt_times[key]):
+                continue
+            uses[skill].append(timestamp)
             continue
+
+        if event_type:
+            # `requested` pairs with `activated` on the same typed command, and an
+            # unrecognized type is not evidence of a run.
+            continue
+
+        # Legacy records carry no event_type, and one invocation could emit up to
+        # three of them, so they still dedupe against each other.
+        if any(timedelta(0) <= timestamp - prior <= USE_DEDUPE for prior in legacy_times[key]):
+            continue
+        legacy_times[key].append(timestamp)
+        if source in ("prompt", "prompt-expansion"):
+            prompt_times[key].append(timestamp)
         uses[skill].append(timestamp)
-        legacy_uses[key].append(timestamp)
 
     result: dict[str, dict[str, object]] = {}
     for skill in sorted(set(uses) | set(outcomes)):
@@ -244,7 +265,7 @@ def render(rows: list[dict[str, object]], report_date: date, window: int, malfor
             "",
             "## Context Hotspots",
             "",
-            "Approximate raw first-load tokens use `entry bytes / 4`; weighted tokens multiply that by observed activations. Tokenizer, caching, and compaction can change billed usage.",
+            "Approximate raw first-load tokens use `entry bytes / 4`; weighted tokens multiply that by observed uses. Tokenizer, caching, and compaction can change billed usage.",
             "",
             "| Skill | Uses | Entry bytes | Est. tokens/load | Weighted tokens |",
             "|---|--:|--:|--:|--:|",

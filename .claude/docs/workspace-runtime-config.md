@@ -30,7 +30,6 @@ Other recommended runtime keys:
 - confluence_runbook_page_id:
 - slack_workspace:
 - appinsights_default_subscription:
-- codex_review_model:
 - claude_ultrareview_command:
 ```
 
@@ -57,5 +56,3 @@ Examples:
 
 - Claude Code CLI subcommands: run `claude <subcommand> --help`.
 - MCP tools: use `ToolSearch` / available-tool discovery before naming a tool.
-- Codex/OpenAI model aliases: read the active MCP/plugin config or official
-  model catalog when the exact model matters.

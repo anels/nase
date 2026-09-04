@@ -63,7 +63,7 @@ def load_module(name: str, path: Path) -> Any:
 
 
 EVAL = load_module("nase_pr_review_eval", REPO_ROOT / ".claude" / "scripts" / "pr-review-eval.py")
-SECRET = load_module("nase_codex_verify_bundle", REPO_ROOT / ".claude" / "scripts" / "codex-verify-bundle.py")
+SECRET = load_module("nase_verify_bundle", REPO_ROOT / ".claude" / "scripts" / "verify-bundle.py")
 
 
 def canonical_bytes(value: Any) -> bytes:

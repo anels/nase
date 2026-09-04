@@ -93,14 +93,16 @@ assert_contains "pushed amend fails closed on remote refresh errors" \
   "$COMMIT_CONTEXT" 'state = "unknown"'
 assert_contains "unknown publish state counts as published" \
   "$COMMIT_CONTEXT" 'state in ("pushed", "unknown")'
-assert_contains "auto-accept only skips approval for confirmed local commits" \
-  "$IMPROVE_COMMIT" 'When `push_state: not-pushed` and `--auto-accept` is present'
+assert_contains "auto-accept only skips approval for confirmed local commits off a protected branch" \
+  "$IMPROVE_COMMIT" 'When `push_state: not-pushed` and `is_protected: false` and `--auto-accept` is present'
+assert_contains "a protected branch withholds auto-accept whatever the push state says" \
+  "$IMPROVE_COMMIT" 'When `is_protected: true`, `--auto-accept` does not authorize the amend either'
 assert_contains "pushed amend warnings preserve unknown state" \
   "$IMPROVE_COMMIT" 'HEAD was {history_status} before amend'
 assert_not_contains "pushed amend does not claim committer timestamp preservation" \
   "$IMPROVE_COMMIT" 'preserves original author and timestamp automatically'
 assert_contains "improve commit frontmatter exposes only supported flags" \
-  "$IMPROVE_COMMIT" 'argument-hint: "[--auto-accept]"'
+  "$IMPROVE_COMMIT" 'argument-hint: "[--auto-accept] [--repo <abs-path>]"'
 assert_not_contains "auto-accept does not amend pushed history immediately" \
   "$IMPROVE_COMMIT" 'amend still proceeds in `--auto-accept` mode'
 assert_contains "architecture documents exact pushed-amend approval" \

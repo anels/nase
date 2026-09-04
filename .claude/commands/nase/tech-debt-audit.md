@@ -22,7 +22,7 @@ Use installed tools only. Typical seeds include `semgrep`, `trivy`, `actionlint`
 4. Inspect architecture boundaries, duplication, obsolete dependencies, unsafe defaults, reliability/observability gaps, testability, operational toil, and modernization opportunities.
 5. Apply `.claude/docs/ai-code-verification-debt.md` to AI-shaped or weakly verified code. Do not attribute authorship without evidence.
 6. For every candidate, trace callers/config/runtime impact and collect `path:line`, command, test, or source evidence. Drop unverified candidates.
-7. If Codex MCP is configured, follow `.claude/docs/codex-review.md → Prerequisite` and run the read-only tech-debt review mode. If unavailable, skip cleanly and keep the local evidence pass.
+7. Run the `tech-debt-review` sanity pass from `.claude/docs/review-modes.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`). A pass that re-reads the candidates without the audit's own reasoning is what catches a candidate the audit talked itself into.
 8. Validate report citations with `.claude/docs/citation-validator.md`. Rank only confirmed issues by impact, breadth, recurrence, and remediation sequence.
 9. Write the full audit to `workspace/recaps/tech-debt-{repo}-{YYYY-MM-DD}.md`; chat returns the pointer and top findings.
 10. Any proposed KB update is separate, previewed, and applied through `.claude/docs/workspace-write-guard.md`.
