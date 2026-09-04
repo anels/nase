@@ -98,7 +98,7 @@ Follow `.claude/docs/pr-review-verification.md → Review Frame and Specialist S
 
 ## Step 3 - Build Risk Map, Select Specialists, and Engage Existing Comments
 
-Continue the same shared workflow. It owns pipeline-touch handling, self-authored AI-slop review, conditional Codex review, and read-only triage of existing comments.
+Continue the same shared workflow. It owns pipeline-touch handling, self-authored AI-slop review, and read-only triage of existing comments.
 When the risk map selects Security, apply `.claude/docs/pr-review-verification.md → Security Specialist Contract`; do not route to a duplicate standalone security-review skill.
 
 ## Step 4 - Classify and filter (after agents complete)
@@ -242,8 +242,6 @@ For each in-scope finding:
 4. **RECONCILE** - classify results in this order: contract misread, valid/actionable, valid trade-off, noise. Fix an incomplete contract and re-loop.
 5. **STOP** - stop when only trivial/already-considered results remain, after 3 cycles, or when the user says to proceed. Escalate before a fourth cycle.
 
-In interactive sessions, after the single-model pass, ask whether to add a read-only Codex MCP second opinion. If accepted, follow `.claude/docs/codex-review.md -> Prerequisite` and `Mode: finding-doubt`. Pass only `ARTIFACT + CONTRACT`. If unavailable, log the skip and continue. In non-interactive sessions, skip the external reviewer and note it in the daily log.
-
-For shell safety, write the cross-model prompt to `workspace/tmp/doubt-pr-{number}-prompt.md` and pipe it via stdin. Never interpolate diff text into a shell argument.
+Run the DOUBT pass as `Mode: finding-doubt` from `.claude/docs/review-modes.md` in a fresh-context read-only subagent, passing only `ARTIFACT + CONTRACT`. Omitting the claim and the severity is the whole mechanism: a reviewer that already knows the expected answer cannot independently doubt it.
 
 Before Step 6, report: `doubt: {N} findings reviewed, {K} cycles, {M} upgraded, {R} refuted, {P} contract-misreads fixed`.

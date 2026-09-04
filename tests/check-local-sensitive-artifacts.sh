@@ -14,8 +14,8 @@ import os
 import pathlib
 import sys
 
-module_path = pathlib.Path(sys.argv[1]).resolve() / ".claude" / "scripts" / "codex-verify-bundle.py"
-spec = importlib.util.spec_from_file_location("codex_verify_bundle", module_path)
+module_path = pathlib.Path(sys.argv[1]).resolve() / ".claude" / "scripts" / "verify-bundle.py"
+spec = importlib.util.spec_from_file_location("verify_bundle", module_path)
 if spec is None or spec.loader is None:
     raise SystemExit(2)
 module = importlib.util.module_from_spec(spec)
@@ -117,8 +117,8 @@ import zipfile
 source_root = pathlib.Path(sys.argv[1]).resolve()
 archive_path = pathlib.Path(sys.argv[2])
 manifest_path = pathlib.Path(sys.argv[3])
-module_path = source_root / ".claude" / "scripts" / "codex-verify-bundle.py"
-spec = importlib.util.spec_from_file_location("codex_verify_bundle", module_path)
+module_path = source_root / ".claude" / "scripts" / "verify-bundle.py"
+spec = importlib.util.spec_from_file_location("verify_bundle", module_path)
 if spec is None or spec.loader is None:
     raise SystemExit("FAIL: cannot load the shared secret scanner.")
 module = importlib.util.module_from_spec(spec)
@@ -270,8 +270,8 @@ import sys
 
 source_root = pathlib.Path(sys.argv[1]).resolve()
 root = pathlib.Path(sys.argv[2]).resolve()
-module_path = source_root / ".claude" / "scripts" / "codex-verify-bundle.py"
-spec = importlib.util.spec_from_file_location("codex_verify_bundle", module_path)
+module_path = source_root / ".claude" / "scripts" / "verify-bundle.py"
+spec = importlib.util.spec_from_file_location("verify_bundle", module_path)
 if spec is None or spec.loader is None:
     raise SystemExit("FAIL: cannot load the shared secret scanner.")
 module = importlib.util.module_from_spec(spec)

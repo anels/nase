@@ -75,14 +75,20 @@ Classification is blocked until the dossier exists. If evidence is missing and c
 
 ## 9. Review-Thread Resolution Gate
 
-Gate per `.claude/docs/codex-review.md → Prerequisite`. If the Codex MCP is not loaded, skip cleanly past only the Codex invocation.
+This gate is unconditional. Replying to and resolving someone's review threads is
+an outward-facing, hard-to-undo action, so it always gets an independent check.
+The verifier is a local subagent and is therefore always available; there is no
+path that skips this.
 
-Do NOT skip this gate: replying to and resolving someone's review threads is an outward-facing, hard-to-undo action, so it always gets the single-model fallback check below.
-
-**Single-model fallback (Codex unavailable):** spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`, tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
+Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`,
+tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
 - the unresolved review threads from Phase 2 (full comment chains)
 - the final post-Phase-4 dossier/action map and drafted replies from Phase 6
-- the same diff payload described for the Codex prompt below
+- the implementation diff:
+  - If code changed: `git -C {worktree_path} diff origin/{pr_branch}` (working tree diff before commit)
+  - Also include `git -C {worktree_path} ls-files --others --exclude-standard` and the full content of any task-created untracked files
+  - If no code changed: say `No code diff; reply-only / decline verification only`
+  - For diffs >2000 lines: use `git diff --stat` plus the 5 most-changed files in full
 
 Ask it to judge independently, per thread:
 - does the diff/reply actually address what the reviewer asked?
@@ -90,18 +96,11 @@ Ask it to judge independently, per thread:
 - does any reply contradict the dossier evidence or omit a required verification note?
 - does the diff add a code comment that `.claude/docs/code-comment-policy.md` would not earn - restating the code, narrating the change, or an unanchored *why*? Report it; a comment that contradicts the line below it is a FAIL, an unearned one is not.
 
-Do NOT include your own classification reasoning or expected verdict. It must answer in the same `VERDICT:` shape below; apply the same decision tree. Log `thread-resolution verify: single-model fallback (Codex unavailable)`; overrides use tag `fallback-verify`.
-
-Invoke the Codex MCP with the `comment-resolution` mode contract from `.claude/docs/codex-review.md`:
-
-- `cwd` = `{worktree_path}`
-- `prompt` = unresolved review threads from Phase 2, the final post-Phase-4 dossier/action map, drafted replies from Phase 6, and the implementation diff:
-  - If code changed: `git -C {worktree_path} diff origin/{pr_branch}` (working tree diff before commit)
-  - Also include `git -C {worktree_path} ls-files --others --exclude-standard` and the full content of any task-created untracked files
-  - If no code changed: say `No code diff; reply-only / decline verification only`
-  - For diffs >2000 lines: use `git diff --stat` plus the 5 most-changed files in full
-- `developer-instructions` = the `comment-resolution` template verbatim
-- `sandbox` = `read-only`
+Do NOT include your own classification reasoning or expected verdict — an independent
+read is the only thing this gate buys, and naming your expected answer spends it.
+Use the `comment-resolution` mode contract from `.claude/docs/review-modes.md` as the
+subagent's instructions verbatim. Log `thread-resolution verify: {VERDICT}`; overrides
+use tag `verify-override`.
 
 Expected shape:
 ```
@@ -114,16 +113,16 @@ REASONING: ...
 
 Decision tree:
 
-- **PASS** → log one line (`Codex thread-resolution verify: PASS`) and proceed to Phase 8. No user prompt. If SCOPE CREEP came back non-empty, print those items first: a PASS verdict does not mean they are absent, and this is the only place they ever surface. Delete an unearned comment it names before committing - a comment-only deletion needs no further gate round.
-- **NEEDS-HUMAN** → present the full Codex output and ask via `AskUserQuestion`:
-  - Q: "Codex flagged ambiguity in the review-thread resolution. What now?"
+- **PASS** → log one line (`thread-resolution verify: PASS`) and proceed to Phase 8. No user prompt. If SCOPE CREEP came back non-empty, print those items first: a PASS verdict does not mean they are absent, and this is the only place they ever surface. Delete an unearned comment it names before committing - a comment-only deletion needs no further gate round.
+- **NEEDS-HUMAN** → present the full verifier output and ask via `AskUserQuestion`:
+  - Q: "The verifier flagged ambiguity in the review-thread resolution. What now?"
   - Options: `Revise first` / `Proceed — push anyway` / `Show me the diff + replies`
   - Honor the user's choice.
-- **FAIL** → do NOT commit or push. Present the full Codex output and ask via `AskUserQuestion`:
-  - Q: "Codex says at least one review thread isn't safely addressed. What now?"
-  - Options: `Fix it` / `Override — Codex is wrong` / `Cancel`
+- **FAIL** → do NOT commit or push. Present the full verifier output and ask via `AskUserQuestion`:
+  - Q: "The verifier says at least one review thread isn't safely addressed. What now?"
+  - Options: `Fix it` / `Override — the verifier is wrong` / `Cancel`
   - On "Fix it": re-enter Phase 6 with the failing thread(s) as requirements, then rerun build/test and this gate.
-  - On "Override": log the override to the daily log (tag: `codex-override`) before proceeding.
+  - On "Override": log the override to the daily log (tag: `verify-override`) before proceeding.
 
 Malformed output (no `VERDICT:` line) → treat as `NEEDS-HUMAN`, present raw `content`, and ask the user.
 
@@ -188,7 +187,6 @@ Selection rule:
 - Spawn a specialist only when its risk row is `med` or `high`, or the user explicitly requested that focus.
 - Skip `Security`, `Git history`, `Code comments`, and `Pipeline gates` when their trigger signals are absent — match the lens to the change class (e.g. a backend-only PR skips any UI/design lens).
 - Run `AI-slop self-check` **only when the PR author login is one of the user's own GitHub accounts** (`work_gh_account` / `personal_gh_account` from `workspace/config.md`). Never run it on a teammate's PR — judging whether someone else's contribution "looks AI-generated" is low-value and adversarial. It is a self-nudge, not a reviewer verdict.
-- Run Codex second-opinion only for high-risk PRs, security-sensitive PRs, large diffs, unfamiliar core areas, or explicit user request.
 - Show the selected specialist list in the final output so omissions are auditable.
 
 **Pipeline-touch detection:** if diff touches `*.sql`, ETL/ingestion/aggregation paths, Avro/Parquet, Databricks notebooks, LookerML, or EventHub/Queue/Timer Functions, add the Pipeline gates agent.
@@ -205,7 +203,6 @@ Selection rule:
 | **Code comments** | Violations of guidance in inline comments, stale or contradicted comments |
 | **Pipeline gates** (conditional) | Three Meta-style gates for pipeline changes — see below |
 | **AI-slop self-check** (conditional, self-authored only) | Heuristic self-nudge that the PR reads like unedited AI output — see below |
-| **Codex second-opinion** (conditional) | Cross-model pass via Codex MCP — see below |
 
 **Pipeline gates agent** — spawn only when pipeline-touch detected:
 
@@ -224,15 +221,6 @@ Output exactly the three gates plus per-gate verdict: ✅ evidenced / ⚠️ unc
 - **Comment slop** — comments restating the code line they sit above, or `// TODO`/placeholder left by generation. (Cross-check `Code comments` lens; do not double-count.)
 
 This lens is **advisory only**: cap every finding at `[MED]`, render in the Step 6 findings tier tagged `self-review`, and never draft an inline comment from it. Skip any signal already raised by another pillar — scope creep is Pillar 3, premature abstraction is Design/elegance. If nothing fires, say so in one line. The point is a pre-reviewer cleanup pass (`/nase:simplify` territory), not a severity gate.
-
-**Codex second-opinion agent** — conditional per the risk-map selection rule above. Gate per `.claude/docs/codex-review.md → Prerequisite`; skip cleanly if MCP is not loaded:
-
-- `cwd` = absolute repo path
-- `prompt` = `{repo_name} / PR #{pr_number} — {pr_title}`, PR diff (or diff stat + top changed file snippets for PRs >5000 lines), and one-line summary of each queued Claude finding so Codex looks for new angles without duplicates
-- `developer-instructions` = the `review` template verbatim, with `{focus_areas}` set to the same focus list passed to the Claude specialists
-- `sandbox` = `read-only`
-
-Run Codex in parallel. Parse `[SEV] file:line — issue. Fix: action.`, score via Step 4, tag `[codex]`; if Claude and Codex flag same file/line, tag `[claude+codex]` and add +10 confidence capped at 100.
 
 **While agents run — triage existing comments** (if any):
 

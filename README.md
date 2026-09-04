@@ -110,7 +110,6 @@ in `.claude/docs/cli-tooling.md`.
 |-----|----------|-------|
 | **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian Rovo MCP Server](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/use-atlassian-rovo-mcp-server/) |
 | **Slack** | `/nase:request-review` - resolves GitHub handles to Slack users and stages DM drafts; direct sends are blocked by a hook | [Slack MCP Server](https://docs.slack.dev/ai/slack-mcp-server/) |
-| **Codex** | Optional read-only second-opinion gates; skipped cleanly when unavailable | `claude mcp add codex --scope user -- /Applications/Codex.app/Contents/Resources/codex mcp-server` |
 
 [Configure MCP servers](https://code.claude.com/docs/en/mcp) with `claude mcp add`; Claude Code stores project-scoped servers in `.mcp.json` and user- or local-scoped servers in `~/.claude.json`. GitHub workflows use `gh` CLI by default.
 
@@ -126,7 +125,7 @@ hooks gate risky tool calls, scripts provide deterministic checks, and
 - **Human-readable memory** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and tasks load only relevant files instead of dumping the whole repo into context.
 - **35 Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
 - **Lifecycle hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
-- **Evidence loops** — PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and optional read-only Codex checks when configured.
+- **Evidence loops** — PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and an independent read-only verifier pass before outward-facing writes.
 - **Offline skill evals** - `evals/pr-review/` covers PR/review flows; `evals/core-workflows/` covers design, daily, learning, onboarding, incident, and deployment flows.
 
 `workspace/` content persists locally and is auto-backed-up. The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) lives in git; your content stays local.
@@ -172,7 +171,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 - `/nase:design` handles complex tasks: KB + external-doc research, 2–3 approaches, tradeoffs, a tracked junior-implementable effort doc. By default it runs an end-to-end auto pass (research → multi-persona grill → review) and asks any genuine human-input questions in one batch at the end; use `--interactive` to steer it turn by turn. Skip it for simple fixes.
 - `/nase:fsd` handles code → test → fix → commit → push → draft PR. For large features use **Direct with Phase isolation**; for hard TDD use **Yes** at the TDD prompt.
-- Optional Codex second-opinion gates run where configured and skip their Codex call cleanly otherwise; `/nase:fsd` and `/nase:address-comments` still run their local read-only verifier fallback for pre-push and review-thread safety.
+- `/nase:fsd` and `/nase:address-comments` each run one fresh-context read-only verifier subagent before pushing or replying. The reviewer is local, so the gate always runs.
 - Reviewer discovery uses KB → git history → CODEOWNERS, then stages Slack DM drafts.
 - Review feedback is handled interactively: obvious fixes applied, ambiguous comments discussed one by one.
 

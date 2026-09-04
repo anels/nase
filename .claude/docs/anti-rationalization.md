@@ -19,7 +19,7 @@ Source pattern: [addyosmani/agent-skills](https://github.com/addyosmani/agent-sk
 
 | Excuse | Rebuttal |
 |---|---|
-| "Codex is unavailable, skip the gate." | The gate is mandatory; only the cross-model variant is optional. Run the single-model fallback. |
+| "The verifier is just Claude too, so it adds nothing." | It adds a read that never saw your reasoning, which is the only thing the gate was ever buying. Run it. |
 | "I wrote it and it looks right, self-approve." | Do not self-approve in the same active context. Spawn the `verifier` with CONTRACT + ARTIFACT only — not your reasoning (strip-the-CLAIM). |
 
 ## `/nase:address-comments` — Phase 6 Execute / Phase 3 Verify-First

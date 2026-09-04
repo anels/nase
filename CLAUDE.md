@@ -6,7 +6,7 @@
 
 **What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere (see `workspace/context.md`).
 
-**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. Codex MCP is optional for read-only second-opinion gates; when unavailable, skip the Codex call cleanly — fsd/address-comments verification gates then run their single-model fallback instead of dropping the check.
+**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. The fsd/address-comments verification gates run one fresh-context read-only verifier subagent; that reviewer is local, so those gates have no availability branch and are never skipped.
 
 ---
 

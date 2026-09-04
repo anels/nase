@@ -171,7 +171,7 @@ Capture the candidate metadata once, then extract both values used by the final 
 
 ```bash
 BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
-candidate_metadata=$(python3 .claude/scripts/codex-verify-bundle.py \
+candidate_metadata=$(python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" --base "$BASE" --candidate-tree-only)
 tested_candidate_tree_oid=$(printf '%s\n' "$candidate_metadata" | jq -er '.candidate_tree_oid')
 changed_path_count=$(printf '%s\n' "$candidate_metadata" | jq -er '.changed_path_count')
@@ -215,7 +215,7 @@ Build `canonical_task_spec` from the original task plus every Phase 2/design suc
 Resolve the candidate tree again and require exact equality with `tested_candidate_tree_oid`. A test, build, formatter, or tool that changed candidate content invalidates its own evidence; restart Phase 6. Keep inventory, evidence, result, state, and bundle under `workspace/tmp/`, outside the target repository.
 
 ```bash
-python3 .claude/scripts/codex-verify-bundle.py \
+python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" \
   --base "$BASE" \
   --task "$canonical_task_spec" \

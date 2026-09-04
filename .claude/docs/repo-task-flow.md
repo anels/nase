@@ -42,7 +42,7 @@ Use this for:
 
 5. **pre-push verification**
    - Re-check `git status --short`, `git diff --check`, and changed-file scope.
-   - Run command-specific final verification, including Codex verifier fallback where the command requires it.
+   - Run command-specific final verification, including the independent verifier pass where the command requires it.
    - Summarize exact commands run and unresolved blockers.
 
 6. **commit/push**

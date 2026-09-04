@@ -122,9 +122,9 @@ Accept only when the change measurably improves correctness/clarity. If current 
 
 Before Phase 4, run an independent read-only verification pass for any thread with `P0`, `P1`, `ask-user`, or uncertainty in the dossier.
 
-- If Codex MCP is loaded, gate per `.claude/docs/codex-review.md → Prerequisite` and use `Mode: comment-dossier`. Pass the review-thread dossier, supporting evidence, and missing-evidence notes; do not pass your intended classification.
-- If Codex MCP is unavailable but a fresh-context read-only verifier subagent is available, use the same artifact/contract packet and tag the result `fallback-verify`.
-- If neither is available, keep the uncertainty in the dossier and ask the user before executing.
+Use `Mode: comment-dossier` from `.claude/docs/review-modes.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`). Pass the review-thread dossier, supporting evidence, and missing-evidence notes; do not pass your intended classification - withholding it is what makes the second read independent. Tag the result `verify-override` if you proceed against it.
+
+If the pass returns nothing usable, keep the uncertainty in the dossier and ask the user before executing. A verifier that produced no verdict is not a verdict.
 
 Verifier output is review input, not authority. Reconcile it against the dossier before changing the dossier/action map.
 

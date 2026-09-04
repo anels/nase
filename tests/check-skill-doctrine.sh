@@ -7,8 +7,8 @@
 #   D3. files claiming "at HEAD" in a verifier role but greping the working tree without
 #       `git show HEAD:` (regression guard for doc-pr-head-ground-scan.md)
 #   D4. skill files missing a language preflight / language-config reference
-#   D5. Codex MCP caller files missing the canonical prerequisite / clean-skip gate,
-#       either directly or in a directly referenced shared workflow document
+#   D5. verification-gate callers that still frame the gate as conditional on an
+#       external provider, which would make a mandatory gate optional again
 #   D6. restore archive flow missing path traversal / symlink hardening
 #   D7. kb-merge external import flow missing canonical path / symlink hardening
 #   D8. kb-merge generated skill wrappers missing frontmatter sanitization
@@ -195,48 +195,33 @@ else
   green "PASS"; printf ': all skills declare language handling\n'
 fi
 
-# ---------- D5: Codex MCP stays optional ----------------------------------
-section "D5: Codex MCP callers have clean-skip gate"
-has_codex_gate() {
-  local file="$1"
-  grep -qF '.claude/docs/codex-review.md → Prerequisite' "$file" 2>/dev/null && grep -qi 'skip cleanly' "$file" 2>/dev/null
-}
-
-codex_gate_ready() {
-  local candidate="$1" reference
-  if has_codex_gate "$candidate"; then
-    return 0
-  fi
-
-  while IFS= read -r reference; do
-    [[ -n "$reference" && -f "$reference" ]] || continue
-    if has_codex_gate "$reference"; then
-      return 0
-    fi
-  done < <(grep -oE '\.claude/docs/[A-Za-z0-9._/-]+\.md' "$candidate" 2>/dev/null | sort -u)
-
-  return 1
-}
-
+# ---------- D5: the verification gate stays mandatory ----------------------
+section "D5: verification-gate callers keep it unconditional"
+# The gate used to route through an external MCP provider, so the old doctrine
+# required every caller to degrade cleanly when that provider was absent. The
+# gate now runs one local read-only verifier, which is always available, so the
+# opposite failure is the live one: a caller that still frames the check as
+# conditional turns a mandatory outward-facing gate back into an optional one.
+# Matching on the exact constructs that used to make it skippable keeps this
+# decidable - a broad search for "optional" would flag unrelated prose.
+D5_RESIDUE='skip cleanly|Codex MCP|mcp__codex__|codex-reply|MCP is not loaded|MCP is unavailable|MCP is configured|MCP is loaded'
 d5_hits=""
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  if ! codex_gate_ready "$f"; then
+  if grep -qE "$D5_RESIDUE" "$f" 2>/dev/null; then
     d5_hits+="  $f"$'\n'
   fi
 done < <(
-  grep -rlE 'Codex MCP|mcp__codex__|codex-reply|codex-review\.md' \
+  grep -rlE 'review-modes\.md|Review-Thread Resolution Gate|candidate-review gate' \
     .claude/commands/nase .claude/docs workspace/skills 2>/dev/null \
-    | grep -v 'check-skill-doctrine.sh' \
-    | grep -v '^\.claude/docs/reference\.md$' \
-    | grep -v '^\.claude/docs/codex-review\.md$' || true
+    | grep -v 'check-skill-doctrine.sh' || true
 )
 if [[ -n "$d5_hits" ]]; then
-  red "FAIL"; printf ': Codex MCP callers missing prerequisite reference or clean-skip wording:\n'
+  red "FAIL"; printf ': verification-gate callers still frame the gate as optional:\n'
   printf '%s' "$d5_hits"
   failed=$((failed+1))
 else
-  green "PASS"; printf ': Codex MCP callers degrade cleanly when unavailable\n'
+  green "PASS"; printf ': verification-gate callers keep the gate unconditional\n'
 fi
 
 # ---------- D6: restore archive extraction is hardened ---------------------
@@ -1021,7 +1006,7 @@ required = {
     ".claude/docs/pr-review-verification.md": [
         ".claude/docs/code-comment-policy.md",
     ],
-    ".claude/docs/codex-review.md": [
+    ".claude/docs/review-modes.md": [
         "restates the code or narrates the change",
     ],
     ".claude/commands/nase/simplify.md": [

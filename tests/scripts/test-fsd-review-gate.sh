@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(sys.argv[1])
 sys.argv[:] = [sys.argv[0]]
 GATE = ROOT / ".claude/scripts/fsd-review-gate.py"
-BUNDLE = ROOT / ".claude/scripts/codex-verify-bundle.py"
+BUNDLE = ROOT / ".claude/scripts/verify-bundle.py"
 QUALITY_AXES = (
     "correctness",
     "test_quality",

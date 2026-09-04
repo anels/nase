@@ -45,7 +45,7 @@ def load_module(name: str, path: Path) -> Any:
 
 
 SECRET = load_module(
-    "nase_citation_secret_scan", SCRIPT_ROOT / ".claude" / "scripts" / "codex-verify-bundle.py"
+    "nase_citation_secret_scan", SCRIPT_ROOT / ".claude" / "scripts" / "verify-bundle.py"
 )
 
 
