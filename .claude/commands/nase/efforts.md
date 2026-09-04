@@ -10,7 +10,7 @@ category: Reporting
 
 `/nase:today` shows a capped morning snapshot and status-syncs tracked work as a side effect. This skill answers a different question: *across all my efforts right now, where does everything stand?* - full count and inventory, plus what a stale frontmatter field cannot tell you: which docs fell out of sync with their PR/Jira reality.
 
-Because it already does the live reads, it **applies** the deterministic transition on the spot: running it should leave the inventory correct, not just describe how to fix it. The rule is not reinvented here - both this skill and `/nase:today` call `.claude/docs/effort-lifecycle.md → Drift Auto-Sync`. It mutates effort frontmatter/location plus its report and log entry, never PR, Jira, or KB state.
+Because it already does the live reads, it **applies** the deterministic repairs on the spot: running it should leave the inventory correct, not just describe how to fix it. The rules are not reinvented here - both this skill and `/nase:today` call `.claude/docs/effort-lifecycle.md`. It mutates effort docs and its own report and log entry, never PR, Jira, or KB state.
 
 ## Step 0: Language preflight (run first)
 
@@ -50,7 +50,7 @@ python3 .claude/scripts/effort-pr-sweep.py --check-reverts
 
 It returns live state per PR (including `mergeCommit`), any **invisible** delivery PRs - cited by a checked lifecycle row but missing from `pr_references.delivery` because the row label is not canonical - and any merge commit a later **revert** commit names.
 
-Read `.claude/docs/effort-lifecycle.md → Classifier Blind Spots` before acting on either: an invisible PR means the doc under-reports its own delivery; repair it with the canonical `PR opened` label and the effort's PR number in the body, but only for the `likely-delivery` hint. Every other hint is a legitimate exclusion, so classify rather than bulk-relabel. A revert means ancestry is lying, so confirm by grepping a symbol the PR *added* at the ring commit.
+Read `.claude/docs/effort-lifecycle.md → Classifier Blind Spots` before acting on either. **Repair every `likely-delivery` hint in place, without asking**: canonical `PR opened` label keeping the row's own PR number, fix the prose that merge falsified (delivery notes still reading "all five are open"), re-run `effort-state.py`, apply the transition it returns. The sweep already classified it; handing it back as a question parks a known-wrong doc. Every other hint is a legitimate exclusion - classify, do not bulk-relabel. A revert means ancestry is lying: grep a symbol the PR *added* at the ring commit.
 
 Keep delivery, report-only, and dependency PR sets separate: only the delivery set feeds the transition, and folding the other two into it is how a merely-mentioned PR turns into merge evidence. Jira: read-only status read if an MCP is available. If a tracked Jira issue cannot be read, mark its transition input `unreadable` and report the effort as unresolved.
 
@@ -71,7 +71,6 @@ Record each transition and each row flip applied for the Step 5 report. Report-o
   - `method: frontmatter` on a doc that has a `## Lifecycle` heading - the section is prose with no canonical checkbox, so it carries no evidence. It never raises `needs_live_verification` (that flag needs evidence to contradict), so it has to be reported on its own: the classifier degrades to the frontmatter fallback silently.
   - non-empty `pr_references.validation_errors`, surfacing as transition `reason: invalid-pr-reference` and blocking every write for that effort. Name the offending key and its repair per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`; never report the effort as having no delivery PR - the helper never got to read one.
   - non-empty `pr_references.discarded_bare`, except `reason: denied-in-row` - that one means the row itself says the number is not a PR, so the classifier is right and there is nothing to repair. For `no-repo-context` use `owner/repo#n` or add `repo:`; for `outside-lifecycle` move the row under a `## Lifecycle` heading or qualify the number.
-  - an **invisible delivery PR** hinted `likely-delivery` by the sweep - name the line, the PR and the canonical-label repair.
   - real outstanding work that lives only in the Implementation Plan. The hold scans `## Lifecycle` only, so such an effort auto-closes the moment its last Lifecycle row is ticked; the repair is to promote that deliverable to a Lifecycle row.
   - a `blocked-by` whose value reads `none`/`n/a`, per the unblocked rules above.
 - transition `reason: undelivered-lifecycle-rows` → **held back**. Report each `transition.undelivered` row verbatim with its line number: a real outstanding PR means the effort correctly stayed active, a stale plan row means edit that row (`.claude/docs/effort-lifecycle.md → Multi-Deliverable Efforts`). Never paraphrase them away - an unexplained hold reads as a bug and gets worked around.
@@ -83,7 +82,7 @@ Count **after** the Step 3 transitions so active/`done/` totals reflect post-syn
 - By stage (Planning / Implementing / In review / Awaiting deploy / Follow-up).
 - By raw frontmatter `status:` value (shows vocabulary spread).
 - Unblocked vs blocked (from Step 3): count of unblocked active efforts and the list of blocked ones with their blocker.
-- Totals: active count, `done/` count, `archive/*/` count, transitioned-this-run count, Lifecycle rows ticked this run, held-back count, stalled count, doc-drift count.
+- Totals: active, `done/`, `archive/*/`, plus this run's transitioned, Lifecycle rows ticked, PRs relabelled, held-back, stalled and doc-drift counts.
 - If `$ARGUMENTS` has `--by-scope` or `--by-repo`, add a count grouped by that frontmatter field.
 
 ### Step 5: Write report + chat summary
@@ -98,6 +97,9 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 
 ## Transitioned this run   ← omit section if none
 - {effort} - {evidence} -> status: {awaiting-deploy|completed|wontfix}{; moved to {destination_dir} if terminal}{; ticked L{line} `Merged`}
+
+## Invisible PRs relabelled   ← omit section if none
+- {effort} - L{line}: `{old label}` -> `PR opened` for {owner/repo#n} ({live state}){; prose fixed}{; transition fired}
 
 ## Held back - no open delivery PR, but deliverables still owed   ← omit section if none
 - {effort} — stays `{status}`; {N} unchecked Lifecycle row(s):
@@ -120,7 +122,7 @@ Per `.claude/docs/skill-contract.md`, the chat reply is pointer + bounded summar
 ```
 Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
 Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M} · archive/: {A}
-Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Rows ticked: {T} · Held back: {H} · Stalled: {S} · Doc drift: {X}
+Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Rows ticked: {T} · PRs relabelled: {L} · Held back: {H} · Stalled: {S} · Doc drift: {X}
 ```
 With `--full`, also echo the per-effort table inline (otherwise it lives only in the file).
 
@@ -128,14 +130,14 @@ With `--full`, also echo the per-effort table inline (otherwise it lives only in
 
 Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-format.md`:
 ```
-- {HH:MM} | efforts: {N} active, {K} transitions applied, {T} Lifecycle rows ticked, {H} held back, {X} doc drift
+- {HH:MM} | efforts: {N} active, {K} transitions applied, {T} Lifecycle rows ticked, {L} invisible PRs relabelled, {H} held back, {X} doc drift
 ```
 
 </workflow>
 
 ## Notes
 
-Only the documented Drift Auto-Sync transition auto-writes - frontmatter `status:`, the terminal move, and the `Merged` rows `transition.stale_canonical_rows` names. `/nase:today` applies the same rule, so running either keeps the inventory in sync. Everything else is reported line by line for a human, because a repair inferred from prose is what this skill must not guess at unsupervised.
+Two things auto-write: the Drift Auto-Sync transition (`/nase:today` applies the same rule) and the `likely-delivery` relabel. Everything else is reported for a human. The dividing line is not how risky the edit is but **whether the live reads determined the repair or someone still has to decide what the row means** - guessing the second kind from prose is what this skill must not do unsupervised.
 
 Effort docs get edited by other sessions while this runs. Use exact-string edits for row repairs rather than staging a whole file, re-`stat` before any guarded write, and if the active count moved mid-run, say so in the report instead of publishing a count that was true at Step 1.
 
