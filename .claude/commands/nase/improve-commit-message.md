@@ -1,7 +1,7 @@
 ---
 name: nase:improve-commit-message
 description: "Rewrite the latest commit message to match repo conventions. Use after committing, before push, or for improve commit, fix commit message, amend commit, or clean up commit."
-argument-hint: "[--auto-accept]"
+argument-hint: "[--auto-accept] [--repo <abs-path>]"
 pattern: utility
 category: Git workflow
 ---
@@ -16,7 +16,8 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ## Flags
 
-- `--auto-accept` - skip confirmation and amend immediately only when `push_state: not-pushed`. A pushed HEAD, or a HEAD whose remote freshness cannot be established, still requires the exact approval in Step 6. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+- `--auto-accept` - skip confirmation and amend immediately only when `push_state: not-pushed` **and** `is_protected: false`. A pushed HEAD, a HEAD whose remote freshness cannot be established, or a HEAD sitting on a protected branch still requires the exact approval in Step 6. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+- `--repo <abs-path>` - the checkout holding the commit to inspect and amend. Bash resets `cwd` between calls, so a caller working in a worktree must pass this; without it the skill reads whatever directory it happens to land in and can amend the wrong repository's HEAD.
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
@@ -35,7 +36,11 @@ One call captures the HEAD message, parent count, publish state, and every commi
 python3 .claude/scripts/git-commit-context.py [--repo /abs/path/to/repo]
 ```
 
-`--repo` defaults to the current directory; pass it when the commit lives in another checkout.
+Pass `--repo` through from the skill's own `--repo` flag. It defaults to the current directory, which is only correct for a caller that has not moved: Bash resets `cwd` between calls, so an unqualified run inside a worktree-based flow inspects the wrong checkout.
+
+Read `branch` and `is_protected` alongside `push_state`. `is_protected` is true for `main`, `master`, `develop`, `release`, and `release/*`, compared case-insensitively, and also when the ref is ambiguous enough that `rev-parse` cannot name it - a ref that cannot be resolved cannot be cleared as safe. It is false on a detached HEAD, because no branch ref moves when a detached HEAD is amended, and `branch` is then `null`. `push_state` cannot answer any of this: an unpushed commit on `main` is exactly the case where "not on a remote yet" and "safe to rewrite unattended" disagree.
+
+If `is_protected` is true, `--auto-accept` is disabled for this run regardless of `push_state`. Go to Step 6 and name the branch in the question text so the user can see which protected branch the amend would rewrite.
 
 From `commitlint.candidates`, take the config CI actually loads — multiple may exist and the first found is not automatically the winner. Confirm against the `configFile:` line in the commitlint CI job log when a run exists. JSON candidates arrive pre-parsed under `rules`; a non-JSON candidate that CI loads still needs a direct Read. Extract:
 - `header-max-length` (validation limit; display target is always **80 chars**)
@@ -55,8 +60,8 @@ The helper already refreshed every configured remote head before deciding whethe
 ### 3. Analyze changes (diff-first strategy)
 
 **Get the diff**, branching on `is_initial_commit` from Step 1:
-- true → `git show HEAD --format="" --patch`
-- false → `git diff -U5 HEAD^ HEAD`
+- true → `git -C {repo} show HEAD --format="" --patch`
+- false → `git -C {repo} diff -U5 HEAD^ HEAD`
 
 Read the diff first. Only read full source files when the 5-line context is insufficient to understand the purpose or scope of the change. Read only the files needed to understand the change scope.
 
@@ -91,12 +96,12 @@ If current message equals proposed message, output "Commit message already well-
 Use this amend operation after the applicable approval branch below:
 
 ```
-git commit --amend -m "type(scope): subject"
+git -C {repo} commit --amend -m "type(scope): subject"
 ```
 
 For multi-line messages, use `-m "subject" -m "body paragraph"`.
 
-When `is_pushed: true`, `--auto-accept` does not authorize the amend. Approval cannot be inherited from a caller flag or earlier workflow confirmation. Display the full current and proposed messages, rerun `git log -1 --format=%H`, and require its output to equal the captured `{full_sha}`. Set `{history_status}` to `pushed` when `push_state: pushed`, or `possibly pushed because remote freshness failed` when `push_state: unknown`. Then ask this exact approval question immediately before the amend:
+When `is_pushed: true`, `--auto-accept` does not authorize the amend. Approval cannot be inherited from a caller flag or earlier workflow confirmation. Display the full current and proposed messages, rerun `git -C {repo} log -1 --format=%H`, and require its output to equal the captured `{full_sha}`. Set `{history_status}` to `pushed` when `push_state: pushed`, or `possibly pushed because remote freshness failed` when `push_state: unknown`. Then ask this exact approval question immediately before the amend:
 
 ```
 question: "Approve amending {history_status} HEAD ({full_sha}) from exactly:\n{current full message}\n\nto exactly:\n{proposed full message}\n\nThis rewrites history and the next push must use --force-with-lease."
@@ -108,7 +113,19 @@ options:
 
 If "Skip", output "Keeping original message ({history_status} HEAD; aborted to avoid forced-push surprise)." and stop. If HEAD or the proposed message changes after approval, discard the approval and ask again with the new exact values. If "Approve exact amend", run the amend immediately with no intervening prompt or action, emit `WARN: HEAD was {history_status} before amend. Your next 'git push' must use --force-with-lease.`, and stop.
 
-When `push_state: not-pushed` and `--auto-accept` is present, display the current vs proposed message, amend immediately, and stop.
+When `is_protected: true`, `--auto-accept` does not authorize the amend either, whatever `push_state` says: an unpushed commit on a protected branch is still a protected-branch rewrite. Name the branch in the question so the user sees which one:
+
+```
+question: "HEAD is on protected branch {branch}. Approve amending it from exactly:\n{current full message}\n\nto exactly:\n{proposed full message}"
+header: "Protected Branch Amend"
+options:
+  - label: "Approve exact amend"          , description: "Amend this exact HEAD on {branch}"
+  - label: "Skip"                         , description: "Keep the original message"
+```
+
+If "Skip", output "Keeping original message (HEAD is on protected branch {branch})." and stop. If "Approve exact amend", run the amend immediately with no intervening prompt.
+
+When `push_state: not-pushed` and `is_protected: false` and `--auto-accept` is present, display the current vs proposed message, amend immediately, and stop.
 
 Otherwise, display the comparison and confirm using AskUserQuestion:
 
@@ -157,7 +174,7 @@ fix(auth): handle null tokens from expired sessions
 
 - **Pushed or freshness unknown**: after the mandatory remote refresh, either a containing remote branch or a refresh failure sets `is_pushed: true`. Step 6 always requires exact immediate approval for the final HEAD and message, including in `--auto-accept` mode. Skill never pushes itself.
 - **Merge commit**: Skip — do not amend
-- **No parent** (initial commit): Use `git show HEAD --format="" --patch` (as in Step 3)
+- **No parent** (initial commit): Use `git -C {repo} show HEAD --format="" --patch` (as in Step 3)
 - **Multiple scopes**: Use the most significant scope; mention others in body
 - **Config parse error**: Fall back to defaults with a warning
 

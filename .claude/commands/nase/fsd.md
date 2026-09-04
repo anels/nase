@@ -63,7 +63,7 @@ At Phase 6.4, read `.claude/docs/fsd-delivery-gates.md`. It owns the single fres
 
 ## Phase 7: Commit & Push
 
-Before committing, conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope` set, no `fixup!`/`squash!`). Pass those constraints into `/nase:improve-commit-message` so the polished subject still clears the repo's commit-lint gate.
+Before committing, conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope` set, no `fixup!`/`squash!`). Invoke it as `/nase:improve-commit-message --auto-accept --repo {work_root}`; `--repo` is required because the skill defaults it to the current directory and Bash resets `cwd` between calls, so an unqualified call can amend a different checkout's HEAD. That skill polishes prose but does not know this repo's scope/type rules, so verify the resulting subject against `gate_profile.commit_format` after it runs, per that section's verify-after branch.
 
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`. Deviation: use `push -u origin {branch_name}` on first push (sets upstream tracking).
 

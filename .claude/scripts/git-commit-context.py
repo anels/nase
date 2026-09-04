@@ -38,6 +38,8 @@ CONFIG_FILES = (
 )
 
 RULE_KEYS = ("header-max-length", "type-enum", "subject-case", "subject-full-stop")
+PROTECTED_BRANCHES = ("main", "master", "develop", "release")
+PROTECTED_BRANCH_PREFIXES = ("release/",)
 
 
 class ContextError(RuntimeError):
@@ -116,6 +118,31 @@ def push_state(repo: Path, fetch: bool) -> dict[str, Any]:
     }
 
 
+def branch_state(repo: Path) -> dict[str, Any]:
+    # `push_state` answers "is HEAD on a remote already", which is a different
+    # question from "would amending HEAD rewrite a protected branch". An
+    # unpushed commit on `main` is exactly the case both answers diverge on, and
+    # it is the one an unattended amend must refuse.
+    result = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    name = result.stdout.strip()
+    if result.returncode != 0 or not name:
+        # A branch that cannot be resolved cannot be cleared as unprotected, and
+        # this value authorizes an unattended amend, so fail closed. Checked
+        # before the "HEAD" test below, which an ambiguous ref also prints.
+        return {"branch": None, "is_protected": True}
+    if name == "HEAD":
+        # Detached: no branch ref moves when HEAD is amended, so no protected
+        # branch can be rewritten from here. `push_state` still gates the amend.
+        return {"branch": None, "is_protected": False}
+    # Compare case-folded: git refs are case-sensitive, so `MAIN` is a distinct
+    # ref from `main`, but it is just as clearly a protected branch, and on a
+    # case-insensitive filesystem the two can even be the same ref. Letting an
+    # unattended amend through on a capitalization is not a tradeoff worth making.
+    folded = name.casefold()
+    protected = folded in PROTECTED_BRANCHES or folded.startswith(PROTECTED_BRANCH_PREFIXES)
+    return {"branch": name, "is_protected": protected}
+
+
 def commitlint(repo: Path) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     for name in CONFIG_FILES:
@@ -158,6 +185,7 @@ def main() -> int:
     try:
         payload = head_state(repo)
         payload.update(push_state(repo, fetch=not args.no_fetch))
+        payload.update(branch_state(repo))
         payload["commitlint"] = commitlint(repo)
     except (ContextError, OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
