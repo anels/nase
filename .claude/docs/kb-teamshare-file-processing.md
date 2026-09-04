@@ -103,7 +103,7 @@ After privacy decisions are applied, check whether the file's content language m
 **What to translate**: all prose text — headings, descriptions, notes, comments. Do NOT translate:
 - Code blocks (shell commands, SQL, YAML, config snippets)
 - Technical identifiers (class names, field names, env var names)
-- Proper nouns that are product/service names (e.g. "Looker", "ArgoCD", "Snowflake")
+- Proper nouns that are product/service names (e.g. "ArgoCD", "Terraform", "Grafana")
 - Placeholders inserted by earlier steps (`<REPO_PATH:...>`)
 
 **Why this matters**: the exported KB will be read by teammates whose working language may differ from yours. The `output:` language is the agreed team communication language — exporting content in a personal note-taking language makes it inaccessible.

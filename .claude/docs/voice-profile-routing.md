@@ -1,6 +1,6 @@
 # Voice Profile Routing
 
-Use this before drafting external text on Ruilin's behalf. It is a routing layer, not a second source of truth.
+Use this before drafting external text on the operator's behalf. It is a routing layer, not a second source of truth.
 
 Source of truth: `workspace/communication-style.md` for voice, `.claude/docs/plain-writing-guard.md` for the readability floor that applies to every surface.
 

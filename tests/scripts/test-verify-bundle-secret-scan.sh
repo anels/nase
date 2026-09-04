@@ -38,7 +38,7 @@ class SecretScanTest(unittest.TestCase):
         # A named argument whose value is a differently named variable carries no literal either.
         for source in (
             b"                    access" + b"Token" + b": userAccessToken,\n",
-            b"client_" + b"secret" + b": lookerClientSecret",
+            b"client_" + b"secret" + b": vendorClientSecret",
             b"api_" + b"key" + b" = apiKeyFromConfig",
         ):
             with self.subTest(source=source):

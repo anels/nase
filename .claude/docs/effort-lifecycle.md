@@ -276,6 +276,17 @@ dependencies, spikes, `Follow-up:` rows and "Phase N completed" summaries all na
 the delivery set should not carry, and pulling them in fires transitions on evidence that
 is not this effort's delivery. The sweep hints at each class; the caller still classifies.
 
+**`likely-delivery` is repaired automatically; the other hints are not.** That hint means
+the row's own label calls the PR this effort's - `PR2 - <url>`, `PR-4 — <description>` -
+and nothing marks it a dependency, spike, cherry-pick or withdrawal. No judgment is left
+to add, so surfacing it as a question just parks a known-wrong document. Rewrite the
+label, re-run the classifier, apply whatever transition it returns, and fix the
+surrounding prose in the same pass - a doc whose rows say "opened" usually has a
+delivery-notes line saying "all five are open" too, and leaving that trades one drift for
+another. Every other hint stays a report line: there the row text and the live state
+disagree about what the PR *is*, and firing a transition on someone else's evidence costs
+far more than a doc that under-reports itself for another day.
+
 **2. `pending_followups: 0` and an empty `undelivered` do not mean nothing is owed.**
 Outstanding work written as prose *inside* a long row is invisible to both. `Deployed`
 rows in particular accumulate hundreds of characters of ring evidence and then end with

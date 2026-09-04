@@ -70,6 +70,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-workspace-write-guard.sh
   tests/scripts/test-skill-overlap.sh
   tests/scripts/test-canonical-pointers.sh
+  tests/scripts/test-boundary-terms.sh
 )
 
 section() {
@@ -275,6 +276,11 @@ run_local_sensitive_scan() {
   run_gate "check-local-sensitive-artifacts.sh" bash tests/check-local-sensitive-artifacts.sh
 }
 
+run_boundary_terms() {
+  section "workspace boundary terms"
+  run_gate "check-boundary-terms.sh" bash tests/check-boundary-terms.sh
+}
+
 run_script_tests() {
   section "script regression tests"
   run_test_files "${SCRIPT_TESTS[@]}"
@@ -404,6 +410,7 @@ run_fast() {
   run_actionlint
   run_hook_wiring
   run_command_catalog
+  run_boundary_terms
   run_shared_doc_refs
   run_canonical_pointers
   run_review_gate_optionality
@@ -425,6 +432,7 @@ run_full() {
   run_hook_tests
   run_workspace_validation
   run_local_sensitive_scan
+  run_boundary_terms
   run_script_tests
   run_shared_doc_refs
   run_canonical_pointers

@@ -129,7 +129,7 @@ The two tables below feed cross-repo contract validation — every inbound endpo
 #### Storage Inventory
 | Store | Tech | Tables / Containers / Keys | Partition / Index | Migration Tool |
 |-------|------|---------------------------|------------------|----------------|
-| {primary db} | {Snowflake/SQL/Cosmos/Postgres} | {comma-separated names, link to schema file} | {partition key, key indexes} | {Flyway/EF/schemachange} |
+| {primary db} | {SQL/Cosmos/Postgres/warehouse} | {comma-separated names, link to schema file} | {partition key, key indexes} | {Flyway/EF/schemachange} |
 
 #### Schema Hot Spots
 {Tables touched by 3+ services, recent migrations (last 90d), columns with non-obvious semantics — same convention used in `workspace/kb/ops/oncall-alert-patterns.md → readDB-dbCount` entry}
@@ -190,7 +190,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 <!-- Top-3 high-risk integration / contract / data boundaries an AI agent should know about BEFORE touching code. Refreshed by /nase:onboard Step 3h. Rationale: change-absorption capacity comes from explicit contracts at brittle boundaries (CATS framework — see workspace/kb/general/llm.md → AI Code Quality & Velocity). -->
 | Boundary | Why brittle | Last incident / drift | Touch protocol |
 |----------|------------|----------------------|----------------|
-| `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing — e.g. "run contract tests against platform-monitoring", "check Looker partition before COALESCE", "validate Avro schema vs LogExport target"} |
+| `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing — e.g. "run contract tests against platform-monitoring", "check the BI layer's partition before COALESCE", "validate Avro schema vs LogExport target"} |
 
 ## Change Playbook
 | Change type | Inspect first | Minimum verification | Cross-repo checks | Release concerns |
