@@ -19,6 +19,9 @@ cat > "$TMPROOT/workspace/stats/skill-usage.jsonl" <<'JSONL'
 {"skill":"design","ts":"2026-07-16T10:01:00Z","event_type":"tool_succeeded","session_id":"a"}
 {"skill":"design","ts":"2026-07-17T10:00:01Z","event_type":"activated","session_id":"b"}
 {"skill":"design","ts":"2026-07-18T10:00:01Z","event_type":"activated","session_id":"future"}
+{"skill":"skill-usage","ts":"2026-07-16T09:00:00Z","event_type":"tool_succeeded","session_id":"c"}
+{"skill":"skill-usage","ts":"2026-07-16T09:00:30Z","event_type":"tool_succeeded","session_id":"c"}
+{"skill":"skill-usage","ts":"2026-07-16T09:05:00Z","event_type":"tool_succeeded","session_id":"c"}
 {"skill":"today","ts":"2026-07-10T10:00:00Z","source":"prompt","session_id":"legacy"}
 {"skill":"today","ts":"2026-07-10T10:00:10Z","source":"prompt-expansion","session_id":"legacy"}
 {"skill":"today","ts":"2026-07-10T10:00:20Z","source":"tool","session_id":"legacy"}
@@ -31,6 +34,14 @@ TZ=UTC python3 "$SCRIPT" --root "$TMPROOT" --date 2026-07-17 --output "$TMPROOT/
 jq -e '.ok and .malformed == 1 and (.top[0] == {"skill":"design","total":2})' "$TMPROOT/result.json" >/dev/null
 grep -q '| design | 2 |' "$TMPROOT/report.md"
 grep -q '| today | 1 |' "$TMPROOT/report.md"
+# skill-usage has only tool outcomes and no `activated`, which is what a
+# model-invoked or nested skill emits. Its three events collapse to 2 because
+# 09:00:30 falls inside the same-session window opened by 09:00:00.
+grep -q '| skill-usage | 2 | 2 | 2 | 2026-07-16 | 100% |' "$TMPROOT/report.md"
+if grep -q '^- skill-usage - ' "$TMPROOT/report.md"; then
+  printf 'FAIL: skill-usage used on 2026-07-16 listed as a deprecation candidate\n' >&2
+  exit 1
+fi
 grep -q '| workspace:test | 1 |' "$TMPROOT/report.md"
 grep -q 'Total skills on disk: 5 (native: 3, workspace: 2)' "$TMPROOT/report.md"
 grep -q '^## Context Hotspots$' "$TMPROOT/report.md"

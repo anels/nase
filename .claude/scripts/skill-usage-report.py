@@ -12,7 +12,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 
-LEGACY_DEDUPE = timedelta(seconds=60)
+USE_DEDUPE = timedelta(seconds=60)
 
 
 @dataclass(frozen=True)
@@ -82,33 +82,39 @@ def read_events(path: Path) -> tuple[list[dict[str, object]], int]:
 def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, dict[str, object]]:
     uses: defaultdict[str, list[datetime]] = defaultdict(list)
     outcomes: defaultdict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "failure": 0})
-    legacy_uses: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
+    counted: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
     end = datetime.combine(report_date, time.max).astimezone()
 
+    # A skill reached through the Skill tool - model-triggered, or nested inside
+    # another skill's flow - only ever emits tool_succeeded/tool_failed, because
+    # `activated` comes from UserPromptExpansion and so requires a user-typed
+    # /nase:x. Counting `activated` alone therefore reports such a skill as
+    # never used. Every use-bearing event feeds `uses`, and one shared
+    # same-session window collapses the events a single invocation can emit
+    # (a typed command logs `activated` and may then also log a tool outcome).
     for event in events:
         skill = str(event["skill"])
         event_type = str(event["event_type"])
-        source = str(event["source"])
         session = str(event["session"])
         timestamp = event["dt"]
         assert isinstance(timestamp, datetime)
         if timestamp > end:
             continue
 
-        if event_type:
-            if event_type == "activated":
-                uses[skill].append(timestamp)
-            elif event_type == "tool_succeeded":
-                outcomes[skill]["success"] += 1
-            elif event_type == "tool_failed":
-                outcomes[skill]["failure"] += 1
+        if event_type == "tool_succeeded":
+            outcomes[skill]["success"] += 1
+        elif event_type == "tool_failed":
+            outcomes[skill]["failure"] += 1
+        elif event_type and event_type != "activated":
+            # `requested` pairs with `activated` on the same typed command, and an
+            # unrecognized type is not evidence of a run.
             continue
 
         key = (skill, session)
-        if any(timedelta(0) <= timestamp - prior <= LEGACY_DEDUPE for prior in legacy_uses[key]):
+        if any(timedelta(0) <= timestamp - prior <= USE_DEDUPE for prior in counted[key]):
             continue
+        counted[key].append(timestamp)
         uses[skill].append(timestamp)
-        legacy_uses[key].append(timestamp)
 
     result: dict[str, dict[str, object]] = {}
     for skill in sorted(set(uses) | set(outcomes)):
