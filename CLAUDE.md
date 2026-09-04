@@ -50,8 +50,8 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
-- For this repo before push: run `bash tests/check-all.sh` (local `shellcheck` skips if missing; CI still runs it). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
-- If `check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive and inspect only through locally redacted output. Prepare the exact local removal or credential rotation, but require separate named approval before either action, then rerun the gate. Never render the matched value, stage the artifact, or suppress the gate.
+- For this repo before push: run the local gate under *CI Pipeline* below.
+- If `tests/check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive and inspect only through locally redacted output. Prepare the exact local removal or credential rotation, but require separate named approval before either action, then rerun the gate. Never render the matched value, stage the artifact, or suppress the gate.
 
 ### Logging & External Services
 - Append real-time one-line entries to `workspace/logs/YYYY-MM-DD.md` for completions, mistakes, user corrections, and decisions. Format: `.claude/docs/daily-log-format.md`.
@@ -70,7 +70,8 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
 
 ### CI Pipeline
-- Local gate: `bash tests/check-all.sh`. Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
+- Local gate: `bash tests/check-all.sh` (local `shellcheck` skips if missing; CI still runs it). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
+- `tests/check-boundary-terms.sh` enforces `workspace/context.md → Workspace Boundary Policy` over tracked files from the git-ignored `workspace/boundary-terms.txt`. It skips with a notice when that list is absent, and reports `path:line` with the term redacted. Replace a finding with a generic placeholder; never suppress the gate.
 
 ### Runtime Dependencies
 - Required: `git`, `gh`, `jq`, and `python3`. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.

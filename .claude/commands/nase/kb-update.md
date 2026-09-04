@@ -114,7 +114,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
 
    Common link-worthy connections:
    - An alert in `oncall.md` referencing a runbook procedure now in `oncall-runbooks.md`
-   - A project KB noting a Snowflake pattern that's detailed in `general/snowflake.md`
+   - A project KB noting a Spark streaming pattern that's detailed in `general/spark-scala.md`
    - A deployment note in one project KB referencing a shared ops pattern
 
 8. **Domain-map sync** - prepare a separate guarded proposal for `workspace/kb/.domain-map.md`, the file-level metadata authority:
