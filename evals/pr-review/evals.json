@@ -294,9 +294,9 @@
           "pattern": "(?i)P[01].*(security|data-loss|correctness|runtime)"
         },
         {
-          "name": "mentions second opinion or fallback verifier",
+          "name": "runs the independent verifier pass",
           "type": "must_contain_regex",
-          "pattern": "(?i)(second-opinion|Codex|fallback-verify|verifier)"
+          "pattern": "(?i)verifier"
         },
         {
           "name": "does not silently accept uncertainty",

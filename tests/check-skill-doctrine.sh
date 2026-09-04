@@ -196,32 +196,50 @@ else
 fi
 
 # ---------- D5: the verification gate stays mandatory ----------------------
-section "D5: verification-gate callers keep it unconditional"
+section "D5: gate owners declare the gate unconditional"
 # The gate used to route through an external MCP provider, so the old doctrine
 # required every caller to degrade cleanly when that provider was absent. The
 # gate now runs one local read-only verifier, which is always available, so the
-# opposite failure is the live one: a caller that still frames the check as
-# conditional turns a mandatory outward-facing gate back into an optional one.
-# Matching on the exact constructs that used to make it skippable keeps this
-# decidable - a broad search for "optional" would flag unrelated prose.
-D5_RESIDUE='skip cleanly|Codex MCP|mcp__codex__|codex-reply|MCP is not loaded|MCP is unavailable|MCP is configured|MCP is loaded'
+# opposite failure is the live one: a doc that reframes the check as conditional
+# turns a mandatory outward-facing gate back into an optional one.
+#
+# "Is this prose conditional?" is not decidable by grep - a search for "optional"
+# flags unrelated text, and an absence-of-residue check passes any newly written
+# conditional wording. So each gate owner is named here and must carry an
+# explicit unconditional marker: a positive token the author has to delete before
+# the gate can become optional again, which a reviewer will see in the diff.
+declare -a D5_OWNERS=(
+  ".claude/docs/pr-review-verification.md"
+  ".claude/docs/address-comments-delivery.md"
+  ".claude/docs/fsd-delivery-gates.md"
+)
+D5_MARKER='no availability branch|gate is unconditional|always runs'
 d5_hits=""
+for f in "${D5_OWNERS[@]}"; do
+  if [[ ! -f "$f" ]]; then
+    d5_hits+="  $f: missing"$'\n'
+  elif ! grep -qE "$D5_MARKER" "$f" 2>/dev/null; then
+    d5_hits+="  $f: no unconditional marker"$'\n'
+  fi
+done
+# Second, cheaper assertion: the provider is gone, so its wording must not
+# reappear anywhere. This is a rename-residue lint, not an optionality check.
+# Only Codex-identifying tokens belong here. A generic "MCP is unavailable"
+# would flag the Atlassian and Slack MCPs, which are legitimately optional.
+D5_RESIDUE='Codex MCP|mcp__codex__|codex-reply'
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  if grep -qE "$D5_RESIDUE" "$f" 2>/dev/null; then
-    d5_hits+="  $f"$'\n'
-  fi
+  d5_hits+="  $f: provider residue"$'\n'
 done < <(
-  grep -rlE 'review-modes\.md|Review-Thread Resolution Gate|candidate-review gate' \
-    .claude/commands/nase .claude/docs workspace/skills 2>/dev/null \
+  grep -rlE "$D5_RESIDUE" .claude/commands/nase .claude/docs workspace/skills 2>/dev/null \
     | grep -v 'check-skill-doctrine.sh' || true
 )
 if [[ -n "$d5_hits" ]]; then
-  red "FAIL"; printf ': verification-gate callers still frame the gate as optional:\n'
+  red "FAIL"; printf ': verification-gate doctrine broke:\n'
   printf '%s' "$d5_hits"
   failed=$((failed+1))
 else
-  green "PASS"; printf ': verification-gate callers keep the gate unconditional\n'
+  green "PASS"; printf ': gate owners declare the gate unconditional, no provider residue\n'
 fi
 
 # ---------- D6: restore archive extraction is hardened ---------------------

@@ -13,7 +13,7 @@
 > fresh-context read-only subagent. Each mode fixes what the reviewer is asked
 > and what it must return, so the caller skills do not each invent their own.
 >
-> Reference-only doc. Cited from `/nase:fsd` Phase 6.5 (structured review
+> Reference-only doc. Cited from `/nase:fsd` Phase 6.4 (structured review
 > transport), `/nase:address-comments` Phase 3d (comment dossier verifier) and
 > Phase 7.5 (thread-resolution verifier), `/nase:discuss-pr` Step 5.7 (doubt
 > cycle), and `/nase:tech-debt-audit` Step 7 (audit sanity pass). Edit here, not
@@ -92,7 +92,7 @@ prompt:
 
 ### Mode: `verify` - FSD structured quality/spec transport
 
-Used by `/nase:fsd` for its Phase 6.25 quality result and Phase 6.5 spec result. The generated contract from `.claude/scripts/fsd-review-gate.py contract --kind quality|spec` is the sole result schema and validation authority. Do not use a textual `VERDICT` protocol for FSD.
+Used by `/nase:fsd` at Phase 6.4, which covers the quality and spec results in one review. The generated contract from `.claude/scripts/fsd-review-gate.py contract --kind quality|spec` is the sole result schema and validation authority. Do not use a textual `VERDICT` protocol for FSD.
 
 ```
 developer-instructions:

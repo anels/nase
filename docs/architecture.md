@@ -120,7 +120,7 @@ Halts and warns if any match, since squashing would flatten a postmortem breadcr
 Stateful skills read prior output and adjust later behavior.
 
 - **Estimate calibration** — `/nase:wrap-up` compares `ETA estimate:` log lines with actual elapsed time. Drift > 30% writes a calibration note for `/nase:estimate-eta`.
-- **Optional Codex gates** — when Codex MCP is loaded, review/handoff skills call it read-only for independent checks. If unavailable, only that pass is skipped; findings must still be verified against repo evidence.
+- **Independent verifier gates** — review/handoff skills hand their artifact to one fresh-context read-only subagent for a second read. The reviewer is local, so there is no availability branch and no skip path; findings must still be verified against repo evidence.
 - **`/nase:doctor` Claude Code self-check** — scans `~/.claude/projects/<encoded-cwd>/` and warns when transcript size ≥ 500 MB or count ≥ 500, suggesting `claude project purge`. Surfaces harness bloat that `workspace/` backups don't see.
 - **Pushed-amend guard** - `/nase:improve-commit-message` first fetches every configured remote head into fresh remote-tracking refs, then runs `git branch -r --contains HEAD`. A pushed HEAD requires exact approval for the current SHA and proposed message immediately before amend, and cannot inherit approval from `--auto-accept` or an earlier workflow prompt. A failed remote refresh is treated as possibly pushed and uses the same exact approval gate. The next push requires `--force-with-lease`.
 - **Confidence decay on extracted skills** — `/nase:extract-skills` reads `confidence:` and `extracted:` frontmatter, decays score with age, surfaces stale entries for removal.

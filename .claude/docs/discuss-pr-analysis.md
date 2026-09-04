@@ -238,10 +238,12 @@ For each in-scope finding:
 
 1. **CLAIM** - record the claim and blast radius internally.
 2. **EXTRACT** - build an `ARTIFACT + CONTRACT` bundle. Include cited hunks and traced code, but omit the claim, severity, and prior reasoning.
-3. **DOUBT** - run a bounded single-model pass first. Return `SINGLE_MODEL_DOUBT` and `CONTRACT_GAPS`.
+3. **DOUBT** - run one bounded independent pass. Return `DOUBT_RESULT` and `CONTRACT_GAPS`.
 4. **RECONCILE** - classify results in this order: contract misread, valid/actionable, valid trade-off, noise. Fix an incomplete contract and re-loop.
 5. **STOP** - stop when only trivial/already-considered results remain, after 3 cycles, or when the user says to proceed. Escalate before a fourth cycle.
 
 Run the DOUBT pass as `Mode: finding-doubt` from `.claude/docs/review-modes.md` in a fresh-context read-only subagent, passing only `ARTIFACT + CONTRACT`. Omitting the claim and the severity is the whole mechanism: a reviewer that already knows the expected answer cannot independently doubt it.
+
+Write the bundle to a file and pass the path. Never interpolate diff text into a shell argument - the diff carries whatever a contributor wrote.
 
 Before Step 6, report: `doubt: {N} findings reviewed, {K} cycles, {M} upgraded, {R} refuted, {P} contract-misreads fixed`.

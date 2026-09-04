@@ -75,10 +75,9 @@ Classification is blocked until the dossier exists. If evidence is missing and c
 
 ## 9. Review-Thread Resolution Gate
 
-This gate is unconditional. Replying to and resolving someone's review threads is
-an outward-facing, hard-to-undo action, so it always gets an independent check.
-The verifier is a local subagent and is therefore always available; there is no
-path that skips this.
+This gate is unconditional: replying to and resolving someone's review threads is
+an outward-facing, hard-to-undo action. The verifier is a local subagent, so there
+is no availability branch to skip through.
 
 Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`,
 tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:

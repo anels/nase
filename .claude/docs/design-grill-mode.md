@@ -168,7 +168,7 @@ After each round's answers:
 
 The loop ends when the frontier is empty — every branch resolved/deferred — or when the user explicitly stops the grill.
 
-If every branch has been handled by evidence lookup, user answer, or `open_after_grill`, proceed to Step 5.5 with `termination = branches exhausted`. Do not ask a synthetic final question just to collect a stop token.
+If every branch has been handled by evidence lookup, user answer, or `open_after_grill`, proceed to Step 5.6 with `termination = branches exhausted`. Do not ask a synthetic final question just to collect a stop token.
 
 If a user-facing question batch is active, the user can also stop via any question's harness-added `Other` free-form. Evaluate each returned answer independently and match each trimmed `Other` payload (case-insensitive) against this exact-token list:
 
@@ -191,7 +191,7 @@ Hard cap: 25 user-answerable branches resolved total (across all rounds). If rea
 
 Fixed two rounds under-converge. Empirically (nase design sessions), each successive round can still surface NEW blocking/correctness findings — a design grilled twice was still shipping latent bugs (lagging-atom reads, invalid readiness signals, deeper coupling) that a third round caught. So loop; do not hard-code the round count.
 
-Start after Step 4: revise the design, then rerun the relevant Step 3.4 persona lenses against the updated snapshot. Record those findings in `grill_resolutions` and repeat only when a round adds a NEW `blocking` or `suggestion`-severity finding (a real correctness/design gap, not a nit).
+Each round revises the design, then reruns the relevant Step 3.4 persona lenses against the updated snapshot. Record those findings in `grill_resolutions` and repeat only when a round adds a NEW `blocking` or `suggestion`-severity finding (a real correctness/design gap, not a nit).
 
 Stop when either:
 - a full round yields **zero new `blocking`/`suggestion` findings** (only nits) — the design is stable, or
