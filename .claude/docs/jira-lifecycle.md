@@ -33,8 +33,11 @@ Common JQL patterns:
 assignee = currentUser() AND status in ("In Progress", "To Do", "Open") AND updated >= -7d ORDER BY updated DESC
 
 # Prior closed tickets for the same alert/component
-project = SRE AND summary ~ "<keyword>" AND status in (Canceled, Resolved) AND created >= -90d ORDER BY created DESC
+project = "SRE" AND summary ~ "<keyword>" AND status in (Canceled, Resolved) AND created >= -90d ORDER BY created DESC
 ```
+
+Always quote the project key. An unquoted key that collides with a JQL keyword fails to parse:
+`project = IN` returns `Error in JQL Query: Expecting either a value, list or function but got 'IN'.`
 
 Limit to 10 results unless a broader sweep is needed.
 

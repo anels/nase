@@ -9,7 +9,7 @@ category: Reporting
 Generate an evidence-backed monthly delivery report. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md`.
 
 Read `.claude/docs/effort-rollup-integrity.md` before the workflow and follow its
-collector, validation, coverage, staging, and promotion gates exactly.
+collector, validation, coverage, staging, publishing, and promotion gates exactly.
 
 ## Workflow
 
@@ -55,10 +55,9 @@ collector, validation, coverage, staging, and promotion gates exactly.
    - Keep the accent, the `before` neutral, and its track visually distinct. Direct-label every bar and keep the table view below.
    - **Status color says where an item stands today, never how severe it once was.** Card borders and chips: green `Resolved`/`Closed`/`Done`, amber `Merged` awaiting deploy, red landed-but-ticket-open. Never key it off severity or RCA presence - a closed incident drawn red reads as "still broken". Print the mapping as a legend by the heading.
    - Light **and** dark tokens, both stamped (`prefers-color-scheme` + `:root[data-theme=…]`).
-   - Self-contained: zero `<script>` / `<link>` / `src=` / `@import`; verify tag balance.
-   - **Render and look at it before claiming done** - screenshot both themes with headless Chrome, confirm filled bars stay distinguishable from their tracks, and grep the emitted class attributes: a status class the renderer silently dropped looks identical in a screenshot.
-
-   If the user asks for a shareable link, use an approved destination for that session. **Scrub credentials and audience-restricted data first** - subscription GUIDs, resource IDs, customer/tenant/resource names, internal URLs, tokens - in both artifacts, keeping stable redacted labels where identity continuity matters.
+   - Self-contained: zero `<script>` / `<link>` / `src=` / `@import`.
+   - **HTML repeats the Markdown's evidence footer, and every count sits in a real `<td>`.** Tag balance sees neither; the gate's `--html` fails both.
+   - **Render and look at it before claiming done** - screenshot both themes with headless Chrome, confirm filled bars stay distinguishable from their tracks, and grep the emitted class attributes: a status class the renderer silently dropped looks identical in a screenshot. No Chrome means naming the checks left unverified.
 8. **Classify then narrate — the report is not just bookkeeping tables.** Bucket every delivered effort by work type, reading `scope:` frontmatter + the linked Jira issuetype + the merged PRs' conventional-commit prefix (`feat`/`fix`/`perf`/`test`/`ci`/`chore`) + any `SRE-*` / customer-escalation reference. Then render every section that has content (skip an empty one, but never silently drop a populated one):
    - **`Measured impact — before → after`** — the Step-6 metric pairs grouped by category (query perf, coverage, CI/CD, cost, …); each row `metric · from → to · delta · confidence-label · PR link`.
    - **`Production incidents resolved`** — one card per `SRE-*` / customer-escalation effort with **Problem → Root cause → Fix**, live Jira status, PR(s). Highest-signal section for on-call/customer work; mine the doc's RCA and fix narrative, never a table row.

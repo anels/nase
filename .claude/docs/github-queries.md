@@ -79,9 +79,15 @@ Filter threads where `isResolved == false`.
 Replying to an existing review comment is a REST write against the integer `databaseId` of the thread's first comment. Use this exact shape - the flag choice is not a style question, it decides whether the reviewer sees your text or a local file path.
 
 ```bash
-REPLY_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-reply.XXXXXXXX.md")
-PAYLOAD_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-reply-payload.XXXXXXXX.json")
-chmod 600 "$REPLY_FILE" "$PAYLOAD_FILE"
+# mktemp -d with the X's last: BSD/macOS does not expand a template that has a suffix
+# after the X's, so "foo.XXXXXXXX.md" yields that literal shared name. The 0700 dir is
+# also what makes the payload private, which chmod on a file in a shared /tmp is not.
+# One dir per reply matters here: address-comments posts replies in a loop, so a shared
+# predictable name would let iteration N+1 clobber the payload manifest N was bound to.
+REPLY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-XXXXXXXX")
+trap 'rm -rf "$REPLY_DIR"' EXIT
+REPLY_FILE="$REPLY_DIR/reply.md"
+PAYLOAD_FILE="$REPLY_DIR/payload.json"
 # write the drafted reply text into "$REPLY_FILE" first, then:
 jq -n --rawfile body "$REPLY_FILE" '{body:$body}' > "$PAYLOAD_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
@@ -100,7 +106,10 @@ NEW_ID=$(python3 .claude/scripts/external-write-action.py execute --manifest "$M
 The reply body only exists correctly if GitHub stored what you wrote, so confirm at the consumer boundary before reporting the thread as answered or resolving it:
 
 ```bash
-POSTED_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-reply-posted.XXXXXXXX.md")
+# See the mktemp note above: the X's must be last for BSD to expand the template.
+POSTED_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-posted-XXXXXXXX")
+trap 'rm -rf "$POSTED_DIR"' EXIT
+POSTED_FILE="$POSTED_DIR/posted.md"
 gh api "repos/{owner}/{repo}/pulls/comments/$NEW_ID" --jq .body | tr -d '\r' > "$POSTED_FILE"
 if [[ "$(cat "$POSTED_FILE")" == "$(tr -d '\r' < "$REPLY_FILE")" ]]; then
   printf 'reply %s verified\n' "$NEW_ID"
@@ -134,8 +143,10 @@ Two mutation shapes share one throttle rule. Pick the shape by call pattern; bot
 Use when each `resolveReviewThread` follows a per-thread reply, so calls must be sequenced one at a time per thread.
 
 ```bash
-QUERY_FILE=$(mktemp "${TMPDIR:-/tmp}/resolve-review-thread.XXXXXXXX.json")
-chmod 600 "$QUERY_FILE"
+# See the mktemp note above: the X's must be last for BSD to expand the template.
+QUERY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/resolve-review-thread-XXXXXXXX")
+trap 'rm -rf "$QUERY_DIR"' EXIT
+QUERY_FILE="$QUERY_DIR/query.json"
 jq -n --arg thread "{thread_graphql_id}" '{query:"mutation($thread:ID!) { resolveReviewThread(input:{threadId:$thread}) { thread { isResolved } } }", variables:{thread:$thread}}' > "$QUERY_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
   --system github --github-owner "{owner}" \
@@ -156,8 +167,10 @@ Notes:
 Use when you have N threads to resolve with no per-thread reply (e.g. auto-resolving bot-declined threads). One round-trip resolves all of them via GraphQL aliases.
 
 ```bash
-BATCH_FILE=$(mktemp "${TMPDIR:-/tmp}/resolve-review-batch.XXXXXXXX.json")
-chmod 600 "$BATCH_FILE"
+# See the mktemp note above: the X's must be last for BSD to expand the template.
+BATCH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/resolve-review-batch-XXXXXXXX")
+trap 'rm -rf "$BATCH_DIR"' EXIT
+BATCH_FILE="$BATCH_DIR/batch.json"
 # Build the aliases and IDs from the reviewed batch, then write one JSON request.
 printf '%s\n' '{"query":"mutation { r0: resolveReviewThread(input:{threadId:\"<id0>\"}){thread{id}} ... }"}' > "$BATCH_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
