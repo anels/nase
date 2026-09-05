@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import stat
+import sys
 import time
 import uuid
 from contextlib import contextmanager
@@ -542,7 +543,7 @@ def main() -> int:
         else:
             release(Lease(Path(args.root).expanduser().resolve(), args.nonce))
     except LockError as exc:
-        print(str(exc), file=os.sys.stderr)
+        print(str(exc), file=sys.stderr)
         return 5
     return 0
 

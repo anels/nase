@@ -155,6 +155,9 @@ extract_entry_block() {
       }
 
       if (ln < start || ln > end) exit
+      # Range first, so the caller can skip later matches inside this same block
+      # without paying for another pass over the file.
+      print start "\t" end
       for (i = start; i <= end; i++) print buf[i]
     }
   ' "$file"
@@ -209,12 +212,26 @@ run_search() {
     local file_mtime
     file_mtime=$(file_mtime_for "$kb_file")
 
+    # Last line of the section already emitted for this file. Match line numbers
+    # arrive ascending and sections are contiguous, so any match at or before it
+    # belongs to that same section: skip it without another pass over the file.
+    # A `break` here instead would return only the first section of a KB file that
+    # answers the query in several places.
+    local last_end=""
+
     # Get matching line numbers (case-insensitive)
     while IFS= read -r match_line_num; do
       [ -z "$match_line_num" ] && continue
+      if [ -n "$last_end" ] && [ "$match_line_num" -le "$last_end" ]; then
+        continue
+      fi
 
-      local entry
-      entry=$(extract_entry_block "$kb_file" "$match_line_num")
+      local block range entry
+      block=$(extract_entry_block "$kb_file" "$match_line_num")
+      [ -z "$block" ] && continue
+      range="${block%%$'\n'*}"
+      entry="${block#*$'\n'}"
+      last_end="${range#*$'\t'}"
       [ -z "$entry" ] && continue
 
       # Extract header date
@@ -269,7 +286,6 @@ run_search() {
       # Newlines in entry → \x1f (unit separator) so each record stays one line
       local entry_enc="${entry//$'\n'/$'\x1f'}"
       printf '%s\t%s\t%s\t%s\n' "$score" "${fresh_date:-0000-00-00}" "$kb_file" "$entry_enc" >> "$RESULTS_FILE"
-      break  # one result per entry block per file (avoid duplicates from multi-line matches)
 
     done < <(grep -nEi -- "$pattern" "$kb_file" 2>/dev/null | cut -d: -f1)
   done < "$KB_FILES_TMP"
@@ -317,6 +333,14 @@ echo ""
 
 # Sort: by score desc, then freshness desc, then file asc; take top 10.
 sort -t$'\t' -k1,1rn -k2,2r -k3,3 "$RESULTS_FILE" | head -10 > "$TOP_RESULTS_FILE"
+
+# Name the truncation. A header count of 23 above ten printed entries otherwise
+# reads as "these are the results".
+SHOWN_COUNT=$(wc -l < "$TOP_RESULTS_FILE" | tr -d ' ')
+if [ "$RESULT_COUNT" -gt "$SHOWN_COUNT" ]; then
+  echo "Showing the top ${SHOWN_COUNT} of ${RESULT_COUNT} by relevance; narrow the query or add a filter to see the rest."
+  echo ""
+fi
 
 cut -f3 "$TOP_RESULTS_FILE" | sort -u | while IFS= read -r kb_file; do
   [ -n "$kb_file" ] && log_kb_search_result "$kb_file"

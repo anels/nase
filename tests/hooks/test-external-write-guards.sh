@@ -77,6 +77,27 @@ expect_rc "slack alternate namespace blocked" .claude/hooks/slack-send-guard.sh 
 expect_rc "slack draft allowed" .claude/hooks/slack-send-guard.sh "$slack_draft" 0
 expect_rc "slack malformed JSON blocked" .claude/hooks/slack-send-guard.sh "{" 2 "could not parse"
 
+# A scheduled send is still a send, and the draft path substitutes for it exactly.
+slack_schedule='{"tool_name":"mcp__plugin_slack_slack__slack_schedule_message","tool_input":{"channel_id":"C1","text":"hi","post_at":1}}'
+slack_read='{"tool_name":"mcp__plugin_slack_slack__slack_read_channel","tool_input":{"channel_id":"C1"}}'
+expect_rc "slack scheduled send blocked" .claude/hooks/slack-send-guard.sh "$slack_schedule" 2 "slack_schedule_message is forbidden"
+expect_rc "slack read allowed" .claude/hooks/slack-send-guard.sh "$slack_read" 0
+
+# The Atlassian generic runners perform any catalog write under an opaque
+# payload, so they bypass both named Atlassian gates.
+atlassian_write='{"tool_name":"mcp__plugin_atlassian_atlassian__executeWrite","tool_input":{"name":"updateConfluenceContent","cloudId":"c","inputs":{"contentId":"1"}}}'
+atlassian_destructive='{"tool_name":"mcp__plugin_atlassian_atlassian__executeDestructive","tool_input":{"name":"deleteJiraIssue","cloudId":"c","inputs":{"issueIdOrKey":"SRE-1"}}}'
+atlassian_write_unnamed='{"tool_name":"mcp__atlassian_rovo_mcp__executeWrite","tool_input":{"cloudId":"c"}}'
+atlassian_read='{"tool_name":"mcp__plugin_atlassian_atlassian__executeRead","tool_input":{"name":"getJiraIssue","cloudId":"c"}}'
+atlassian_discover='{"tool_name":"mcp__plugin_atlassian_atlassian__discover","tool_input":{"goal":"find an operation"}}'
+expect_rc "atlassian executeWrite blocked" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_write" 2 "updateConfluenceContent"
+expect_rc "atlassian executeDestructive blocked" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_destructive" 2 "deleteJiraIssue"
+expect_rc "atlassian unnamed generic write blocked" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_write_unnamed" 2 "<unnamed>"
+expect_rc "atlassian executeRead allowed" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_read" 0
+expect_rc "atlassian discover allowed" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_discover" 0
+expect_rc "atlassian generic malformed JSON blocked" .claude/hooks/atlassian-generic-write-guard.sh "{" 2 "could not parse"
+expect_missing_jq "atlassian generic missing jq blocked" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_write"
+
 small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"adf"}}')
 # Size the oversize fixtures from the guard's own cap so they stay oversize
 # whenever that cap moves.
@@ -105,6 +126,30 @@ expect_rc "confluence unset format write blocked" .claude/hooks/confluence-size-
 expect_rc "confluence large html body still blocked" .claude/hooks/confluence-size-guard.sh "$large_html_confluence" 2 "bytes"
 expect_rc "confluence read (markdown) allowed" .claude/hooks/confluence-size-guard.sh "$confluence_read" 0
 expect_rc "confluence malformed JSON blocked" .claude/hooks/confluence-size-guard.sh "{" 2 "could not parse"
+
+# The current Atlassian MCP renamed these tools to *ConfluenceContent and moved
+# the format inside body:{format,value}. Matching only the older *ConfluencePage
+# spelling made the guard exit 0 on every real write.
+content_small=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{cloudId:"c",contentId:"1",body:{format:"html",value:"<p>short</p>"}}}')
+content_markdown=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluenceContent",tool_input:{cloudId:"c",contentType:"page",title:"t",body:{format:"markdown",value:"short"}}}')
+content_svg=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"svg",value:"<svg/>"}}}')
+content_adf=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"adf",value:"x"}}}')
+content_unset=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{value:"x"}}}')
+content_large=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"html",value:$body}}}')
+content_large_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__createConfluenceContent",tool_input:{body:{format:"markdown",value:$body}}}')
+content_large_edits=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{edits:[{name:"replaceNode",value:$body}]}}')
+content_title_only=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{contentId:"1",title:"new title"}}')
+content_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluenceContent","tool_input":{"contentId":"1"}}'
+expect_rc "confluence content html body allowed" .claude/hooks/confluence-size-guard.sh "$content_small" 0
+expect_rc "confluence content markdown body allowed" .claude/hooks/confluence-size-guard.sh "$content_markdown" 0
+expect_rc "confluence content svg body allowed" .claude/hooks/confluence-size-guard.sh "$content_svg" 0
+expect_rc "confluence content adf format blocked" .claude/hooks/confluence-size-guard.sh "$content_adf" 2 'expected one of'
+expect_rc "confluence content unset format blocked" .claude/hooks/confluence-size-guard.sh "$content_unset" 2 '<unset>'
+expect_rc "confluence content large body blocked" .claude/hooks/confluence-size-guard.sh "$content_large" 2 "bytes"
+expect_rc "confluence content alternate namespace blocked" .claude/hooks/confluence-size-guard.sh "$content_large_alt" 2 "bytes"
+expect_rc "confluence content large edits blocked" .claude/hooks/confluence-size-guard.sh "$content_large_edits" 2 "bytes"
+expect_rc "confluence content title-only update allowed" .claude/hooks/confluence-size-guard.sh "$content_title_only" 0
+expect_rc "confluence content read allowed" .claude/hooks/confluence-size-guard.sh "$content_read" 0
 
 github_write='{"tool_name":"Bash","tool_input":{"command":"gh pr create --draft --title test"}}'
 github_read='{"tool_name":"Bash","tool_input":{"command":"gh pr view 7"}}'
@@ -289,6 +334,28 @@ write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira create adf under batch blocked" .claude/hooks/jira-write-guard.sh "$jira_create_adf" 2 "createJiraIssue must use markdown"
 write_batch "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2
 expect_rc "jira adf body under batch token allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_adf" 0
+
+# The current Atlassian MCP renamed the comment write to
+# addOrEditJiraIssueComment and replaced adf with html. Matching only the older
+# name left every comment write ungated.
+jira_comment_new_tool="mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment"
+jira_comment_new=$(jq -cn --arg tool "$jira_comment_new_tool" '{tool_name:$tool,tool_input:{cloudId:"c",issueIdOrKey:"SRE-1",commentBody:"x",contentFormat:"markdown"}}')
+jira_comment_new_html=$(jq -cn --arg tool "$jira_comment_new_tool" '{tool_name:$tool,tool_input:{cloudId:"c",issueIdOrKey:"SRE-1",commentBody:"<p>x</p>",contentFormat:"html"}}')
+jira_comment_new_unset=$(jq -cn --arg tool "$jira_comment_new_tool" '{tool_name:$tool,tool_input:{cloudId:"c",issueIdOrKey:"SRE-1",commentBody:"x"}}')
+rm -f "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira new comment tool without token blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_new" 2 "no jira-write-token"
+echo '{}' > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira new comment unset format blocked" .claude/hooks/jira-write-guard.sh "$jira_comment_new_unset" 2 "<unset>"
+jira_comment_new_sha=$(payload_sha "$jira_comment_new")
+jq -n --arg tool "$jira_comment_new_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_comment_new_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"comment SRE-1",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira new comment markdown token allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_new" 0
+jira_comment_new_html_sha=$(payload_sha "$jira_comment_new_html")
+jq -n --arg tool "$jira_comment_new_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_comment_new_html_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"html comment SRE-1",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira new comment html under single-shot allowed" .claude/hooks/jira-write-guard.sh "$jira_comment_new_html" 0
 
 jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
   '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"audit failure",payload_sha256:$payload_sha}' \

@@ -14,6 +14,11 @@
 # attachments through the MCP's own converter; markdown is passthrough and
 # cannot express any of them. Storage XHTML and unset are rejected -
 # see .claude/docs/confluence-adf-pattern.md.
+# Two Atlassian MCP tool generations reach this guard. The older
+# create/updateConfluencePage pair carries a top-level contentFormat with a
+# string body; the current create/updateConfluenceContent pair carries
+# body:{format,value} and drops adf. Both are matched, each against its own
+# format enum.
 set -euo pipefail
 
 LIMIT=70000
@@ -37,15 +42,18 @@ block_format() {
   {
     echo "BLOCKED by confluence-size-guard: $reason."
     echo ""
-    echo "Confluence page bodies must be sent as one of contentFormat:"
-    echo "\"adf\", \"html\", or \"markdown\". Use \"adf\" when editing a page"
-    echo "already fetched as ADF and \"html\" (Confluence HTML+) when publishing"
-    echo "converted HTML - both round-trip inlineCard Jira links, panels,"
-    echo "tables, and attachments. \"markdown\" is passthrough and expresses"
-    echo "none of those, so use it only for a plain markdown document."
-    echo "Storage XHTML and any other value are rejected. If a page cannot be"
-    echo "expressed in one of these, save a draft to workspace/tmp/ and ask"
-    echo "the user to paste it manually."
+    echo "Confluence bodies must declare a format this tool accepts:"
+    echo "  create/updateConfluencePage: \"adf\", \"html\", or \"markdown\""
+    echo "  create/updateConfluenceContent: \"html\", \"markdown\", or the"
+    echo "  non-doc formats \"svg\" (whiteboard), \"csv\" (database), \"url\" (embed)"
+    echo "Use \"adf\" when editing a page already fetched as ADF and \"html\""
+    echo "(Confluence HTML+) when publishing converted HTML - both round-trip"
+    echo "inlineCard Jira links, panels, tables, and attachments. \"markdown\" is"
+    echo "passthrough and expresses none of those, so use it only for a plain"
+    echo "markdown document. Storage XHTML and any other value are rejected. The"
+    echo "newer *Content tools take the format inside body:{format,value}."
+    echo "If a page cannot be expressed in one of these, save a draft to"
+    echo "workspace/tmp/ and ask the user to paste it manually."
     echo ""
     echo "Policy source: .claude/docs/confluence-adf-pattern.md"
   } >&2
@@ -60,24 +68,56 @@ if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
 fi
 
 case "$TOOL" in
-  *__updateConfluencePage) ;;
-  *__createConfluencePage) ;;
+  *__updateConfluencePage|*__createConfluencePage)
+    ACCEPTED_FORMATS=(adf html markdown)
+    ;;
+  *__updateConfluenceContent|*__createConfluenceContent)
+    ACCEPTED_FORMATS=(html markdown svg csv url)
+    ;;
   *) exit 0 ;;
 esac
 
-CONTENT_FORMAT=$(printf '%s' "$INPUT" | jq -r '.tool_input.contentFormat // ""' 2>/dev/null || echo "")
-case "$CONTENT_FORMAT" in
-  adf|html|markdown) ;;
-  *)
-    block_format "$TOOL sent contentFormat \"${CONTENT_FORMAT:-<unset>}\", expected one of \"adf\", \"html\", \"markdown\""
-    ;;
-esac
+# One jq pass for every fact the checks below need. This runs before each guarded
+# tool call, so each extra subprocess is on the interactive path. @tsv escapes any
+# tab or newline inside a value, keeping the record on one line.
+if ! GUARD_FACTS=$(printf '%s' "$INPUT" | jq -r '
+      (.tool_input // {}) as $i
+      | ($i.body // $i.value) as $b
+      | (if $b == null then ""
+         elif ($b | type) == "object" then ($i.contentFormat // $b.format // "")
+         else ($i.contentFormat // "") end) as $format
+      | (if $b == null then
+           (if ($i.edits | type) == "array" then ($i.edits | tojson) else "" end)
+         elif ($b | type) == "object" then (($b.value // "") | tostring)
+         elif ($b | type) == "string" then $b
+         else ($b | tostring) end) as $text
+      | [(if $b == null then "0" else "1" end), $format, ($text | utf8bytelength)]
+      | @tsv
+' 2>/dev/null); then
+  block "could not parse Confluence content body"
+fi
+# Split by expansion, not `read -r`: bash treats a tab in IFS as IFS-whitespace and
+# collapses runs of it, so an unset format would silently shift the byte count into
+# the format field and leave the size empty.
+BODY_PRESENT="${GUARD_FACTS%%$'\t'*}"
+GUARD_FACTS_TAIL="${GUARD_FACTS#*$'\t'}"
+CONTENT_FORMAT="${GUARD_FACTS_TAIL%%$'\t'*}"
+SIZE="${GUARD_FACTS_TAIL#*$'\t'}"
 
-if ! SIZE=$(printf '%s' "$INPUT" \
-  | jq -j '.tool_input.body // .tool_input.value // ""' 2>/dev/null \
-  | wc -c \
-  | tr -d ' '); then
-  block "could not parse Confluence page body"
+# A title-only, width-only, or granular-edits update carries no body, so it has
+# no format to gate. The size check below still bounds what such a call sends.
+if [ "$BODY_PRESENT" = "1" ]; then
+  format_accepted=0
+  for accepted in "${ACCEPTED_FORMATS[@]}"; do
+    if [ "$CONTENT_FORMAT" = "$accepted" ]; then
+      format_accepted=1
+      break
+    fi
+  done
+  if [ "$format_accepted" -ne 1 ]; then
+    quoted_formats=$(printf '"%s", ' "${ACCEPTED_FORMATS[@]}")
+    block_format "$TOOL sent contentFormat \"${CONTENT_FORMAT:-<unset>}\", expected one of ${quoted_formats%, }"
+  fi
 fi
 
 if [ "${SIZE:-0}" -gt "$LIMIT" ]; then

@@ -156,13 +156,18 @@ fi
 # ---------- W1: mutation skills reference policy doc -----------------------
 section "W1: mutation skills reference external-mutation-policy.md"
 # Keywords that indicate the skill performs an external mutation
-MUTATION_RE='(updateConfluencePage|createConfluencePage|transitionJiraIssue|createJiraIssue|editJiraIssue|slack_send_message($|[^_])|gh pr create|gh pr edit|gh pr ready|--add-reviewer|pulls/\{pr_number\}/comments|resolveReviewThread|az pipelines run [^a-z]|az pipelines runs cancel|az pipelines runs update|az rest --method (post|put|patch|delete))'
+MUTATION_RE='((update|create)Confluence(Page|Content)|transitionJiraIssue|createJiraIssue|editJiraIssue|addCommentToJiraIssue|addOrEditJiraIssueComment|execute(Write|Destructive)|slack_send_message($|[^_])|slack_schedule_message|gh pr create|gh pr edit|gh pr ready|--add-reviewer|pulls/\{pr_number\}/comments|resolveReviewThread|az pipelines run [^a-z]|az pipelines runs cancel|az pipelines runs update|az rest --method (post|put|patch|delete))'
 w1_hits=""
 while IFS= read -r f; do
   case "$f" in
     *check-skill-doctrine.sh|*external-mutation-policy.md|*workspace/skills/docs/*) continue ;;
   esac
-  skill_scan_text "$f" | grep -qE "$MUTATION_RE" || continue
+  # Capture, then match. `skill_scan_text | grep -qE` under `pipefail` returns 141
+  # when grep matches early and awk's next write hits the closed pipe, and `||
+  # continue` reads that as "no mutation keyword" - so this gate skipped
+  # mutation-capable skills non-deterministically.
+  scan_text=$(skill_scan_text "$f")
+  grep -qE "$MUTATION_RE" <<<"$scan_text" || continue
   if ! grep -q 'external-mutation-policy.md' "$f" 2>/dev/null; then
     w1_hits+="  $f"$'\n'
   fi

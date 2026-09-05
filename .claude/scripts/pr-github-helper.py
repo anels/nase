@@ -612,8 +612,13 @@ def read_abort_state(
         return {"path": str(path), "exists": False}
     try:
         content = json.loads(path.read_text(encoding="utf-8"))
-        branch_matches = content.get("branch_sha") == current_branch_sha
-        base_matches = content.get("base_sha") == current_base_sha
+        # Compare only against shas we actually resolved. A failed `rev-parse`
+        # leaves both current values None, and a record with absent or null shas
+        # would then "match" and read as a resume point for the current state.
+        branch_matches = (
+            current_branch_sha is not None and content.get("branch_sha") == current_branch_sha
+        )
+        base_matches = current_base_sha is not None and content.get("base_sha") == current_base_sha
         return {
             "path": str(path),
             "exists": True,

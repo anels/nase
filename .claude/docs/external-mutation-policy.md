@@ -21,9 +21,10 @@ Canonical rule for skills that change state in systems outside the local workspa
 
 | System | Hard rule |
 |--------|-----------|
-| **Slack** | NEVER call `slack_send_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. |
+| **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. |
 | **Jira** | Drafting comments, creating issues, transitioning status — all require `AskUserQuestion` before the call. "Open" / "In Progress" transitions are mutations too — they notify watchers and may auto-assign. |
-| **Confluence** | Page create / update — draft to `workspace/tmp/{name}.md` first, prompt user, only then call `createConfluencePage` / `updateConfluencePage`. Never publish silently. |
+| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, prompt user, only then call the create/update tool. Never publish silently. Tool names differ by MCP generation: `createConfluenceContent` / `updateConfluenceContent` on the current server, `createConfluencePage` / `updateConfluencePage` on the older one. |
+| **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. Use the named tool, or show the user the operation and inputs and let them run it. `discover` and `executeRead` are read-only and fine. |
 | **GitHub PR** | Opening a PR, merging, editing description, adding labels, requesting reviewers, posting review comments — `AskUserQuestion` before. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
 | **ADO pipeline** | Triggering a build = action-taking. `AskUserQuestion` before the trigger with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` — never `curl` with `$ADO_PAT`; see `feedback_ado-az-cli-only.md`). |
 | **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` — anything that mutates infrastructure requires explicit user confirmation. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
@@ -70,9 +71,17 @@ highest-risk rules even when a future skill forgets the prompt contract:
 
 | Hook | Blocks |
 |------|--------|
-| `slack-send-guard.sh` | direct `slack_send_message`; use `slack_send_message_draft` |
+| `slack-send-guard.sh` | direct `slack_send_message` and `slack_schedule_message`; use `slack_send_message_draft` |
 | `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
-| `confluence-size-guard.sh` | Confluence page bodies over 70 KB; page writes not sent as `contentFormat: "adf"` (see `.claude/docs/confluence-adf-pattern.md`) |
+| `confluence-size-guard.sh` | Confluence bodies over 70 KB; writes with an unset or unaccepted body format (see `.claude/docs/confluence-adf-pattern.md`) |
+| `atlassian-generic-write-guard.sh` | `executeWrite` and `executeDestructive`, whose opaque payload no named Atlassian gate can read |
+
+These guards select by tool name, so an upstream rename silently turns one off:
+the matcher stops matching and the guard exits 0 on every call. Each guarded name
+is therefore pinned in `.claude/scripts/validate-workspace.sh`, which probes the
+live matchers and the guard bodies. When an MCP renames a write path, add the new
+name in the same commit as the pin - do not swap it, because both generations can
+be installed at once.
 | `block-dangerous-git.sh` | destructive or protected-branch git commands |
 | `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
 

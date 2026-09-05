@@ -154,6 +154,16 @@ rc=$?
 assert_exit "T8: missing --since value exits 1" 1 "$rc"
 assert_contains "T8: missing --since value warns" "$out" "requires a value"
 
+# ── Test 9: a --repo filter that keeps nothing exits 2, not a shell error ────
+# bash 3.2 (the macOS default) rejects "${EMPTY[@]}" under `set -u`, so this path
+# used to abort with `unbound variable` before reaching the exit-2 message.
+out=$(bash "$SCRIPT" --logs-dir "$FIXTURE/logs" --no-lessons \
+  --since 2026-05-01 --until 2026-05-02 --repo no-such-repo-anywhere 2>&1)
+rc=$?
+assert_exit "T9: repo filter with no survivors exits 2" 2 "$rc"
+assert_contains "T9: repo filter with no survivors reports the range" "$out" "mention 'no-such-repo-anywhere'"
+assert_not_contains "T9: repo filter with no survivors is not a shell error" "$out" "unbound variable"
+
 # ── summary ──────────────────────────────────────────────────────────────────
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

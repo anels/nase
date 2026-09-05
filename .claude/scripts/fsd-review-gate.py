@@ -752,11 +752,18 @@ def validate_deferred(value: Any) -> list[str]:
         raise InvalidResult("deferred must be an array of strings")
     notes: list[str] = []
     # These never gate, so length is bounded by trimming rather than by failing the
-    # whole review over a field that carries no decision.
-    for index, item in enumerate(value[:DEFERRED_LIMIT]):
+    # whole review over a field that carries no decision. Every item is still
+    # validated, so a malformed note past the cap fails the review rather than
+    # being dropped unseen.
+    for index, item in enumerate(value):
         note = " ".join(nonempty_string(item, f"deferred[{index}]").split())
         notes.append(note[: DEFERRED_MAX_CHARS - 1] + "…" if len(note) > DEFERRED_MAX_CHARS else note)
-    return notes
+    if len(notes) <= DEFERRED_LIMIT:
+        return notes
+    # A trimmed tail is reported, not silent: a run that produced 40 nits must not
+    # read as one that produced 25.
+    dropped = len(notes) - (DEFERRED_LIMIT - 1)
+    return notes[: DEFERRED_LIMIT - 1] + [f"... {dropped} more deferred note(s) trimmed by the gate"]
 
 
 def validate_requirement_exception(value: Any, allowed_refs: set[str], index: int) -> dict[str, Any]:

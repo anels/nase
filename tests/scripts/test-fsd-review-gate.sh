@@ -461,6 +461,18 @@ class ReviewGateTests(unittest.TestCase):
         self.assertEqual(decision["action"], "PROCEED")
         self.assertEqual(decision["p2_deferred"], 25)
         self.assertTrue(all(len(note) <= 240 for note in decision["deferred"]))
+        # The trimmed tail is reported: 40 nits must not read as 25.
+        self.assertEqual(decision["deferred"][-1], "... 16 more deferred note(s) trimmed by the gate")
+
+    def test_combined_deferred_at_the_cap_carries_no_trim_notice(self) -> None:
+        exact = self.combined(deferred=[f"app.py:{index} - nit" for index in range(25)])
+        decision = self.reduce("combined", 1, exact)
+        self.assertEqual(decision["p2_deferred"], 25)
+        self.assertNotIn("trimmed by the gate", decision["deferred"][-1])
+
+    def test_combined_malformed_deferred_past_the_cap_still_fails(self) -> None:
+        broken = self.combined(deferred=[f"app.py:{index} - nit" for index in range(30)] + [""])
+        self.assertEqual(self.reduce("combined", 1, broken)["action"], "INVALID")
 
     def test_contract_exposes_test_quality_lenses_and_exact_axes(self) -> None:
         completed = run("python3", str(GATE), "contract", "--kind", "quality")

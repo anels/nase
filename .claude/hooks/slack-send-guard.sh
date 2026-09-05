@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse guard: hard-block direct Slack API sends.
 # Slack drafts are allowed; direct sends are irreversible from the model side.
+# slack_schedule_message is the same send with a delay, so it is blocked too -
+# the draft path substitutes for it exactly.
 set -euo pipefail
 
 block() {
@@ -28,6 +30,10 @@ fi
 
 if [[ "$TOOL" == *__slack_send_message ]]; then
   block "slack_send_message is forbidden"
+fi
+
+if [[ "$TOOL" == *__slack_schedule_message ]]; then
+  block "slack_schedule_message is forbidden; a scheduled send is still a send"
 fi
 
 exit 0

@@ -100,6 +100,10 @@ def classify_state(payload: dict) -> dict:
     pending = [c.get("name") or c.get("context") for c in checks
                if c.get("status") in {"IN_PROGRESS", "QUEUED"} or c.get("state") == "PENDING"]
     merge_commit = (payload.get("mergeCommit") or {}).get("oid")
+    # The name lists below are capped for display. Carry the true counts too, so a
+    # PR with 14 failing checks does not report `fail=6`.
+    named_failing = [f for f in failing if f]
+    named_pending = [p for p in pending if p]
     return {
         "state": payload.get("state"),
         "reviewDecision": payload.get("reviewDecision"),
@@ -108,8 +112,10 @@ def classify_state(payload: dict) -> dict:
         "baseRefName": payload.get("baseRefName"),
         "title": (payload.get("title") or "")[:90],
         "checks": len(checks),
-        "failing": [f for f in failing if f][:6],
-        "pending": [p for p in pending if p][:6],
+        "failing": named_failing[:6],
+        "pending": named_pending[:6],
+        "failingCount": len(named_failing),
+        "pendingCount": len(named_pending),
     }
 
 
@@ -304,7 +310,12 @@ def main() -> int:
         print(f"live: {len(live)} read, {len(open_prs)} OPEN, {len(unreadable)} unreadable")
         for key in open_prs:
             v = live[key]
-            extra = f" fail={len(v['failing'])} pend={len(v['pending'])}" if v.get("checks") else ""
+            extra = (
+                f" fail={v.get('failingCount', len(v['failing']))}"
+                f" pend={v.get('pendingCount', len(v['pending']))}"
+                if v.get("checks")
+                else ""
+            )
             print(f"    OPEN  {key:44} rev={v.get('reviewDecision') or '-'}{extra}")
         for key in unreadable:
             print(f"    UNREADABLE  {key}  {live[key].get('error', '')[:80]}")

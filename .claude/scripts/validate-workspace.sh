@@ -111,15 +111,19 @@ settings = json.loads(pathlib.Path(".claude/settings.json").read_text(encoding="
 hooks = settings.get("hooks", {})
 errors = []
 
+def matchers_for(event, script):
+    return [
+        group.get("matcher", "")
+        for group in hooks.get(event, [])
+        for hook in group.get("hooks", [])
+        if script in hook.get("command", "")
+    ]
+
 def has_command(event, script, matcher_fragment=None):
-    for group in hooks.get(event, []):
-        matcher = group.get("matcher", "")
-        if matcher_fragment is not None and matcher_fragment not in matcher:
-            continue
-        for hook in group.get("hooks", []):
-            if script in hook.get("command", ""):
-                return True
-    return False
+    matchers = matchers_for(event, script)
+    if matcher_fragment is None:
+        return bool(matchers)
+    return any(matcher_fragment in matcher for matcher in matchers)
 
 requirements = [
     ("SessionStart", "session-start.sh", None),
@@ -133,9 +137,10 @@ requirements = [
     ("UserPromptSubmit", "style-edit-detect.sh", None),
     ("PreToolUse", "block-dangerous-git.sh", "Bash"),
     ("PreToolUse", "external-cli-write-guard.sh", "Bash"),
-    ("PreToolUse", "slack-send-guard.sh", "slack_send_message"),
+    ("PreToolUse", "slack-send-guard.sh", "slack_"),
+    ("PreToolUse", "atlassian-generic-write-guard.sh", "execute"),
     ("PreToolUse", "jira-write-guard.sh", "JiraIssue"),
-    ("PreToolUse", "confluence-size-guard.sh", "ConfluencePage"),
+    ("PreToolUse", "confluence-size-guard.sh", "Confluence"),
     ("PostToolUse", "track-kb-read.sh", "Read"),
     ("PostToolUse", "track-skill.sh", "Skill"),
     ("PostToolUse", "post-edit-shellcheck.sh", "Edit|Write"),
@@ -147,6 +152,27 @@ for event, script, matcher in requirements:
     if not has_command(event, script, matcher):
         detail = f"{event} {matcher or ''}".strip()
         errors.append(f"{detail} missing {script}")
+
+# A guarded MCP write path that gets renamed upstream silently stops matching, and
+# the guard then exits 0 on every call. Pin the tool names each guard must still
+# see so a rename shows up here instead of in an ungated mutation.
+guarded_tool_names = [
+    ("confluence-size-guard.sh", ("updateConfluencePage", "updateConfluenceContent",
+                                  "createConfluencePage", "createConfluenceContent")),
+    ("jira-write-guard.sh", ("addCommentToJiraIssue", "addOrEditJiraIssueComment",
+                             "transitionJiraIssue", "editJiraIssue", "createJiraIssue")),
+    ("slack-send-guard.sh", ("slack_send_message", "slack_schedule_message")),
+    ("atlassian-generic-write-guard.sh", ("executeWrite", "executeDestructive")),
+]
+for script, tool_names in guarded_tool_names:
+    patterns = [re.compile(matcher) for matcher in matchers_for("PreToolUse", script)]
+    guard_body = pathlib.Path(".claude/hooks", script).read_text(encoding="utf-8")
+    for tool_name in tool_names:
+        probe = f"mcp__server__{tool_name}"
+        if not any(pattern.search(probe) for pattern in patterns):
+            errors.append(f"{script} matcher no longer selects {tool_name}")
+        if tool_name not in guard_body:
+            errors.append(f"{script} body no longer recognizes {tool_name}")
 
 worktree_create = json.dumps(hooks.get("WorktreeCreate", []))
 if "worktree-log.sh" in worktree_create:

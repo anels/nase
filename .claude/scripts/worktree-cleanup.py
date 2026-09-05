@@ -176,9 +176,16 @@ def remote_oid(repo: Path, remote_name: str, remote_ref: str) -> tuple[str | Non
 
 
 def delete_safety_ref(repo: Path, safety_ref: str, expected: str) -> None:
+    """Drop the GC-protection ref, reporting rather than raising on failure.
+
+    This runs in a `finally`, so raising here would replace the RETAINED verdict
+    the caller already computed with a bare INVALID and lose the preserved-path
+    detail the operator needs. A leftover ref under `refs/nase/` is inert.
+    """
     deleted = git(repo, "update-ref", "-d", safety_ref, expected, check=False)
     if deleted.returncode != 0:
-        raise GitError(deleted.stderr.strip() or f"could not delete safety ref {safety_ref}")
+        detail = deleted.stderr.strip() or f"could not delete safety ref {safety_ref}"
+        print(f"WARNING: {detail}; delete it with: git update-ref -d {safety_ref}", file=sys.stderr)
 
 
 def cleanup(args: argparse.Namespace) -> int:
