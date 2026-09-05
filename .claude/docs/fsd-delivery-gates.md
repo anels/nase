@@ -156,9 +156,12 @@ If skipped, do not prepare an action; report the pushed branch and the command t
 
 If approved, run the auth guard, write the already-shown body to a private file, then prepare, show, authorize, and execute this exact action:
 ```bash
-PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/fsd-pr-body.XXXXXXXX.md")
-chmod 600 "$PR_BODY_FILE"
-trap 'rm -f "$PR_BODY_FILE"' EXIT
+# mktemp -d with the X's last: BSD/macOS does not expand a template that has a suffix
+# after the X's, so "foo.XXXXXXXX.md" yields that literal shared name. The 0700 dir is
+# also what makes the payload private, which chmod on a file in a shared /tmp is not.
+PR_BODY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fsd-pr-body-XXXXXXXX")
+PR_BODY_FILE="$PR_BODY_DIR/body.md"
+trap 'rm -rf "$PR_BODY_DIR"' EXIT
 cat > "$PR_BODY_FILE" <<'EOF'
 {pr_body_from_template}
 EOF
@@ -204,9 +207,10 @@ Skill-specific outputs:
    ```
    If skipped, do not edit the PR body; still surface the matrix in Phase 10. If approved, prepare, show, authorize, and execute this payload-bound action:
    ```bash
-   PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/fsd-pr-body.XXXXXXXX.md")
-   chmod 600 "$PR_BODY_FILE"
-   trap 'rm -f "$PR_BODY_FILE"' EXIT
+   # See the mktemp note above: the X's must be last for BSD to expand the template.
+   PR_BODY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fsd-pr-body-XXXXXXXX")
+   PR_BODY_FILE="$PR_BODY_DIR/body.md"
+   trap 'rm -rf "$PR_BODY_DIR"' EXIT
    gh pr view {pr_number} -R {owner}/{repo} --json body --jq .body > "$PR_BODY_FILE"
    # Append the Verification section to the file, then:
    MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \

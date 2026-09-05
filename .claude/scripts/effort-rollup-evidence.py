@@ -18,12 +18,14 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 BASIS_VERSION = "effort-rollup-v2"
+TOKEN_CONTINUATION = re.compile(r"[\w-]")
 MAX_CAPTURE_AGE_SECONDS = 7200
 GH_TIMEOUT_SECONDS = 30
 GH_ATTEMPTS = 3
@@ -1231,8 +1233,7 @@ def reconstruct_live_prs(entries: list[dict[str, Any]], values: dict[str, Any]) 
     return live, gaps
 
 
-def markdown_errors(markdown: Path, evidence: dict[str, Any], evidence_sha: str) -> list[str]:
-    text = markdown.read_text(encoding="utf-8")
+def contract_tokens(evidence: dict[str, Any], evidence_sha: str) -> list[str]:
     required = [
         f"Evidence SHA: {evidence_sha}",
         f"Measurement basis: {BASIS_VERSION}",
@@ -1244,7 +1245,99 @@ def markdown_errors(markdown: Path, evidence: dict[str, Any], evidence_sha: str)
         required.append(f"Repo filter: {evidence['scope']['repo_filter']}")
     required.extend(record["url"] for record in evidence["prs"] if record["countable"])
     required.extend(effort["id"] for effort in evidence["efforts"] if effort["countable"])
-    return [item for item in required if item not in text]
+    return required
+
+
+def token_present(item: str, haystack: str) -> bool:
+    # A prefix match is how a count gate passes on the wrong number: plain
+    # containment reads `Delivered efforts: 4` as satisfied by `40`, and a PR
+    # cited as `/pull/1` as satisfied by a link to `/pull/12`.
+    return any(
+        not TOKEN_CONTINUATION.match(haystack[match.end():match.end() + 1])
+        for match in re.finditer(re.escape(item), haystack)
+    )
+
+
+def markdown_errors(markdown: Path, evidence: dict[str, Any], evidence_sha: str) -> list[str]:
+    text = markdown.read_text(encoding="utf-8")
+    return [
+        item
+        for item in contract_tokens(evidence, evidence_sha)
+        if not token_present(item, text)
+    ]
+
+
+class HtmlContractProbe(HTMLParser):
+    """Reader-visible text and link targets, plus text a table holds outside a cell.
+
+    Cell depth is reset by `<tr>` and re-set by each `<td>`/`<th>` rather than
+    counted, so an unclosed cell cannot leave the probe permanently "inside a
+    cell" and silently stop reporting. A nested table therefore over-reports
+    instead of hiding a finding.
+    """
+
+    MUTE_TAGS = {"script", "style", "head", "title"}
+    CELL_TAGS = {"td", "th"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.chunks: list[str] = []
+        self.link_targets: list[str] = []
+        self.stray_table_text: list[str] = []
+        self.table_depth = 0
+        self.in_cell = False
+        self.mute_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if not self.mute_depth and tag == "a":
+            self.link_targets.extend(value for name, value in attrs if name == "href" and value)
+        if tag in self.MUTE_TAGS:
+            self.mute_depth += 1
+        elif tag == "table":
+            self.table_depth += 1
+            self.in_cell = False
+        elif tag == "tr":
+            self.in_cell = False
+        elif tag in self.CELL_TAGS:
+            self.in_cell = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.MUTE_TAGS:
+            self.mute_depth = max(0, self.mute_depth - 1)
+        elif tag == "table":
+            self.table_depth = max(0, self.table_depth - 1)
+            self.in_cell = False
+        elif tag == "tr" or tag in self.CELL_TAGS:
+            self.in_cell = False
+
+    def handle_data(self, data: str) -> None:
+        if self.mute_depth:
+            return
+        self.chunks.append(data)
+        if self.table_depth and not self.in_cell and data.strip():
+            self.stray_table_text.append(data.strip()[:40])
+
+
+def html_errors(document: Path, evidence: dict[str, Any], evidence_sha: str) -> list[str]:
+    probe = HtmlContractProbe()
+    probe.feed(document.read_text(encoding="utf-8"))
+    probe.close()
+    # Joined on a space, not concatenated: a tag boundary separates what a reader
+    # sees, so gluing `<p>…: 4</p><p>Merged…` would leave the count looking like
+    # `4Merged` and fail its own boundary check.
+    text = re.sub(r"\s+", " ", " ".join(probe.chunks))
+    errors = [f"table text outside a cell: {item}" for item in probe.stray_table_text]
+    for item in contract_tokens(evidence, evidence_sha):
+        # A reader reaches a counted PR by clicking it, so an `<a href>` target
+        # satisfies the contract that visible text alone would fail.
+        if item.startswith("https://"):
+            found = any(token_present(item, href) for href in probe.link_targets) \
+                or token_present(item, text)
+        else:
+            found = token_present(re.sub(r"\s+", " ", item), text)
+        if not found:
+            errors.append(f"missing from HTML: {item}")
+    return errors
 
 
 def validate(args: argparse.Namespace) -> int:
@@ -1395,6 +1488,12 @@ def validate(args: argparse.Namespace) -> int:
         if markdown.is_symlink() or not markdown.is_file() or not inside(markdown.resolve(), bundle):
             raise EvidenceError("markdown must be a real file inside the bundle")
         missing_markdown = markdown_errors(markdown, evidence, evidence_sha)
+    missing_html: list[str] = []
+    if args.html:
+        document = Path(args.html).expanduser()
+        if document.is_symlink() or not document.is_file() or not inside(document.resolve(), bundle):
+            raise EvidenceError("html must be a real file inside the bundle")
+        missing_html = html_errors(document, evidence, evidence_sha)
     validation = {
         "schema_version": 1,
         "run_id": run["run_id"],
@@ -1405,7 +1504,8 @@ def validate(args: argparse.Namespace) -> int:
         "totals": evidence["totals"],
         "mismatched_fields": mismatches,
         "missing_markdown_contract": missing_markdown,
-        "ok": not mismatches and not missing_markdown,
+        "missing_html_contract": missing_html,
+        "ok": not mismatches and not missing_markdown and not missing_html,
     }
     atomic_json(bundle / "validation.json", validation)
     print(json.dumps(validation, indent=2, sort_keys=True) if args.format == "json" else f"ok={str(validation['ok']).lower()} evidence_sha256={evidence_sha}")
@@ -1427,6 +1527,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--month", required=True)
     command.add_argument("--manifest", required=True)
     command.add_argument("--markdown")
+    command.add_argument("--html")
     command.add_argument("--format", choices=("text", "json"), default="text")
     command.set_defaults(handler=validate)
     return root

@@ -394,6 +394,67 @@ Merged delivery PRs in month: 1
 MD
 assert_cmd "Markdown missing evidence and canonical records fails" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --markdown "$BUNDLE/report.bad.md" --format json
 
+cat > "$BUNDLE/report.fresh.html" <<EOF
+<html><head><style>.ba{display:grid;--noise:99;}</style></head><body>
+<table>
+  <tr><th>Bucket</th><th>Count</th></tr>
+  <tr><td>Delivery PRs merged in month</td><td>2 <a href="https://github.com/example/service/pull/1">#1</a></td></tr>
+</table>
+<p>Evidence SHA:
+  $EVIDENCE_SHA</p>
+<p>Measurement basis: effort-rollup-v2</p>
+<p>Coverage: complete-for-declared-sources</p>
+<p>Delivered efforts: 4</p>
+<p>Merged delivery PRs in month: 2</p>
+<p>effort:effort-a effort:effort-b effort:effort-earlier effort:effort-mixedcase</p>
+<a href="https://github.com/Example/Service/pull/8">#8</a>
+</body></html>
+EOF
+assert_cmd "rendered HTML binds the same evidence contract" "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$BUNDLE/report.fresh.html" --format json
+assert_cmd "a passing report records no HTML findings" bash -c '[ "$(jq -r '\''.missing_html_contract | length'\'' "$1")" = 0 ]' _ "$BUNDLE/validation.json"
+
+derive_html() {
+  python3 - "$@" <<'PY'
+import pathlib
+import sys
+src, dst, old, new = sys.argv[1:5]
+text = pathlib.Path(src).read_text(encoding="utf-8")
+assert text.count(old) == 1, f"fixture no longer matches the rendered report: {old}"
+pathlib.Path(dst).write_text(text.replace(old, new), encoding="utf-8")
+PY
+}
+
+GOOD_ROW='<td>2 <a href="https://github.com/example/service/pull/1">#1</a></td>'
+STRAY_ROW='394<a href="https://github.com/example/service/pull/1">#1</a>395'
+derive_html "$BUNDLE/report.fresh.html" "$BUNDLE/report.strayrow.html" "$GOOD_ROW" "$STRAY_ROW"
+assert_cmd "count left outside a table cell fails" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$BUNDLE/report.strayrow.html" --format json
+assert_cmd "the stray count is named" grep -Fq "table text outside a cell: 394" "$BUNDLE/validation.json"
+
+cat > "$BUNDLE/report.nofooter.html" <<'HTML'
+<html><body><table><tr><td>Bucket</td><td>2</td></tr></table></body></html>
+HTML
+assert_cmd "HTML without the evidence footer fails" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$BUNDLE/report.nofooter.html" --format json
+
+VISIBLE_SHA=$(printf '<p>Evidence SHA:\n  %s</p>' "$EVIDENCE_SHA")
+derive_html "$BUNDLE/report.fresh.html" "$BUNDLE/report.styleonly.html" "$VISIBLE_SHA" ""
+derive_html "$BUNDLE/report.styleonly.html" "$BUNDLE/report.styleonly.html" "<style>" "<style>/* Evidence SHA: $EVIDENCE_SHA */"
+assert_cmd "a contract token surviving only inside style does not count" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$BUNDLE/report.styleonly.html" --format json
+assert_cmd "the style-muted token is the only finding" bash -c '[ "$(jq -r '\''.missing_html_contract | join("|")'\'' "$1")" = "missing from HTML: Evidence SHA: $2" ]' _ "$BUNDLE/validation.json" "$EVIDENCE_SHA"
+
+LIVE_LINK='<a href="https://github.com/Example/Service/pull/8">#8</a>'
+BURIED_LINK='<!-- https://github.com/Example/Service/pull/8 --><span data-pr="https://github.com/Example/Service/pull/8">#8</span>'
+derive_html "$BUNDLE/report.fresh.html" "$BUNDLE/report.unclickable.html" "$LIVE_LINK" "$BURIED_LINK"
+assert_cmd "a counted PR URL a reader cannot see or click fails" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$BUNDLE/report.unclickable.html" --format json
+assert_cmd "the buried URL is the only finding" bash -c '[ "$(jq -r '\''.missing_html_contract | join("|")'\'' "$1")" = "missing from HTML: https://github.com/Example/Service/pull/8" ]' _ "$BUNDLE/validation.json"
+
+derive_html "$BUNDLE/report.fresh.html" "$BUNDLE/report.prefix.html" '<p>Delivered efforts: 4</p>' '<p>Delivered efforts: 40</p>'
+derive_html "$BUNDLE/report.prefix.html" "$BUNDLE/report.prefix.html" 'service/pull/1">#1</a>' 'service/pull/12">#12</a>'
+assert_cmd "a count or PR URL that only prefix-matches fails" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$BUNDLE/report.prefix.html" --format json
+assert_cmd "both prefix-only tokens are named" bash -c '[ "$(jq -r '\''.missing_html_contract | join("|")'\'' "$1")" = "missing from HTML: Delivered efforts: 4|missing from HTML: https://github.com/example/service/pull/1" ]' _ "$BUNDLE/validation.json"
+
+printf '<html></html>\n' > "$TMPDIR_TEST/outside.html"
+assert_cmd "html outside the bundle is refused" expect_fail "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --html "$TMPDIR_TEST/outside.html" --format json
+
 assert_cmd "non-empty bundle refuses implicit resume" expect_fail collect_bundle "$BUNDLE"
 assert_cmd "foreign repo filter fails closed" expect_fail "$PYTHON_BIN" "$SCRIPT" collect --root "$FIXTURE" --month "$MONTH" --bundle "$TMPDIR_TEST/foreign" --repo absent --format json
 assert_cmd "unsupported scope argument is rejected" expect_fail "$PYTHON_BIN" "$SCRIPT" collect --root "$FIXTURE" --month "$MONTH" --bundle "$TMPDIR_TEST/scope" --scope narrow --format json

@@ -84,7 +84,7 @@ check_contains "GitHub mutation verifies the token actor" .claude/scripts/extern
 check_contains "opaque GitHub mutations require an explicit owner" .claude/docs/github-queries.md '--github-owner "{owner}"'
 check_contains "FSD uses delivery gate guard" .claude/commands/nase/fsd.md "fsd-delivery-gates.md"
 check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-delivery-gates.md "external-write-action.py"
-check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-delivery-gates.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
+check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-delivery-gates.md "trap 'rm -rf \"\$PR_BODY_DIR\"' EXIT"
 check_contains "address-comments cleans private PR body files" .claude/docs/address-comments-delivery.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 check_contains "prep-merge cleans private PR body files" .claude/commands/nase/prep-merge.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 
@@ -94,7 +94,7 @@ check_contains "discuss PR routes writes through the manifest gate" "$discuss" "
 check_contains "discuss PR keeps analysis investigation-only" "$discuss" "investigation-only"
 check_contains "discuss PR output offers the gated post flow" "$discuss_out" "Draft + post"
 check_contains "discuss PR output submits the review via manifest" "$discuss_out" "pulls/{number}/reviews"
-check_contains "discuss PR output cleans the private review file" "$discuss_out" "trap 'rm -f \"\$REVIEW_FILE\"' EXIT"
+check_contains "discuss PR output cleans the private review file" "$discuss_out" "trap 'rm -rf \"\$REVIEW_DIR\"' EXIT"
 
 sre="workspace/skills/docs/sre-alert-flow.md"
 check_absent "SRE flow does not start web apps" "$sre" "az webapp start"

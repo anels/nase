@@ -230,9 +230,12 @@ For a non-owned PR with a confirmed blocking issue, `REQUEST_CHANGES` is the onl
 - Build the review payload as a private file, prepare the manifest, show it, get the immediate `AskUserQuestion` approval of that exact manifest, then authorize and execute:
 
 ```bash
-REVIEW_FILE=$(mktemp "${TMPDIR:-/tmp}/pr-review-{number}.XXXXXXXX.json")
-chmod 600 "$REVIEW_FILE"
-trap 'rm -f "$REVIEW_FILE"' EXIT
+# mktemp -d with the X's last: BSD/macOS does not expand a template that has a suffix
+# after the X's, so "foo.XXXXXXXX.md" yields that literal shared name. The 0700 dir is
+# also what makes the payload private, which chmod on a file in a shared /tmp is not.
+REVIEW_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-review-{number}-XXXXXXXX")
+REVIEW_FILE="$REVIEW_DIR/review.json"
+trap 'rm -rf "$REVIEW_DIR"' EXIT
 # Build with jq from the confirmed state, body, and drafted inline comments:
 #   {"event":"APPROVE|COMMENT|REQUEST_CHANGES","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}
 jq -n --arg event "$STATE" --arg body "$REVIEW_BODY" --argjson comments "$INLINE_COMMENTS_JSON" \
