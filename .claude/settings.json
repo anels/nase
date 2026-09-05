@@ -116,7 +116,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*__slack_send_message$",
+        "matcher": "mcp__.*__slack_(send|schedule)_message$",
         "hooks": [
           {
             "type": "command",
@@ -134,7 +134,16 @@
         ]
       },
       {
-        "matcher": "mcp__.*__(update|create)ConfluencePage$",
+        "matcher": "mcp__.*__execute(Write|Destructive)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/atlassian-generic-write-guard.sh\"'"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__(update|create)Confluence(Page|Content)$",
         "hooks": [
           {
             "type": "command",
@@ -143,7 +152,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*__(transitionJiraIssue|editJiraIssue|createJiraIssue|addCommentToJiraIssue|addWorklogToJiraIssue|createIssueLink)$",
+        "matcher": "mcp__.*__(transitionJiraIssue|editJiraIssue|createJiraIssue|addCommentToJiraIssue|addOrEditJiraIssueComment|addWorklogToJiraIssue|createIssueLink)$",
         "hooks": [
           {
             "type": "command",

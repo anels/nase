@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -52,7 +53,7 @@ def main() -> int:
             Path(args.root), Path(args.content_file).read_bytes(), args.timeout_ms
         )
     except (LockError, OSError) as exc:
-        print(str(exc), file=os.sys.stderr)
+        print(str(exc), file=sys.stderr)
         return 5
     return 0
 

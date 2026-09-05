@@ -6,7 +6,7 @@ Canonical format rule for skills that create or edit Jira content via Atlassian 
 
 ## Default to `contentFormat: "markdown"`
 
-Body-bearing Jira mutations are `createJiraIssue` (the `description`), `editJiraIssue` (`fields.description` and any rich text field), and `addCommentToJiraIssue` (the `commentBody`). The Atlassian MCP `contentFormat` enum is `["markdown", "adf"]`, and the **default when omitted is ambiguous** — never rely on it. Always set the format explicitly.
+Body-bearing Jira mutations are `createJiraIssue` (the `description`), `editJiraIssue` (`fields.description` and any rich text field), and the comment write - `addOrEditJiraIssueComment` on the current MCP, `addCommentToJiraIssue` on the older one (the `commentBody` either way). The `contentFormat` enum depends on which server is installed: `["markdown", "adf"]` on the older MCP, `["markdown", "html"]` on the current one. Check the live tool schema rather than assuming. The **default when omitted is ambiguous**, so never rely on it. Always set the format explicitly.
 
 For plain text, set `contentFormat: "markdown"`. This is the default choice and pairs with the single-shot sha token.
 
@@ -55,7 +55,9 @@ PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | shasum -a 256 
 
 ## Hook enforcement
 
-`.claude/hooks/jira-write-guard.sh` gates `editJiraIssue` / `createJiraIssue` / `addCommentToJiraIssue`: `markdown` is always allowed, `adf` is allowed **only when a batch token is present**, and an unset/other format is blocked. The check runs after token-mode detection so it can tell single-shot from batch. `transitionJiraIssue`, `addWorklogToJiraIssue`, and `createIssueLink` carry no rich body and are not format-gated.
+`.claude/hooks/jira-write-guard.sh` gates `editJiraIssue` / `createJiraIssue` / `addCommentToJiraIssue` / `addOrEditJiraIssueComment`: `markdown` and `html` are always allowed, `adf` is allowed **only when a batch token is present**, and an unset/other format is blocked. `html` is a plain string, so it does not drift a single-shot sha the way ADF's nested JSON does. The check runs after token-mode detection so it can tell single-shot from batch. `transitionJiraIssue`, `addWorklogToJiraIssue`, and `createIssueLink` carry no rich body and are not format-gated.
+
+The guard selects by tool name, so `executeWrite` / `executeDestructive` cannot reach it: their payload is `{name, cloudId, inputs}` and the issue key and body sit one level down. `.claude/hooks/atlassian-generic-write-guard.sh` blocks both rather than letting an unreadable payload through - use the named tool.
 
 ---
 

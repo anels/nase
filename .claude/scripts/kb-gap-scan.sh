@@ -106,7 +106,10 @@ if [ -n "$REPO_FILTER" ]; then
       KEPT+=("$f")
     fi
   done
-  FILES=("${KEPT[@]}")
+  # bash 3.2 (the macOS default) treats "${EMPTY[@]}" as unbound under `set -u`,
+  # so a --repo filter that matches nothing would abort here with a shell error
+  # instead of reaching the exit-2 "no logs mention" path below.
+  FILES=(${KEPT[@]+"${KEPT[@]}"})
   if [ ${#FILES[@]} -eq 0 ]; then
     echo "No logs in ${SINCE}..${UNTIL} mention '${REPO_FILTER}'" >&2
     exit 2

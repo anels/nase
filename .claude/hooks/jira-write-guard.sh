@@ -41,6 +41,8 @@ block_format() {
     echo ""
     echo "Jira body format rules (see .claude/docs/jira-write-pattern.md):"
     echo "  - Plain text: contentFormat \"markdown\" with a single-shot sha token."
+    echo "  - Rich bodies on the current MCP: contentFormat \"html\". It is a plain"
+    echo "    string, so a single-shot sha token binds it."
     echo "  - Mentions / rich nodes: contentFormat \"adf\" — but ADF JSON can drift"
     echo "    the single-shot payload sha, so it is allowed ONLY under"
     echo "    a batch/issue-allowlist token (which binds the issue set + op cap,"
@@ -64,11 +66,15 @@ if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
   block_without_log "could not parse tool input JSON"
 fi
 
+# addCommentToJiraIssue and addOrEditJiraIssueComment are the same write on two
+# Atlassian MCP tool generations. Both are gated; matching only the older name
+# left comment writes ungated on the current MCP.
 case "$TOOL" in
   *__transitionJiraIssue|\
   *__editJiraIssue|\
   *__createJiraIssue|\
   *__addCommentToJiraIssue|\
+  *__addOrEditJiraIssueComment|\
   *__addWorklogToJiraIssue|\
   *__createIssueLink)
     ;;
@@ -228,15 +234,17 @@ IS_BATCH=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
   then "1" else "0" end' 2>/dev/null || echo "0")
 
 # Format gate (body tools only). markdown is the plain-text default and works
-# with a single-shot sha token. ADF is required for resolving @mentions and
-# smart cards, but its JSON can re-serialize and drift the single-shot payload
-# sha — so ADF is allowed ONLY under a batch token, which binds an
-# issue set + op cap instead of the payload bytes. An unset format is rejected.
+# with a single-shot sha token. html is the current MCP's rich-body format and
+# is also a plain string, so it binds to a sha the same way. ADF is required for
+# resolving @mentions and smart cards on the older MCP, but its JSON can
+# re-serialize and drift the single-shot payload sha, so ADF is allowed ONLY
+# under a batch token, which binds an issue set + op cap instead of the payload
+# bytes. An unset format is rejected.
 case "$TOOL" in
-  *__editJiraIssue|*__addCommentToJiraIssue|*__createJiraIssue)
+  *__editJiraIssue|*__addCommentToJiraIssue|*__addOrEditJiraIssueComment|*__createJiraIssue)
     CONTENT_FORMAT=$(printf '%s' "$INPUT" | jq -r '.tool_input.contentFormat // ""' 2>/dev/null || echo "")
     case "$CONTENT_FORMAT" in
-      markdown) ;;
+      markdown|html) ;;
       adf)
         [[ "$TOOL" != *__createJiraIssue ]] \
           || block_format "$TOOL sent contentFormat \"adf\"; createJiraIssue must use markdown because no issue key exists for a batch token"

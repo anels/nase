@@ -30,6 +30,22 @@ Every `createConfluencePage` / `updateConfluencePage` body must be sent as one o
 
 `.claude/hooks/confluence-size-guard.sh` enforces the set — it blocks a page write whose `contentFormat` is unset, `storage`, or anything outside those three. If a page genuinely cannot be expressed in one of them, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
 
+### The current MCP generation: `*ConfluenceContent`
+
+The Atlassian MCP renamed these tools and changed the body shape. Read the live tool schema before writing; do not assume this doc's older spelling is what is installed.
+
+| | Older MCP | Current MCP |
+|---|---|---|
+| Tools | `create/updateConfluencePage`, `getConfluencePage` | `create/updateConfluenceContent`, `getConfluenceContent` |
+| Body | top-level `contentFormat` + string `body` | `body: {format, value}` |
+| Doc formats | `adf`, `html`, `markdown` | `html`, `markdown`, **no `adf`** |
+| Other formats | none | `svg` (whiteboard), `csv` (database), `url` (embed / smart link / synced folder) |
+| Concurrency | no version field | `snapshotToken` from a prior `getConfluenceContent` is required for doc-body updates |
+
+The guard matches both generations and applies each one's own format enum, so an `adf` body sent to `updateConfluenceContent` is blocked. On the current MCP, use `html` wherever this doc says `adf`: it is the server's own shape and round-trips `inlineCard`, panels, tables, and attachments. The ADF mechanics below still apply to the older MCP and to anyone hand-building an ADF tree.
+
+`updateConfluenceContent` also accepts granular `edits` instead of a whole body, and a title-only or width-only update with neither. Those carry no format to gate; the guard still applies the size cap to whatever they send.
+
 `/nase:publish-confluence` owns the HTML → HTML+ conversion rules; see `.claude/docs/confluence-publish-conversion.md`. The ADF mechanics in the rest of this doc still govern every caller working in ADF.
 
 This is the **opposite** of Jira, where bodies must be `markdown` (see `.claude/docs/jira-write-pattern.md`). The format gate is write-only — reading a page as `markdown` for human-readable internalization (e.g. `confluence-doc-internalize`) is unaffected.

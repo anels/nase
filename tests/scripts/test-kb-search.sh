@@ -170,6 +170,31 @@ assert_exit "T10: nested level-four content succeeds" 0 "$rc"
 assert_contains "T10: nested content returns its parent current-state section" "$out" "## Folder-Scope Enforcement"
 assert_contains "T10: nested content remains in the returned section" "$out" "folderScopeToken is required"
 
+# T11: one KB file that answers the query in several sections must return each of
+# them, and repeated hits inside one section must still collapse to one result.
+cat > "$FIXTURE/workspace/kb/general/multi.md" <<'EOF'
+# Multi-section fixture
+
+### 2026-06-01 First multihit section
+**Tags:** dedup
+**Confidence:** high
+multihit appears here.
+multihit appears again in the same section.
+
+### 2026-06-02 Second multihit section
+**Tags:** dedup
+**Confidence:** high
+multihit appears in a different section.
+EOF
+
+out=$(bash "$SCRIPT" "multihit" --with-score 2>&1)
+rc=$?
+assert_exit "T11: multi-section query succeeds" 0 "$rc"
+assert_contains "T11: first matching section is returned" "$out" "First multihit section"
+assert_contains "T11: second matching section is returned" "$out" "Second multihit section"
+assert_contains "T11: both sections counted once each" "$out" "2 result(s)"
+rm -f "$FIXTURE/workspace/kb/general/multi.md"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

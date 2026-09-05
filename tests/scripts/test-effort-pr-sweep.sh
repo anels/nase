@@ -195,5 +195,36 @@ sweep
 assert_jq "unchecked row citing a PR is not flagged" "$TMPDIR_TEST/out.json" \
   '[.efforts[] | select(.effort == "planned-row")][0].invisible | length == 0'
 
+# The failing/pending name lists are capped for display, so the rendered count has
+# to come from a separate total. A PR with more failing checks than the cap must
+# not report the cap as its count.
+tests=$((tests + 1))
+if python3 - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("sweep", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+payload = {
+    "state": "OPEN",
+    "statusCheckRollup": [
+        {"name": f"check-{index}", "conclusion": "FAILURE"} for index in range(14)
+    ]
+    + [{"name": f"queued-{index}", "status": "QUEUED"} for index in range(9)],
+}
+state = module.classify_state(payload)
+assert len(state["failing"]) == 6, state["failing"]
+assert state["failingCount"] == 14, state["failingCount"]
+assert len(state["pending"]) == 6, state["pending"]
+assert state["pendingCount"] == 9, state["pendingCount"]
+PY
+then
+  report 0 "capped check lists carry their true totals"
+else
+  report 1 "capped check lists carry their true totals"
+fi
+
 printf '\n%d assertions, %d failures\n' "$tests" "$failures"
 [[ "$failures" -eq 0 ]]
