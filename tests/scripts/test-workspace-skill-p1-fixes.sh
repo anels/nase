@@ -136,7 +136,12 @@ assert_contains "App Insights emits only non-secret routing status" \
   "$APP_INSIGHTS" 'emit only `match`, `mismatch`, or `missing`'
 assert_contains "App Insights component lookup projects non-secret fields" \
   "$APP_INSIGHTS" "--query '{id:id,name:name,ingestionMode:ingestionMode,workspaceResourceId:workspaceResourceId,provisioningState:provisioningState}' -o json"
-if rg -n 'component show' "$APP_INSIGHTS" | grep -vq -- '--query'; then
+# Herestring, not a pipe: `grep -vq` exits on the first non-matching line, and
+# under `pipefail` rg's next write would then report 141 rather than a verdict.
+# The `-n` guard matters: a herestring of the empty string is still one empty
+# line, which `grep -v` would match.
+component_show_lines=$(rg -n 'component show' "$APP_INSIGHTS" || true)
+if [ -n "$component_show_lines" ] && grep -vq -- '--query' <<<"$component_show_lines"; then
   fail "App Insights has no unprojected component lookup"
 else
   pass "App Insights has no unprojected component lookup"

@@ -60,8 +60,13 @@ section() {
 }
 
 assert_section_contains() {
-  local name="$1" file="$2" heading="$3" pattern="$4"
-  if section "$file" "$heading" | grep -Fq -- "$pattern"; then
+  local name="$1" file="$2" heading="$3" pattern="$4" body
+  # Capture, then match in the shell. Piping into `grep -q` under `pipefail` is a
+  # race: grep exits on the first match, the producer's next write gets SIGPIPE,
+  # and the pipeline reports 141, so a pattern near the top of a long section
+  # reads as absent. That flaked in CI while passing locally.
+  body=$(section "$file" "$heading")
+  if [[ "$body" == *"$pattern"* ]]; then
     pass "$name"
   else
     fail "$name"
