@@ -34,6 +34,10 @@ make_repo() {
   cp "$ROOT/.claude/scripts/verify-bundle.py" "$repo_path/.claude/scripts/verify-bundle.py"
   cp "$ROOT/tests/check-local-sensitive-artifacts.sh" "$repo_path/tests/check-local-sensitive-artifacts.sh"
   printf '# Workspace Context\n' > "$repo_path/workspace/context.md"
+  # These tests drive the hook repeatedly within seconds. The production default
+  # throttle (30 minutes) would make every run after the first a no-op, so each
+  # fixture disables it explicitly; the throttle has its own cases below.
+  printf 'backup_min_interval_minutes: 0\n' > "$repo_path/workspace/config.md"
 }
 
 assert_contains() {
@@ -559,7 +563,7 @@ assert_exit "corrupted archive does not suppress replacement" 3 "$(count_archive
 # Dedup must never mean "no current backup": once the fingerprint-bound archive
 # falls outside a days policy, the hook publishes a replacement before pruning it.
 rm -f "$target"/nase-backup-*.zip "$repo/.nase-backup-state"
-printf 'backup_retention: days:1\n' > "$repo/workspace/config.md"
+printf 'backup_retention: days:1\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "days-policy seed backup succeeds" 0 "$rc" "$out"
@@ -589,7 +593,7 @@ target="$fixture/retention-backups"
 make_repo "$repo"
 mkdir -p "$target"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-printf 'backup_retention: days:30,count:2\n' > "$repo/workspace/config.md"
+printf 'backup_retention: days:30,count:2\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
 today=$(date +%Y%m%d)
 for stamp in 000001 000002 000003 000004; do
   printf 'placeholder\n' > "$target/nase-backup-${today}-${stamp}.zip"
@@ -605,7 +609,7 @@ target="$fixture/retention-invalid-backups"
 make_repo "$repo"
 mkdir -p "$target"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-printf 'backup_retention: weeks:4\n' > "$repo/workspace/config.md"
+printf 'backup_retention: weeks:4\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "unusable retention policy still backs up" 0 "$rc" "$out"
@@ -618,7 +622,7 @@ repo="$fixture/retention-zero-repo"
 target="$fixture/retention-zero-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-printf 'backup_retention: count:0\n' > "$repo/workspace/config.md"
+printf 'backup_retention: count:0\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "zero retention count still backs up" 0 "$rc" "$out"
@@ -658,6 +662,67 @@ out=$(cd "$repo" \
 rc=$?
 assert_exit "same-second collision publishes a replacement" 0 "$rc" "$out"
 assert_exit "same-second collision preserves both archives" 2 "$(count_archives "$target")" "$out"
+
+# --- minimum-interval throttle --------------------------------------------------------
+# `Stop` fires once per assistant turn, so a working session reaches the hook every few
+# minutes with genuinely changed content that dedup cannot suppress. These cases pin that
+# the throttle bounds that rate, and that it never leaves a target with no archive.
+repo="$fixture/throttle-repo"
+target="$fixture/throttle-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+# No throttle key: the production default (30 minutes) has to apply.
+printf '# Workspace Config\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "throttle default seed backup succeeds" 0 "$rc" "$out"
+assert_exit "throttle default published one archive" 1 "$(count_archives "$target")" "$out"
+
+sleep 1
+printf 'changed content\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "throttled rerun succeeds" 0 "$rc" "$out"
+assert_contains "throttled rerun reports the throttle" "$out" "throttled (backup_min_interval_minutes: 30)"
+assert_exit "throttled rerun published no second archive" 1 "$(count_archives "$target")" "$out"
+
+# The throttle is anchored on the newest archive, not on a state file: once every
+# archive has aged past the window, the next run must publish again.
+latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
+mv "$latest_archive" "$target/nase-backup-20000101-000000.zip"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "aged-out archive lifts the throttle" 0 "$rc" "$out"
+assert_exit "aged-out archive got a replacement" 2 "$(count_archives "$target")" "$out"
+
+# An empty target has no interval to be too soon after. The throttle must never be
+# the reason a configured target holds no backup at all.
+repo="$fixture/throttle-empty-repo"
+target="$fixture/throttle-empty-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf '# Workspace Config\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "empty target backs up despite the default throttle" 0 "$rc" "$out"
+assert_exit "empty target gained an archive" 1 "$(count_archives "$target")" "$out"
+
+# An unparsable interval must warn and fall back, not silently disable the throttle.
+repo="$fixture/throttle-invalid-repo"
+target="$fixture/throttle-invalid-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_min_interval_minutes: half-hour\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "invalid throttle interval still backs up" 0 "$rc" "$out"
+assert_contains "invalid throttle interval warns" "$out" "invalid backup_min_interval_minutes"
+sleep 1
+printf 'changed again\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "invalid throttle interval falls back to the default" 0 "$rc" "$out"
+assert_exit "invalid throttle interval did not disable throttling" 1 "$(count_archives "$target")" "$out"
 
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

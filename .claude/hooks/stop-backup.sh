@@ -217,6 +217,71 @@ else
   echo "[stop-backup] WARNING: no daily log for today — consider running /nase:wrap-up"
 fi
 
+# ---------------------------------------------------------------------------
+# Minimum-interval throttle
+# Format: backup_min_interval_minutes: N in workspace/config.md. Default: 30.
+# 0 disables the throttle.
+#
+# `Stop` fires once per assistant turn, not once per session, so an active
+# session reaches here every few minutes. Content dedup does not bound that:
+# a working session genuinely changes logs/, efforts/, and kb/ on most turns,
+# so the fingerprint legitimately differs and every turn publishes a full
+# archive of the whole workspace.
+#
+# Checked before the snapshot so a throttled run skips the entire cost: the
+# live-tree scan, the workspace copy, the manifest, and the archive. The cheap
+# bookkeeping above (commit summary, session-note reminder) still runs.
+#
+# Anchored on the newest surviving archive's filename timestamp rather than on
+# `.nase-backup-state`: if retention has expired or storage has lost every
+# copy, there is no backup for this run to be "too soon" after, and the
+# throttle must never be the reason a target has no archive at all.
+# ---------------------------------------------------------------------------
+archive_age_seconds() {
+  python3 - "$1" <<'PY'
+import datetime
+import re
+import sys
+
+match = re.fullmatch(r"nase-backup-(\d{8})-(\d{6})\.zip", sys.argv[1])
+if not match:
+    raise SystemExit(1)
+try:
+    stamp = datetime.datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S")
+except ValueError:
+    raise SystemExit(1)
+print(int((datetime.datetime.now() - stamp).total_seconds()))
+PY
+}
+
+MIN_INTERVAL_MINUTES="30"
+if [ -f "$NASE_ROOT/workspace/config.md" ]; then
+  CFG_INTERVAL=$(sed -n 's/^backup_min_interval_minutes:[[:space:]]*//p' "$NASE_ROOT/workspace/config.md" 2>/dev/null | tr -d ' ' || true)
+  if [ -n "$CFG_INTERVAL" ]; then
+    if [[ "$CFG_INTERVAL" =~ ^[0-9]+$ ]]; then
+      MIN_INTERVAL_MINUTES="$CFG_INTERVAL"
+    else
+      log_status "WARNING" "invalid backup_min_interval_minutes '$CFG_INTERVAL' - using default $MIN_INTERVAL_MINUTES"
+    fi
+  fi
+fi
+
+if [ "$MIN_INTERVAL_MINUTES" -gt 0 ]; then
+  # `pipefail` propagates ls's exit status when the glob matches nothing, which
+  # would abort the run under `set -e` instead of falling through to a backup.
+  NEWEST_ARCHIVE=$(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort | tail -1 || true)
+  if [ -n "$NEWEST_ARCHIVE" ] && [ -f "$NEWEST_ARCHIVE" ] && [ ! -L "$NEWEST_ARCHIVE" ]; then
+    # A negative age means the newest name carries a future timestamp, so the
+    # elapsed interval is unknown. Back up rather than throttle on bad input.
+    if NEWEST_AGE=$(archive_age_seconds "$(basename "$NEWEST_ARCHIVE")") \
+      && [ "$NEWEST_AGE" -ge 0 ] \
+      && [ "$NEWEST_AGE" -lt $(( MIN_INTERVAL_MINUTES * 60 )) ]; then
+      log_status "OK" "last archive is ${NEWEST_AGE}s old - throttled (backup_min_interval_minutes: $MIN_INTERVAL_MINUTES)"
+      exit 0
+    fi
+  fi
+fi
+
 # This is the final live-tree gate, after every hook-owned workspace mutation.
 if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$NASE_ROOT" bash "$SENSITIVE_SCAN" --workspace 2>&1); then
   printf '%s\n' "$SCAN_OUTPUT" >&2

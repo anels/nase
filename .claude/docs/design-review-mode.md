@@ -128,6 +128,16 @@ A doc reaching review has usually been through several edit rounds and carries c
 
 Apply the **same policy as `design-grill-mode.md` → Step 6.5** (auto-remove superseded wording / exact duplicates / session artifacts / dead-duplicate links / resolved `[NEEDS CLARIFICATION]`; list-only for judgment calls; never touch a MUST/constraint/SC/Risk/citation; flag value drifts rather than silently picking). Freshness repairs from Step 2 stay resolved. A separate stale claim with no evidence-backed replacement is a Step 4 issue, not cleanup.
 
+Then run the structural half, which prose cleanup cannot reach:
+
+```bash
+python3 .claude/scripts/effort-state.py --file {effort_path}
+```
+
+Apply `.claude/docs/effort-doc-audit.md → Part 1` to the `structure` block and to `pr_references`. Review is where these belong: it is the only pass that reads one doc closely, and every defect there is a doc that the lifecycle machinery will later mis-read in silence - a design with no `## Lifecycle` block can never be contradicted by evidence, and a `Target PR count` above 1 with no row per deliverable auto-closes the moment its single row is ticked. Both are cheap to fix while the design is being written and expensive to notice a month later from a status rollup.
+
+Repair what that doc routes to *repair without asking* and fold it into the same guarded write as the prose cleanup. Everything it routes to a human becomes a **Specificity** or **Readiness** issue in Step 4, named by line.
+
 Record the count in the Step 5 daily-log line and, if any judgment-call collapses were flagged, list them in the Step 4 output so the user can act on them.
 
 ## Step 4: Verdict
