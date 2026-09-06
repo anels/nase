@@ -226,5 +226,148 @@ else
   report 1 "capped check lists carry their true totals"
 fi
 
+# A PR that another effort's structured delivery set already claims is context here, not
+# this effort's unrecorded delivery. Without the corpus map both rows below read as
+# `likely-delivery` - the one class callers are told to relabel without asking - and the
+# relabel would fire this effort's transition on the sibling's merge.
+mkdir -p "$TMPDIR_TEST/efforts/done"
+cat > "$TMPDIR_TEST/efforts/done/sibling-owner.md" <<'EOF'
+---
+status: completed
+created: 2026-08-01
+scope: feature
+repo: acme/platform
+---
+
+## Lifecycle
+
+- [x] PR opened - https://github.com/acme/platform/pull/7001
+EOF
+
+cat > "$TMPDIR_TEST/efforts/cites-sibling.md" <<'EOF'
+---
+status: in-progress
+created: 2026-08-02
+scope: feature
+repo: acme/platform
+pr: https://github.com/acme/platform/pull/7100
+---
+
+## Lifecycle
+
+- [x] PR opened - https://github.com/acme/platform/pull/7100
+- [x] Drift check - one net commit since 2026-08-01 = https://github.com/acme/platform/pull/7001
+EOF
+
+sweep
+assert_jq "a sibling's delivery PR is not reported as likely-delivery" "$TMPDIR_TEST/out.json" \
+  '[.efforts[] | select(.effort == "cites-sibling")][0].invisible
+     | map(select(.pr == "acme/platform#7001"))
+     | length == 1 and .[0].hint == "sibling-delivery"
+       and (.[0].owned_by | index("sibling-owner") != null)
+       and .[0].text_hint == "likely-delivery"'
+
+assert_jq "delivery_owners is emitted as a lookup for prose citations" "$TMPDIR_TEST/out.json" \
+  '.delivery_owners["acme/platform#7001"] == ["sibling-owner"]'
+
+# `--closed` reads terminal docs only, and its finding must not survive a revert: a merged
+# PR whose content was rolled back is not delivery, and recording it would inflate the
+# rollup with work that is no longer in the build.
+tests=$((tests + 1))
+if python3 - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("sweep", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+audit = {
+    "effort": "shipped-but-wontfix",
+    "path": "done/shipped-but-wontfix.md",
+    "status": "wontfix",
+    "delivery_refs": [["acme", "platform", 8001], ["acme", "platform", 8002]],
+    "structure": {"partial_delivery": None, "defects": []},
+}
+live = {"acme/platform#8001": {"state": "MERGED"}, "acme/platform#8002": {"state": "MERGED"}}
+
+standing = module.closed_findings([audit], live, [], True, set())
+assert [f["defect"] for f in standing] == ["partial-delivery-unrecorded"], standing
+assert standing[0]["standing"] == ["acme/platform#8001", "acme/platform#8002"], standing
+
+one_reverted = module.closed_findings(
+    [audit], live, [{"pr": "acme/platform#8001"}], True, set())
+assert one_reverted[0]["defect"] == "partial-delivery-unrecorded", one_reverted
+assert one_reverted[0]["standing"] == ["acme/platform#8002"], one_reverted
+assert one_reverted[0]["reverted"] == ["acme/platform#8001"], one_reverted
+
+all_reverted = module.closed_findings(
+    [audit],
+    live,
+    [{"pr": "acme/platform#8001"}, {"pr": "acme/platform#8002"}],
+    True,
+    set(),
+)
+assert all_reverted[0]["defect"] == "reverted-delivery-no-repair", all_reverted
+assert all_reverted[0]["standing"] == [], all_reverted
+
+# No local clone for that repo: merge state stands but the revert question is open, so the
+# finding must say so rather than presenting merge state as delivery.
+blind = module.closed_findings([audit], live, [], True, {"platform"})
+assert blind[0]["defect"] == "partial-delivery-unverified-revert-scan", blind
+
+# Already recorded - nothing owed.
+recorded = dict(audit, structure={"partial_delivery": True, "defects": []})
+assert module.closed_findings([recorded], live, [], True, set()) == []
+
+# A merged delivery PR under any other status is not this check's business.
+completed = dict(audit, status="completed")
+assert module.closed_findings([completed], live, [], True, set()) == []
+PY
+then
+  report 0 "closed findings split standing from reverted delivery"
+else
+  report 1 "closed findings split standing from reverted delivery"
+fi
+
+# `.local-paths` stores GitHub's casing while PR keys arrive in whatever case the citing
+# doc used. An exact-match repo lookup turns that mismatch into a silent clean result: the
+# scan reports no reverts because it never ran.
+tests=$((tests + 1))
+if python3 - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("sweep", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+seen = []
+
+
+def fake_run(cmd):
+    seen.append(cmd)
+    return type("P", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+
+module.run = fake_run
+
+live = {"acme/Platform#9001": {"state": "MERGED", "mergeCommit": "a" * 40}}
+unscanned: set[str] = set()
+module.find_reverts(live, {"platform": "/clones/platform"}, unscanned)
+assert seen, "case-different repo name never reached git"
+assert unscanned == set(), unscanned
+
+seen.clear()
+module.find_reverts(live, {"other": "/clones/other"}, unscanned)
+assert not seen, seen
+assert unscanned == {"Platform"}, unscanned
+PY
+then
+  report 0 "revert scan resolves repo paths case-insensitively and records misses"
+else
+  report 1 "revert scan resolves repo paths case-insensitively and records misses"
+fi
+
 printf '\n%d assertions, %d failures\n' "$tests" "$failures"
 [[ "$failures" -eq 0 ]]

@@ -22,6 +22,8 @@ collector, validation, coverage, staging, publishing, and promotion gates exactl
 
    **Do not render `closed without delivery`.** Exclude `wontfix`, superseded, and unmerged PRs from both the list and headline count. Mention a dropped effort only where it explains another label.
 
+   **Except `partial_delivery: true`**: count `partial_delivery_prs` under a `shipped, closed early` line (`.claude/docs/effort-doc-audit.md`).
+
    **Exclude `tracking_only: true` efforts from every delivered bucket and the merged-PR count** - someone else owns that code, which is why they close into `workspace/efforts/archive/{YYYY}/` instead of `done/`. List them only under an uncounted `tracked, delivered by {owner}` line.
 
    Merged-PR volume is supporting evidence below this section, never the headline.

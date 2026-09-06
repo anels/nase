@@ -121,6 +121,52 @@ def tracking_only_state(text: str) -> tuple[bool, bool]:
     return canonical_bool(raw)
 
 
+def document_structure(text: str, lines: list[str]) -> dict[str, object]:
+    """Report whether the doc carries the structure the lifecycle machinery reads.
+
+    `classify` degrades to the frontmatter fallback when a doc has no canonical
+    checkbox, and that degradation is silent: `method: frontmatter` looks the same
+    whether the author wrote a Lifecycle block that has not been ticked yet or never
+    wrote one at all. The second case is unauditable - no row can ever contradict the
+    frontmatter, so `needs_live_verification` stays False and the doc keeps whatever
+    status it was last given, forever.
+
+    Only offline-provable defects land in `defects`. Whether a `wontfix` effort's
+    delivery PRs actually merged needs a live read, so that pairing is reported as
+    fields for `effort-pr-sweep.py --closed` to resolve rather than asserted here.
+    """
+    has_lifecycle_section = bool(lifecycle_line_ranges(lines))
+    # An umbrella/roadmap parent indexes child efforts and delivers nothing itself, so
+    # it has no deliverable to record. `children:` is what makes it an index.
+    umbrella = extract_frontmatter_scalar(text, "children")[0] is not None
+    closed_reason = any(
+        extract_frontmatter_scalar(text, key)[0] is not None
+        for key in ("closed_reason", "closure", "resolution", "superseded_by")
+    )
+    partial_raw, partial_singleton = extract_frontmatter_scalar(text, "partial_delivery")
+    if partial_raw is None:
+        partial_delivery, partial_valid = None, True
+    elif not partial_singleton:
+        partial_delivery, partial_valid = None, False
+    else:
+        partial_delivery, partial_valid = canonical_bool(partial_raw)
+
+    defects: list[str] = []
+    if not has_lifecycle_section and not umbrella:
+        defects.append("no-lifecycle-section")
+    if partial_raw is not None and not partial_valid:
+        defects.append("invalid-partial-delivery")
+
+    return {
+        "has_lifecycle_section": has_lifecycle_section,
+        "umbrella": umbrella,
+        "closed_reason": closed_reason,
+        "partial_delivery": partial_delivery,
+        "partial_delivery_valid": partial_valid,
+        "defects": defects,
+    }
+
+
 def canonical_label(label: str) -> str | None:
     lowered = label.strip().lower()
     if lowered.startswith("implementation started"):
@@ -590,6 +636,7 @@ def classify(text: str) -> dict[str, object]:
         "pending_postdeploy_validation": pending_postdeploy_validation,
         "unticked_canonical_rows": unticked_canonical_rows,
         "pr_references": pr_references(text),
+        "structure": document_structure(text, lines),
         "target_pr_counts": target_pr_counts,
         "tracking_only": tracking_only,
         "tracking_only_valid": tracking_only_valid,

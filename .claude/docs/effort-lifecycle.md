@@ -68,6 +68,8 @@ list; `/nase:kb-review` validates it under *Deep review -> Authoritative state*.
 `awaiting-deploy` is set by the Drift Auto-Sync rule below when delivery PRs merge,
 or by hand when needed, paired with `- [x] Merged` in the Lifecycle block. The
 effort leaves `workspace/efforts/` as `completed` only after deploy validation passes.
+Status describes the effort, not its code: one that shipped PRs but dropped its verdict is
+`wontfix` **plus** `partial_delivery` (`.claude/docs/effort-doc-audit.md`).
 
 ## Scope Vocabulary
 
@@ -274,7 +276,7 @@ Repair by keeping the canonical label and moving the effort's own number into th
 Do **not** relabel every cited PR. Cherry-picks, withdrawn PRs, sibling-effort
 dependencies, spikes, `Follow-up:` rows and "Phase N completed" summaries all name PRs
 the delivery set should not carry, and pulling them in fires transitions on evidence that
-is not this effort's delivery. The sweep hints at each class; the caller still classifies.
+is not this effort's delivery. The sweep hints and maps ownership; the caller classifies.
 
 **`likely-delivery` is repaired automatically; the other hints are not.** That hint means
 the row's own label calls the PR this effort's - `PR2 - <url>`, `PR-4 — <description>` -

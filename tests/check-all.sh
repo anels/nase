@@ -139,7 +139,7 @@ Major gate groups:
   lint: shellcheck when installed, actionlint when installed
   catalog: command_catalog.py --check-readme
   wiring: hook registrations and workspace validation
-  docs: shared-doc reference integrity, canonical pointer wording, skill doctrine, and advisory skill trigger overlap
+  docs: shared-doc reference integrity, canonical pointer wording, KB domain-map contract, skill doctrine, and advisory skill trigger overlap
   regressions: hook tests and script tests
   links: lychee markdown link check, only in --links
 EOF
@@ -306,6 +306,16 @@ run_review_gate_optionality() {
   run_gate "check-review-gate-optionality.sh" bash tests/check-review-gate-optionality.sh
 }
 
+run_kb_domain_map_contract() {
+  section "KB domain-map contract"
+  run_gate "check-kb-domain-map-contract.sh" bash tests/check-kb-domain-map-contract.sh
+}
+
+run_effort_pointer_integrity() {
+  section "effort pointer integrity"
+  run_gate "check-effort-pointer-integrity.sh" bash tests/check-effort-pointer-integrity.sh
+}
+
 run_skill_doctrine() {
   section "skill doctrine"
   run_gate "check-skill-doctrine.sh" bash tests/check-skill-doctrine.sh
@@ -385,8 +395,14 @@ run_changed_extras() {
   if printf '%s\n' "$changed" | grep -qE '^\.claude/docs/[^/]+\.md$'; then
     run_shared_doc_bash_blocks
   fi
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/docs/(repo-resolution|kb-staleness)\.md|\.claude/commands/nase/onboard\.md|\.claude/scripts/(kb-domain-resolve\.sh|kb-hygiene-scan\.py)|tests/check-kb-domain-map-contract\.sh)$'; then
+    run_kb_domain_map_contract
+  fi
   if printf '%s\n' "$changed" | grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$'; then
     run_canonical_pointers
+  fi
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-lifecycle\.md|\.claude/commands/nase/kb-review\.md)$'; then
+    run_effort_pointer_integrity
   fi
   if printf '%s\n' "$changed" | grep -qE '^(evals/(pr-review|core-workflows)/|\.claude/scripts/(pr-review-eval|skill-eval-run)\.py|tests/scripts/test-(pr-review-eval|skill-eval-run)\.sh)'; then
     run_evals
@@ -414,6 +430,8 @@ run_fast() {
   run_shared_doc_refs
   run_canonical_pointers
   run_review_gate_optionality
+  run_kb_domain_map_contract
+  run_effort_pointer_integrity
   run_skill_doctrine
   run_skill_overlap
   run_fast_script_tests
@@ -437,6 +455,8 @@ run_full() {
   run_shared_doc_refs
   run_canonical_pointers
   run_review_gate_optionality
+  run_kb_domain_map_contract
+  run_effort_pointer_integrity
   run_skill_doctrine
   run_skill_overlap
 }

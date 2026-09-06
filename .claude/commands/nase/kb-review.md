@@ -42,7 +42,7 @@ Capture results under `workspace/tmp/`; never paste full scanner output into cha
 ### Authoritative state
 
 - Validate active, done, and archived effort frontmatter against `.claude/docs/effort-lifecycle.md -> Status Vocabulary` and file location.
-- `workspace/efforts/` is authoritative for initiatives. `workspace/tasks/todo.md` contains independent open work only: no checked or dropped items, no duplicate initiative state, and no unresolved effort pointer.
+- `workspace/efforts/` is authoritative for initiatives. `workspace/tasks/todo.md` contains independent open work only: no checked or dropped items, no duplicate initiative state, and no unresolved effort pointer. `bash tests/check-effort-pointer-integrity.sh` enforces this both ways - every pointer resolves, every active effort is listed, no item is left checked - so run it and repair what it names rather than re-deriving the reconciliation by hand.
 - Check durable indexes and manifests for unique keys, referential integrity, and atomic publication. Exercise writers, optimizers, backup, and restore helpers against a copy fixture so duplicate identifiers or a failed second write cannot delete or split state.
 
 ### Operational contracts

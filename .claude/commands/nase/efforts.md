@@ -1,7 +1,7 @@
 ---
 name: nase:efforts
 description: "Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on."
-argument-hint: "[--by-scope|--by-repo] [--full]"
+argument-hint: "[--by-scope|--by-repo] [--full] [--closed]"
 pattern: utility
 category: Reporting
 ---
@@ -15,6 +15,12 @@ Because it already does the live reads, it **applies** the deterministic repairs
 ## Step 0: Language preflight (run first)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspace/config.md`; chat-facing prose uses `conversation:` language. The report file content uses `output:` language.
+
+## Mode routing
+
+`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip the workflow below. Nothing else re-reads those docs, so a wrong record there survives indefinitely - and because `/nase:effort-rollup` drops `status: wontfix` from the delivery record, an effort whose code shipped but whose verdict was dropped takes its merged PRs out of the impact report with it. Run it on the `/nase:kb-review` cadence rather than every session; the default run stays active-only and fast.
+
+Every other flag runs the workflow below.
 
 <workflow>
 
@@ -66,13 +72,8 @@ An `action: none` transition can still carry `stale_canonical_rows`: `reason: al
 
 Record each transition and each row flip applied for the Step 5 report. Report-only signals (no mutation):
 - effort with **no PR and no mtime change in 14+ days** → **stalled**, may need attention or a `/nase:design --review {slug}` pass.
-- **doc drift the helper cannot fix.** These need a human because the repair is not derivable from live state, so name the exact line and the suggested edit instead of just flagging the effort:
-  - `needs_live_verification` still true after the live reads and no `stale_canonical_rows` offered - the checked lifecycle rows and frontmatter disagree for a reason the PR states did not settle.
-  - `method: frontmatter` on a doc that has a `## Lifecycle` heading - the section is prose with no canonical checkbox, so it carries no evidence. It never raises `needs_live_verification` (that flag needs evidence to contradict), so it has to be reported on its own: the classifier degrades to the frontmatter fallback silently.
-  - non-empty `pr_references.validation_errors`, surfacing as transition `reason: invalid-pr-reference` and blocking every write for that effort. Name the offending key and its repair per `.claude/docs/effort-lifecycle.md → PR Reference Resolution`; never report the effort as having no delivery PR - the helper never got to read one.
-  - non-empty `pr_references.discarded_bare`, except `reason: denied-in-row` - that one means the row itself says the number is not a PR, so the classifier is right and there is nothing to repair. For `no-repo-context` use `owner/repo#n` or add `repo:`; for `outside-lifecycle` move the row under a `## Lifecycle` heading or qualify the number.
-  - real outstanding work that lives only in the Implementation Plan. The hold scans `## Lifecycle` only, so such an effort auto-closes the moment its last Lifecycle row is ticked; the repair is to promote that deliverable to a Lifecycle row.
-  - a `blocked-by` whose value reads `none`/`n/a`, per the unblocked rules above.
+- **doc drift**, split into repair-without-asking and report-for-a-human by `.claude/docs/effort-doc-audit.md → Part 1`. Apply that split rather than re-deriving it; name the exact line and the suggested edit for everything it routes to a human, and check the sweep's `delivery_owners` before repairing any invisible PR - a `sibling-delivery` hint means another effort's delivery set already claims it.
+- **structural defects** from `effort-state.py`'s `structure` block, per the same doc. These never raise `needs_live_verification`, so nothing else surfaces them.
 - transition `reason: undelivered-lifecycle-rows` → **held back**. Report each `transition.undelivered` row verbatim with its line number: a real outstanding PR means the effort correctly stayed active, a stale plan row means edit that row (`.claude/docs/effort-lifecycle.md → Multi-Deliverable Efforts`). Never paraphrase them away - an unexplained hold reads as a bug and gets worked around.
 
 ### Step 4: Count

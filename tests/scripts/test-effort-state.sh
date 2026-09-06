@@ -999,5 +999,82 @@ assert_jq "a bare number on a canonical row outside any Lifecycle section is rep
   '.pr_references.delivery == [] and
    [.pr_references.discarded_bare[] | "\(.number):\(.reason)"] == ["24:outside-lifecycle"]'
 
+# A doc with no `## Lifecycle` block is unfalsifiable: nothing can contradict its
+# frontmatter, so `needs_live_verification` never fires and the status reads as
+# authoritative forever. The structure block is the only place that shows up.
+cat > "$TMPDIR_TEST/structure-no-lifecycle.md" <<'EOF'
+---
+status: completed
+repo: acme/widget
+---
+
+## Effort: no lifecycle block anywhere
+EOF
+classify structure-no-lifecycle
+assert_jq "a doc with no Lifecycle section is reported as a structural defect" \
+  "$TMPDIR_TEST/structure-no-lifecycle.json" \
+  '.structure.has_lifecycle_section == false and
+   .structure.umbrella == false and
+   (.structure.defects | index("no-lifecycle-section") != null)'
+
+# An umbrella parent indexes child efforts and delivers nothing itself, so it has no
+# deliverable to record and must not be repaired into having a lifecycle it does not have.
+cat > "$TMPDIR_TEST/structure-umbrella.md" <<'EOF'
+---
+status: wontfix
+repo: acme/widget
+children:
+  - child-one
+  - child-two
+---
+
+## Effort: umbrella roadmap
+EOF
+classify structure-umbrella
+assert_jq "an umbrella parent is exempt from the Lifecycle requirement" \
+  "$TMPDIR_TEST/structure-umbrella.json" \
+  '.structure.umbrella == true and (.structure.defects | length) == 0'
+
+# `partial_delivery` records that the code shipped while `status` stays honest about the
+# effort. `partial_delivery_prs` is a record of past merges and must not reach the delivery
+# set, or a terminal doc's own history would read as fresh transition evidence.
+cat > "$TMPDIR_TEST/structure-partial.md" <<'EOF'
+---
+status: wontfix
+repo: acme/widget
+partial_delivery: true
+partial_delivery_prs:
+  - https://github.com/acme/widget/pull/4892
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/4892
+EOF
+classify structure-partial
+assert_jq "partial_delivery parses and partial_delivery_prs stays out of the delivery set" \
+  "$TMPDIR_TEST/structure-partial.json" \
+  '.structure.partial_delivery == true and
+   .structure.partial_delivery_valid == true and
+   .pr_references.validation_errors == [] and
+   ([.pr_references.delivery[].number] | length) == 1'
+
+# The narrow boolean contract, same as `tracking_only`: a quoted or free-text value is not
+# a silent false, it is a doc defect, because "maybe" must never read as "no delivery".
+cat > "$TMPDIR_TEST/structure-partial-bad.md" <<'EOF'
+---
+status: wontfix
+repo: acme/widget
+partial_delivery: "yes"
+---
+
+## Lifecycle
+- [x] PR opened - https://github.com/acme/widget/pull/1
+EOF
+classify structure-partial-bad
+assert_jq "a non-canonical partial_delivery value is a defect, not a silent false" \
+  "$TMPDIR_TEST/structure-partial-bad.json" \
+  '.structure.partial_delivery_valid == false and
+   (.structure.defects | index("invalid-partial-delivery") != null)'
+
 printf '\n--- %d pass, %d fail ---\n' "$((tests - failures))" "$failures"
 [ "$failures" -eq 0 ]

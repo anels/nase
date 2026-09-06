@@ -37,7 +37,13 @@ For each KB file, derive a `last_active` date from the entry date plus domain me
 
 ## Step B — Classify each file
 
-Apply these thresholds against `last_active`:
+Check the file's domain-map entry for a `retired:` field first (`.claude/docs/repo-resolution.md -> Retired entries`). A
+retired entry maps to a repo or domain that no longer exists as a live target, so it is classified `Retired` and the age
+thresholds below are not applied to it. Without this exemption every retired entry ages past 30 days and then reports
+`🔴 Stale / Likely diverged from current code` on every run forever, which is a false positive: there is no current code to
+diverge from. Report retired entries in their own line so the count stays visible, and never treat one as a refresh candidate.
+
+Apply these thresholds against `last_active` for every entry that is not retired:
 
 | Tier | Threshold | Glyph | Meaning |
 |---|---|---|---|
@@ -45,6 +51,7 @@ Apply these thresholds against `last_active`:
 | Aging | `14–30 days` | 🟡 | Worth a refresh look |
 | Stale | `>30 days` | 🔴 | Likely diverged from current code |
 | Unknown | `last_active is null` | ⚪ | No dated entry, domain metadata, or usable mtime |
+| Retired | `retired:` in domain map | ⬛ | Upstream is gone; kept as a historical record, exempt from aging |
 
 Stale ≠ obsolete. **Historical records** (past incidents, architecture decisions dated to their event) should never be flagged. Only flag entries that describe *ongoing or current* work with old dates. Heuristics for "ongoing":
 - Title or section mentions an active repo (cross-reference `workspace/context.md`).
