@@ -184,7 +184,12 @@ else
 fi
 
 # The hygiene scan's target parser must also survive the extra field.
-hygiene_out=$(cd "$tmpdir" && HYGIENE_ABS="$ROOT/$HYGIENE" python3 - <<'PY' 2>/dev/null || true
+#
+# The probe body goes to a file first. A heredoc opened inside a command substitution
+# parses on bash 3.2 and is a syntax error on the CI runner's bash, which aborts the
+# whole gate with exit 2 - so the shape passed locally and took this file down in CI.
+# `check-effort-pointer-integrity.sh` avoids the same trap the same way.
+cat > "$tmpdir/probe.py" <<'PY'
 import importlib.util, os, pathlib, sys
 spec = importlib.util.spec_from_file_location(
     "hygiene", pathlib.Path(os.environ["HYGIENE_ABS"])
@@ -194,7 +199,8 @@ sys.modules["hygiene"] = mod
 spec.loader.exec_module(mod)
 print(sorted(mod.domain_map_targets(pathlib.Path("."))))
 PY
-)
+
+hygiene_out=$(cd "$tmpdir" && HYGIENE_ABS="$ROOT/$HYGIENE" python3 probe.py 2>/dev/null || true)
 if printf '%s' "$hygiene_out" | grep -Fq "workspace/kb/projects/gone.md"; then
   pass "kb-hygiene-scan domain_map_targets ignores the trailing retired field"
 else
