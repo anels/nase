@@ -228,6 +228,8 @@ python3 .claude/scripts/verify-bundle.py \
 
 Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects stale evidence, secret-like candidate/evidence content, silently omitted text paths, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.4 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
 
+`.claude/docs/verification-bundle.md` is the artifact contract this call produces: what each section holds, how the candidate tree and evidence are bound, which context blobs the reviewer is allowed to see, and the closure binding Phase 7 asserts against. Read it when a bundle field or a reviewer-visibility question is in doubt.
+
 ### Anti-rationalization gate (apply before deciding to skip any sub-step in Phases 5–7)
 
 | Rationalization | Reality |

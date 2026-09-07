@@ -36,7 +36,7 @@ python3 .claude/scripts/tool-availability.py --group baseline --group repo --gro
 ```
 
 Use available tools per `.claude/docs/cli-tooling.md`, and never write this machine-local availability into the repo KB.
-4. Run `.claude/scripts/kb-hygiene-scan.py` before updating an existing entry.
+4. Run `.claude/scripts/kb-hygiene-scan.py` before updating an existing entry, then classify each finding with `.claude/docs/kb-hygiene.md`. That doc owns which facts this command may auto-fix from repo `HEAD` and which must be reported instead of rewritten; a scanner finding is not by itself permission to edit.
 5. Compute the content hash per `.claude/docs/content-hash-cache.md`; skip unchanged repos unless forced. When the repository yields no durable knowledge change, keep every KB target file byte-identical even under `--force`.
 
 ## Single repo

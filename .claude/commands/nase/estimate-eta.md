@@ -42,12 +42,14 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
 
 ## Output Format
 
+This is the section order and the table's columns. `.claude/docs/eta-estimation.md` owns
+what goes in them: `Size Scale` for the buckets, `"Where the time goes" line` for the
+lane split, `Confidence Range` for the three numbers and the widen-on-AI rule.
+
 ---
 **ETA Estimate — {task name}**
 
 **Understanding of the Task**
-- What needs to be built/changed (in plain terms)
-- Scope: [Small / Medium / Large / XL]
 
 **Subtask Breakdown**
 | Subtask | Lane | Size | Notes |
@@ -58,23 +60,16 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
 | ... | ✅ Verify | M | ... |
 
 **Where the time goes**
-- One line on the lane split (which lanes dominate). If 🔌 / 🧠 / ✅ dominate, name the real bottleneck — fast code ≠ fast task.
 
-**Total Estimate**
-- Optimistic: X (rough — S/M/L/XL buckets, not hour-precision)
-- Realistic: X
-- Pessimistic: X (widen the spread on AI-heavy tasks — variance is the cost of speed)
+**Total Estimate** - optimistic / realistic / pessimistic
 
 **Key Risks & Unknowns**
-- List anything that could blow up the estimate
 
 **Dependencies**
-- What needs to be done/decided first
 
 **Suggested Approach**
-- Brief recommended implementation plan
 ---
 
-Be honest about uncertainty. Use ranges, not false precision. If the task is too vague to estimate, ask for clarification before guessing.
+If the task is too vague to estimate, ask for clarification before guessing.
 
 Ready to implement? Consider `/nase:fsd` for the end-to-end implementation workflow.

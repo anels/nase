@@ -77,15 +77,10 @@ Prefer a repo-provided or installed CODEOWNERS parser when one is already availa
 
 For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd). If the fallback matcher cannot confidently model a pattern, report the file under `unresolved owner candidates` instead of guessing.
 
-Matching rules (GitHub CODEOWNERS syntax):
-- `/path/to/dir/` — matches anything under that directory
-- `*.ext` — matches by extension anywhere
-- `*` catch-all — matches everything, but more specific rules below it override
-- `**` — recursive match (e.g., `docs/**` matches all files under any `docs/` subdirectory)
-- Empty owner line — explicitly leaves matching files unowned; GitHub CODEOWNERS does **not** support `!pattern` negation
-- Lines using unsupported CODEOWNERS syntax are ignored by GitHub; do not invent owners for those lines
-- Trailing `/` — directory-only match
-- `@org/team` entries — note these for the report but skip for DM purposes (teams can't be DM'd directly; resolve individual members from KB if possible)
+Path patterns follow gitignore-style glob semantics. The two that a matcher gets wrong:
+
+- An **empty owner line** deliberately leaves matching files unowned. CODEOWNERS has **no** `!pattern` negation, so do not read one into an empty-owner rule.
+- GitHub **ignores** lines using unsupported syntax. Do not invent owners for those lines; report the affected files as unresolved.
 
 **3c. Exclude the PR author and alumni** — skip the PR author's handle. Also check the KB for an "Alumni" or "no longer on team" section and skip anyone listed there.
 

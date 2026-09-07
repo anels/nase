@@ -47,13 +47,7 @@ Run the search script, which handles scope, filtering, relevance weighting, fuzz
 bash .claude/scripts/kb-search.sh "<query>" [in:<domain>] [tag:<tag>] [since:<YYYY-MM-DD>] [confidence:<level>] [mentions:<path>] [--full] [--max-entry-lines N]
 ```
 
-Pass through the filters parsed in Step 1. The script:
-- Restricts scope by domain (`in:` flag → `workspace/kb/{domain}/`)
-- Applies tag / date / confidence / mentions filters per entry
-- Scores: header matches 2×, body matches 1×; sorts by relevance desc, freshness desc
-- Fuzzy fallback: activates automatically when exact search returns 0 results
-- Prints up to 10 results with file paths and capped entry previews, or a no-results message with suggestions
-- Preserves full-entry behavior with `--full`
+Pass through the filters parsed in Step 1. The script owns scoping, per-entry filtering, relevance and freshness ranking, the fuzzy fallback, and the result cap; read it rather than this file if you need those rules.
 
 Capture stdout. If the script exits 2 (no results), proceed to Step 4 with empty results.
 

@@ -59,11 +59,7 @@ Read `.claude/docs/effort-lifecycle.md → Classifier Blind Spots` before acting
 
 Keep delivery, report-only, and dependency PR sets separate: only the delivery set feeds the transition, and folding the other two into it is how a merely-mentioned PR turns into merge evidence. Jira: read-only status read if an MCP is available. If a tracked Jira issue cannot be read, mark its transition input `unreadable` and report the effort as unresolved.
 
-After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecycle.md → Dependency & Discovery Fields`:
-- Blocked when `status: blocked` **or** `blocked-by` points at an unresolved referent.
-- Resolve effort-slug blockers when `workspace/efforts/done/{slug}.md` or `workspace/efforts/archive/*/{slug}.md` exists; PR blockers when merged; Jira blockers when Done.
-- Treat free-text blockers and unreadable PR/Jira blockers as unresolved. Name the skipped check in the blocked reason. A `blocked-by` that literally reads `none`/`n/a` is free text and reports as blocked - call it out as a doc defect and recommend deleting the key rather than silently treating it as unblocked.
-- Everything else active is *unblocked*. This is the "what can I actually pick up right now" set; it sits beside the stage classifier and does not replace it.
+After live reads, compute the **unblocked** flag per `.claude/docs/effort-lifecycle.md → Dependency & Discovery Fields`, which owns the resolver rules and the computed-view definition. Name the skipped check in the blocked reason when a PR or Jira blocker could not be read. This set answers "what can I actually pick up right now"; it sits beside the stage classifier and does not replace it.
 
 Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-lifecycle.md -> Drift Auto-Sync`. Apply its `transition` output exactly - `transition.status`, `transition.destination_dir` on `action: move` (never assume `done/`), and `transition.stale_canonical_rows`. Stage the frontmatter change and the checkbox flips as one proposed file so one guarded `apply` / `apply-move` covers both, no per-item prompt, matching `/nase:today` Step 1.
 

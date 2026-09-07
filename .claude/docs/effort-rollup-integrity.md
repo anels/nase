@@ -1,5 +1,13 @@
 # Effort Rollup Integrity
 
+## Contents
+
+- Inputs and collection
+- Render and validate
+- HTML edition
+- Publishing and sharing
+- Promotion
+
 This contract owns count-critical collection and promotion for
 `/nase:effort-rollup`.
 
@@ -63,6 +71,40 @@ The HTML therefore repeats the Markdown's evidence footer verbatim - `Evidence
 SHA:`, `Measurement basis:`, `Coverage:`, `Delivered efforts:`, `Merged delivery
 PRs in month:`. A number stated in only one edition is how the two drift apart
 unnoticed.
+
+## HTML edition
+
+Hand-author or template the HTML; never convert the Markdown. Read the previous
+month's `workspace/recaps/effort-rollup-*.html` as the visual reference: masthead
+plus stat strip, before-to-after bar rows, incident cards, theme cards, and a
+collapsible per-repo appendix.
+
+Build the charts with self-contained HTML and CSS:
+
+- **Every metric pair gets a paired bar**: grey `before` above and accent `after`
+  below, plus the exact `from → to → delta` numbers and the confidence chip. A
+  metric pair that appears only as a table row is incomplete.
+- **Scaling**: shrink-is-better metrics (latency, volume, noise, cost) scale
+  against that row's own `before` = 100%; percent metrics (coverage, hit rate) use
+  the natural 0-100% scale. State which is which in the footer; mixed scales must
+  be labelled.
+- **`unrealized` rows get two near-equal bars in the critical color.** Flatness is
+  the finding, so make it visible.
+- Keep the accent, the `before` neutral, and its track visually distinct.
+  Direct-label every bar and keep the table view below.
+- **Status color says where an item stands today, never how severe it once was.**
+  Card borders and chips: green `Resolved`/`Closed`/`Done`, amber `Merged` awaiting
+  deploy, red landed-but-ticket-open. Never key it off severity or RCA presence - a
+  closed incident drawn red reads as "still broken". Print the mapping as a legend
+  by the heading.
+- Light **and** dark tokens, both stamped (`prefers-color-scheme` +
+  `:root[data-theme=…]`).
+- Self-contained: zero `<script>` / `<link>` / `src=` / `@import`.
+- Every count sits in a real `<td>`.
+- **Render and look at it before claiming done** - screenshot both themes with
+  headless Chrome, confirm filled bars stay distinguishable from their tracks, and
+  grep the emitted class attributes. A status class the renderer silently dropped
+  looks identical in a screenshot.
 
 ## Publishing and sharing
 
