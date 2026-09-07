@@ -425,44 +425,94 @@ def render_diff_stat(metadata: dict[str, Any]) -> str:
 
 
 def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, Any]]:
+    """Which KB entries mention each changed path, in one sweep rather than one per path.
+
+    kb-search walks every KB file on each invocation, so spawning it per path multiplied a
+    fixed cost by `--max-kb-paths`. Passing every path to one invocation walks the files
+    once; the reply carries a section per path, keyed by its own header.
+    """
     if max_paths <= 0:
         return []
     root = Path(__file__).resolve().parents[2]
     script = root / ".claude" / "scripts" / "kb-search.sh"
     if not script.is_file():
         return []
+    wanted = paths[:max_paths]
+    if not wanted:
+        return []
+
+    command = ["bash", str(script)]
+    command += [f"mentions:{path}" for path in wanted]
+    command += ["--max-entry-lines", "8"]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=root,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=KB_SEARCH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # KB mentions enrich the dossier; they are not what the caller asked for. A slow
+        # scan drops its own rows rather than taking the whole command with it, which is
+        # what happened before this bound existed. One sweep means one verdict for all
+        # the paths, which is the trade for paying the file walk once.
+        return [
+            {"path": path, "hits": "", "unavailable": "kb-search timed out"}
+            for path in wanted
+        ]
+
+    if result.returncode not in (0, KB_SEARCH_NO_RESULTS_EXIT):
+        # Exit 2 is kb-search saying there are no mentions, which is an answer; any other
+        # non-zero is the scan failing. Reporting a failed scan as "nothing references
+        # this file" is a claim the reader acts on, so it gets its own row.
+        detail = result.stderr.strip().splitlines()
+        reason = f"kb-search exited {result.returncode}"
+        if detail:
+            reason += f": {trunc(detail[-1], 200)}"
+        return [{"path": path, "hits": "", "unavailable": reason} for path in wanted]
+
+    sections = split_kb_sections(result.stdout, wanted)
     mentions: list[dict[str, Any]] = []
-    for path in paths[:max_paths]:
-        try:
-            result = subprocess.run(
-                ["bash", str(script), f"mentions:{path}", "--max-entry-lines", "8"],
-                cwd=root,
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=KB_SEARCH_TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired:
-            # KB mentions enrich the dossier; they are not what the caller asked for.
-            # A slow scan drops its own row rather than taking the whole command with
-            # it, which is what happened before this bound existed.
-            mentions.append({"path": path, "hits": "", "unavailable": "kb-search timed out"})
-            continue
-        text = result.stdout.strip()
-        if result.returncode == 0:
-            if text:
-                mentions.append({"path": path, "hits": trunc(text, 1200)})
-        elif result.returncode != KB_SEARCH_NO_RESULTS_EXIT:
-            # Exit 2 is kb-search saying there are no mentions, which is an answer; any
-            # other non-zero is the scan failing. Reporting a failed scan as "nothing
-            # references this file" is a claim the reader acts on, so it gets its own row.
-            detail = result.stderr.strip().splitlines()
-            reason = f"kb-search exited {result.returncode}"
-            if detail:
-                reason += f": {trunc(detail[-1], 200)}"
-            mentions.append({"path": path, "hits": "", "unavailable": reason})
+    for path in wanted:
+        body = sections.get(path, "").strip()
+        # A path with no mentions still gets a header, so a non-empty body is not the
+        # test: without this, "no results" arrives as a hit whose text is its own
+        # heading. A rendered entry is what `**File:**` marks.
+        if body and "**File:**" in body:
+            mentions.append({"path": path, "hits": trunc(body, 1200)})
     return mentions
+
+
+def split_kb_sections(output: str, paths: list[str]) -> dict[str, str]:
+    """Split kb-search's multi-path output into one body per path.
+
+    Each section opens with a header naming its own `mentions:<path>`, so the split keys
+    on that rather than on position: a path with no hits still gets a header, and reading
+    by order would silently shift every later path by one if it did not.
+    """
+    wanted = {f'"mentions:{path}"': path for path in paths}
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in output.splitlines():
+        if line.startswith("## KB Search"):
+            current = None
+            for marker, path in wanted.items():
+                if marker in line:
+                    current = path
+                    break
+            if current is not None:
+                sections[current] = [line]
+            continue
+        if current is not None:
+            sections[current].append(line)
+    # A single path renders without a `mentions:` header, since the path is the query, so
+    # the whole output is that one path's section.
+    if len(paths) == 1 and not sections:
+        return {paths[0]: output}
+    return {path: "\n".join(lines) for path, lines in sections.items()}
 
 
 def line_excerpt(text: str, line_no: int | None, context_lines: int) -> dict[str, Any]:

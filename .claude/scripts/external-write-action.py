@@ -68,6 +68,7 @@ GUARDED_MENTION_RE = re.compile(
     r"(?<![\w-])(?:" + "|".join(GUARDED_EXECUTABLES) + r")(?![\w.-])", re.I
 )
 HEREDOC_RE = re.compile(r"<<-?(?!<)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+PIPE_INTO_SHELL_RE = re.compile(r"\|\s*(?:" + "|".join(sorted(SHELL_INTERPRETERS)) + r")\b")
 
 
 class ActionError(Exception):
@@ -937,6 +938,37 @@ def blank_single_quoted_spans(command: str) -> str:
     return "".join(result)
 
 
+def blank_quoted_spans(command: str) -> str:
+    """Blank the contents of both quote kinds, for locating shell operators.
+
+    `blank_single_quoted_spans` deliberately keeps double-quoted spans, because `$(...)`
+    and backticks still expand inside them. An operator is the opposite case: `|` and `<`
+    are literal in both quote kinds, so a scan for them has to ignore both or a `grep -n
+    'a|sh' file.py` reads as a pipe into a shell. An unterminated quote leaves the
+    remainder untouched, so a malformed command keeps failing closed.
+    """
+    result: list[str] = []
+    index = 0
+    length = len(command)
+    while index < length:
+        char = command[index]
+        if char == "\\" and index + 1 < length:
+            result.append(command[index : index + 2])
+            index += 2
+            continue
+        if char in "\"'":
+            end = command.find(char, index + 1)
+            if end == -1:
+                result.append(command[index:])
+                break
+            result.append(" " * (end - index + 1))
+            index = end + 1
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
 def mentions_guarded_executable(command: str) -> bool:
     """Report whether a guarded CLI name appears anywhere in the command text.
 
@@ -970,14 +1002,28 @@ def strip_heredoc_bodies(command: str) -> str:
     """
     if "<<" not in command:
         return command
-    for segment in command_segments(command):
-        argv = unwrap_shell_segment(segment)
-        if argv and Path(argv[0]).name.lower() in SHELL_INTERPRETERS:
-            return command
+    lines = command.split("\n")
+    for index, line in enumerate(lines):
+        if not HEREDOC_RE.search(line):
+            continue
+        # The redirect's own line, plus any preceding lines joined to it by a backslash
+        # continuation: that is where `bash \` followed by `<<'EOF'` puts the shell name,
+        # and a line-local test misses it. Spanning the whole command instead refused a
+        # `python3 - <<'PY' ... PY` whose later segment merely ran `bash -n file`.
+        scope = [line]
+        previous = index - 1
+        while previous >= 0 and lines[previous].rstrip().endswith("\\"):
+            scope.insert(0, lines[previous])
+            previous -= 1
+        joined = " ".join(part.rstrip().rstrip("\\") for part in scope)
+        for segment in command_segments(joined):
+            argv = unwrap_shell_segment(segment)
+            if argv and Path(argv[0]).name.lower() in SHELL_INTERPRETERS:
+                return command
 
     kept: list[str] = []
     pending_delimiters: list[str] = []
-    for line in command.split("\n"):
+    for line in lines:
         if pending_delimiters:
             if line.strip() == pending_delimiters[0]:
                 pending_delimiters.pop(0)
@@ -1000,7 +1046,15 @@ def is_dynamic_shell_command(command: str) -> bool:
 
 
 def command_argvs(command: str, depth: int = 0):
-    if re.search(r"(?:\||<)\s*(?:bash|dash|ksh|sh|zsh)\b", command):
+    # A pipe into a shell runs whatever the left side produced, which cannot be read
+    # here. Quoted spans are masked first: `|` is literal inside either quote kind, so
+    # scanning the raw text refused a plain `grep -n 'a|sh' file.py`.
+    #
+    # There is deliberately no `<` arm. `< bash` reads stdin from a file named `bash` and
+    # never invokes one, so every hit it had was a false positive; the shape it looks like
+    # it should cover, `bash < script.sh`, puts the name first and is handled the same way
+    # as `bash script.sh`, which this guard allows because it cannot read either.
+    if PIPE_INTO_SHELL_RE.search(blank_quoted_spans(command)):
         yield ["__unrecognized_shell_command__"]
         return
     for segment in command_segments(command):

@@ -193,6 +193,30 @@ assert_exit "T11: multi-section query succeeds" 0 "$rc"
 assert_contains "T11: first matching section is returned" "$out" "First multihit section"
 assert_contains "T11: second matching section is returned" "$out" "Second multihit section"
 assert_contains "T11: both sections counted once each" "$out" "2 result(s)"
+
+# ── T12: several mentions: paths are swept once and rendered per path ────────
+out=$(bash "$SCRIPT" mentions:folderScopeToken mentions:longtoken mentions:zzzz-absent 2>&1)
+rc=$?
+assert_exit "T12: multi-path sweep succeeds when any path has hits" 0 "$rc"
+assert_contains "T12: first path gets its own section" "$out" '## KB Search'
+assert_contains "T12: absent path is reported, not omitted" "$out" 'mentions:zzzz-absent'
+assert_contains "T12: absent path says no results" "$out" 'no results'
+if [ "$(printf '%s\n' "$out" | grep -c '^## KB Search')" = "3" ]; then
+  pass "T12: one section per path"
+else
+  fail "T12: one section per path"
+fi
+# The fuzzy fallback is global by design: it fires only when the whole sweep found
+# nothing, so a path with no hits alongside a path that has them gets no fallback.
+# Per-path fallback would cost an extra sweep for every path with no mentions.
+assert_not_contains "T12: no fuzzy fallback when a sibling path had hits" "$out" 'partial match'
+
+# A separate query plus several paths would mean "contains all of them", which no caller
+# asks for, so it is refused rather than guessed at.
+out=$(bash "$SCRIPT" longtoken mentions:a mentions:b 2>&1)
+rc=$?
+assert_exit "T12: a query plus several paths is refused" 1 "$rc"
+assert_contains "T12: the refusal says what to do" "$out" 'drop the separate query'
 rm -f "$FIXTURE/workspace/kb/general/multi.md"
 
 total=$((pass + fail))

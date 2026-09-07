@@ -121,6 +121,14 @@ test_case "checkout top pathspec" "g""it ch""eckout :/"                         
 test_case "restore dot"          "g""it res""tore ."                            block
 test_case "restore top pathspec" "g""it res""tore :/"                           block
 test_case "restore magic top pathspec" "g""it res""tore ':(top)'"               block
+# `--staged` alone rewrites index entries from HEAD and touches no file, so a
+# whole-tree pathspec cannot discard work. Adding --worktree does touch files.
+test_case "restore staged dot"   "g""it res""tore --staged ."                   allow
+test_case "restore staged pathspec" "g""it res""tore --staged -- src/a.ts"      allow
+test_case "restore staged and worktree" "g""it res""tore --staged --worktree ." block
+test_case "restore worktree dot" "g""it res""tore --worktree ."                 block
+# checkout has no index-only mode, so it is never exempt.
+test_case "checkout staged dot"  "g""it ch""eckout --staged ."                  block
 test_case "config global"        "g""it co""nfig --global user.email x@y"       block
 test_case "config hooksPath"     "g""it co""nfig core.hooksPath /dev/null"      block
 test_case "config local hooksPath" "g""it co""nfig --local core.hooksPath /dev/null" block
@@ -128,6 +136,18 @@ test_case "config hooksPath equals" "g""it co""nfig core.hooksPath=/dev/null"   
 test_case "config commit gpg false" "g""it co""nfig commit.gpgsign false"       block
 test_case "config tag gpg false" "g""it co""nfig tag.gpgsign false"             block
 test_case "config bool commit gpg false" "g""it co""nfig --bool commit.gpgsign false" block
+# An explicit read action on --global or --system reads; it does not modify.
+test_case "config global get"     "g""it co""nfig --global --get core.hooksPath" allow
+test_case "config global list"    "g""it co""nfig --global --list"               allow
+test_case "config global list short" "g""it co""nfig --global -l"                allow
+test_case "config system get-regexp" "g""it co""nfig --system --get-regexp core" allow
+# Writes to global or system config still block, including the removals.
+test_case "config global unset"   "g""it co""nfig --global --unset user.email"   block
+test_case "config global add"     "g""it co""nfig --global --add safe.directory /" block
+test_case "config global bare key" "g""it co""nfig --global some.key"            block
+# A read flag does not launder a dangerous key elsewhere in the same invocation.
+test_case "config global get plus hooksPath write" \
+  "g""it co""nfig --global --get x && g""it co""nfig core.hooksPath /dev/null"  block
 test_case "no-verify push"       "g""it pu""sh --no-verify origin feat/x"       block
 test_case "no-verify push after ref" "g""it pu""sh origin feat/x --no-verify"   block
 test_case "no-verify commit after msg" "g""it co""mmit -m fix --no-verify"      block

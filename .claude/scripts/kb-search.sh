@@ -12,6 +12,16 @@
 # When `mentions:<path>` is given without a query, the path itself is used as
 # the query — answers "which KB entries reference this file/folder?" before edit.
 #
+# `mentions:` may be repeated. Several paths are swept once and rendered as one section
+# per path, which is why a caller with ten changed paths pays one file walk instead of
+# ten. One path renders exactly as it did before.
+#
+# One difference in the multi-path form: the fuzzy fallback fires only when the whole
+# sweep found nothing, so a path that would have fuzzy-matched alone gets no fallback
+# when a sibling path had hits. Per-path fallback would cost an extra sweep for every
+# path with no mentions, which is the common case; and splitting a file path into its
+# segments and reporting whatever they hit is noise rather than a mention.
+#
 # Examples:
 #   bash .claude/scripts/kb-search.sh "caching"
 #   bash .claude/scripts/kb-search.sh "auth gotcha" in:projects tag:gotcha
@@ -39,7 +49,7 @@ DOMAIN_FILTER=""
 TAG_FILTER=""
 SINCE_DATE=""
 CONF_FILTER=""
-MENTIONS_PATH=""
+MENTIONS_PATHS=()
 SHOW_SCORE=0
 FULL_OUTPUT=0
 MAX_ENTRY_LINES=24
@@ -67,17 +77,20 @@ while [ "$#" -gt 0 ]; do
     tag:*)       TAG_FILTER="${arg#tag:}" ;;
     since:*)     SINCE_DATE="${arg#since:}" ;;
     confidence:*)CONF_FILTER="${arg#confidence:}" ;;
-    mentions:*)  MENTIONS_PATH="${arg#mentions:}" ;;
+    mentions:*)  MENTIONS_PATHS+=("${arg#mentions:}") ;;
     *)           QUERY_TERMS+=("$arg") ;;
   esac
   shift
 done
 
 QUERY="${QUERY_TERMS[*]:-}"
-# If no query but mentions: provided, treat the path as the query — answers
-# "which KB entries reference this file/folder?" out of the box.
-if [ -z "$QUERY" ] && [ -n "$MENTIONS_PATH" ]; then
-  QUERY="$MENTIONS_PATH"
+# If no query but mentions: provided, the paths act as the query, answering "which KB
+# entries reference this file or folder?" out of the box. Several paths become several
+# search terms, and the results are rendered per path from the one sweep.
+MENTIONS_AS_QUERY=0
+if [ -z "$QUERY" ] && [ "${#MENTIONS_PATHS[@]}" -gt 0 ]; then
+  MENTIONS_AS_QUERY=1
+  QUERY="${MENTIONS_PATHS[*]}"
 fi
 if [ -z "$QUERY" ]; then
   echo "Usage: kb-search.sh <query> [in:general|projects|ops|cross-project] [tag:<tag>] [since:YYYY-MM-DD] [confidence:low|medium|high] [mentions:<path>] [--with-score] [--full] [--max-entry-lines N]" >&2
@@ -87,8 +100,18 @@ fi
 # Derive once: is the mentions: filter a distinct extra constraint, or did it
 # already act as the query (in which case per-entry re-filtering is redundant —
 # every surviving entry already contains the path via the file-level grep).
+# When a path is also the query, every surviving entry already contains it, so the
+# per-entry re-check is redundant. It is a real extra constraint only alongside a
+# separate query, which is the single-path case; several paths plus a query would mean
+# "contains all of them", which no caller asks for.
 MENTIONS_EXTRA=""
-[ -n "$MENTIONS_PATH" ] && [ "$QUERY" != "$MENTIONS_PATH" ] && MENTIONS_EXTRA="$MENTIONS_PATH"
+if [ "$MENTIONS_AS_QUERY" -eq 0 ] && [ "${#MENTIONS_PATHS[@]}" -eq 1 ]; then
+  MENTIONS_EXTRA="${MENTIONS_PATHS[0]}"
+fi
+if [ "$MENTIONS_AS_QUERY" -eq 0 ] && [ "${#MENTIONS_PATHS[@]}" -gt 1 ]; then
+  echo "ERROR: several mentions: paths need to act as the query; drop the separate query" >&2
+  exit 1
+fi
 
 # ── determine search scope ─────────────────────────────────────────────────────
 KB_ROOT="workspace/kb"
@@ -119,23 +142,18 @@ fi
 # the survivors. It emits one finished record per surviving section, so the shell loop
 # below only has to pick the freshness date and append.
 #
-# All of that used to be shell: a `grep -n` plus one awk per match to extract, then per
-# entry a date grep, the filters, the scoring greps, and an encode. On a KB of 88 files a
-# common term took 103 seconds. The awk work was never the cost - profiling it per file
-# totals 2.7 seconds - and neither was the subprocess count on its own. The cost was one
-# line: `${entry//$'\n'/$'\x1f'}` ran once per entry, and bash 3.2, the macOS default,
-# is quadratic in a global pattern substitution. Encoding here instead removes 282 of
-# those for a common term; `tr` in the render loop removes the last ten.
+# The `\x1f` encode belongs here rather than in the shell: bash 3.2, the macOS default,
+# is quadratic in a global pattern substitution, so an encode per entry does not scale.
+# See the render loop's `tr` for the measurement.
 #
 # A section is the nearest enclosing `###`, `##`, or file `#` heading with nested
 # headings kept inside, which supports dated entries and current-state sections alike.
-# The search, filter, scoring, and output contracts are unchanged, verified by diffing
-# this against the previous version's output across fourteen query and filter shapes.
 #
 # Inputs arrive through the environment, not -v: awk expands escape sequences in a -v
 # assignment, and the terms below are regex-escaped with backslashes.
-# Emits: score, entry date (`0000-00-00` when the section has no dated heading), and the
-# section text with newlines encoded as \x1f, the encoding the results file uses.
+# Emits: score, entry date (`0000-00-00` when the section has no dated heading), the
+# 1-based indices of the terms this entry contains, and the section text with newlines
+# encoded as \x1f, the encoding the results file uses.
 extract_scored_blocks() {
   local file="$1"
   KB_SEARCH_PATTERN="$2" \
@@ -170,8 +188,10 @@ extract_scored_blocks() {
       return out
     }
 
-    # `grep -i '^**Label:**' | grep -qiF -- wanted`: a line that starts with the label and
-    # also contains the wanted value, both case-insensitively.
+    # A line that starts with the label and also contains the wanted value, both
+    # case-insensitively. Replaces a grep for the label piped into a fixed-string grep
+    # for the value. No apostrophes in here: the whole program sits inside shell single
+    # quotes, and a stray one ends them.
     function field_matches(text, label, wanted,   n, i, parts, low) {
       n = split(text, parts, "\n")
       for (i = 1; i <= n; i++) {
@@ -258,15 +278,27 @@ extract_scored_blocks() {
 
         header_hits = 0
         body_hits = 0
+        matched_terms = ""
         for (i = 1; i <= term_count; i++) {
-          header_hits += occurrences(header_line, lower_terms[i])
-          body_hits += occurrences(body, lower_terms[i])
+          term_header = occurrences(header_line, lower_terms[i])
+          term_body = occurrences(body, lower_terms[i])
+          header_hits += term_header
+          body_hits += term_body
+          # Which terms this entry actually holds, so a caller sweeping several paths at
+          # once can render a section per path without a second pass over the files.
+          if (term_header + term_body > 0) {
+            matched_terms = matched_terms (matched_terms == "" ? "" : ",") i
+          }
         }
         score = header_hits * 2 + body_hits
+        # Never empty: the alternation matched a line inside this entry, so some term
+        # occurs in it. An empty middle field would collapse under the tab IFS used to
+        # read this record back.
+        if (matched_terms == "") matched_terms = "0"
 
         encoded = entry
         gsub(/\n/, US, encoded)
-        print score "\t" entry_date "\t" encoded
+        print score "\t" entry_date "\t" matched_terms "\t" encoded
       }
     }
   ' "$file"
@@ -324,8 +356,8 @@ run_search() {
     local file_mtime
     file_mtime=$(file_mtime_for "$kb_file")
 
-    local score entry_date entry_enc fresh_date
-    while IFS=$'\t' read -r score entry_date entry_enc; do
+    local score entry_date matched_terms entry_enc fresh_date
+    while IFS=$'\t' read -r score entry_date matched_terms entry_enc; do
       [ -n "$entry_enc" ] || continue
 
       # Freshness: prefer newer of entry date vs file mtime
@@ -334,14 +366,22 @@ run_search() {
         fresh_date="$file_mtime"
       fi
 
-      # Result record: score|fresh_date|file|entry, entry newlines already \x1f encoded
-      printf '%s\t%s\t%s\t%s\n' "$score" "${fresh_date:-0000-00-00}" "$kb_file" "$entry_enc" >> "$RESULTS_FILE"
+      # Result record: score, freshness, matched term indices, file, entry. The entry's
+      # newlines are already \x1f encoded, so the record stays one line.
+      printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$score" "${fresh_date:-0000-00-00}" "$matched_terms" "$kb_file" "$entry_enc" \
+        >> "$RESULTS_FILE"
     done < <(extract_scored_blocks "$kb_file" "$pattern" "$term_list")
   done < "$KB_FILES_TMP"
 }
 
-# Try exact search first
-run_search "$QUERY"
+# Try exact search first. Several mentions: paths are several terms, so that one sweep
+# can answer for all of them; anything else stays a single term, as before.
+if [ "$MENTIONS_AS_QUERY" -eq 1 ] && [ "${#MENTIONS_PATHS[@]}" -gt 1 ]; then
+  run_search "${MENTIONS_PATHS[@]}"
+else
+  run_search "$QUERY"
+fi
 
 # Fuzzy fallback if no results
 if [ ! -s "$RESULTS_FILE" ]; then
@@ -362,7 +402,7 @@ if [ ! -s "$RESULTS_FILE" ]; then
   exit 2
 fi
 
-# ── sort and print top 10 ──────────────────────────────────────────────────────
+# ── sort and print, per rendered section ──────────────────────────────────────
 FILTER_LABEL=""
 [ -n "$DOMAIN_FILTER" ] && FILTER_LABEL+=" in:$DOMAIN_FILTER"
 [ -n "$TAG_FILTER" ]    && FILTER_LABEL+=" tag:$TAG_FILTER"
@@ -370,52 +410,104 @@ FILTER_LABEL=""
 [ -n "$CONF_FILTER" ]   && FILTER_LABEL+=" confidence:$CONF_FILTER"
 [ -n "$MENTIONS_EXTRA" ] && FILTER_LABEL+=" mentions:$MENTIONS_EXTRA"
 
-RESULT_COUNT=$(wc -l < "$RESULTS_FILE" | tr -d ' ')
-
-if [ "$FUZZY" = true ]; then
-  echo "## KB Search — \"${QUERY}\" · ${RESULT_COUNT} partial match(es)"
-  echo "⚠️  No exact match. Showing partial matches."
-else
-  echo "## KB Search — \"${QUERY}\" · ${RESULT_COUNT} result(s)${FILTER_LABEL}"
-fi
-echo ""
-
-# Sort: by score desc, then freshness desc, then file asc; take top 10.
-sort -t$'\t' -k1,1rn -k2,2r -k3,3 "$RESULTS_FILE" | head -10 > "$TOP_RESULTS_FILE"
-
-# Name the truncation. A header count of 23 above ten printed entries otherwise
-# reads as "these are the results".
-SHOWN_COUNT=$(wc -l < "$TOP_RESULTS_FILE" | tr -d ' ')
-if [ "$RESULT_COUNT" -gt "$SHOWN_COUNT" ]; then
-  echo "Showing the top ${SHOWN_COUNT} of ${RESULT_COUNT} by relevance; narrow the query or add a filter to see the rest."
-  echo ""
-fi
-
-cut -f3 "$TOP_RESULTS_FILE" | sort -u | while IFS= read -r kb_file; do
-  [ -n "$kb_file" ] && log_kb_search_result "$kb_file"
-done
-
-while IFS=$'\t' read -r score fresh_date kb_file entry; do
-  if [ "$SHOW_SCORE" -eq 1 ]; then
-    echo "**Score:** $score"
+# Entries whose matched-term field includes this 1-based index. Called once per path when
+# several are swept together; with an empty index it passes everything through, which is
+# the single-section path and byte-identical to the pre-change output.
+select_for_term() {
+  local index="$1" source="$2" target="$3"
+  if [ -z "$index" ]; then
+    cp "$source" "$target"
+    return 0
   fi
-  echo "**File:** \`${kb_file}\`"
-  # `tr`, not `${entry//.../...}`. bash 3.2 is the macOS default and its global pattern
-  # substitution is quadratic: measured at 17 seconds for one 32 KB entry with 400
-  # separators, against 0.011 seconds through `tr`. Ten of these were 33 of the 42
-  # seconds a common query took.
-  decoded=$(printf '%s' "$entry" | tr '\037' '\n')
-  if [ "$FULL_OUTPUT" -eq 1 ]; then
-    printf '%s\n' "$decoded"
+  awk -F'\t' -v want="$index" '
+    {
+      count = split($3, terms, ",")
+      for (i = 1; i <= count; i++) {
+        if (terms[i] == want) {
+          print
+          next
+        }
+      }
+    }
+  ' "$source" > "$target"
+}
+
+# One rendered section: header, top ten by relevance, telemetry, entries.
+render_section() {
+  local label="$1" term_index="$2"
+  local section_file="$TMPDIR_SEARCH/section.txt"
+  select_for_term "$term_index" "$RESULTS_FILE" "$section_file"
+
+  local result_count
+  result_count=$(wc -l < "$section_file" | tr -d ' ')
+  if [ "$result_count" -eq 0 ]; then
+    echo "## KB Search — \"${label}\" · no results${FILTER_LABEL}"
+    echo ""
+    echo "---"
+    echo ""
+    return 1
+  fi
+
+  if [ "$FUZZY" = true ]; then
+    echo "## KB Search — \"${label}\" · ${result_count} partial match(es)"
+    echo "⚠️  No exact match. Showing partial matches."
   else
-    total_lines=$(printf '%s\n' "$decoded" | wc -l | tr -d ' ')
-    printf '%s\n' "$decoded" | sed -n "1,${MAX_ENTRY_LINES}p"
-    if [ "$total_lines" -gt "$MAX_ENTRY_LINES" ]; then
-      remaining=$((total_lines - MAX_ENTRY_LINES))
-      echo "... (${remaining} more lines; rerun with --full to show complete entries)"
-    fi
+    echo "## KB Search — \"${label}\" · ${result_count} result(s)${FILTER_LABEL}"
   fi
   echo ""
-  echo "---"
-  echo ""
-done < "$TOP_RESULTS_FILE"
+
+  # Sort: by score desc, then freshness desc, then file asc; take top 10.
+  sort -t$'\t' -k1,1rn -k2,2r -k4,4 "$section_file" | head -10 > "$TOP_RESULTS_FILE"
+
+  # Name the truncation. A header count of 23 above ten printed entries otherwise
+  # reads as "these are the results".
+  local shown_count
+  shown_count=$(wc -l < "$TOP_RESULTS_FILE" | tr -d ' ')
+  if [ "$result_count" -gt "$shown_count" ]; then
+    echo "Showing the top ${shown_count} of ${result_count} by relevance; narrow the query or add a filter to see the rest."
+    echo ""
+  fi
+
+  cut -f4 "$TOP_RESULTS_FILE" | sort -u | while IFS= read -r kb_file; do
+    [ -n "$kb_file" ] && log_kb_search_result "$kb_file"
+  done
+
+  local score fresh_date matched_terms kb_file entry decoded total_lines remaining
+  while IFS=$'\t' read -r score fresh_date matched_terms kb_file entry; do
+    if [ "$SHOW_SCORE" -eq 1 ]; then
+      echo "**Score:** $score"
+    fi
+    echo "**File:** \`${kb_file}\`"
+    # `tr`, not a global pattern substitution. bash 3.2 is the macOS default and its
+    # global pattern substitution is quadratic: measured at 17 seconds for one 32 KB
+    # entry with 400 separators, against 0.011 seconds through `tr`. The subprocess is
+    # the fast path here, which is the opposite of what it looks like.
+    decoded=$(printf '%s' "$entry" | tr '\037' '\n')
+    if [ "$FULL_OUTPUT" -eq 1 ]; then
+      printf '%s\n' "$decoded"
+    else
+      total_lines=$(printf '%s\n' "$decoded" | wc -l | tr -d ' ')
+      printf '%s\n' "$decoded" | sed -n "1,${MAX_ENTRY_LINES}p"
+      if [ "$total_lines" -gt "$MAX_ENTRY_LINES" ]; then
+        remaining=$((total_lines - MAX_ENTRY_LINES))
+        echo "... (${remaining} more lines; rerun with --full to show complete entries)"
+      fi
+    fi
+    echo ""
+    echo "---"
+    echo ""
+  done < "$TOP_RESULTS_FILE"
+  return 0
+}
+
+if [ "$MENTIONS_AS_QUERY" -eq 1 ] && [ "${#MENTIONS_PATHS[@]}" -gt 1 ]; then
+  # One section per path, from the single sweep above. Exit 0 when any path had a hit,
+  # so a caller reading the exit code still learns whether the sweep found anything.
+  ANY_RESULTS=1
+  for path_index in "${!MENTIONS_PATHS[@]}"; do
+    render_section "mentions:${MENTIONS_PATHS[$path_index]}" "$((path_index + 1))" && ANY_RESULTS=0
+  done
+  exit "$ANY_RESULTS"
+fi
+
+render_section "$QUERY" ""
