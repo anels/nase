@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+source "$ROOT/tests/lib/stage-scripts.sh"
 FIXTURE=$(mktemp -d)
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -11,11 +12,7 @@ mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" \
   "$repo/workspace/tmp"
 git -C "$repo" init -q
 cp "$ROOT/.claude/hooks/pre-compact-archive.sh" "$repo/.claude/hooks/"
-# nase_fs.py travels with them: workspace-archive and workspace-write-guard take their
-# digest and durable-write helpers from it, so a fixture without it fails on import.
-cp "$ROOT/.claude/scripts/workspace-archive.py" "$ROOT/.claude/scripts/workspace_lock.py" \
-  "$ROOT/.claude/scripts/workspace-write-guard.py" "$ROOT/.claude/scripts/nase_fs.py" \
-  "$repo/.claude/scripts/"
+stage_scripts "$repo/.claude/scripts" workspace-archive.py workspace-write-guard.py
 
 python3 - "$repo/workspace/tasks/lessons.md" <<'PY'
 import sys

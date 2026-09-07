@@ -7,6 +7,7 @@
 set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+source "$ROOT/tests/lib/stage-scripts.sh"
 HOOK="$ROOT/.claude/hooks/stop-backup.sh"
 
 fail=0
@@ -31,10 +32,7 @@ make_repo() {
   mkdir -p "$repo_path/.claude/hooks" "$repo_path/.claude/scripts" "$repo_path/tests" "$repo_path/workspace"
   git -C "$repo_path" init -q
   cp "$HOOK" "$repo_path/.claude/hooks/stop-backup.sh"
-  # nase_git.py and nase_fs.py travel with verify-bundle, which takes its bounded git
-  # runner and digest helpers from them; a fixture without them fails on import.
-  cp "$ROOT/.claude/scripts/verify-bundle.py" "$ROOT/.claude/scripts/nase_git.py" \
-    "$ROOT/.claude/scripts/nase_fs.py" "$repo_path/.claude/scripts/"
+  stage_scripts "$repo_path/.claude/scripts" verify-bundle.py
   cp "$ROOT/tests/check-local-sensitive-artifacts.sh" "$repo_path/tests/check-local-sensitive-artifacts.sh"
   printf '# Workspace Context\n' > "$repo_path/workspace/context.md"
   # These tests drive the hook repeatedly within seconds. The production default

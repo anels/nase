@@ -10,7 +10,7 @@
 #   month-efforts.sh 2026-06 workspace/efforts/archive/2026
 #
 # Terminal `tracking_only: true` efforts close into archive/<YYYY>/ rather than done/
-# (.claude/docs/effort-lifecycle.md -> Terminal Destination), so a month sweep that
+# (.claude/docs/effort-model.md -> Terminal Destination), so a month sweep that
 # reads only done/ misses them. The emitted frontmatter carries tracking_only so the
 # caller can exclude another owner's delivery from its counts.
 #

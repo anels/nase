@@ -7,7 +7,7 @@ category: Design & implementation
 
 Turn a request into a concrete, tracked, junior-implementable design. This command never edits product code.
 
-Follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/effort-lifecycle.md`, and `.claude/docs/external-mutation-policy.md`. Use `python3 .claude/scripts/workspace-write-guard.py stage` for effort writes; auto mode may skip the prompt, never staging, preview, or drift checks.
+Follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/effort-model.md`, `.claude/docs/effort-transitions.md`, and `.claude/docs/external-mutation-policy.md`. Use `python3 .claude/scripts/workspace-write-guard.py stage` for effort writes; auto mode may skip the prompt, never staging, preview, or drift checks.
 
 ## Core contract
 
@@ -40,7 +40,7 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. Quick fixes may use two one-line options.
 5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
 6. Self-review up to three times against the quality criteria below. Research fixable gaps before asking the user.
-7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Follow `.claude/docs/effort-lifecycle.md` for frontmatter and initial state.
+7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
 8. Optional Jira creation uses a fresh payload-bound token and a concrete approval immediately before the write.
 9. Stop after saving. Chat returns the file path and a short decision summary.
 
@@ -59,6 +59,6 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 
 ## Lifecycle
 
-This command creates or updates the effort design. `/nase:fsd`, `/nase:prep-merge`, and `/nase:wrap-up` own later lifecycle transitions through `.claude/docs/effort-lifecycle.md`.
+This command creates or updates the effort design. `/nase:fsd`, `/nase:prep-merge`, and `/nase:wrap-up` own later lifecycle transitions through `.claude/docs/effort-transitions.md`.
 
 Scale depth to the task: a quick fix gets a compact design; an initiative gets full decomposition. The durable artifact is the effort doc, not the chat transcript.

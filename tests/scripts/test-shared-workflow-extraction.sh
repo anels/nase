@@ -131,7 +131,10 @@ assert_contains "reference assigns FSD closeout to delivery gates" .claude/docs/
 assert_contains "repo task flow covers repo resolution" .claude/docs/repo-task-flow.md 'repo/PR resolution'
 assert_contains "repo task flow covers mutation gates" .claude/docs/repo-task-flow.md 'GitHub mutation gates'
 
-assert_contains "design uses effort lifecycle doc" .claude/commands/nase/design.md 'effort-lifecycle\.md'
+# design writes the initial doc, so it needs the model and the per-skill procedure, not
+# the index. Same reasoning as the fsd assertion below.
+assert_contains "design uses the effort model doc" .claude/commands/nase/design.md 'effort-model\.md'
+assert_contains "design uses the effort transitions doc" .claude/commands/nase/design.md 'effort-transitions\.md'
 assert_contains "design has PR economy default" .claude/commands/nase/design.md 'Default to one PR'
 assert_contains "design records target PR count" .claude/commands/nase/design.md 'Target PR count'
 assert_contains "design gates multi-PR splits" .claude/commands/nase/design.md 'Split into multiple PRs only when'
@@ -182,14 +185,16 @@ assert_contains "auto design uses full research ladder" .claude/docs/design-auto
 assert_not_contains "auto design has no stale five-source ladder" .claude/docs/design-auto-mode.md 'all 5 sources'
 assert_not_contains "auto design has no stale four-source ladder" .claude/docs/design-auto-mode.md 'all four research sources'
 assert_contains "auto design respects higher-priority flags" .claude/docs/design-auto-mode.md 'routes `--grill` / `--review` to Grill/Review Mode before Auto Mode'
-assert_contains "fsd uses effort lifecycle doc" .claude/commands/nase/fsd.md 'effort-lifecycle\.md'
+# fsd needs only the per-skill procedure, so it points at effort-transitions.md rather
+# than at the index. Asserting the index here would reward pointing at 500 lines.
+assert_contains "fsd uses the effort transitions doc" .claude/commands/nase/fsd.md 'effort-transitions\.md'
 assert_contains "fsd consumes design PR plan" .claude/commands/nase/fsd.md 'design_pr_plan'
 assert_contains "fsd intake preserves one-PR default" .claude/docs/fsd-intake-and-setup.md 'Default to the design PR plan'
 assert_contains "FSD delivery gates draft PR create" .claude/docs/fsd-delivery-gates.md 'Create this draft PR\?'
 assert_contains "FSD delivery gates verification PR edit" .claude/docs/fsd-delivery-gates.md 'Append this Verification section to the draft PR\?'
 assert_contains "fsd conditional closure excludes blockers" .claude/docs/fsd-delivery-gates.md 'conditional.*waiver reasons named'
 assert_not_contains "fsd conditional wording does not admit blockers" .claude/docs/fsd-delivery-gates.md 'waivers/blockers named'
-assert_contains "prep-merge uses effort lifecycle doc" .claude/commands/nase/prep-merge.md 'effort-lifecycle\.md'
+assert_contains "prep-merge uses the effort transitions doc" .claude/commands/nase/prep-merge.md 'effort-transitions\.md'
 assert_contains "prep-merge uses shared repo task flow" .claude/commands/nase/prep-merge.md 'repo-task-flow\.md'
 assert_contains "address-comments uses shared repo task flow" .claude/commands/nase/address-comments.md 'repo-task-flow\.md'
 assert_contains "discuss-pr loads analysis on demand" .claude/commands/nase/discuss-pr.md 'discuss-pr-analysis\.md'
@@ -201,22 +206,43 @@ assert_contains "security specialist starts with bypass paths" .claude/docs/pr-r
 assert_contains "security specialist checks removed composite headers" .claude/docs/pr-review-verification.md 'removed composite security header'
 assert_contains "security specialist revalidates SSRF redirects" .claude/docs/pr-review-verification.md 'every redirect hop'
 assert_contains "discuss-pr analysis loads security specialist contract" .claude/docs/discuss-pr-analysis.md 'Security Specialist Contract'
-assert_contains "effort lifecycle doc covers merge-ready" .claude/docs/effort-lifecycle.md 'merge-ready'
-assert_contains "effort lifecycle defines PR reference resolution" .claude/docs/effort-lifecycle.md 'PR Reference Resolution'
-assert_contains "effort lifecycle requires structured delivery PRs" .claude/docs/effort-lifecycle.md 'pr`, `prs`, and `phase_\*_pr` frontmatter'
-assert_contains "effort lifecycle rejects body PRs as delivery evidence" .claude/docs/effort-lifecycle.md 'Other body PR references are'
-assert_contains "effort lifecycle preserves unresolved blockers" .claude/docs/effort-lifecycle.md 'Any unresolved `blocked-by` referent'
-assert_contains "effort lifecycle handles merged plus closed PRs" .claude/docs/effort-lifecycle.md 'closed superseded siblings do not block it'
-assert_contains "effort lifecycle handles all-closed PRs" .claude/docs/effort-lifecycle.md 'all readable delivery PRs are `CLOSED`'
-assert_contains "effort lifecycle requires deploy evidence" .claude/docs/effort-lifecycle.md 'checked `Deployed` evidence'
-assert_contains "effort lifecycle documents automatic awaiting-deploy" .claude/docs/effort-lifecycle.md 'awaiting-deploy` is set by the Drift Auto-Sync rule'
-assert_contains "effort lifecycle uses wontfix terminal status" .claude/docs/effort-lifecycle.md 'status: wontfix'
-assert_not_contains "effort lifecycle never emits invalid closed status" .claude/docs/effort-lifecycle.md 'status: closed'
-assert_contains "effort lifecycle uses guarded move" .claude/docs/effort-lifecycle.md 'apply-move'
-assert_contains "effort lifecycle uses executable transition decision" .claude/docs/effort-lifecycle.md 'transition\.action'
-assert_contains "effort lifecycle routes terminal moves by destination" .claude/docs/effort-lifecycle.md 'Terminal Destination'
-assert_contains "effort lifecycle archives tracking-only efforts" .claude/docs/effort-lifecycle.md 'workspace/efforts/archive/\{current year\}'
-assert_contains "effort lifecycle publishes the move destination" .claude/docs/effort-lifecycle.md 'transition\.destination_dir'
+assert_contains "effort model covers merge-ready" .claude/docs/effort-model.md 'merge-ready'
+assert_contains "effort lifecycle defines PR reference resolution" .claude/docs/effort-drift.md 'PR Reference Resolution'
+assert_contains "effort lifecycle requires structured delivery PRs" .claude/docs/effort-drift.md 'pr`, `prs`, and `phase_\*_pr` frontmatter'
+assert_contains "effort lifecycle rejects body PRs as delivery evidence" .claude/docs/effort-drift.md 'Other body PR references are'
+assert_contains "effort lifecycle preserves unresolved blockers" .claude/docs/effort-drift.md 'Any unresolved `blocked-by` referent'
+assert_contains "effort lifecycle handles merged plus closed PRs" .claude/docs/effort-drift.md 'closed superseded siblings do not block it'
+assert_contains "effort lifecycle handles all-closed PRs" .claude/docs/effort-drift.md 'all readable delivery PRs are `CLOSED`'
+assert_contains "effort lifecycle requires deploy evidence" .claude/docs/effort-drift.md 'checked `Deployed` evidence'
+assert_contains "effort lifecycle documents automatic awaiting-deploy" .claude/docs/effort-model.md 'awaiting-deploy` is set by the Drift Auto-Sync rule'
+assert_contains "effort lifecycle uses wontfix terminal status" .claude/docs/effort-drift.md 'status: wontfix'
+assert_not_contains "effort lifecycle never emits invalid closed status in effort-model.md" .claude/docs/effort-model.md 'status: closed'
+assert_not_contains "effort lifecycle never emits invalid closed status in effort-drift.md" .claude/docs/effort-drift.md 'status: closed'
+assert_not_contains "effort lifecycle never emits invalid closed status in effort-transitions.md" .claude/docs/effort-transitions.md 'status: closed'
+assert_contains "effort lifecycle uses guarded move" .claude/docs/effort-drift.md 'apply-move'
+assert_contains "effort lifecycle uses executable transition decision" .claude/docs/effort-drift.md 'transition\.action'
+assert_contains "effort model owns terminal destination" .claude/docs/effort-model.md 'Terminal Destination'
+assert_contains "effort lifecycle archives tracking-only efforts" .claude/docs/effort-model.md 'workspace/efforts/archive/\{current year\}'
+assert_contains "effort drift publishes the move destination" .claude/docs/effort-drift.md 'transition\.destination_dir'
+
+# effort-lifecycle.md is an index that owns no section, so citing a section of it
+# resolves to nothing. No existing gate reads section names, so the suite stayed green
+# through the split while six such pointers went dead. Match the two arrow forms the
+# repo uses and fail on either. This file is excluded from its own scan, so a dead
+# pointer written here is not caught - the trade is that the pattern can be spelled
+# in the comment above.
+index_section_pointer='effort-lifecycle\.md.{0,2}(->|→)'
+index_section_hits=$(grep -rnE "$index_section_pointer" \
+  .claude CLAUDE.md README.md docs tests 2>/dev/null \
+  | grep -v '^tests/scripts/test-shared-workflow-extraction\.sh:' || true)
+if [[ -z "$index_section_hits" ]]; then
+  pass "no pointer cites a section of the effort-lifecycle index"
+else
+  fail "no pointer cites a section of the effort-lifecycle index"
+  printf '%s\n' "$index_section_hits" >&2
+  printf '  cite effort-model.md, effort-drift.md, or effort-transitions.md instead\n' >&2
+fi
+
 assert_contains "efforts keeps dependency PRs separate" .claude/commands/nase/efforts.md 'Keep delivery, report-only, and dependency PR sets separate'
 assert_contains "efforts calls executable transition decision" .claude/commands/nase/efforts.md 'effort-state\.py.*Drift Auto-Sync'
 assert_contains "efforts honours the helper move destination" .claude/commands/nase/efforts.md 'transition\.destination_dir'

@@ -31,11 +31,11 @@ Batch the live reads for effort-file PRs in one pass instead of one agent per PR
 python3 .claude/scripts/effort-pr-sweep.py --format json
 ```
 
-Top-level `live` is the PR-state source for every PR cited by `workspace/efforts/*.md`: a map keyed by PR reference carrying state, reviewDecision, mergedAt, mergeCommit, and failing/pending checks. Each `efforts[]` entry also carries an `invisible` list; handle it per `.claude/docs/effort-lifecycle.md → Classifier Blind Spots`, which owns the rule for which hints are actionable.
+Top-level `live` is the PR-state source for every PR cited by `workspace/efforts/*.md`: a map keyed by PR reference carrying state, reviewDecision, mergedAt, mergeCommit, and failing/pending checks. Each `efforts[]` entry also carries an `invisible` list; handle it per `.claude/docs/effort-drift.md → Classifier Blind Spots`, which owns the rule for which hints are actionable.
 
 The sweep globs effort files only, so a PR cited solely by `workspace/tasks/todo.md` appears in neither `live` nor the unreadable set. Use `nase-pr-metadata-reader` for those and for any PR the sweep reports as unreadable. With no active effort files the sweep exits 0 having written nothing to stdout, so treat empty output as "no efforts to sync" rather than parsing it.
 
-Read failures stay visible and block automatic lifecycle changes for the affected item. Apply `.claude/docs/effort-lifecycle.md` and `.claude/scripts/effort-state.py`; route any local update through `.claude/docs/workspace-write-guard.md`.
+Read failures stay visible and block automatic lifecycle changes for the affected item. Apply `.claude/docs/effort-drift.md → Drift Auto-Sync` and `.claude/scripts/effort-state.py`; route any local update through `.claude/docs/workspace-write-guard.md`.
 
 ### 2. Maintenance and context
 

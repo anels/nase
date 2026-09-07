@@ -104,8 +104,9 @@ fi
 # It still has to fail open, but silently failing open means every later draft ships
 # unlinted with nothing saying the guard stopped reading.
 run_hook '{"tool_input":{"channel_id":"C0123","body_markdown":"hi"}}'
-if [[ "$RC" -eq 0 ]] && grep -q 'found no draft body' <<<"$ERR" \
-  && grep -q 'body_markdown' <<<"$ERR"; then
+if [[ "$RC" -eq 0 ]] && grep -q 'no draft body to review' <<<"$ERR" \
+  && grep -q 'body_markdown' <<<"$ERR" \
+  && grep -q '\[prose-lint-guard\]' <<<"$ERR"; then
   ok "a payload with fields but no known body field fails open with a notice"
 else
   bad "a payload with fields but no known body field fails open with a notice" "rc=$RC err=$ERR"

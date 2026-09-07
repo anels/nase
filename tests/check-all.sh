@@ -401,7 +401,7 @@ run_changed_extras() {
   if printf '%s\n' "$changed" | grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$'; then
     run_canonical_pointers
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-lifecycle\.md|\.claude/commands/nase/kb-review\.md)$'; then
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-(lifecycle|model|drift|transitions)\.md|\.claude/commands/nase/kb-review\.md)$'; then
     run_effort_pointer_integrity
   fi
   if printf '%s\n' "$changed" | grep -qE '^(evals/(pr-review|core-workflows)/|\.claude/scripts/(pr-review-eval|skill-eval-run)\.py|tests/scripts/test-(pr-review-eval|skill-eval-run)\.sh)'; then

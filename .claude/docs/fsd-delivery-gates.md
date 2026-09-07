@@ -177,6 +177,23 @@ python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 
 Report the PR URL.
 
+**Then read `isDraft` back into `pr_is_draft`.** `--draft` is a request, not a state: the REST
+creation path drops it,
+and repo/org automation can fire `ready_for_review` seconds after creation. Confirm right after
+creation, and again after the Phase 8.5 `gh pr edit`. This is deliberately narrower than the
+`github-queries.md → PR Metadata` variants: it is a one-flag readback, not a metadata fetch:
+
+```bash
+gh pr view {pr_number} --repo {repo_owner}/{repo_name} --json isDraft,url \
+  --jq '"isDraft=\(.isDraft)  \(.url)"'
+```
+
+If `isDraft` is false, the PR is already published for review. Say so on its own line in the Phase 10
+report, and offer to re-draft through a gated `external-write-action.py` manifest for
+`gh pr ready --undo` (gh refuses `--undo` on plans that do not support re-drafting; if it does,
+leave the PR ready and say so rather than retrying). Never report "draft PR opened" without
+having read the flag back.
+
 ---
 
 ## Phase 8.5: Verification Matrix

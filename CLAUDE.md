@@ -41,7 +41,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Put one-off artifacts under `workspace/tmp/`.
 
 ### Session Lifecycle
-- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. If hook output contains `DISPLAY_TO_USER`, show it. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
+- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. A hook line prefixed with its own name (`[session-start]`, `[stop-backup]`, `[pre-compact]`, `[prose-lint-guard]`) is meant for the user: surface it. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
 
 ### Repo & KB Workflow
 - Before repo work, run `/nase:onboard <path-or-url>` or `/nase:onboard`, then read the repo KB via `workspace/kb/.domain-map.md`. Load only relevant KB files.

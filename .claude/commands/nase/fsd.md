@@ -39,8 +39,8 @@ tell whether a missing value is a skipped step or a dropped one.
 | 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `bundle_sha256`, `contract_inventory_sha256` |
 | 6.4 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
 | 7 | This entrypoint plus `commit-push-pattern.md`. | - |
-| 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. | - |
-| 8b | `effort-lifecycle.md -> FSD Update`. | - |
+| 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. | `pr_is_draft` |
+| 8b | `effort-transitions.md -> FSD Update`. | - |
 | 9-10 | This entrypoint owns Phase 9 worktree cleanup; the already-loaded `fsd-delivery-gates.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. | `worktree_report` |
 
 ## Phase 0: Input Guard
@@ -97,7 +97,7 @@ Follow `.claude/docs/fsd-delivery-gates.md → Phase 8.5`. It owns local executi
 
 ## Phase 8b: Effort Doc Update
 
-Follow `.claude/docs/effort-lifecycle.md → FSD Update`. If $ARGUMENTS contains a slug that matches `workspace/efforts/{slug}.md`, stage the lifecycle/status edit with the workspace write guard. If the slug cannot be inferred, skip silently - not every fsd invocation comes from a design doc.
+Follow `.claude/docs/effort-transitions.md → FSD Update`. If $ARGUMENTS contains a slug that matches `workspace/efforts/{slug}.md`, stage the lifecycle/status edit with the workspace write guard. If the slug cannot be inferred, skip silently - not every fsd invocation comes from a design doc.
 
 ## Phase 8c: KB Update
 
