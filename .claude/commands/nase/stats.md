@@ -76,29 +76,14 @@ CHART=$(python3 .claude/scripts/stats-chart.py \
 
 Bar fill is `█`; empty buckets show `░` under the label so silent days/weeks stay visible. Max 10 rows tall, with `0`, max, and up to two mid Y-axis labels at counts that actually appear. The script handles cross-platform date math — no need for shell date arithmetic.
 
-Sample outputs (7-day per-day vs 30-day per-week):
+Sample shape (per-day form):
 
 ```
-23 ┤              ██
-   │              ██
-   │              ██
- 7 ┤        ██    ██
-   │        ██    ██
- 3 ┤  ██    ██    ██    ██    ██
- 0 ┼────────────────────────────
-      Thu  Fri  ░   ░   Mon Tue Wed
-       3    7   0   0   23  1   3
-```
-
-```
-78 ┤  ██
-   │  ██
-51 ┤  ██        ██
-46 ┤  ██  ██    ██
-37 ┤  ██  ██    ██  ██  ██
+ 7 ┤        ██
+ 3 ┤  ██    ██    ██
  0 ┼────────────────────
-      W17 W18 W19 W20 W21
-      78  46  51  37  36
+      Thu  Fri  ░   Mon
+       3    7   0   3
 ```
 
 ### 4. Print to chat (no report file)

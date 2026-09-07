@@ -116,6 +116,9 @@ assert_contains "fsd uses shared repo task flow" .claude/commands/nase/fsd.md 'r
 assert_not_contains "fsd no inline diff algorithm" .claude/commands/nase/fsd.md 'Include the full diff for changed files only when'
 assert_contains "verification bundle doc names script" .claude/docs/verification-bundle.md 'verify-bundle\.py'
 assert_contains "verification bundle blocks candidate secrets before review" .claude/docs/verification-bundle.md 'secret preflight'
+# Existence alone kept this doc alive while nothing loaded it. Assert the workflow that
+# builds the bundle actually points at its contract, so an unreachable doc fails here.
+assert_contains "bundle build points at the artifact contract" .claude/docs/fsd-implementation-loop.md 'verification-bundle\.md'
 assert_contains "verify mode uses structured reducer contract" .claude/docs/review-modes.md 'sole result schema and validation authority'
 assert_not_contains "verify mode has no legacy FSD verdict" .claude/docs/review-modes.md 'Used by `/nase:fsd` as the pre-push gate'
 assert_contains "verify mode inlines exact bundle contents" .claude/docs/review-modes.md '{exact_bundle_contents}'

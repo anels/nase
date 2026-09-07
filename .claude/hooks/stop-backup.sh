@@ -267,9 +267,14 @@ if [ -f "$NASE_ROOT/workspace/config.md" ]; then
 fi
 
 if [ "$MIN_INTERVAL_MINUTES" -gt 0 ]; then
-  # `pipefail` propagates ls's exit status when the glob matches nothing, which
-  # would abort the run under `set -e` instead of falling through to a backup.
-  NEWEST_ARCHIVE=$(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort | tail -1 || true)
+  # Glob rather than parse `ls`. These names are ASCII digits and hyphens, so the
+  # shell's own ordering is chronological and the last match is the newest. The
+  # `-e` guard is what handles no-match, where the pattern comes back literal.
+  NEWEST_ARCHIVE=""
+  for archive_candidate in "$TARGET"/nase-backup-*.zip; do
+    [ -e "$archive_candidate" ] || continue
+    NEWEST_ARCHIVE="$archive_candidate"
+  done
   if [ -n "$NEWEST_ARCHIVE" ] && [ -f "$NEWEST_ARCHIVE" ] && [ ! -L "$NEWEST_ARCHIVE" ]; then
     # A negative age means the newest name carries a future timestamp, so the
     # elapsed interval is unknown. Back up rather than throttle on bad input.
@@ -568,9 +573,16 @@ fi
 # bound on how many archives one day contributes, which is how this target
 # reached four figures.
 # ---------------------------------------------------------------------------
-# Collect backup zips sorted ascending by name (= chronological order)
+# Collect backup zips ascending by name (= chronological order). Globbing instead of
+# parsing `ls` matters more here than at the throttle read: this list feeds `rm -f`.
 BACKUPS=()
-while IFS= read -r line; do BACKUPS+=("$line"); done < <(ls -1 "$TARGET"/nase-backup-*.zip 2>/dev/null | sort)
+for archive_candidate in "$TARGET"/nase-backup-*.zip; do
+  # `-e` alone would drop a dangling symlink, which the previous `ls -1` listed and
+  # `rm -f` removed. Retention deleting less than before is a behavior change, so the
+  # `-L` arm keeps the set identical; the no-match case still falls through.
+  [ -e "$archive_candidate" ] || [ -L "$archive_candidate" ] || continue
+  BACKUPS+=("$archive_candidate")
+done
 DELETED=0
 
 if [ -n "$RETENTION_DAYS" ]; then

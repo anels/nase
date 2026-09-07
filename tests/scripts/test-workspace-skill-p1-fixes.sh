@@ -168,6 +168,22 @@ if [[ -d workspace/skills ]]; then
   fi
 fi
 
+# These five carried the same preamble as pasted prose in two drifting phrasings. It now
+# lives in one doc, so the contract is gated in two parts the way D10 gates the workspace
+# write guard: the shared doc must carry each rule, and every consumer must point at it.
+# Asserting only the pointer would let an edit to the doc silently disarm all five.
+REPO_WRITE_PREAMBLE=workspace/skills/docs/repo-write-preamble.md
+assert_contains "repo-write preamble requires the repo task flow" \
+  "$REPO_WRITE_PREAMBLE" '.claude/docs/repo-task-flow.md'
+assert_contains "repo-write preamble blocks protected branches" \
+  "$REPO_WRITE_PREAMBLE" 'release/*'
+assert_contains "repo-write preamble names the recorded git state" \
+  "$REPO_WRITE_PREAMBLE" 'git status --short'
+assert_contains "repo-write preamble gates external writes" \
+  "$REPO_WRITE_PREAMBLE" '.claude/docs/external-mutation-policy.md'
+assert_contains "repo-write preamble keeps the workspace write guard" \
+  "$REPO_WRITE_PREAMBLE" 'workspace-write-guard.md'
+
 for repo_skill in \
   workspace/skills/doc-pr-head-ground-scan.md \
   workspace/skills/satisfy-sonar-new-coverage.md \
@@ -175,12 +191,8 @@ for repo_skill in \
   workspace/skills/repo-docs-with-ascii.md \
   workspace/skills/optimize-skills-from-lessons.md
 do
-  assert_contains "$(basename "$repo_skill") uses repo task flow" \
-    "$repo_skill" '.claude/docs/repo-task-flow.md'
-  assert_contains "$(basename "$repo_skill") blocks protected branches" \
-    "$repo_skill" 'release/*'
-  assert_contains "$(basename "$repo_skill") gates external writes" \
-    "$repo_skill" '.claude/docs/external-mutation-policy.md'
+  assert_contains "$(basename "$repo_skill") loads the repo-write preamble" \
+    "$repo_skill" 'repo-write-preamble.md'
 done
 
 assert_not_contains "Confluence internalize does not misuse workspace guard for repo paths" \
