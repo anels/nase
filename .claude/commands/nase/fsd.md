@@ -2,9 +2,7 @@
 name: nase:fsd
 description: "Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, fire and forget, or feature/fix handoff."
 argument-hint: "<task description or effort doc>"
-pattern: pipeline
 category: Design & implementation
-sub-patterns: [supervisor]
 ---
 
 Confirm execution options upfront, then continue through implementation until done or blocked.

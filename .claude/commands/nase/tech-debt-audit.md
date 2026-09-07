@@ -2,7 +2,6 @@
 name: nase:tech-debt-audit
 description: "Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for tech debt audit, architecture review, or modernization."
 argument-hint: "<repo-path>"
-pattern: pipeline
 category: Security & maintenance
 ---
 

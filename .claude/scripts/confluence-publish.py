@@ -42,6 +42,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 
 EXIT_OVERSIZE = 3
 EXIT_NESTING = 4
+# A keychain lookup that has not answered in this long is waiting on a GUI prompt,
+# not on disk.
+KEYCHAIN_TIMEOUT_SECONDS = 15
 
 CAP_BYTES = 70000
 DEFAULT_THRESHOLD = {"html": 55000, "markdown": 35000}
@@ -1138,17 +1141,39 @@ def api_token(service: str, account: str) -> str:
     environment variable is the supported path; it is read only after the
     keychain lookup fails, so a stale export never shadows the real token.
     """
+    keychain_timed_out = False
     if shutil.which("security"):
-        done = subprocess.run(
-            ["security", "find-generic-password", "-w", "-s", service, "-a", account],
-            capture_output=True, text=True,
-        )
-        if done.returncode == 0 and done.stdout.strip():
-            return done.stdout.strip()
+        try:
+            # `security` normally answers instantly, but an item whose ACL requires
+            # confirmation makes it sit on a GUI prompt that a headless run can never
+            # answer. Time out into the environment path instead of hanging the publish.
+            done = subprocess.run(
+                ["security", "find-generic-password", "-w", "-s", service, "-a", account],
+                capture_output=True, text=True, timeout=KEYCHAIN_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            # Bound no name to the exception: its captured stdout holds a partial read
+            # of this buffer, which is a fragment of the token.
+            keychain_timed_out = True
+        else:
+            if done.returncode == 0 and done.stdout.strip():
+                return done.stdout.strip()
 
     from_env = os.environ.get(TOKEN_ENV, "").strip()
     if from_env:
         return from_env
+
+    if keychain_timed_out:
+        # The stored item is very likely fine, so telling the user to add one would send
+        # them to fix the wrong thing.
+        raise RuntimeError(
+            "the keychain lookup for %r did not answer within %ds, and %s is unset.\n"
+            "  A keychain item whose ACL asks for confirmation blocks until someone clicks the\n"
+            "  prompt, which a headless run cannot do. Either approve it once in the GUI and\n"
+            "  choose Always Allow, or bypass the keychain for this run:\n"
+            "    export %s=<token>"
+            % (account, KEYCHAIN_TIMEOUT_SECONDS, TOKEN_ENV, TOKEN_ENV)
+        )
 
     raise RuntimeError(
         "no Atlassian API token found for %r.\n"

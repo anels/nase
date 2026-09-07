@@ -637,5 +637,72 @@ else
   report 1 "claimed token is consumed after execution"
 fi
 
+# A rejected timeout must be caught before the token is claimed, otherwise bad input
+# burns an approval the user has to give again. Asserting rc=2 alone would not show
+# that: a spent token returns 2 as well. The surviving token file is the discriminator.
+manifest=$(prepare_action)
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+expect_rc "non-positive execute timeout is rejected" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest" --timeout-seconds 0
+if [[ -e "$TMPDIR_TEST/workspace/.external-write-token" ]]; then
+  report 0 "a rejected timeout leaves the approval token unspent"
+else
+  report 1 "a rejected timeout leaves the approval token unspent"
+fi
+
+# Exit 11, not the generic failure code: a killed write may already have landed, so
+# the caller must not read it as "nothing happened". Reuses the token still standing
+# from the rejected call above.
+timeout_rc=0
+NASE_FAKE_OUTPUT="$TMPDIR_TEST/gh-timeout-args" NASE_FAKE_WAIT=5 PATH="$TMPDIR_TEST/bin:$PATH" \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest" \
+  --timeout-seconds 1 > "$TMPDIR_TEST/timeout.out" 2> "$TMPDIR_TEST/timeout.err" || timeout_rc=$?
+if [[ "$timeout_rc" -eq 11 ]] \
+  && grep -q 'TIMEOUT' "$TMPDIR_TEST/timeout.err" \
+  && grep -q 'MAY already have been applied' "$TMPDIR_TEST/timeout.err" \
+  && [[ ! -e "$TMPDIR_TEST/workspace/.external-write-token" ]] \
+  && ! compgen -G "$TMPDIR_TEST/workspace/.external-write-token.executing-*" >/dev/null; then
+  report 0 "hung write is killed, reported as unknown-outcome, and consumes the token"
+else
+  report 1 "hung write is killed, reported as unknown-outcome, and consumes the token" \
+    "rc=$timeout_rc err=$(tr '\n' ' ' < "$TMPDIR_TEST/timeout.err")"
+fi
+
+# The token and actor lookups run before the mutation, so bounding only the mutation
+# would move the hang here instead of removing it. A preflight stall is a clean exit 2:
+# nothing ran, and the manifest's own fake gh never gets reached.
+mkdir -p "$TMPDIR_TEST/hangbin"
+cat > "$TMPDIR_TEST/hangbin/gh" <<'SH'
+#!/usr/bin/env bash
+if [[ "${1:-} ${2:-}" == "auth token" ]]; then
+  sleep 30
+fi
+exit 0
+SH
+chmod +x "$TMPDIR_TEST/hangbin/gh"
+manifest=$(prepare_action)
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+preflight_rc=0
+PATH="$TMPDIR_TEST/hangbin:$PATH" \
+  python3 - "$SCRIPT" "$TMPDIR_TEST" "$manifest" > "$TMPDIR_TEST/preflight.out" \
+  2> "$TMPDIR_TEST/preflight.err" <<'PY' || preflight_rc=$?
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("external_write_action", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 1
+sys.argv = ["external-write-action.py", "--root", sys.argv[2], "execute", "--manifest", sys.argv[3]]
+raise SystemExit(module.main())
+PY
+if [[ "$preflight_rc" -eq 2 ]] && grep -q 'timed out' "$TMPDIR_TEST/preflight.err" \
+  && grep -q 'nothing was mutated' "$TMPDIR_TEST/preflight.err"; then
+  report 0 "a hung preflight gh call is bounded and reported as nothing-mutated"
+else
+  report 1 "a hung preflight gh call is bounded and reported as nothing-mutated" \
+    "rc=$preflight_rc err=$(tr '\n' ' ' < "$TMPDIR_TEST/preflight.err")"
+fi
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

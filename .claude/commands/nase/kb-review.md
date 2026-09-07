@@ -2,9 +2,7 @@
 name: nase:kb-review
 description: "Audit and repair KB plus workspace state for stale data, broken references, credential exposure, unsafe backup or restore behavior, and lifecycle drift. Use for review KB, workspace hygiene, clean up KB, or periodic health checks."
 argument-hint: "[workspace/path] [--kb-only] [--report-only|--repair]"
-pattern: pipeline
 category: Knowledge base
-sub-patterns: [fan-out]
 ---
 
 Audit the KB and the workspace mechanisms that keep it trustworthy, then apply only approved changes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/workspace-write-guard.md`.

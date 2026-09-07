@@ -2,7 +2,6 @@
 name: nase:learn
 description: "Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, deep dive, or article URL."
 argument-hint: "<tip/url/repo/topic>"
-pattern: expert-pool
 category: Learning & reflection
 ---
 

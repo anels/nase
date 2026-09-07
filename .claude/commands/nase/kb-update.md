@@ -2,7 +2,6 @@
 name: nase:kb-update
 description: "Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns."
 argument-hint: "<repo/topic/fact>"
-pattern: pipeline
 category: Knowledge base
 ---
 

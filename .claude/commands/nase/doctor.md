@@ -2,7 +2,6 @@
 name: nase:doctor
 description: "Diagnose nase workspace configuration, hooks, backups, tools, and skill sync. Use for doctor, health check, hooks not firing, backup warnings, or after migration."
 argument-hint: "[--deep]"
-pattern: utility
 category: Setup & health
 ---
 

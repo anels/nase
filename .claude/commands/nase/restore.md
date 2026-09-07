@@ -2,7 +2,6 @@
 name: nase:restore
 description: "Restore workspace/ from a backup. Use after migration or deletion, when local state is out of sync, or for sync workspace, recover workspace, restore backup, or pull backup."
 argument-hint: "[backup path]"
-pattern: pipeline
 category: Backup & restore
 ---
 

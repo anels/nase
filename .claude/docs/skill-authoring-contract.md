@@ -11,7 +11,7 @@
 - 5. AskUserQuestion discipline
 - 6. Bash hygiene
 - 7. Subagent context isolation
-- 8. Anti-overlap rule ("Saying yes = saying no") + team-architecture pattern
+- 8. Anti-overlap rule ("Saying yes = saying no")
 - 9. Output discipline (delegated)
 - 10. Skill-invocation error handling
 - 11. Authoring self-review: failure modes & invocation cost (advisory)
@@ -125,47 +125,26 @@ After completion: read the artifact file back, then delete it (`workspace/tmp/` 
 
 ---
 
-## 8. Anti-overlap rule ("Saying yes = saying no") + team-architecture pattern
+## 8. Anti-overlap rule ("Saying yes = saying no")
 
 CLAUDE.md §"Saying yes = saying no" applies at skill-creation time. Before authoring a new skill:
 
 1. Grep existing trigger keywords across `.claude/commands/nase/*.md` + `workspace/skills/*.md` for overlap
 2. Answer in your PR description: "what existing skill does this make redundant, and if none, why isn't this a flag on an existing one?"
 3. Refuse to ship if two skills share >50% of their trigger surface — fold into a `--flag` instead
-4. Declare the team-architecture `pattern` in frontmatter (see vocabulary below). If the skill composes patterns (e.g. supervisor wrapping a fan-out), list `sub-patterns`.
 
 Counter-example: `/nase:learn` + `/nase:workspace:learn-with-exa` shipped with overlapping triggers ("learn", topic keywords) for 6 weeks before being folded into `/nase:learn --exa`. Don't repeat.
 
-### Pattern vocabulary
+Rule 3 has no CI enforcement. `tests/check-skill-overlap.sh` prints a lexical
+trigger-phrasing score and warns at >=12%, but it always exits 0 and its own output
+says the signal does not replace semantic review, so treat it as a place to look,
+never as a gate that would have stopped you.
 
-Pattern is a documentation tag — it does not change runtime behavior. The point is to make protocol surface readable when scanning many skills.
-
-| Pattern | When to pick |
-|---|---|
-| `pipeline` | Strict-order stages, each step's output feeds the next, no branching. Default for `fsd`/`design`/`onboard`/`learn`/`tech-digest` style flows. |
-| `fan-out` | Parallel independent specialist agents + fan-in merge. Pick when 3+ subagents can run with disjoint inputs. Example: `/nase:discuss-pr`. |
-| `expert-pool` | Input dispatcher routes to one branch out of N. Example: `/nase:learn` routes by input type (URL / keyword / tip / empty). |
-| `producer-reviewer` | Generation step + independent reviewer (agent or human gate). Example: `/nase:workspace:doc-pr-head-ground-scan`. |
-| `supervisor` | Centralized dynamic distribution to subagents (decided at runtime). Rare in nase — Agent-tool main thread already supplies this implicitly; only tag when the skill itself explicitly dispatches. |
-| `utility` | Read-only display / single-pass transform with no team coordination. Example: `/nase:help`, `/nase:stats`, `/nase:reflect`. |
-
-Deliberately not used: `hierarchical-delegation` — recursive top-down delegation is over-engineering for a single-operator workspace.
-
-### Frontmatter field
-
-```yaml
----
-description: ...
-pattern: pipeline
-sub-patterns: []     # optional; list combinations, e.g. [pipeline, supervisor] for fsd
----
-```
-
-Use one of: `pipeline`, `fan-out`, `expert-pool`, `producer-reviewer`, `supervisor`, `utility`.
-
-Required for every core skill under `.claude/commands/nase/*.md`. Put pattern reasoning in the PR or effort doc when it matters.
-
-CI check: `tests/check-skill-doctrine.sh → D9` (hard fail).
+A `pattern:` / `sub-patterns:` frontmatter key used to be required here to tag each
+skill's team-architecture shape. It was retired: it changed no runtime behavior, no
+renderer read it, and its stated value (being scannable across many skills) was
+never realized, so it cost a required field plus a hard CI gate and bought nothing.
+Describe the shape in the skill's own prose where a reader needs it.
 
 ---
 

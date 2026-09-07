@@ -2,7 +2,6 @@
 name: nase:effort-rollup
 description: "Build a monthly delivery report from live PR and Jira state. Use for effort rollup, impact report, month in review, or what did I ship."
 argument-hint: "<YYYY-MM> [--repo <name>] [--md-only]"
-pattern: utility
 category: Reporting
 ---
 

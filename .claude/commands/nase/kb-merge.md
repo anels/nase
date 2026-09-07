@@ -2,7 +2,6 @@
 name: nase:kb-merge
 description: "Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export."
 argument-hint: "<source-kb-path>"
-pattern: pipeline
 category: Knowledge base
 ---
 

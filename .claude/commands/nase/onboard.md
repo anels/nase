@@ -2,9 +2,7 @@
 name: nase:onboard
 description: "Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL."
 argument-hint: "[repo-path-or-url|--force]"
-pattern: pipeline
 category: Knowledge base
-sub-patterns: [fan-out]
 ---
 
 Build or refresh compact repo knowledge without dumping the repository into context. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/kb-write-routing.md -> Shared admission contract`, and `.claude/docs/kb-template.md`.

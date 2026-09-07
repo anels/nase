@@ -50,6 +50,27 @@ python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
+### `execute` exit codes
+
+Read the exit code before reporting an outcome. Only `0` means the write landed.
+
+| Code | Meaning | What to do |
+|---|---|---|
+| `0` | The CLI succeeded. | Report the write as done. |
+| non-zero from the CLI | The CLI ran and failed; its own exit code passes through. | Report the failure with the CLI's stderr. Nothing landed unless the CLI says otherwise. |
+| `2` | The helper refused: stale or missing token, manifest drift, payload drift, changed owner/account mapping, or a preflight `gh` call that timed out. Nothing was executed. | Fix what it names, then prepare and approve again. |
+| `11` | The CLI exceeded `--timeout-seconds` (default 900) and was killed. **The outcome is unknown** - it may have applied the mutation first. | Read the target state before deciding anything. Never report this as either success or failure, and never retry blind: the one-shot token is spent, so a retry needs a fresh preview and approval. |
+
+`11` exists because a bounded hang and a failed write are different facts and a caller
+cannot tell them apart from a generic non-zero. A killed CLI also only receives the
+signal itself, so a helper process it spawned can outlive it.
+
+`11` is not a reserved range, so a CLI that natively exits `11` is indistinguishable by
+code alone. The helper prints a `TIMEOUT:` line to stderr when it is the one that gave
+up - read that, not the number, when it matters. The collision fails safe in the
+direction that matters: a CLI failure read as unknown sends you to check state, while
+a timeout read as a clean failure would not.
+
 The helper stores a local manifest and a one-shot 300-second token. Before the
 confirmation, show the exact argv, target, side effects, payload-file content (or
 the structured fields it contains), and each payload SHA - a path and hash alone

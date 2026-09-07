@@ -14,6 +14,15 @@ from pathlib import Path
 from typing import Any
 
 
+# One `gh` call. Thread pagination issues many of them, so this bounds a single
+# hung call, not the whole command.
+GH_TIMEOUT_SECONDS = 60
+# GNU `timeout`'s convention, so a caller can tell a stalled read from a gh error.
+GH_TIMEOUT_EXIT = 124
+# `kb-search.sh` re-walks workspace/kb per call and is measurably the slowest thing
+# this helper invokes, so it gets its own, wider bound.
+KB_SEARCH_TIMEOUT_SECONDS = 45
+
 LIGHT_FIELDS = (
     "number",
     "title",
@@ -230,7 +239,9 @@ def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
 
 
 def run_gh(args: list[str]) -> str:
-    completed = subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE)
+    completed = subprocess.run(
+        args, check=True, text=True, stdout=subprocess.PIPE, timeout=GH_TIMEOUT_SECONDS
+    )
     return completed.stdout
 
 
@@ -422,14 +433,22 @@ def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, An
         return []
     mentions: list[dict[str, Any]] = []
     for path in paths[:max_paths]:
-        result = subprocess.run(
-            ["bash", str(script), f"mentions:{path}", "--max-entry-lines", "8"],
-            cwd=root,
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            result = subprocess.run(
+                ["bash", str(script), f"mentions:{path}", "--max-entry-lines", "8"],
+                cwd=root,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=KB_SEARCH_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            # KB mentions enrich the dossier; they are not what the caller asked for.
+            # A slow scan drops its own row rather than taking the whole command with
+            # it, which is what happened before this bound existed.
+            mentions.append({"path": path, "hits": "", "unavailable": "kb-search timed out"})
+            continue
         text = result.stdout.strip()
         if result.returncode == 0 and text:
             mentions.append({"path": path, "hits": trunc(text, 1200)})
@@ -876,6 +895,17 @@ def main(argv: list[str]) -> int:
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except subprocess.TimeoutExpired as exc:
+        # Every call here is a read, so a kill loses nothing but the answer. Name the
+        # command: a stalled `gh` looks identical to a slow network from the outside.
+        # `cmd` is a list for every call site here, but subprocess also allows a bare
+        # string, and joining that would print the command one character at a time.
+        if isinstance(exc.cmd, (list, tuple)):
+            command = " ".join(map(str, exc.cmd))
+        else:
+            command = str(exc.cmd)
+        print(f"error: command timed out after {exc.timeout:.0f}s: {command}", file=sys.stderr)
+        return GH_TIMEOUT_EXIT
     except subprocess.CalledProcessError as exc:
         return exc.returncode
 

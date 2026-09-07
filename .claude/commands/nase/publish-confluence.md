@@ -2,7 +2,6 @@
 name: nase:publish-confluence
 description: "Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts preserved. Use for publish to Confluence, share this report, put this on the wiki, or a local report path."
 argument-hint: "<path-to-md-or-html> [--space KEY] [--parent ID] [--rasterize-only CLASS]"
-pattern: pipeline
 category: Reporting
 ---
 

@@ -2,9 +2,7 @@
 name: nase:request-review
 description: "Find appropriate PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, request approval, notify reviewers, or ping code owners."
 argument-hint: "<pr-url> [reviewers]"
-pattern: pipeline
 category: Git workflow
-sub-patterns: [fan-out]
 ---
 
 # PR Review Requester
