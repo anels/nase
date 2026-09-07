@@ -317,6 +317,36 @@ expect_guard_rc "backtick inside a nested bash -c script is blocked" 10 'bash -c
 expect_guard_rc "unterminated single quote naming no guarded CLI is allowed" 0 "printf 'unterminated"
 expect_guard_rc "unterminated single quote naming a guarded CLI stays fail-closed" 10 \
   "gh pr create --title 'unterminated"
+# An unlexable command must still reach the later checks: the unrecognized-CLI check's
+# shell-pipe arm reads the raw command text and does not need the lexer at all.
+expect_guard_rc "an unlexable command piped into a shell stays blocked" 10 \
+  "printf 'unterminated | bash"
+expect_guard_rc "an unlexable command redirected into a shell stays blocked" 10 \
+  "printf 'unterminated < bash"
+
+# A construct whose target cannot be bound is blocked by the unrecognized-CLI check
+# regardless of any guarded name, because `command_argvs` cannot say what it will run.
+# Only the constructs that stay lexable and keep a static executable - a substitution or
+# backtick in an argument, a function body - depend on the guarded-name scan.
+expect_guard_rc "eval is blocked with no guarded CLI named" 10 'eval "ls -la"'
+expect_guard_rc "source is blocked with no guarded CLI named" 10 "source ./setup.sh"
+expect_guard_rc "alias is blocked with no guarded CLI named" 10 "alias ll=ls; ll"
+expect_guard_rc "a pipe into a shell is blocked with no guarded CLI named" 10 "echo hi | bash"
+expect_guard_rc "a herestring into a shell is blocked with no guarded CLI named" 10 \
+  "bash <<< 'ls -la'"
+expect_guard_rc "a function definition naming no guarded CLI is allowed" 0 "f() { ls; }; f"
+
+# The two shapes the policy doc names as outside this guard's reach. Pinned so the doc
+# and the guard cannot drift apart, and so a later narrowing that closes one of them
+# fails here and gets the doc updated with it.
+expect_guard_rc "a guarded name assembled into a variable is not seen" 0 \
+  "X=\$(printf 'g''h'); \$X pr create"
+expect_guard_rc "a script the guard cannot read is allowed to run" 0 "bash deploy.sh"
+expect_guard_rc "a task runner is allowed to run" 0 "make deploy"
+# But a substitution in the executable position is not a way through: an executable the
+# guard cannot read is what the unrecognized-CLI check exists for.
+expect_guard_rc "a substitution in the executable position is blocked" 10 \
+  "\$(printf 'g''h') pr create"
 # `github` and `terraform-docs` merely start with a guarded name; a path prefix does not.
 expect_guard_rc "a longer word starting with a guarded name is not a mention" 0 \
   'echo "see github.com and terraform-docs: $(date)"'

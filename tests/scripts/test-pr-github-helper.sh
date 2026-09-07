@@ -296,6 +296,49 @@ assert data["issueComments"][0]["authorIsBot"] is True
 assert data["kbMentions"] == []
 PY
 
+# kb-search.sh exits 2 for "no mentions" and any other non-zero when the scan itself
+# failed. Collapsing those two into one empty row reports a broken KB read as "nothing
+# references this file", which is a claim the reader acts on.
+assert_cmd "kb mentions separate an empty answer from a failed scan" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+real_run = subprocess.run
+
+
+def stub(exit_code, out="", err=""):
+    def fake(argv, **kwargs):
+        if argv[:1] == ["bash"] and "kb-search.sh" in str(argv[1]):
+            return subprocess.CompletedProcess(argv, exit_code, out, err)
+        return real_run(argv, **kwargs)
+    return fake
+
+
+try:
+    subprocess.run = stub(0, out="## KB Search - hit\n")
+    hits = module.kb_mentions_for_paths(["src/a.ts"], 1)
+    assert len(hits) == 1 and hits[0]["hits"], hits
+    assert "unavailable" not in hits[0], hits
+
+    subprocess.run = stub(2)
+    empty = module.kb_mentions_for_paths(["src/a.ts"], 1)
+    assert empty == [], empty
+
+    subprocess.run = stub(1, err="kb-search.sh: usage error\n")
+    broken = module.kb_mentions_for_paths(["src/a.ts"], 1)
+    assert len(broken) == 1, broken
+    assert broken[0]["hits"] == "", broken
+    assert "exited 1" in broken[0]["unavailable"], broken
+    assert "usage error" in broken[0]["unavailable"], broken
+finally:
+    subprocess.run = real_run
+PY
+
 dossiers_out="$TMPDIR_TEST/dossiers.json"
 PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" comment-dossiers "acme/widgets#42" --local-repo "$repo" --unresolved-only --context-lines 1 --max-body-chars 16 > "$dossiers_out"
 assert_cmd "comment-dossiers includes unresolved local excerpts and diff flag" "$PYTHON_BIN" - "$dossiers_out" <<'PY'

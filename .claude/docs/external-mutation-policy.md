@@ -108,25 +108,48 @@ be installed at once.
 
 ### What the CLI guard does with a command it cannot parse
 
-`gh`, `az`, `kubectl`, and `terraform` are the four guarded executables. A command
-carrying a construct whose target cannot be bound statically - a `$(...)`, a backtick, an
-`eval`, a function definition, a pipe into a shell - is blocked **only when one of those
-four names appears in the command text**. That includes a name reachable only at run time,
-because the scan reads the raw string: `eval 'gh pr create'` and `f() { gh pr create; }; f`
-both block even though no `gh` ever reaches an executable position.
+`gh`, `az`, `kubectl`, and `terraform` are the four guarded executables. `guard` runs
+three checks in order, and only the first of them consults those names:
 
-Everything else with a dynamic construct is allowed through to the mutation and
-unrecognized-CLI checks. Blocking every unparseable command instead blocks the read-only
-majority, and a `$(git rev-parse HEAD)` inside an `echo` was never something this guard
-protects. Two consequences worth knowing:
+1. **Unbindable target, guarded name present.** A `$(...)`, a backtick, or a function
+   definition leaves the command lexable but its target unknown. That blocks only when one
+   of the four names appears in the raw command text. Reading the raw string rather than
+   the lexed segments is what catches a name the lexer cannot see:
+   `echo "count: $(gh pr list)"` has it inside a substitution and
+   `f() { gh pr create; }; f` never puts it in an executable position, so neither lexes to
+   a `gh` invocation. Drop the name from either - `echo "count: $(date)"`,
+   `f() { ls; }; f` - and both are allowed.
+2. **Mutation.** A statically bound guarded invocation that mutates: `gh pr create`,
+   `terraform apply`, `kubectl delete`.
+3. **Unrecognized or unenumerable invocation.** A guarded invocation the read-only
+   allowlist does not recognize, **and** every construct whose executed command cannot be
+   enumerated at all. `eval`, `source`, `alias`, a pipe into a shell, and a shell fed a
+   herestring are in the second class, so `eval "ls -la"` and `echo hi | bash` block with
+   no guarded name anywhere. This check reads the raw command text for the shell-pipe
+   forms, so it does not need the lexer to succeed.
+
+So a dynamic construct alone does not block, and a guarded name is not what decides it in
+every case: check 1 needs the name, check 3 does not. A `$(git rev-parse HEAD)` inside an
+`echo` reaches none of them, which is the point - blocking every command the parser cannot
+bind blocked the read-only majority for nothing. Three consequences worth knowing:
 
 - **Heredoc bodies are data, not commands.** `cat > file <<EOF` writes prose; its lines are
   not lexed as invocations, so a backtick or a guarded verb sitting in that prose no longer
   blocks the write. The exception is a heredoc feeding a shell (`bash <<EOF`), where the
   body really is executed and keeps being read as commands.
-- **A name assembled by substitution is out of reach.** `$(printf 'g''h') pr create` has no
-  `gh` in its text and no static executable, so nothing here sees it. This guard bounds the
-  commands this agent writes by mistake; it is not a sandbox against a hostile author.
+- **What this guard cannot see.** Two shapes, both measured. A name assembled into a
+  variable: `X=$(printf 'g''h'); $X pr create` carries no `gh` in its text, so check 1
+  declines and nothing later can bind it. And anything a script or task runner executes
+  for itself: `bash deploy.sh`, `./deploy.sh`, `make deploy`, and `npm run deploy` are all
+  allowed, whatever the file goes on to run. Note that putting the substitution in the
+  executable position does *not* slip through - `$(printf 'g''h') pr create` is blocked by
+  check 3, because an executable it cannot read is exactly what that check is for. This
+  guard bounds the commands this agent writes by mistake; it is not a sandbox against a
+  hostile author.
+- **An unlexable command still reaches checks 2 and 3.** `printf 'unterminated` lexes to
+  nothing and is allowed, but `printf 'unterminated | bash` is blocked by check 3, whose
+  shell-pipe arm reads the text rather than the segments. "Cannot be lexed" is therefore
+  not a shortcut to "allowed": only checks 1 through 3 all declining is.
 
 ### Jira token contract
 
