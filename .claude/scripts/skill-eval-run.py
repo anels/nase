@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.util
 import io
 import json
@@ -20,6 +19,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+from nase_fs import atomic_write, sha256_bytes  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -70,12 +74,8 @@ def canonical_bytes(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def file_sha(path: Path) -> str:
-    return sha256(path.read_bytes())
+    return sha256_bytes(path.read_bytes())
 
 
 def utc_now() -> str:
@@ -100,30 +100,16 @@ def safe_directory(value: str | None, default: Path, label: str) -> Path:
     return resolved
 
 
-def atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False) as handle:
-        temporary = Path(handle.name)
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
 def scan_bytes(data: bytes) -> str | None:
     hit = SECRET.scan_stream_for_secret(io.BytesIO(data))
     return str(hit[0]) if hit else None
 
 
 def command_inventory() -> list[dict[str, str]]:
-    completed = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files", "-z", ".claude/commands/nase/*.md", ".claude/commands/nase/**/*.md"],
+    completed = nase_git.run(
+        "ls-files", "-z", ".claude/commands/nase/*.md", ".claude/commands/nase/**/*.md",
+        repo=REPO_ROOT,
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
     inventory: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -143,7 +129,7 @@ def command_inventory() -> list[dict[str, str]]:
 
 
 def inventory_binding(inventory: list[dict[str, str]]) -> dict[str, Any]:
-    return {"sha256": sha256(canonical_bytes(inventory)), "count": len(inventory)}
+    return {"sha256": sha256_bytes(canonical_bytes(inventory)), "count": len(inventory)}
 
 
 def tree_binding(root: Path) -> tuple[str, dict[str, str]]:
@@ -156,7 +142,7 @@ def tree_binding(root: Path) -> tuple[str, dict[str, str]]:
         digest = file_sha(path)
         hashes[relative] = digest
         entries.append({"path": relative, "sha256": digest})
-    return sha256(canonical_bytes(entries)), hashes
+    return sha256_bytes(canonical_bytes(entries)), hashes
 
 
 def copy_file(source: Path, target: Path) -> None:
@@ -165,7 +151,7 @@ def copy_file(source: Path, target: Path) -> None:
 
 
 def initialize_repo(project: Path) -> None:
-    subprocess.run(["git", "init", "-q", str(project)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    nase_git.run("init", "-q", str(project), check=True)
 
 
 def install_inventory(project: Path, inventory: list[dict[str, str]]) -> None:
@@ -296,7 +282,7 @@ def invoke(
         {
             "returncode": completed.returncode,
             "duration_ms": parsed.get("duration_ms") or int((time.monotonic() - started) * 1000),
-            "stderr_sha256": sha256(completed.stderr.encode()) if completed.stderr else None,
+            "stderr_sha256": sha256_bytes(completed.stderr.encode()) if completed.stderr else None,
         }
     )
     if completed.returncode != 0:
@@ -398,7 +384,7 @@ def base_receipt(
         "case": {
             "id": case["id"],
             "score_case_id": case.get("score_case"),
-            "prompt_sha256": sha256(prompt.encode()),
+            "prompt_sha256": sha256_bytes(prompt.encode()),
             "expect": case.get("expect"),
         },
         "skill": {
@@ -517,7 +503,7 @@ def run_routing(args: argparse.Namespace) -> int:
             "returncode": parsed.get("returncode"),
             "duration_ms": parsed.get("duration_ms"),
             "total_cost_usd": parsed.get("total_cost_usd", 0),
-            "result_hash": sha256(result_bytes),
+            "result_hash": sha256_bytes(result_bytes),
             "stderr_sha256": parsed.get("stderr_sha256"),
             "parse_warnings": parsed.get("parse_warnings", 0),
         }
@@ -563,7 +549,7 @@ def output_controls(parsed: dict[str, Any], case: dict[str, Any], forbidden: str
             for item in matching
         )
     result_text = str(parsed.get("result", ""))
-    canaries = {sha256(item.encode()): item in result_text for item in case["required_canaries"]}
+    canaries = {sha256_bytes(item.encode()): item in result_text for item in case["required_canaries"]}
     transcript_text = result_text + "\n" + "\n".join(str(value.get("content", "")) for value in results.values())
     return {
         "filesystem_boundary_ok": bool(forbidden_reads) and denied and forbidden not in transcript_text,
@@ -663,7 +649,7 @@ def run_output(args: argparse.Namespace) -> int:
             "path": case["fixture_dir"],
             "tree_sha256": fixture_sha,
             "required_read_hashes": {name: fixture_hashes[name] for name in case["required_reads"]},
-            "canary_hashes": [sha256(item.encode()) for item in case["required_canaries"]],
+            "canary_hashes": [sha256_bytes(item.encode()) for item in case["required_canaries"]],
         }
         receipt["runtime"] = {
             "claude_code_version": version,
@@ -672,8 +658,8 @@ def run_output(args: argparse.Namespace) -> int:
             "available_skills": parsed.get("available_skills", []),
             "isolation": {
                 "environment_policy": "allowlist-v1",
-                "filesystem_policy_sha256": sha256(settings),
-                "forbidden_canary_sha256": sha256(forbidden.encode()),
+                "filesystem_policy_sha256": sha256_bytes(settings),
+                "forbidden_canary_sha256": sha256_bytes(forbidden.encode()),
                 "forbidden_read_control": "passed" if controls["filesystem_boundary_ok"] else "failed",
             },
             "auth": auth,
@@ -690,13 +676,13 @@ def run_output(args: argparse.Namespace) -> int:
             "returncode": parsed.get("returncode"),
             "duration_ms": parsed.get("duration_ms"),
             "total_cost_usd": parsed.get("total_cost_usd", 0),
-            "result_hash": sha256(result_bytes),
+            "result_hash": sha256_bytes(result_bytes),
             "stderr_sha256": parsed.get("stderr_sha256"),
             "parse_warnings": parsed.get("parse_warnings", 0),
         }
         receipt["output"] = {
             "path": str(output_path.resolve()) if output_path else None,
-            "sha256": sha256(result_bytes) if output_path else None,
+            "sha256": sha256_bytes(result_bytes) if output_path else None,
             "score": score,
             "filesystem_boundary_ok": controls["filesystem_boundary_ok"],
             "required_reads": controls["required_reads"],
@@ -719,13 +705,13 @@ def current_binding(eval_path: Path, case: dict[str, Any], lane: str) -> dict[st
     binding: dict[str, Any] = {
         "eval_sha": file_sha(eval_path),
         "skill_sha": file_sha(skill_path),
-        "prompt_sha": sha256(prompt.encode()),
+        "prompt_sha": sha256_bytes(prompt.encode()),
     }
     if lane == "routing":
         binding["inventory"] = inventory_binding(command_inventory())
     else:
         binding["fixture_sha"] = tree_binding(eval_path.parent / case["fixture_dir"])[0]
-        binding["filesystem_policy_sha"] = sha256(canonical_bytes(FILESYSTEM_POLICY))
+        binding["filesystem_policy_sha"] = sha256_bytes(canonical_bytes(FILESYSTEM_POLICY))
     return binding
 
 
@@ -817,7 +803,7 @@ def output_receipt_passes(receipt: dict[str, Any]) -> bool:
     return (
         receipt.get("result", {}).get("status") == "pass"
         and len(data) <= OUTPUT_LIMIT
-        and output.get("sha256") == sha256(data)
+        and output.get("sha256") == sha256_bytes(data)
         and scan_bytes(data) is None
         and output.get("score", {}).get("ok") is True
         and output.get("filesystem_boundary_ok") is True

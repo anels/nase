@@ -11,6 +11,10 @@ import sys
 import uuid
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
 
 RETAINED = 3
 INVALID = 2
@@ -30,13 +34,16 @@ class GitError(RuntimeError):
     pass
 
 
-def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+def git(
+    repo: Path,
+    *args: str,
+    check: bool = True,
+    timeout: float = nase_git.GIT_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        result = nase_git.run(*args, repo=repo, text=True, timeout=timeout)
+    except nase_git.GitTimeout as exc:
+        raise GitError(str(exc)) from exc
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
         raise GitError(f"git {' '.join(args)}: {detail}")
@@ -44,11 +51,10 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
 
 
 def git_bytes(repo: Path, *args: str) -> bytes:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        result = nase_git.run(*args, repo=repo)
+    except nase_git.GitTimeout as exc:
+        raise GitError(str(exc)) from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).decode(errors="backslashreplace").strip()
         raise GitError(f"git {' '.join(args)}: {detail or f'exit {result.returncode}'}")
@@ -162,7 +168,19 @@ def retained(message: str, items: list[str] | None = None) -> int:
 
 
 def remote_oid(repo: Path, remote_name: str, remote_ref: str) -> tuple[str | None, str]:
-    result = git(repo, "ls-remote", "--exit-code", "--", remote_name, remote_ref, check=False)
+    try:
+        result = git(
+            repo, "ls-remote", "--exit-code", "--", remote_name, remote_ref,
+            check=False,
+            timeout=nase_git.GIT_NETWORK_TIMEOUT_SECONDS,
+        )
+    except GitError as exc:
+        # `check=False`, so `git` raises only from its timeout arm: a killed
+        # `ls-remote` and an unreachable ref are the same unverifiable state, and this
+        # function already reports that by returning no OID. Retaining the worktree is
+        # the safe end of that branch, so a stalled remote must not abort the sweep.
+        # Flipping `check` here would widen this to swallow real git failures.
+        return None, f"remote ref unavailable: {exc}"
     if result.returncode != 0:
         return None, result.stderr.strip() or "remote ref unavailable"
     matches = []

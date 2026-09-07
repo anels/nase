@@ -13,6 +13,10 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
 
 # One `gh` call. Thread pagination issues many of them, so this bounds a single
 # hung call, not the whole command.
@@ -246,13 +250,7 @@ def run_gh(args: list[str]) -> str:
 
 
 def run_git(repo: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=check,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    return nase_git.run(*args, repo=repo, text=True, check=check)
 
 
 def parse_json_documents(raw: str) -> list[Any]:

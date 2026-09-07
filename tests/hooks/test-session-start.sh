@@ -68,8 +68,10 @@ mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" "$repo/workspace/logs" \
   "$repo/workspace/skills" "$repo/workspace/kb/general"
 git -C "$repo" init -q
 cp "$HOOK" "$repo/.claude/hooks/session-start.sh"
+# nase_fs.py travels with workspace-archive, which takes its digest and durable-write
+# helpers from it.
 cp "$ROOT/.claude/scripts/workspace-archive.py" "$ROOT/.claude/scripts/workspace_lock.py" \
-  "$repo/.claude/scripts/"
+  "$ROOT/.claude/scripts/nase_fs.py" "$repo/.claude/scripts/"
 printf '%s\n' '2026-05-28T00:00:00 [WARNING] backup target unavailable' > "$repo/workspace/logs/.backup-status"
 printf 'backup-target=%s\n' "$fixture/backups" > "$repo/.local-paths"
 cat > "$repo/workspace/kb/general/tech-trends.md" <<'TRENDS'

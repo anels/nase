@@ -11,15 +11,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
+
+# The tool probe is the one call here that does not go through nase_git, so it carries
+# its own bound. A preflight that hangs looks exactly like one that is working, and the
+# probe mutates nothing, so a timeout is a clean failure of this run.
+TOOL_PROBE_TIMEOUT_SECONDS = 60
+
 
 def run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    return nase_git.run(*args, repo=repo, text=True)
 
 
 def lines(text: str) -> list[str]:
@@ -120,6 +124,7 @@ def tool_availability(root: Path) -> list[dict[str, Any]]:
         ],
         check=False,
         text=True,
+        timeout=TOOL_PROBE_TIMEOUT_SECONDS,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
     )

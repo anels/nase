@@ -112,10 +112,13 @@ spec.loader.exec_module(module)
 real_git = module.git
 
 
-def failing_contains(repo, *args):
+def failing_contains(repo, *args, **kwargs):
+    # `**kwargs` forwards whatever the real signature takes, `timeout` included. A
+    # double that drops a keyword the caller passes fails on the double's shape rather
+    # than on the fail-closed behavior this case is about.
     if args[:1] == ("branch",):
         return subprocess.CompletedProcess(args, 128, "", "fatal: malformed object name")
-    return real_git(repo, *args)
+    return real_git(repo, *args, **kwargs)
 
 
 module.git = failing_contains

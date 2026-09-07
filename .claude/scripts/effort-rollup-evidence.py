@@ -4,16 +4,13 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.util
 import io
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,6 +18,10 @@ from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_fs import atomic_write, sha256_bytes  # noqa: E402
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
@@ -77,12 +78,8 @@ def canonical_bytes(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def file_sha(path: Path) -> str:
-    return sha256(path.read_bytes())
+    return sha256_bytes(path.read_bytes())
 
 
 def utc_now() -> str:
@@ -91,19 +88,6 @@ def utc_now() -> str:
 
 def parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
-def atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False) as handle:
-        temporary = Path(handle.name)
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def atomic_json(path: Path, value: Any) -> None:
@@ -577,7 +561,7 @@ class Collector:
                 "logical_window": logical_window,
                 "command": command,
                 "capture_path": relative,
-                "sha256": sha256(raw),
+                "sha256": sha256_bytes(raw),
                 "collected_at": utc_now(),
                 "attempt_count": outcome.attempts,
                 "status": outcome.status,
@@ -805,7 +789,7 @@ def inventory_capture(root: Path, month: str, bundle: Path) -> dict[str, Any]:
         "logical_window": {"month": month},
         "command": commands,
         "capture_path": relative,
-        "sha256": sha256(raw),
+        "sha256": sha256_bytes(raw),
         "collected_at": utc_now(),
         "attempt_count": 1,
         "status": "complete",
@@ -975,7 +959,7 @@ def capture_data(bundle: Path, entries: list[dict[str, Any]], started: datetime,
         if not path.is_file():
             raise EvidenceError(f"capture is missing: {entry['source_id']}")
         raw = path.read_bytes()
-        if sha256(raw) != entry["sha256"]:
+        if sha256_bytes(raw) != entry["sha256"]:
             raise EvidenceError(f"capture hash mismatch: {entry['source_id']}")
         kind_hit = secret_kind(raw)
         if kind_hit:

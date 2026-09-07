@@ -7,6 +7,9 @@
 # wrong, a bare URL that swallows the next line. Register markers are counted,
 # never individually decisive.
 #
+# The surface comes from `channel_id`, because prose-lint.py scores a DM and a channel
+# separately and the payload already says which this is.
+#
 # Fails open on infrastructure problems (missing jq, python, or script): a broken
 # guard must not silence a draft the user asked for.
 #
@@ -23,18 +26,52 @@ command -v python3 >/dev/null 2>&1 || exit 0
 [ -r "$LINT" ] || exit 0
 
 INPUT=$(cat)
+# `message` is the field the Slack draft tool documents and requires; `text` and
+# `markdown_text` stay in the chain because the hook matcher accepts any provider
+# whose tool name ends in slack_send_message_draft, not one named server.
 BODY=$(printf '%s' "$INPUT" | jq -r '
   .tool_input // {} |
-  (.text // .message // .markdown_text // empty) |
+  (.message // .text // .markdown_text // empty) |
   select(type == "string")
 ' 2>/dev/null) || exit 0
-[ -z "$BODY" ] && exit 0
+
+if [ -z "$BODY" ]; then
+  # Falling through is right when there is nothing to review, and falling through
+  # *silently* is wrong when the payload carries fields but none of them is a body: that
+  # is a renamed field, and every draft after it would ship unlinted. The exit stays 0,
+  # because a quality check must never be the reason a draft cannot be written; the
+  # notice only puts the reason in the transcript instead of leaving no trace.
+  UNKNOWN_SHAPE=$(printf '%s' "$INPUT" | jq -r '
+    (.tool_input // {}) as $in |
+    if ($in | type) == "object" and ($in | length) > 0
+       and ([$in | has("message"), has("text"), has("markdown_text")] | any | not)
+    then ($in | keys | join(", ")) else empty end
+  ' 2>/dev/null) || UNKNOWN_SHAPE=""
+  if [ -n "$UNKNOWN_SHAPE" ]; then
+    printf 'NOTICE: prose-lint-guard found no draft body to review; fields present: %s\n' \
+      "$UNKNOWN_SHAPE" >&2
+    printf '  The draft was not linted. Update the body field list in %s\n' \
+      ".claude/hooks/prose-lint-guard.sh" >&2
+  fi
+  exit 0
+fi
+
+# `U`/`W` are user IDs, which the draft tool accepts directly as a DM target; `D` is an
+# opened DM conversation. `G` covers both legacy private channels and group DMs, so it
+# stays on the channel rules, which are the more public reading.
+CHANNEL=$(printf '%s' "$INPUT" | jq -r '
+  .tool_input.channel_id // empty | select(type == "string")
+' 2>/dev/null) || CHANNEL=""
+case "$CHANNEL" in
+  [DdUuWw]*) SURFACE="slack-dm" ;;
+  *) SURFACE="slack-channel" ;;
+esac
 
 TMP=$(mktemp) || exit 0
 trap 'rm -f "$TMP"' EXIT
 printf '%s' "$BODY" >"$TMP"
 
-REPORT=$(python3 "$LINT" --surface slack-channel --file "$TMP" 2>/dev/null)
+REPORT=$(python3 "$LINT" --surface "$SURFACE" --file "$TMP" 2>/dev/null)
 RC=$?
 
 [ "$RC" -eq 0 ] && exit 0
@@ -42,6 +79,7 @@ RC=$?
 
 {
   echo "BLOCKED by prose-lint-guard: the draft body fails the plain-writing gate."
+  echo "Surface: $SURFACE (from channel_id ${CHANNEL:-<absent>})."
   echo ""
   echo "$REPORT"
   echo ""
