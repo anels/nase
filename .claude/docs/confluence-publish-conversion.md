@@ -227,8 +227,9 @@ Two things are captured whole and screenshotted rather than converted:
    leaving label soup where the chart was.
 
 `render` writes a standalone document per visual carrying the source `<style>`, and invokes
-Chrome through `subprocess` with an argv list - not through Bash, which
-`external-cli-write-guard.sh` fails closed on for unparseable command strings.
+Chrome through `subprocess` with an argv list rather than through Bash, so the flags a
+headless-Chrome call needs never become a shell string that has to survive quoting and
+`external-cli-write-guard.sh`'s lexer.
 
 - **Light palette is forced.** `<html data-theme="light">` alone is not enough: a report whose
   `@media (prefers-color-scheme: dark)` block is unguarded still follows the browser

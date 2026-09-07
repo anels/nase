@@ -5,39 +5,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import re
-import subprocess
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from nase_time import parse_ts
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from nase_git import resolve_root  # noqa: E402
+from nase_time import parse_ts  # noqa: E402
 
 
 KB_EXTENSIONS = {".md", ".sql"}
 VALID_ACCESS = {"read", "resolve", "search-result"}
 VALID_SOURCE = {"read-hook", "kb-domain-resolve", "kb-search"}
-
-
-def resolve_root(explicit: str | None = None) -> pathlib.Path:
-    candidate = explicit or os.environ.get("NASE_ROOT")
-    if candidate:
-        return pathlib.Path(candidate).expanduser().resolve()
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return pathlib.Path(proc.stdout.strip()).resolve()
-    except Exception:
-        pass
-    return pathlib.Path.cwd().resolve()
 
 
 def parse_now(value: str | None) -> datetime:

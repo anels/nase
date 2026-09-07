@@ -7,14 +7,18 @@ import argparse
 import codecs
 import hashlib
 import json
-import os
 import posixpath
 import re
-import subprocess
+import sys
 import tempfile
 import unicodedata
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+from nase_fs import sha256_bytes  # noqa: E402
 
 
 ITEM_LIMIT = 64 * 1024
@@ -221,16 +225,10 @@ def git(
     check: bool = True,
     env: dict[str, str] | None = None,
 ) -> bytes:
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=merged_env,
-    )
+    try:
+        result = nase_git.run(*args, repo=repo, env=env)
+    except nase_git.GitTimeout as exc:
+        raise SystemExit(str(exc)) from exc
     if check and result.returncode != 0:
         message = result.stderr.decode("utf-8", "replace").strip()
         raise SystemExit(message or f"git {' '.join(args)} failed")
@@ -250,14 +248,10 @@ def canonical_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def safe_display_path(path: str) -> str:
     encoded = path.encode("utf-8", "surrogateescape")
     if secret_kind(encoded):
-        return f"<redacted-path:{sha256(encoded)[:12]}>"
+        return f"<redacted-path:{sha256_bytes(encoded)[:12]}>"
     return path
 
 
@@ -266,7 +260,7 @@ def redact_sensitive_lines(value: str) -> str:
     for line in value.splitlines():
         encoded = line.encode("utf-8", "surrogateescape")
         lines.append(
-            f"<redacted-line:{sha256(encoded)[:12]}>" if secret_kind(encoded) else line
+            f"<redacted-line:{sha256_bytes(encoded)[:12]}>" if secret_kind(encoded) else line
         )
     return "\n".join(lines)
 
@@ -721,19 +715,9 @@ def scan_stream_for_secret(stream: Any) -> tuple[str, int] | None:
 
 
 def scan_blob_for_secret(repo: Path, oid: str) -> tuple[str, int] | None:
-    process = subprocess.Popen(
-        ["git", "-C", str(repo), "cat-file", "blob", oid],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    assert process.stdout is not None
-    try:
+    with nase_git.streaming("cat-file", "blob", oid, repo=repo) as process:
+        assert process.stdout is not None
         return scan_stream_for_secret(process.stdout)
-    finally:
-        process.stdout.close()
-        if process.poll() is None:
-            process.kill()
-        process.wait()
 
 
 def secret_preflight(
@@ -805,7 +789,7 @@ def validate_evidence(value: Any, tree_oid: str, supplied: bool) -> dict[str, An
 
 
 def project_payload(data: bytes, limit: int = ITEM_LIMIT) -> dict[str, Any]:
-    result: dict[str, Any] = {"byte_count": len(data), "sha256": sha256(data)}
+    result: dict[str, Any] = {"byte_count": len(data), "sha256": sha256_bytes(data)}
     try:
         text = data.decode("utf-8", "strict")
     except UnicodeDecodeError:
@@ -844,33 +828,34 @@ def project_blob(
     decoder = codecs.getincrementaldecoder("utf-8")("strict")
     utf8 = True
     actual_count = 0
-    process = subprocess.Popen(
-        ["git", "-C", str(repo), "cat-file", "blob", entry["oid"]],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert process.stdout is not None
-    while chunk := process.stdout.read(SCAN_CHUNK):
-        actual_count += len(chunk)
-        digest.update(chunk)
-        if b"\0" in chunk:
-            utf8 = False
-        if utf8:
-            try:
-                decoder.decode(chunk, final=False)
-            except UnicodeDecodeError:
-                utf8 = False
-        if keep_full:
-            full.extend(chunk)
-        else:
-            if len(head) < head_limit:
-                head.extend(chunk[: head_limit - len(head)])
-            if tail_limit:
-                tail.extend(chunk)
-                del tail[:-tail_limit]
-    process.stdout.close()
-    stderr = process.stderr.read() if process.stderr is not None else b""
-    returncode = process.wait()
+    # This loop drains stdout to EOF before it ever reads stderr, which is the shape
+    # `nase_git.streaming` documents as deadlocking on a stderr pipe.
+    with tempfile.TemporaryFile() as stderr_sink:
+        with nase_git.streaming(
+            "cat-file", "blob", entry["oid"], repo=repo, stderr=stderr_sink
+        ) as process:
+            assert process.stdout is not None
+            while chunk := process.stdout.read(SCAN_CHUNK):
+                actual_count += len(chunk)
+                digest.update(chunk)
+                if b"\0" in chunk:
+                    utf8 = False
+                if utf8:
+                    try:
+                        decoder.decode(chunk, final=False)
+                    except UnicodeDecodeError:
+                        utf8 = False
+                if keep_full:
+                    full.extend(chunk)
+                else:
+                    if len(head) < head_limit:
+                        head.extend(chunk[: head_limit - len(head)])
+                    if tail_limit:
+                        tail.extend(chunk)
+                        del tail[:-tail_limit]
+            returncode = process.wait(timeout=nase_git.GIT_TIMEOUT_SECONDS)
+        stderr_sink.seek(0)
+        stderr = stderr_sink.read()
     if returncode or actual_count != byte_count:
         message = stderr.decode("utf-8", "replace").strip()
         raise SystemExit(message or f"failed to read Git blob {entry['oid']}")
@@ -1044,11 +1029,11 @@ def limited_diff(
     pathspecs = [f":(literal){source_path}"]
     if destination_path != source_path:
         pathspecs.append(f":(literal){destination_path}")
-    process = subprocess.Popen(
-        [
-            "git",
-            "-C",
-            str(repo),
+    # Same reason as `project_blob`: stderr must not be a pipe when stdout is read first.
+    # `wait` cannot block on a full stdout pipe here either - a read that did not hit the
+    # limit means git already finished writing, and one that did kills the process first.
+    with tempfile.TemporaryFile() as stderr_sink:
+        with nase_git.streaming(
             "diff",
             "--no-ext-diff",
             "--no-textconv",
@@ -1058,18 +1043,19 @@ def limited_diff(
             tree_oid,
             "--",
             *pathspecs,
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert process.stdout is not None
-    data = process.stdout.read(ITEM_LIMIT + 1)
-    truncated = len(data) > ITEM_LIMIT
-    if truncated:
-        process.kill()
-        data = data[:ITEM_LIMIT]
-    _, stderr = process.communicate()
-    if not truncated and process.returncode:
+            repo=repo,
+            stderr=stderr_sink,
+        ) as process:
+            assert process.stdout is not None
+            data = process.stdout.read(ITEM_LIMIT + 1)
+            truncated = len(data) > ITEM_LIMIT
+            if truncated:
+                process.kill()
+                data = data[:ITEM_LIMIT]
+            returncode = process.wait(timeout=nase_git.GIT_TIMEOUT_SECONDS)
+        stderr_sink.seek(0)
+        stderr = stderr_sink.read()
+    if not truncated and returncode:
         raise SystemExit(stderr.decode("utf-8", "replace").strip() or "git diff failed")
     if secret_kind(data):
         return "(diff omitted because it contains credential-like bytes)", True
@@ -1093,7 +1079,7 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
     requests, bound_tree_oid, bound_base_oid, bound_inventory_sha = load_context_requests(
         args.context_request_file
     )
-    inventory_sha = sha256(canonical_bytes(inventory))
+    inventory_sha = sha256_bytes(canonical_bytes(inventory))
     if bound_inventory_sha is not None and bound_inventory_sha != inventory_sha:
         raise SystemExit("context request inventory does not match --inventory-file")
     tree_oid = bound_tree_oid or current_tree_oid
@@ -1129,7 +1115,7 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         "contract_inventory_sha256": inventory_sha,
         "current_candidate_tree_oid": current_tree_oid,
         "changed_path_count": len(paths),
-        "changed_paths_sha256": sha256(canonical_bytes(paths)),
+        "changed_paths_sha256": sha256_bytes(canonical_bytes(paths)),
         "evidence_candidate_tree_oid": evidence["candidate_tree_oid"],
         "evidence": {key: value for key, value in evidence_projection.items() if key != "content"},
         "context_blob_metadata": [
@@ -1357,7 +1343,7 @@ def main() -> int:
         identity = {
             "base_oid": metadata["base_oid"],
             "candidate_tree_oid": metadata["candidate_tree_oid"],
-            "bundle_sha256": sha256(bundle_bytes),
+            "bundle_sha256": sha256_bytes(bundle_bytes),
             "contract_inventory_sha256": metadata["contract_inventory_sha256"],
         }
         identity_output = Path(args.reviewer_identity_output)

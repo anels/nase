@@ -20,7 +20,10 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from workspace_lock import LockError, held
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_fs import fsync_dir, sha256_file  # noqa: E402
+from workspace_lock import LockError, held  # noqa: E402
 
 
 VERSION = 1
@@ -35,22 +38,6 @@ SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS = 1800
 
 class RestoreError(RuntimeError):
     pass
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def fsync_dir(path: Path) -> None:
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:

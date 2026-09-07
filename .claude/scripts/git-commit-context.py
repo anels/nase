@@ -27,6 +27,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
+
 CONFIG_FILES = (
     ".commitlintrc.json",
     ".commitlintrc.js",
@@ -46,13 +51,10 @@ class ContextError(RuntimeError):
     pass
 
 
-def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def git(
+    repo: Path, *args: str, timeout: float = nase_git.GIT_TIMEOUT_SECONDS
+) -> subprocess.CompletedProcess[str]:
+    return nase_git.run(*args, repo=repo, text=True, timeout=timeout)
 
 
 def git_out(repo: Path, *args: str) -> str:
@@ -90,13 +92,21 @@ def push_state(repo: Path, fetch: bool) -> dict[str, Any]:
         fetch_ok = fetch
         if fetch:
             for remote in remotes:
-                result = git(
-                    repo,
-                    "fetch",
-                    "--prune",
-                    remote,
-                    f"+refs/heads/*:refs/remotes/{remote}/*",
-                )
+                try:
+                    result = git(
+                        repo,
+                        "fetch",
+                        "--prune",
+                        remote,
+                        f"+refs/heads/*:refs/remotes/{remote}/*",
+                        timeout=nase_git.GIT_NETWORK_TIMEOUT_SECONDS,
+                    )
+                except nase_git.GitTimeout:
+                    # A killed fetch establishes nothing about the remote, which is the
+                    # same epistemic state as one that failed, so it takes the same
+                    # fail-closed branch rather than aborting the whole context read.
+                    fetch_ok = False
+                    continue
                 if result.returncode != 0:
                     fetch_ok = False
         if not fetch_ok:

@@ -18,6 +18,10 @@ from collections import Counter, defaultdict
 from datetime import date, datetime
 from typing import Any
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
 
 SOURCE_EXTS = {
     ".bicep",
@@ -138,13 +142,7 @@ class RepoIndex:
             self.by_basename[pathlib.PurePosixPath(path).name].append(path)
 
     def _git(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", "-C", str(self.repo_root), *args],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        return nase_git.run(*args, repo=self.repo_root, text=True)
 
     def _load_paths(self) -> set[str]:
         result = self._git("ls-tree", "-r", "--name-only", "HEAD")

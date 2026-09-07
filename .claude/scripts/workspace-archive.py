@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_fs import fsync_dir, sha256_bytes, sha256_file  # noqa: E402
 from workspace_lock import LockBusyError, LockError, held  # noqa: E402
 
 
@@ -49,22 +51,6 @@ class Section:
     offset: int
     occurrence: int
     content_occurrence: int
-
-
-def sha256_bytes(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
-
-
-def sha256_file(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
-
-
-def fsync_dir(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def safe_parent(root: Path, path: Path, *, create: bool = False) -> Path:

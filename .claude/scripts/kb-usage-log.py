@@ -13,12 +13,14 @@ import hashlib
 import json
 import os
 import pathlib
-import subprocess
 import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from nase_time import parse_ts
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from nase_git import resolve_root  # noqa: E402
+from nase_time import parse_ts  # noqa: E402
 
 
 ALLOWED_ACCESS = {"read", "resolve", "search-result"}
@@ -33,27 +35,6 @@ def utc_now() -> datetime:
 
 def format_ts(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def resolve_root(explicit: str | None = None) -> pathlib.Path | None:
-    candidate = explicit or os.environ.get("NASE_ROOT")
-    if candidate:
-        return pathlib.Path(candidate).expanduser().resolve()
-
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return pathlib.Path(proc.stdout.strip()).resolve()
-    except Exception:
-        pass
-
-    return pathlib.Path.cwd().resolve()
 
 
 def session_id(explicit: str | None = None) -> str:
@@ -157,9 +138,6 @@ def normalize_kb_file(root: pathlib.Path, file_path: str) -> str | None:
 
 def activate(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
-    if root is None:
-        return 0
-
     session = session_id(args.session)
     payload = {
         "ts": format_ts(utc_now()),
@@ -260,9 +238,6 @@ def record(args: argparse.Namespace) -> int:
         return 0
 
     root = resolve_root(args.root)
-    if root is None:
-        return 0
-
     normalized_file = normalize_kb_file(root, args.file)
     if normalized_file is None:
         return 0

@@ -508,22 +508,31 @@ class Stream:
         pass
 
 
-class ErrorStream:
-    def read(self):
-        return b""
-
-
 class Process:
+    """A Popen double. `poll` and `wait(timeout=...)` are part of that interface, and
+    `nase_git.streaming` reaps the process through both, so a double without them tests
+    the stub rather than the chunked read this case is about."""
+
     def __init__(self):
         self.stdout = Stream()
-        self.stderr = ErrorStream()
+        self.stderr = None
+        self.returncode = None
 
-    def wait(self):
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        self.returncode = 0
         return 0
 
+    def kill(self):
+        self.returncode = -9
 
+
+# `nase_git.subprocess` is the stdlib module either way; naming it through nase_git keeps
+# the patch pointed at the code that actually spawns the process.
 with mock.patch.object(module, "blob_size", return_value=total), mock.patch.object(
-    module.subprocess, "Popen", return_value=Process()
+    module.nase_git.subprocess, "Popen", return_value=Process()
 ):
     projection = module.project_blob(Path("."), {"oid": "0" * 40}, module.ITEM_LIMIT)
 

@@ -7,14 +7,16 @@ import argparse
 import json
 import pathlib
 import re
-import subprocess
 import sys
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from frontmatter_scalar import canonical_bool, extract_frontmatter_scalar, normalize_scalar
-from nase_time import parse_ts
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from frontmatter_scalar import canonical_bool, extract_frontmatter_scalar, normalize_scalar  # noqa: E402
+from nase_git import resolve_root  # noqa: E402
+from nase_time import parse_ts  # noqa: E402
 
 
 LOG_NAME_RE = re.compile(r"^(20\d\d-\d\d-\d\d)\.md$")
@@ -49,24 +51,6 @@ UNKNOWN_RATE_THRESHOLD = 0.20
 TMP_STALE_DAYS = 30
 EFFORT_REF_RE = re.compile(r"workspace/efforts/[A-Za-z0-9_./-]+\.md")
 TODO_CLOSED_RE = re.compile(r"^\s*-\s*\[[xX]\]")
-
-
-def resolve_root(explicit: str | None) -> pathlib.Path:
-    if explicit:
-        return pathlib.Path(explicit).expanduser().resolve()
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return pathlib.Path(proc.stdout.strip()).resolve()
-    except Exception:
-        pass
-    return pathlib.Path.cwd().resolve()
 
 
 def finding(category: str, path: pathlib.Path | str, message: str, line: int | None = None) -> dict[str, Any]:
@@ -520,7 +504,9 @@ def print_text(report: dict[str, Any], limit: int = 20) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", help="workspace root; defaults to git top-level")
+    parser.add_argument(
+        "--root", help="workspace root; defaults to NASE_ROOT, then the git top-level"
+    )
     parser.add_argument("--days", type=int, default=30, help="daily-log lookback window")
     parser.add_argument("--json", action="store_true", help="emit JSON")
     parser.add_argument("--strict", action="store_true", help="exit nonzero when findings exist")

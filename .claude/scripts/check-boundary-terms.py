@@ -20,9 +20,13 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
 
 TERMS_FILE = Path("workspace/boundary-terms.txt")
 
@@ -102,9 +106,9 @@ def inside(span: tuple[int, int], spans: list[tuple[int, int]]) -> bool:
 
 
 def tracked_files() -> list[str]:
-    out = subprocess.run(
-        ["git", "ls-files", "-z"], capture_output=True, text=True, check=True
-    ).stdout
+    # No `repo=`: the gate runs against whatever tree it was pointed at, which
+    # `main` may have chdir-ed into via the scan-root environment variable.
+    out = nase_git.run("ls-files", "-z", text=True, check=True).stdout
     return [f for f in out.split("\0") if f]
 
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import hashlib
 import json
 import os
 import re
@@ -16,6 +15,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_fs import sha256_file  # noqa: E402
 from workspace_lock import LockError, held  # noqa: E402
 
 
@@ -115,11 +116,6 @@ def validate_staged(root: Path, value: str) -> Path:
     if not staged.is_file():
         die(f"staged file does not exist: {relpath(staged, root)}")
     return staged
-
-
-def sha256_file(path: Path) -> str:
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
 def file_state(path: Path) -> dict[str, object]:

@@ -96,6 +96,8 @@ highest-risk rules even when a future skill forgets the prompt contract:
 | `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
 | `confluence-size-guard.sh` | Confluence bodies over 70 KB; writes with an unset or unaccepted body format (see `.claude/docs/confluence-adf-pattern.md`) |
 | `atlassian-generic-write-guard.sh` | `executeWrite` and `executeDestructive`, whose opaque payload no named Atlassian gate can read |
+| `block-dangerous-git.sh` | destructive or protected-branch git commands |
+| `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
 
 These guards select by tool name, so an upstream rename silently turns one off:
 the matcher stops matching and the guard exits 0 on every call. Each guarded name
@@ -103,8 +105,28 @@ is therefore pinned in `.claude/scripts/validate-workspace.sh`, which probes the
 live matchers and the guard bodies. When an MCP renames a write path, add the new
 name in the same commit as the pin - do not swap it, because both generations can
 be installed at once.
-| `block-dangerous-git.sh` | destructive or protected-branch git commands |
-| `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
+
+### What the CLI guard does with a command it cannot parse
+
+`gh`, `az`, `kubectl`, and `terraform` are the four guarded executables. A command
+carrying a construct whose target cannot be bound statically - a `$(...)`, a backtick, an
+`eval`, a function definition, a pipe into a shell - is blocked **only when one of those
+four names appears in the command text**. That includes a name reachable only at run time,
+because the scan reads the raw string: `eval 'gh pr create'` and `f() { gh pr create; }; f`
+both block even though no `gh` ever reaches an executable position.
+
+Everything else with a dynamic construct is allowed through to the mutation and
+unrecognized-CLI checks. Blocking every unparseable command instead blocks the read-only
+majority, and a `$(git rev-parse HEAD)` inside an `echo` was never something this guard
+protects. Two consequences worth knowing:
+
+- **Heredoc bodies are data, not commands.** `cat > file <<EOF` writes prose; its lines are
+  not lexed as invocations, so a backtick or a guarded verb sitting in that prose no longer
+  blocks the write. The exception is a heredoc feeding a shell (`bash <<EOF`), where the
+  body really is executed and keeps being read as commands.
+- **A name assembled by substitution is out of reach.** `$(printf 'g''h') pr create` has no
+  `gh` in its text and no static executable, so nothing here sees it. This guard bounds the
+  commands this agent writes by mistake; it is not a sandbox against a hostile author.
 
 ### Jira token contract
 

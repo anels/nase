@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -14,6 +13,11 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+from nase_fs import sha256_bytes, sha256_file  # noqa: E402
 
 
 TOKEN_TTL_SECONDS = 300
@@ -57,6 +61,13 @@ GITHUB_AUTH_ENV_VARS = {
 PAYLOAD_FILE_FLAGS = {"--body-file", "--input", "--file"}
 SHELL_SEPARATORS = {";", "&&", "&", "|", "||", "(", ")", "\n"}
 SHELL_INTERPRETERS = {"bash", "dash", "ksh", "sh", "zsh"}
+GUARDED_EXECUTABLES = ("gh", "az", "kubectl", "terraform")
+# A path prefix still names the same binary, so `/usr/bin/gh` counts; a longer word that
+# merely starts with one does not, so `github`, `azure`, and `terraform-docs` do not.
+GUARDED_MENTION_RE = re.compile(
+    r"(?<![\w-])(?:" + "|".join(GUARDED_EXECUTABLES) + r")(?![\w.-])", re.I
+)
+HEREDOC_RE = re.compile(r"<<-?(?!<)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
 class ActionError(Exception):
@@ -93,12 +104,7 @@ def canonical_json(value: Any) -> bytes:
 
 
 def sha256(value: Any) -> str:
-    return hashlib.sha256(canonical_json(value)).hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
+    return sha256_bytes(canonical_json(value))
 
 
 def utc_now() -> str:
@@ -316,7 +322,7 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
         path = resolve_payload_path(root, value)
         if not path.is_file():
             raise ActionError(f"payload file does not exist: {value}")
-        files.append({"arg_index": index, "path": str(path), "sha256": file_sha256(path)})
+        files.append({"arg_index": index, "path": str(path), "sha256": sha256_file(path)})
     return files
 
 
@@ -486,12 +492,7 @@ def github_target_owner(
             raise ActionError("explicit GitHub owner does not match the command target")
         return derived
 
-    remote = subprocess.run(
-        ["git", "-C", str(root), "remote", "get-url", "origin"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    remote = nase_git.run("remote", "get-url", "origin", repo=root, text=True)
     if remote.returncode == 0:
         try:
             host, owner = github_repo_selector(remote.stdout.strip())
@@ -813,7 +814,7 @@ def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
         path = Path(entry["path"])
         if not path.is_absolute():
             path = resolve_payload_path(root, entry["path"])
-        if not path.is_file() or file_sha256(path) != entry.get("sha256"):
+        if not path.is_file() or sha256_file(path) != entry.get("sha256"):
             raise ActionError(f"payload file changed after approval: {entry['path']}")
         if surface:
             findings.extend(prose_gate_findings(root, path, surface))
@@ -936,6 +937,56 @@ def blank_single_quoted_spans(command: str) -> str:
     return "".join(result)
 
 
+def mentions_guarded_executable(command: str) -> bool:
+    """Report whether a guarded CLI name appears anywhere in the command text.
+
+    Used only when static parsing has already failed, so it deliberately reads the raw
+    text rather than the lexed segments: `eval 'gh pr create'` hides the name inside a
+    single-quoted span that the lexer collapses into one harmless argument, and a
+    function body assembled around it never reaches an executable position at all.
+
+    It cannot see a name built by substitution (`$(printf 'g''h') pr create`). That is
+    accepted: this guard bounds the commands this agent writes by mistake, and the cost of
+    treating every unparseable command as guarded is that read-only work stops working.
+    """
+    return bool(GUARDED_MENTION_RE.search(command))
+
+
+def strip_heredoc_bodies(command: str) -> str:
+    """Drop heredoc bodies, which are data written to a file rather than commands.
+
+    `command_segments` splits on newlines, so a heredoc body is lexed as if each of its
+    lines were a command. A prose line starting with a guarded verb then reads as an
+    invocation, and a backtick in prose reads as a command substitution - both block a
+    command whose only effect is writing a local file.
+
+    A shell interpreter anywhere in the command is the exception: a heredoc feeding a
+    shell really is executed, and today's naive lexing is what catches `bash <<EOF` plus
+    `gh pr create`. The test spans the whole command rather than the line the redirect
+    sits on, because a line-local test misses `bash \\` continued onto `<<'EOF'` - the
+    redirect line names no shell at all, and stripping there hides an executed mutation.
+    Refusing to strip whenever a shell is named costs only the heredoc benefit in that
+    rarer combination.
+    """
+    if "<<" not in command:
+        return command
+    for segment in command_segments(command):
+        argv = unwrap_shell_segment(segment)
+        if argv and Path(argv[0]).name.lower() in SHELL_INTERPRETERS:
+            return command
+
+    kept: list[str] = []
+    pending_delimiters: list[str] = []
+    for line in command.split("\n"):
+        if pending_delimiters:
+            if line.strip() == pending_delimiters[0]:
+                pending_delimiters.pop(0)
+            continue
+        kept.append(line)
+        pending_delimiters = [match.group(2) for match in HEREDOC_RE.finditer(line)]
+    return "\n".join(kept)
+
+
 def is_dynamic_shell_command(command: str) -> bool:
     """Detect shell constructs whose executed command cannot be statically bound."""
     return bool(re.search(
@@ -963,6 +1014,15 @@ def command_argvs(command: str, depth: int = 0):
         yield argv
         nested = shell_command(argv)
         if nested is None:
+            # A shell fed a herestring runs that text with no `-c` to parse. The
+            # sibling regex above only catches the name-last forms (`| bash`, `< bash`),
+            # so `bash <<< 'gh pr create'` would otherwise reach the shell unread. A
+            # heredoc needs no arm here: `strip_heredoc_bodies` leaves a shell's body in
+            # place precisely so its lines still lex as commands.
+            if executable.lower() in SHELL_INTERPRETERS and any(
+                word.startswith("<<<") for word in argv[1:]
+            ):
+                yield ["__unrecognized_shell_command__"]
             continue
         if depth >= 8 or not nested or is_dynamic_shell_command(nested):
             yield ["__unrecognized_shell_command__"]
@@ -1053,7 +1113,7 @@ def command_has_unrecognized_external_cli(command: str) -> bool:
         if argv == ["__unrecognized_shell_command__"]:
             return True
         executable = Path(argv[0]).name.lower() if argv else ""
-        if executable in {"gh", "az", "kubectl", "terraform"} and mutation_system(argv) is None:
+        if executable in GUARDED_EXECUTABLES and mutation_system(argv) is None:
             if not known_safe_external_command(argv):
                 return True
     return False
@@ -1163,19 +1223,32 @@ def cmd_execute(args: argparse.Namespace) -> int:
 
 
 def cmd_guard(args: argparse.Namespace) -> int:
-    if args.command and (
-        not command_segments(args.command) or is_dynamic_shell_command(args.command)
-    ):
-        print("BLOCKED: could not safely parse external CLI command.", file=sys.stderr)
-        return 10
-    if command_has_mutation(args.command):
+    command = strip_heredoc_bodies(args.command or "")
+    segments = command_segments(command)
+    if command and (not segments or is_dynamic_shell_command(command)):
+        # Failing closed here is only justified when a guarded CLI could actually be
+        # reached. Blocking every command this parser cannot bind blocks the read-only
+        # majority - a `$(...)` inside an `echo`, a backtick quoted in prose - and each
+        # one costs a rewrite and a re-run without protecting anything.
+        if mentions_guarded_executable(command):
+            print(
+                "BLOCKED: could not safely parse this command, and it names a guarded CLI "
+                f"({', '.join(GUARDED_EXECUTABLES)}).\n"
+                "  Rewrite it without the dynamic construct, or prepare a payload-bound "
+                "action with .claude/scripts/external-write-action.py.",
+                file=sys.stderr,
+            )
+            return 10
+        if not segments:
+            return 0
+    if command_has_mutation(command):
         print(
             "BLOCKED: raw external mutation. Prepare, show, authorize, and execute the action with "
             ".claude/scripts/external-write-action.py instead.",
             file=sys.stderr,
         )
         return 10
-    if command_has_unrecognized_external_cli(args.command):
+    if command_has_unrecognized_external_cli(command):
         print(
             "BLOCKED: unrecognized external CLI command. Use an explicit read-only command or "
             "prepare an allowlisted payload-bound mutation action.",

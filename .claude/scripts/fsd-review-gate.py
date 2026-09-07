@@ -6,14 +6,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import posixpath
 import re
-import subprocess
+import sys
 import tempfile
 import unicodedata
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
 
 
 REQUIRED_AXES = ("correctness", "test_quality", "verification_evidence")
@@ -314,16 +317,10 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
 
 
 def git(repo: Path, *args: str, env: dict[str, str] | None = None, check: bool = True) -> bytes:
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=merged_env,
-    )
+    try:
+        result = nase_git.run(*args, repo=repo, env=env)
+    except nase_git.GitTimeout as exc:
+        raise InvalidResult(str(exc)) from exc
     if check and result.returncode != 0:
         raise InvalidResult(result.stderr.decode("utf-8", "replace").strip() or "git command failed")
     return result.stdout

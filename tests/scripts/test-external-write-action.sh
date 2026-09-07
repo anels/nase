@@ -301,12 +301,62 @@ expect_guard_rc "single-quoted backtick is literal" 0 \
 expect_guard_rc "single-quoted dollar-paren is literal" 0 "grep -n 'cost \$(one)' workspace/tmp/example.md"
 expect_guard_rc "single-quoted backtick in a sed replacement is literal" 0 \
   "sed -i '' 's|old|new \`Foo.cs:12\`|' workspace/tmp/example.md"
-# Everything the shell would actually expand stays blocked.
-expect_guard_rc "unquoted backtick substitution is blocked" 10 'echo `whoami`'
-expect_guard_rc "double-quoted backtick still expands and is blocked" 10 'echo "user: `whoami`"'
-expect_guard_rc "double-quoted dollar-paren still expands and is blocked" 10 'echo "count: $(gh pr list)"'
+# A construct the shell really expands makes the command unparseable, and unparseable alone
+# is not a reason to block: this guard exists for external CLI mutations, and a substitution
+# that cannot reach one of the four guarded executables has nothing to protect. Pair each
+# allowed case with the same shape naming a guarded CLI, so the fail-closed half stays pinned.
+expect_guard_rc "unquoted backtick substitution reaching no guarded CLI is allowed" 0 'echo `whoami`'
+expect_guard_rc "double-quoted backtick reaching no guarded CLI is allowed" 0 'echo "user: `whoami`"'
+expect_guard_rc "read-only git pipeline with a substitution is allowed" 0 \
+  'git status -sb && echo "staged=$(git diff --cached --name-only | wc -l)"'
+expect_guard_rc "substitution naming a guarded CLI stays blocked" 10 'echo "count: $(gh pr list)"'
+expect_guard_rc "guarded CLI taking a dynamic argument stays blocked" 10 'gh api $(cat endpoint.txt)'
+expect_guard_rc "guarded CLI taking a quoted dynamic argument stays blocked" 10 \
+  'kubectl get pods -n "$(cat ns.txt)"'
 expect_guard_rc "backtick inside a nested bash -c script is blocked" 10 'bash -c '"'"'echo `whoami`'"'"''
-expect_guard_rc "unterminated single quote stays fail-closed" 10 "printf 'unterminated"
+expect_guard_rc "unterminated single quote naming no guarded CLI is allowed" 0 "printf 'unterminated"
+expect_guard_rc "unterminated single quote naming a guarded CLI stays fail-closed" 10 \
+  "gh pr create --title 'unterminated"
+# `github` and `terraform-docs` merely start with a guarded name; a path prefix does not.
+expect_guard_rc "a longer word starting with a guarded name is not a mention" 0 \
+  'echo "see github.com and terraform-docs: $(date)"'
+expect_guard_rc "a path-qualified guarded CLI is still a mention" 10 \
+  'echo "$(date)" && /usr/local/bin/gh pr create --title Example'
+
+# A heredoc body is data written to a file, not commands. Lexing it as commands blocked a
+# local file write for a backtick or a guarded verb sitting in prose.
+expect_guard_rc "heredoc body carrying a backtick in prose is allowed" 0 \
+  "$(printf 'cat > workspace/tmp/example.md <<%sEOF%s\nsee `Foo` rows\nEOF\n' "'" "'")"
+expect_guard_rc "heredoc body naming a guarded CLI in prose is allowed" 0 \
+  "$(printf 'cat > workspace/tmp/example.md <<%sEOF%s\nrun gh pr create by hand\nEOF\n' "'" "'")"
+# A heredoc feeding a shell really is executed, so its body keeps being read as commands.
+expect_guard_rc "heredoc feeding bash a mutation is blocked" 10 \
+  "$(printf 'bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+expect_guard_rc "heredoc feeding bash through a pipeline is blocked" 10 \
+  "$(printf 'printf x | bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+expect_guard_rc "herestring feeding bash a mutation is blocked" 10 \
+  "bash <<< 'gh pr create --title Example'"
+expect_guard_rc "herestring with no space before the script is blocked" 10 \
+  "bash <<<'terraform apply -auto-approve'"
+# A shell named anywhere in the command stops the stripping, not only on the line the
+# redirect sits on: a backslash continuation puts the shell and the `<<` on separate
+# lines, and a line-local test would strip a body that really is executed.
+expect_guard_rc "shell continued onto the heredoc line is blocked" 10 \
+  "$(printf 'bash \\\\\n  <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+expect_guard_rc "shell after another command is blocked" 10 \
+  "$(printf 'true && bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+expect_guard_rc "env-prefixed shell heredoc is blocked" 10 \
+  "$(printf 'FOO=1 bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+expect_guard_rc "path-qualified shell heredoc is blocked" 10 \
+  "$(printf '/bin/bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+expect_guard_rc "sudo-wrapped shell heredoc is blocked" 10 \
+  "$(printf 'sudo bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+# Two delimiters on one line consume two bodies in order, and `<<-` allows an indented
+# delimiter. Both are separate paths through the delimiter queue.
+expect_guard_rc "two heredoc bodies on one line are both dropped" 0 \
+  "$(printf 'cmd <<A <<B\nbody a\nA\ngh pr create\nB\necho done\n')"
+expect_guard_rc "an indented <<- delimiter closes its body" 0 \
+  "$(printf 'cat <<-EOF\n  gh pr create\n  EOF\necho done\n')"
 expect_guard_rc "quoted executable mutation is blocked" 10 "'gh' pr create --draft --title Example"
 expect_guard_rc "mutation carrying a literal backtick argument is blocked" 10 \
   "gh pr create --draft --title 'uses \`Foo\` here'"

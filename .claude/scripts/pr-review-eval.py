@@ -12,6 +12,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import nase_git  # noqa: E402
+
 
 ASSERTION_TYPES = {
     "must_contain_regex",
@@ -155,22 +159,11 @@ def command_path(repo_root: Path, skill: str) -> Path:
 
 def source_paths(repo_root: Path) -> list[Path]:
     try:
-        completed = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo_root),
-                "ls-files",
-                "-t",
-                "--cached",
-                "--deleted",
-                "--others",
-                "--exclude-standard",
-                "-z",
-            ],
+        completed = nase_git.run(
+            "ls-files", "-t", "--cached", "--deleted", "--others",
+            "--exclude-standard", "-z",
+            repo=repo_root,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise EvalError("cannot enumerate repository sources for canary isolation") from exc
