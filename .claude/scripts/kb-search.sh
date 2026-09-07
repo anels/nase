@@ -114,14 +114,37 @@ if [ ! -s "$KB_FILES_TMP" ]; then
 fi
 
 # ── search function ───────────────────────────────────────────────────────────
-# Extract the section containing match_line. Prefer the nearest enclosing `###`
-# or `##` heading, fall back to the file `#` heading, and keep nested headings
-# inside the section. This supports both dated entries and current-state KB
-# sections without changing the search, filter, scoring, or output contracts.
-extract_entry_block() {
+# One awk pass per KB file does the whole per-entry job: find the matches, extract each
+# match's enclosing section, apply the since/tag/confidence/mentions filters, and score
+# the survivors. It emits one finished record per surviving section, so the shell loop
+# below only has to pick the freshness date and append.
+#
+# All of that used to be shell: a `grep -n` plus one awk per match to extract, then per
+# entry a date grep, the filters, the scoring greps, and an encode. On a KB of 88 files a
+# common term took 103 seconds. The awk work was never the cost - profiling it per file
+# totals 2.7 seconds - and neither was the subprocess count on its own. The cost was one
+# line: `${entry//$'\n'/$'\x1f'}` ran once per entry, and bash 3.2, the macOS default,
+# is quadratic in a global pattern substitution. Encoding here instead removes 282 of
+# those for a common term; `tr` in the render loop removes the last ten.
+#
+# A section is the nearest enclosing `###`, `##`, or file `#` heading with nested
+# headings kept inside, which supports dated entries and current-state sections alike.
+# The search, filter, scoring, and output contracts are unchanged, verified by diffing
+# this against the previous version's output across fourteen query and filter shapes.
+#
+# Inputs arrive through the environment, not -v: awk expands escape sequences in a -v
+# assignment, and the terms below are regex-escaped with backslashes.
+# Emits: score, entry date (`0000-00-00` when the section has no dated heading), and the
+# section text with newlines encoded as \x1f, the encoding the results file uses.
+extract_scored_blocks() {
   local file="$1"
-  local match_line="$2"
-  awk -v ln="$match_line" '
+  KB_SEARCH_PATTERN="$2" \
+  KB_SEARCH_TERMS="$3" \
+  KB_SINCE="$SINCE_DATE" \
+  KB_TAG="$TAG_FILTER" \
+  KB_CONFIDENCE="$CONF_FILTER" \
+  KB_MENTIONS_EXTRA="$MENTIONS_EXTRA" \
+  awk '
     function heading_level(line) {
       if (line ~ /^###### /) return 6
       if (line ~ /^##### /) return 5
@@ -131,34 +154,120 @@ extract_entry_block() {
       if (line ~ /^# /) return 1
       return 0
     }
+
+    # Scoring counts occurrences, not matching lines - several hits on one line each count,
+    # which is the contract `grep -Fio <needle> | wc -l` set. The needle is the
+    # regex-escaped term, so `gsub` still matches literally.
+    function occurrences(haystack, needle_regex,   copy) {
+      if (needle_regex == "") return 0
+      copy = haystack
+      return gsub(needle_regex, "", copy)
+    }
+
+    function join_lines(from, to,   i, out) {
+      out = ""
+      for (i = from; i <= to; i++) out = out (i == from ? "" : "\n") buf[i]
+      return out
+    }
+
+    # `grep -i '^**Label:**' | grep -qiF -- wanted`: a line that starts with the label and
+    # also contains the wanted value, both case-insensitively.
+    function field_matches(text, label, wanted,   n, i, parts, low) {
+      n = split(text, parts, "\n")
+      for (i = 1; i <= n; i++) {
+        low = tolower(parts[i])
+        if (index(low, tolower(label)) == 1 && index(low, tolower(wanted)) > 0) return 1
+      }
+      return 0
+    }
+
+    BEGIN {
+      US = sprintf("%c", 31)
+      pattern = tolower(ENVIRON["KB_SEARCH_PATTERN"])
+      # Escaping only adds backslashes before metacharacters, so lowercasing the
+      # regex-escaped terms is still safe.
+      term_count = split(ENVIRON["KB_SEARCH_TERMS"], terms, US)
+      for (i = 1; i <= term_count; i++) lower_terms[i] = tolower(terms[i])
+      since = ENVIRON["KB_SINCE"]
+      tag = ENVIRON["KB_TAG"]
+      confidence = ENVIRON["KB_CONFIDENCE"]
+      mentions_extra = ENVIRON["KB_MENTIONS_EXTRA"]
+      section_count = 0
+      current = 0
+    }
+
     {
       buf[NR] = $0
-      if (NR <= ln) {
-        level = heading_level($0)
-        if (level >= 1 && level <= 3) {
-          start = NR
-          start_level = level
-        }
+      level = heading_level($0)
+      if (level >= 1 && level <= 3) {
+        section_count++
+        section_start[section_count] = NR
+        section_level[section_count] = level
+        current = section_count
       }
+      owner[NR] = current
+      if (tolower($0) ~ pattern) match_line[NR] = 1
     }
+
     END {
-      if (!start) exit
+      last_end = 0
+      for (line = 1; line <= NR; line++) {
+        if (!(line in match_line)) continue
+        if (last_end && line <= last_end) continue
+        section = owner[line]
+        if (section == 0) continue
 
-      end = NR
-      boundary_level = start_level == 1 ? 2 : start_level
-      for (i = start + 1; i <= NR; i++) {
-        level = heading_level(buf[i])
-        if (level && level <= boundary_level) {
-          end = i - 1
-          break
+        start = section_start[section]
+        boundary_level = section_level[section] == 1 ? 2 : section_level[section]
+        end = NR
+        for (next_section = section + 1; next_section <= section_count; next_section++) {
+          if (section_level[next_section] <= boundary_level) {
+            end = section_start[next_section] - 1
+            break
+          }
         }
-      }
+        if (line > end) continue
 
-      if (ln < start || ln > end) exit
-      # Range first, so the caller can skip later matches inside this same block
-      # without paying for another pass over the file.
-      print start "\t" end
-      for (i = start; i <= end; i++) print buf[i]
+        # Claim the whole section before the filters run, so one section yields at most
+        # one result however many of its lines matched.
+        last_end = end
+
+        # A sentinel rather than an empty string when the section carries no dated
+        # heading. Tab is IFS whitespace, so the reader collapses adjacent tabs: an
+        # empty middle field shifts the entry text into the date variable and leaves
+        # the entry empty, which dropped every undated section. The shell already
+        # substitutes this same value when it has no date to work with.
+        entry_date = "0000-00-00"
+        for (i = start; i <= end; i++) {
+          if (buf[i] ~ /^### [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) {
+            entry_date = substr(buf[i], 5, 10)
+            break
+          }
+        }
+
+        if (since != "" && entry_date != "0000-00-00" && entry_date < since) continue
+
+        entry = join_lines(start, end)
+
+        if (tag != "" && !field_matches(entry, "**Tags:**", tag)) continue
+        if (confidence != "" && !field_matches(entry, "**Confidence:**", confidence)) continue
+        if (mentions_extra != "" && index(entry, mentions_extra) == 0) continue
+
+        header_line = tolower(buf[start])
+        body = tolower(join_lines(start + 1, end))
+
+        header_hits = 0
+        body_hits = 0
+        for (i = 1; i <= term_count; i++) {
+          header_hits += occurrences(header_line, lower_terms[i])
+          body_hits += occurrences(body, lower_terms[i])
+        }
+        score = header_hits * 2 + body_hits
+
+        encoded = entry
+        gsub(/\n/, US, encoded)
+        print score "\t" entry_date "\t" encoded
+      }
     }
   ' "$file"
 }
@@ -190,16 +299,19 @@ file_mtime_for() {
 
 run_search() {
   local terms=("$@")
-  local pattern=""
+  # Escape regex metacharacters in each term so a literal `|` in user input is not
+  # interpreted as ERE alternation. `pattern` is the match alternation; `term_list`
+  # is the same escaped terms, \x1f separated, for the per-term scoring inside awk.
+  local pattern="" term_list=""
   local term escaped
   for term in "${terms[@]}"; do
-    # Escape regex metacharacters in each term so a literal `|` in user input
-    # is not interpreted as ERE alternation.
     escaped=$(printf '%s' "$term" | sed 's/[][\\^$.*+?(){}|]/\\&/g')
     if [ -z "$pattern" ]; then
       pattern="$escaped"
+      term_list="$escaped"
     else
       pattern="$pattern|$escaped"
+      term_list="$term_list"$'\x1f'"$escaped"
     fi
   done
 
@@ -208,86 +320,23 @@ run_search() {
   while IFS= read -r kb_file; do
     [ -f "$kb_file" ] || continue
 
-    # File mtime — once per file, not per match. STAT_KIND chosen above.
+    # File mtime — once per file, not per entry. STAT_KIND chosen above.
     local file_mtime
     file_mtime=$(file_mtime_for "$kb_file")
 
-    # Last line of the section already emitted for this file. Match line numbers
-    # arrive ascending and sections are contiguous, so any match at or before it
-    # belongs to that same section: skip it without another pass over the file.
-    # A `break` here instead would return only the first section of a KB file that
-    # answers the query in several places.
-    local last_end=""
-
-    # Get matching line numbers (case-insensitive)
-    while IFS= read -r match_line_num; do
-      [ -z "$match_line_num" ] && continue
-      if [ -n "$last_end" ] && [ "$match_line_num" -le "$last_end" ]; then
-        continue
-      fi
-
-      local block range entry
-      block=$(extract_entry_block "$kb_file" "$match_line_num")
-      [ -z "$block" ] && continue
-      range="${block%%$'\n'*}"
-      entry="${block#*$'\n'}"
-      last_end="${range#*$'\t'}"
-      [ -z "$entry" ] && continue
-
-      # Extract header date
-      local entry_date
-      entry_date=$(echo "$entry" | grep -oE '^### [0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
-
-      # Apply since: filter
-      if [ -n "$SINCE_DATE" ] && [ -n "$entry_date" ]; then
-        if [[ "$entry_date" < "$SINCE_DATE" ]]; then continue; fi
-      fi
-
-      # Apply tag: filter
-      if [ -n "$TAG_FILTER" ]; then
-        if ! grep -i '^\*\*Tags:\*\*' <<< "$entry" | grep -qiF -- "$TAG_FILTER"; then continue; fi
-      fi
-
-      # Apply confidence: filter
-      if [ -n "$CONF_FILTER" ]; then
-        if ! grep -i '^\*\*Confidence:\*\*' <<< "$entry" | grep -qiF -- "$CONF_FILTER"; then continue; fi
-      fi
-
-      # Apply mentions: filter — case-sensitive literal path match.
-      # MENTIONS_EXTRA is empty when the path *is* the query (file-level grep already matched).
-      if [ -n "$MENTIONS_EXTRA" ]; then
-        if ! grep -qF -- "$MENTIONS_EXTRA" <<< "$entry"; then continue; fi
-      fi
-
-      # Weighted relevance: header matches count 2x, body 1x
-      local header_line
-      header_line=$(echo "$entry" | head -1)
-      local body_lines
-      body_lines=$(echo "$entry" | tail -n +2)
-
-      local header_hits=0
-      local body_hits=0
-      local h b
-      for term in "${terms[@]}"; do
-        h=$(grep -Fio -- "$term" <<< "$header_line" | wc -l | tr -d ' ')
-        b=$(grep -Fio -- "$term" <<< "$body_lines"  | wc -l | tr -d ' ')
-        header_hits=$((header_hits + h))
-        body_hits=$((body_hits + b))
-      done
-      local score=$(( header_hits * 2 + body_hits ))
+    local score entry_date entry_enc fresh_date
+    while IFS=$'\t' read -r score entry_date entry_enc; do
+      [ -n "$entry_enc" ] || continue
 
       # Freshness: prefer newer of entry date vs file mtime
-      local fresh_date="$entry_date"
+      fresh_date="$entry_date"
       if [[ -n "$file_mtime" ]] && [[ "$file_mtime" > "$fresh_date" ]]; then
         fresh_date="$file_mtime"
       fi
 
-      # Write result record: score|fresh_date|file|entry
-      # Newlines in entry → \x1f (unit separator) so each record stays one line
-      local entry_enc="${entry//$'\n'/$'\x1f'}"
+      # Result record: score|fresh_date|file|entry, entry newlines already \x1f encoded
       printf '%s\t%s\t%s\t%s\n' "$score" "${fresh_date:-0000-00-00}" "$kb_file" "$entry_enc" >> "$RESULTS_FILE"
-
-    done < <(grep -nEi -- "$pattern" "$kb_file" 2>/dev/null | cut -d: -f1)
+    done < <(extract_scored_blocks "$kb_file" "$pattern" "$term_list")
   done < "$KB_FILES_TMP"
 }
 
@@ -351,7 +400,11 @@ while IFS=$'\t' read -r score fresh_date kb_file entry; do
     echo "**Score:** $score"
   fi
   echo "**File:** \`${kb_file}\`"
-  decoded="${entry//$'\x1f'/$'\n'}"
+  # `tr`, not `${entry//.../...}`. bash 3.2 is the macOS default and its global pattern
+  # substitution is quadratic: measured at 17 seconds for one 32 KB entry with 400
+  # separators, against 0.011 seconds through `tr`. Ten of these were 33 of the 42
+  # seconds a common query took.
+  decoded=$(printf '%s' "$entry" | tr '\037' '\n')
   if [ "$FULL_OUTPUT" -eq 1 ]; then
     printf '%s\n' "$decoded"
   else

@@ -1224,23 +1224,22 @@ def cmd_execute(args: argparse.Namespace) -> int:
 
 def cmd_guard(args: argparse.Namespace) -> int:
     command = strip_heredoc_bodies(args.command or "")
-    segments = command_segments(command)
-    if command and (not segments or is_dynamic_shell_command(command)):
-        # Failing closed here is only justified when a guarded CLI could actually be
-        # reached. Blocking every command this parser cannot bind blocks the read-only
-        # majority - a `$(...)` inside an `echo`, a backtick quoted in prose - and each
-        # one costs a rewrite and a re-run without protecting anything.
-        if mentions_guarded_executable(command):
-            print(
-                "BLOCKED: could not safely parse this command, and it names a guarded CLI "
-                f"({', '.join(GUARDED_EXECUTABLES)}).\n"
-                "  Rewrite it without the dynamic construct, or prepare a payload-bound "
-                "action with .claude/scripts/external-write-action.py.",
-                file=sys.stderr,
-            )
-            return 10
-        if not segments:
-            return 0
+    unbindable_target = bool(command) and (
+        not command_segments(command) or is_dynamic_shell_command(command)
+    )
+    # Failing closed here is only justified when a guarded CLI could actually be
+    # reached. Blocking every command this parser cannot bind blocks the read-only
+    # majority - a `$(...)` inside an `echo`, a backtick quoted in prose - and each
+    # one costs a rewrite and a re-run without protecting anything.
+    if unbindable_target and mentions_guarded_executable(command):
+        print(
+            "BLOCKED: could not safely parse this command, and it names a guarded CLI "
+            f"({', '.join(GUARDED_EXECUTABLES)}).\n"
+            "  Rewrite it without the dynamic construct, or prepare a payload-bound "
+            "action with .claude/scripts/external-write-action.py.",
+            file=sys.stderr,
+        )
+        return 10
     if command_has_mutation(command):
         print(
             "BLOCKED: raw external mutation. Prepare, show, authorize, and execute the action with "

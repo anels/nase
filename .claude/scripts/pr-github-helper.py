@@ -26,6 +26,8 @@ GH_TIMEOUT_EXIT = 124
 # `kb-search.sh` re-walks workspace/kb per call and is measurably the slowest thing
 # this helper invokes, so it gets its own, wider bound.
 KB_SEARCH_TIMEOUT_SECONDS = 45
+# kb-search.sh's documented "no results" exit, per its usage header.
+KB_SEARCH_NO_RESULTS_EXIT = 2
 
 LIGHT_FIELDS = (
     "number",
@@ -438,7 +440,7 @@ def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, An
                 check=False,
                 text=True,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 timeout=KB_SEARCH_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired:
@@ -448,8 +450,18 @@ def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, An
             mentions.append({"path": path, "hits": "", "unavailable": "kb-search timed out"})
             continue
         text = result.stdout.strip()
-        if result.returncode == 0 and text:
-            mentions.append({"path": path, "hits": trunc(text, 1200)})
+        if result.returncode == 0:
+            if text:
+                mentions.append({"path": path, "hits": trunc(text, 1200)})
+        elif result.returncode != KB_SEARCH_NO_RESULTS_EXIT:
+            # Exit 2 is kb-search saying there are no mentions, which is an answer; any
+            # other non-zero is the scan failing. Reporting a failed scan as "nothing
+            # references this file" is a claim the reader acts on, so it gets its own row.
+            detail = result.stderr.strip().splitlines()
+            reason = f"kb-search exited {result.returncode}"
+            if detail:
+                reason += f": {trunc(detail[-1], 200)}"
+            mentions.append({"path": path, "hits": "", "unavailable": reason})
     return mentions
 
 
