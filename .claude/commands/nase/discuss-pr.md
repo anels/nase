@@ -2,7 +2,6 @@
 name: nase:discuss-pr
 description: "Deeply review a PR and draft evidence-backed inline findings. Use for analyze PR, review PR, self-review, or a PR URL; use /nase:address-comments for existing feedback."
 argument-hint: "<pr-url-or-number>"
-pattern: fan-out
 category: Git workflow
 ---
 

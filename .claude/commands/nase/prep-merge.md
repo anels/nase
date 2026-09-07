@@ -2,7 +2,6 @@
 name: nase:prep-merge
 description: "Prepare a PR for merge by checking threads, history, verification, and metadata. Use with a PR URL only for explicit prep merge, squash and push, clean up, ready-to-merge, or finalize intent."
 argument-hint: "<pr-url-or-number>"
-pattern: pipeline
 category: Git workflow
 ---
 

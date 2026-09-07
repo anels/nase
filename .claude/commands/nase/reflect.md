@@ -2,7 +2,6 @@
 name: nase:reflect
 description: "Reflect on completed work and extract lessons. Use after a feature, bug fix, or debugging session, or for reflect, what went well, or post-mortem."
 argument-hint: "<completed task>"
-pattern: pipeline
 category: Learning & reflection
 ---
 

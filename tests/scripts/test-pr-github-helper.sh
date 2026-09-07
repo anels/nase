@@ -378,6 +378,37 @@ candidates = mod.bot_decline_candidates(threads, 200)
 assert len(candidates) == 1
 PY
 
+mkdir -p "$TMPDIR_TEST/bin"
+cat > "$TMPDIR_TEST/bin/gh" <<'SH'
+#!/usr/bin/env bash
+sleep 30
+SH
+chmod +x "$TMPDIR_TEST/bin/gh"
+
+assert_cmd "a hung gh read is killed and reported, not waited on" \
+  env "PATH=$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import io
+import sys
+from contextlib import redirect_stderr
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+# The real bound is 60s. Shrinking it here keeps the test fast; what is under test is
+# that the bound exists and that main() maps the kill onto its own exit code.
+module.GH_TIMEOUT_SECONDS = 1
+captured = io.StringIO()
+with redirect_stderr(captured):
+    rc = module.main(["metadata", "acme/widgets#42"])
+assert rc == module.GH_TIMEOUT_EXIT, rc
+assert rc == 124, rc
+message = captured.getvalue()
+assert "command timed out" in message, message
+assert "gh pr view" in message, message
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\npr-github-helper tests passed.\n'
   exit 0

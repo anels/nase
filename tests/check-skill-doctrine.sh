@@ -12,7 +12,8 @@
 #   D6. restore archive flow missing path traversal / symlink hardening
 #   D7. kb-merge external import flow missing canonical path / symlink hardening
 #   D8. kb-merge generated skill wrappers missing frontmatter sanitization
-#   D9. core skill files missing architecture `pattern:` frontmatter
+#   D9. retired - it gated a `pattern:` frontmatter key nothing consumed. D18 now
+#       rejects the key outright, so reintroducing it fails there instead.
 #   D10. durable workspace write skills missing workspace-write-guard.md
 #   D11. auto-write modes allowed to skip drift checks
 #   D12. /nase:today treats tech-digest as a proactive action instead of optional
@@ -324,46 +325,6 @@ else
   green "PASS"; printf ': kb-merge wrapper frontmatter sanitization present\n'
 fi
 
-# ---------- D9: core skills declare architecture pattern -------------------
-section "D9: core skills declare architecture pattern"
-d9_hits=$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-allowed = {"pipeline", "fan-out", "expert-pool", "producer-reviewer", "supervisor", "utility"}
-hits = []
-
-for path in sorted(Path(".claude/commands/nase").glob("*.md")):
-    if path.parent.name == "workspace":
-        continue
-    text = path.read_text(encoding="utf-8")
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
-    if not match:
-        hits.append(f"  {path}: missing frontmatter")
-        continue
-    fields = {}
-    for line in match.group(1).splitlines():
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        fields[key.strip()] = value.strip().strip('"').strip("'")
-    pattern = fields.get("pattern")
-    if not pattern:
-        hits.append(f"  {path}: missing pattern")
-    elif pattern not in allowed:
-        hits.append(f"  {path}: invalid pattern '{pattern}'")
-
-print("\n".join(hits))
-PY
-)
-if [[ -n "$d9_hits" ]]; then
-  red "FAIL"; printf ': core skill files missing valid pattern frontmatter:\n'
-  printf '%s\n' "$d9_hits"
-  failed=$((failed+1))
-else
-  green "PASS"; printf ': all core skills declare architecture pattern\n'
-fi
-
 # ---------- D10: durable workspace writes use shared guard -----------------
 section "D10: durable workspace writes use workspace-write-guard"
 d10_hits=$(python3 - <<'PY'
@@ -664,9 +625,7 @@ allowed = {
     "description",
     "argument-hint",
     "when_to_use",
-    "pattern",
     "category",
-    "sub-patterns",
     "order",
     "model",
     "effort",

@@ -2,7 +2,6 @@
 name: nase:stats
 description: "Display workspace activity counts and charts inline. Use for show stats, how active am I, productivity, or 7/30/all-time activity; use /nase:recap for narrative."
 argument-hint: "[7|30|week|month|all]"
-pattern: utility
 category: Reporting
 model: haiku
 effort: low

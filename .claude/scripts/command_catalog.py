@@ -37,7 +37,6 @@ class Command:
     file: str
     category: str
     description: str
-    pattern: str
     order: int | None
     argument_hint: str
     when_to_use: str
@@ -105,7 +104,7 @@ def load_catalog(root: Path) -> list[Command]:
             errors.append(str(exc))
             continue
 
-        missing = [field for field in ("description", "pattern", "category") if not fields.get(field)]
+        missing = [field for field in ("description", "category") if not fields.get(field)]
         if missing:
             errors.append(f"{path}: missing frontmatter field(s): {', '.join(missing)}")
             continue
@@ -127,7 +126,6 @@ def load_catalog(root: Path) -> list[Command]:
                 file=path.relative_to(root).as_posix(),
                 category=fields["category"],
                 description=fields["description"],
-                pattern=fields["pattern"],
                 order=order,
                 argument_hint=fields.get("argument-hint", ""),
                 when_to_use=fields.get("when_to_use") or fields["description"],

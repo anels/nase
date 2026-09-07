@@ -2,9 +2,7 @@
 name: nase:today
 description: "Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context. Use for today, morning kickoff, daily plan, standup, or what should I work on."
 argument-hint: "[date or focus]"
-pattern: pipeline
 category: Learning & reflection
-sub-patterns: [fan-out]
 ---
 
 Create a concise daily plan from current evidence. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `.claude/docs/closing-block.md` for the final card.

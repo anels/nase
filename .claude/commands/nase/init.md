@@ -2,7 +2,6 @@
 name: nase:init
 description: "Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing workspace/config.md, init nase, configure, or bootstrap."
 argument-hint: "[--reconfigure]"
-pattern: pipeline
 category: Setup & health
 ---
 

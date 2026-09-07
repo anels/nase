@@ -2,9 +2,7 @@
 name: nase:design
 description: "Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill plan, or review a design."
 argument-hint: "<feature/request> [--auto|--interactive|--grill|--review]"
-pattern: pipeline
 category: Design & implementation
-sub-patterns: [fan-out]
 ---
 
 Turn a request into a concrete, tracked, junior-implementable design. This command never edits product code.

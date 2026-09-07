@@ -2,7 +2,6 @@
 name: nase:simplify
 description: "Simplify recently modified code without changing behavior. Use before commit or for simplify, clean up code, refactor for clarity, tidy up, deslop, or anti-slop."
 argument-hint: "[diff scope]"
-pattern: producer-reviewer
 category: Git workflow
 ---
 

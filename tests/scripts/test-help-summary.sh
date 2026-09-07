@@ -59,7 +59,6 @@ create_command() {
 ---
 name: ${frontmatter_name}
 description: "${description}"
-pattern: utility
 category: ${category}
 order: ${order}
 ---

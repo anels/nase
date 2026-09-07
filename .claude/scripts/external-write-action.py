@@ -17,6 +17,17 @@ from typing import Any
 
 
 TOKEN_TTL_SECONDS = 300
+# Deliberately generous: one `terraform apply` or `az deployment create` can
+# legitimately run for many minutes. The bound exists so a stalled network call
+# cannot hang the session forever, not to fail a slow-but-working write early.
+EXECUTE_TIMEOUT_SECONDS = 900
+# Distinct from every other exit code because the outcome is unknown, not failed:
+# the CLI may have applied the mutation before the bound expired.
+EXECUTE_TIMEOUT_EXIT = 11
+# The token and actor lookups run before the mutation, so bounding only the mutation
+# would leave `execute` able to hang here instead. These are two short `gh` calls;
+# a stall in either is a clean preflight failure, because nothing has mutated yet.
+GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 30
 MANIFEST_VERSION = 1
 MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AZURE_MUTATING_VERBS = {
@@ -527,13 +538,26 @@ def github_subprocess_environment(host: str, token: str | None = None) -> dict[s
 
 
 def github_account_token(executable: str, host: str, account: str) -> str:
-    completed = subprocess.run(
-        [executable, "auth", "token", "--hostname", host, "--user", account],
-        check=False,
-        capture_output=True,
-        env=github_subprocess_environment(host),
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            [executable, "auth", "token", "--hostname", host, "--user", account],
+            check=False,
+            capture_output=True,
+            env=github_subprocess_environment(host),
+            text=True,
+            timeout=GITHUB_PREFLIGHT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # Whatever `gh auth token` wrote before the kill is a fragment of the token, and
+        # `from exc` would carry it along the exception chain. `TimeoutExpired.__str__`
+        # omits it and nothing here renders a traceback, so this is not a leak today -
+        # it is dropped so that staying non-leaky does not depend on that.
+        exc.output = None
+        exc.stderr = None
+        raise ActionError(
+            f"loading the approved GitHub account token timed out after "
+            f"{GITHUB_PREFLIGHT_TIMEOUT_SECONDS}s; nothing was mutated"
+        ) from exc
     if completed.returncode != 0:
         raise ActionError("cannot load the approved GitHub account token")
     token = completed.stdout.strip()
@@ -543,14 +567,21 @@ def github_account_token(executable: str, host: str, account: str) -> str:
 
 
 def github_token_actor(executable: str, root: Path, host: str, token: str) -> str:
-    completed = subprocess.run(
-        [executable, "api", "user", "--jq", ".login"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        env=github_subprocess_environment(host, token),
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            [executable, "api", "user", "--jq", ".login"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            env=github_subprocess_environment(host, token),
+            text=True,
+            timeout=GITHUB_PREFLIGHT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ActionError(
+            f"verifying the approved GitHub token actor timed out after "
+            f"{GITHUB_PREFLIGHT_TIMEOUT_SECONDS}s; nothing was mutated"
+        ) from exc
     actor = completed.stdout.strip()
     if completed.returncode != 0 or not re.fullmatch(r"[A-Za-z0-9_.-]+", actor):
         raise ActionError("cannot verify the approved GitHub token actor")
@@ -582,7 +613,9 @@ def validated_github_account(root: Path, action: dict[str, Any]) -> tuple[str, s
     return approved, host
 
 
-def run_github_action(root: Path, action: dict[str, Any]) -> subprocess.CompletedProcess:
+def run_github_action(
+    root: Path, action: dict[str, Any], timeout: int
+) -> subprocess.CompletedProcess:
     """Run with the approved account token without changing shared gh state."""
     approved, host = validated_github_account(root, action)
     executable = action["argv"][0]
@@ -594,6 +627,7 @@ def run_github_action(root: Path, action: dict[str, Any]) -> subprocess.Complete
         cwd=root,
         env=github_subprocess_environment(host, token),
         check=False,
+        timeout=timeout,
     )
 
 
@@ -1091,6 +1125,8 @@ def verify_token(token: dict[str, Any], manifest: dict[str, Any]) -> None:
 
 
 def cmd_execute(args: argparse.Namespace) -> int:
+    if args.timeout_seconds <= 0:
+        raise ActionError("execute timeout must be a positive number of seconds")
     token_file: Path | None = None
     try:
         token_file, token = claim_token(args.root)
@@ -1098,10 +1134,28 @@ def cmd_execute(args: argparse.Namespace) -> int:
         verify_token(token, manifest)
         action = manifest["action"]
         verify_payload_files(args.root, action)
-        if action["system"] == "github":
-            completed = run_github_action(args.root, action)
-        else:
-            completed = subprocess.run(action["argv"], cwd=args.root, check=False)
+        try:
+            if action["system"] == "github":
+                completed = run_github_action(args.root, action, args.timeout_seconds)
+            else:
+                completed = subprocess.run(
+                    action["argv"], cwd=args.root, check=False, timeout=args.timeout_seconds
+                )
+        except subprocess.TimeoutExpired:
+            # Not a failure: the CLI may have applied the mutation before the bound
+            # expired, and nothing here can tell which. Say so, and let the consumed
+            # token force a fresh approval rather than inviting a blind retry.
+            print(
+                f"TIMEOUT: {action['system']} write exceeded {args.timeout_seconds}s; the CLI "
+                "process was killed.\n"
+                "  The mutation MAY already have been applied. Read the target state before "
+                "deciding anything.\n"
+                "  Only the CLI itself was signalled, so any helper process it spawned (a "
+                "Terraform provider, for one) can still be running.\n"
+                "  The one-shot token is spent, so a retry needs a new preview and approval.",
+                file=sys.stderr,
+            )
+            return EXECUTE_TIMEOUT_EXIT
         return completed.returncode
     finally:
         if token_file is not None:
@@ -1150,6 +1204,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     execute = subparsers.add_parser("execute", help="run an authorized action without a shell")
     execute.add_argument("--manifest", required=True, type=Path)
+    execute.add_argument(
+        "--timeout-seconds",
+        dest="timeout_seconds",
+        type=int,
+        default=EXECUTE_TIMEOUT_SECONDS,
+        help=f"kill the CLI after this many seconds (default {EXECUTE_TIMEOUT_SECONDS})",
+    )
     execute.set_defaults(func=cmd_execute)
 
     guard = subparsers.add_parser("guard", help="reject raw known mutation commands")

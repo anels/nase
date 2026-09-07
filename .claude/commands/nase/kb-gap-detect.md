@@ -2,7 +2,6 @@
 name: nase:kb-gap-detect
 description: "Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries."
 argument-hint: "[days/topic]"
-pattern: pipeline
 category: Knowledge base
 ---
 

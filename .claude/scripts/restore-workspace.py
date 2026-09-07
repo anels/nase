@@ -26,6 +26,11 @@ from workspace_lock import LockError, held
 VERSION = 1
 JOURNAL_RELATIVE = Path(".nase-restore/transaction.json")
 SNAPSHOT_TIMESTAMP_RE = re.compile(r"^\d{8}T\d{6}$")
+# Reading the member table touches metadata only.
+SEVEN_ZIP_LIST_TIMEOUT_SECONDS = 120
+# Unpacking a whole workspace archive is legitimately slow, so this only catches a
+# 7z waiting on a password prompt it will never receive.
+SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS = 1800
 
 
 class RestoreError(RuntimeError):
@@ -134,13 +139,20 @@ def seven_zip_binary() -> str:
 
 
 def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
-    result = subprocess.run(
-        [seven_zip_binary(), "l", "-slt", str(archive)],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [seven_zip_binary(), "l", "-slt", str(archive)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=SEVEN_ZIP_LIST_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RestoreError(
+            f"7z listing timed out after {SEVEN_ZIP_LIST_TIMEOUT_SECONDS}s; the archive may be "
+            "corrupt or prompting for a password"
+        ) from exc
     if result.returncode:
         raise RestoreError(f"7z listing failed: {result.stderr.strip()}")
     lines = result.stdout.splitlines()
@@ -456,13 +468,23 @@ def extract_candidate(
         else:
             extraction = parent / f".{root.name}-restore-extract-{transaction_id}"
             extraction.mkdir(mode=0o700)
-            result = subprocess.run(
-                [seven_zip_binary(), "x", "-y", f"-o{extraction}", str(archive)],
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
+            try:
+                result = subprocess.run(
+                    [seven_zip_binary(), "x", "-y", f"-o{extraction}", str(archive)],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as exc:
+                # The candidate directory is still under the caller's cleanup path, and
+                # nothing has been promoted yet, so an abort here leaves the live
+                # workspace untouched.
+                raise RestoreError(
+                    f"7z extraction timed out after {SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS}s; the live "
+                    "workspace was not touched"
+                ) from exc
             if result.returncode:
                 raise RestoreError(f"7z extraction failed: {result.stderr.strip()}")
             source = extraction / "workspace" if manifest["payload_shape"] == "wrapped" else extraction

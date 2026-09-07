@@ -2,7 +2,6 @@
 name: nase:help
 description: "Show the nase command and hook guide. Use for help, show commands, what can you do, what skills are available, or how does nase work."
 argument-hint: "[--verbose]"
-pattern: utility
 category: Setup & health
 model: haiku
 effort: low
