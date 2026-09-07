@@ -161,7 +161,7 @@ def scan_kb(root: pathlib.Path) -> list[dict[str, Any]]:
 
 
 def effort_status_vocabulary(root: pathlib.Path) -> tuple[set[str], set[str]]:
-    path = root / ".claude" / "docs" / "effort-lifecycle.md"
+    path = root / ".claude" / "docs" / "effort-model.md"
     if not path.is_file():
         return set(), set()
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -176,7 +176,7 @@ def effort_status_vocabulary(root: pathlib.Path) -> tuple[set[str], set[str]]:
 
 
 def effort_scope_vocabulary(root: pathlib.Path) -> set[str]:
-    path = root / ".claude" / "docs" / "effort-lifecycle.md"
+    path = root / ".claude" / "docs" / "effort-model.md"
     if not path.is_file():
         return set()
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -199,7 +199,7 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
         return [
             finding(
                 "effort_status_contract_missing",
-                ".claude/docs/effort-lifecycle.md",
+                ".claude/docs/effort-model.md",
                 "Status Vocabulary cannot be parsed; effort validation is incomplete.",
             )
         ]
@@ -211,7 +211,7 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
         issues.append(
             finding(
                 "effort_scope_contract_missing",
-                ".claude/docs/effort-lifecycle.md",
+                ".claude/docs/effort-model.md",
                 "Scope Vocabulary cannot be parsed; scope validation is incomplete.",
             )
         )

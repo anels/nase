@@ -2,6 +2,17 @@
 
 Shared reference for skills that need to build and test after code changes.
 
+## Contents
+
+- Step 1: Command Discovery
+- Step 2: Iteration Loop (max 5)
+- Step 2.4: A Filtered Test Run Must Report a Non-Zero Count
+- Step 2.5: Unrelated-Test Failure — Check Default Branch First
+- Step 2.6: Test-Presence Soft Gate (after all gates pass)
+- Step 3: Escalate After 5 Failures
+- Concurrent Worktree Builds (.NET)
+- Circuit Breaker Rule (applies to ALL skills with loops)
+
 ---
 
 ## Step 1: Command Discovery
@@ -41,6 +52,16 @@ For each iteration:
 5. All configured gates pass → proceed.
 
 ---
+
+## Step 2.4: A Filtered Test Run Must Report a Non-Zero Count
+
+A filtered run that matched nothing exits green and looks exactly like a filtered run that passed.
+Whenever the Test gate runs a subset rather than the whole suite, filter on the *declared* type or
+method name - not the file name, which is not a symbol and is routinely different (a file named
+`FooFolderAccessTests.cs` can declare `partial class FooTests`) - and read the executed count out of
+the runner's own summary. `--filter FullyQualifiedName~<file name>` has run 0 of 15 tests and exited
+clean. If the count is zero, or lower than the number of tests the touched files declare, the filter
+is wrong: fix the filter and re-run. Never record a filtered green as evidence without its count.
 
 ## Step 2.5: Unrelated-Test Failure — Check Default Branch First
 

@@ -48,9 +48,12 @@ if [ -z "$BODY" ]; then
     then ($in | keys | join(", ")) else empty end
   ' 2>/dev/null) || UNKNOWN_SHAPE=""
   if [ -n "$UNKNOWN_SHAPE" ]; then
-    printf 'NOTICE: prose-lint-guard found no draft body to review; fields present: %s\n' \
+    # The `[prose-lint-guard]` prefix is what makes an exit-0 line reach the user; see
+    # CLAUDE.md. Without it this notice is written and never read, which is the same as
+    # not writing it.
+    printf '[prose-lint-guard] no draft body to review; fields present: %s\n' \
       "$UNKNOWN_SHAPE" >&2
-    printf '  The draft was not linted. Update the body field list in %s\n' \
+    printf '[prose-lint-guard] the draft was not linted. Update the body field list in %s\n' \
       ".claude/hooks/prose-lint-guard.sh" >&2
   fi
   exit 0

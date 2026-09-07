@@ -43,7 +43,7 @@ mkdir -p \
   "$FIXTURE/workspace/tasks" \
   "$FIXTURE/workspace/tmp"
 
-cat > "$FIXTURE/.claude/docs/effort-lifecycle.md" <<'EOF'
+cat > "$FIXTURE/.claude/docs/effort-model.md" <<'EOF'
 ## Status Vocabulary
 
 **Active**
@@ -372,7 +372,7 @@ SESSFIX=$(mktemp -d)
 mkdir -p "$SESSFIX/.claude/docs" "$SESSFIX/workspace/logs" "$SESSFIX/workspace/tasks" \
   "$SESSFIX/workspace/kb" "$SESSFIX/workspace/stats" "$SESSFIX/workspace/tmp" \
   "$SESSFIX/workspace/efforts"
-cp "$FIXTURE/.claude/docs/effort-lifecycle.md" "$SESSFIX/.claude/docs/effort-lifecycle.md"
+cp "$FIXTURE/.claude/docs/effort-model.md" "$SESSFIX/.claude/docs/effort-model.md"
 printf '# Tasks\n' > "$SESSFIX/workspace/tasks/todo.md"
 
 long_entry="- 09:05 | fsd: $(python3 -c 'print("x" * 600)')"
@@ -406,6 +406,43 @@ assert_jq "a 600-char entry is not oversized" "$sess_json" \
 assert_jq "a 6000-char entry is still oversized" "$sess_json" \
   'any(.findings[]; .category == "daily_log_oversized_session" and .line == 11)'
 rm -rf "$SESSFIX"
+
+
+# The vocabularies are read out of a shared doc by path and section. When a section moves,
+# both readers return an empty set and every status and scope check silently stops
+# validating. The fixture above cannot see that, because it writes its own copy of the
+# doc, so assert against the real tree as well: an empty vocabulary means the readers and
+# the doc have drifted apart.
+if python3 - <<'PY'
+import importlib.util
+import pathlib
+import sys
+
+spec = importlib.util.spec_from_file_location(
+    "wqs", pathlib.Path(".claude/scripts/workspace-quality-scan.py")
+)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+
+root = pathlib.Path(".")
+active, done = module.effort_status_vocabulary(root)
+scope = module.effort_scope_vocabulary(root)
+empty = [
+    name for name, value in (("status active", active), ("status done", done), ("scope", scope))
+    if not value
+]
+if empty:
+    print(f"empty against the real tree: {', '.join(empty)}", file=sys.stderr)
+    print("the readers and the shared doc have drifted; check which doc owns the section",
+          file=sys.stderr)
+    sys.exit(1)
+PY
+then
+  pass_msg "vocabularies resolve against the real tree, not only the fixture"
+else
+  fail_msg "vocabularies resolve against the real tree, not only the fixture"
+fi
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

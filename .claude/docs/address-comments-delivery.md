@@ -87,6 +87,15 @@ Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply
 
 Hold all replies until Phase 9 (post-push) so the reviewer sees both the code fix and the reply together.
 
+### Reply tense (accept, decline, and reply-only alike): only what is true at draft time
+
+Replies are drafted here and posted in Phase 9, with the push (Phase 8) and the PR-description edit
+(Phase 8b) in between. A reply may only assert what is already true when it is drafted. Write the
+pending part in present-progressive (`pushing the fix now`, `updating the description to match the
+template`), never in the past tense (`was corrected`, `has been pushed`), and never defer the write
+that would make a past-tense claim true. Ordering alone does not protect the claim: any gate skipped
+between here and Phase 9 leaves a false statement posted to a human reviewer.
+
 ## Phase 7: Build & Test (max 5 iterations)
 
 Get configured build, lint, typecheck, and test commands from the KB file or repo's `CLAUDE.md`.

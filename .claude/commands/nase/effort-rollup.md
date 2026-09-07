@@ -27,7 +27,7 @@ collector, validation, coverage, staging, publishing, and promotion gates exactl
 
    Merged-PR volume is supporting evidence below this section, never the headline.
 2. Use the collector's full active, `done/`, and `archive/{YYYY}/` inventory. Its `month-efforts.sh` capture is a discovery aid only; canonical `mergedAt` and structured effort membership decide the month boundary.
-3. Read effort metadata and ownership from canonical `evidence.json`, which applies `.claude/docs/effort-lifecycle.md`, including `tracking_only`.
+3. Read effort metadata and ownership from canonical `evidence.json`, which applies `.claude/docs/effort-model.md → Terminal Destination`, including `tracking_only`.
 4. Use the collector's per-PR `gh pr view` captures for actual state and `mergedAt`. Search results are gap candidates only. Keep delivery, report-only, dependency, context-only, and untracked-candidate roles separate.
 5. Reconcile linked Jira issues when access exists. Record access gaps; never infer Jira state from stale effort text.
 6. **Mine measured impact.** For every effort delivering in the month whose scope is optimization / improvement / perf / coverage / pipeline (or whose doc states any baseline), open the doc and extract each concrete metric pair: `metric`, `from` (baseline value+unit), `to` (post value+unit), `delta`, source (Sonar / staging telemetry / pipeline timing / App Insights), and the merged PR that landed it. These numbers are the point of an impact report — carry them into the report verbatim, do not collapse them to prose. Label each value's confidence:

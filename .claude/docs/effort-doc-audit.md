@@ -14,9 +14,10 @@
   - Step 4: Report and log
   - What this pass does not do
 
-Read with `.claude/docs/effort-lifecycle.md`. That doc owns the status vocabulary, the
-transition rules and the classifier blind spots; this one owns the `partial_delivery`
-frontmatter contract and what to do about a doc that has drifted away from either.
+Read with `.claude/docs/effort-model.md` (status vocabulary) and
+`.claude/docs/effort-drift.md` (transition rules and classifier blind spots); this one
+owns the `partial_delivery` frontmatter contract and what to do about a doc that has
+drifted away from either.
 
 Callers: `/nase:efforts` Step 3 (active efforts) and Part 2 (`--closed`);
 `/nase:design --review` Step 3.5 (the doc it is reviewing).
@@ -34,7 +35,7 @@ future run.
 
 - **`transition.stale_canonical_rows`** - an unchecked canonical `Merged` row the live PR
   states just proved merged. Flip it in the same write as the frontmatter change, per
-  `effort-lifecycle.md → Drift Auto-Sync`.
+  `effort-drift.md → Drift Auto-Sync`.
 - **A `likely-delivery` invisible PR** - the row's own label calls the PR this effort's and
   nothing marks it a dependency, spike, cherry-pick or withdrawal. Rewrite the label to
   canonical `PR opened` keeping the row's own number in the body, fix the prose the merge
@@ -59,7 +60,7 @@ line and the suggested edit - an effort name alone makes the reader re-derive th
   the PR states did not settle.
 - **Non-empty `pr_references.validation_errors`**, surfacing as transition
   `reason: invalid-pr-reference` and blocking every write for that effort. Name the
-  offending key and its repair per `effort-lifecycle.md → PR Reference Resolution`. Never
+  offending key and its repair per `effort-drift.md → PR Reference Resolution`. Never
   report the effort as having no delivery PR - the helper never got to read one.
 - **Non-empty `pr_references.discarded_bare`**, except `reason: denied-in-row` - there the
   row itself says the number is not a PR, so the classifier is right and there is nothing
@@ -143,7 +144,7 @@ fire. Run the default sweep for that.
 
 `partial-delivery-unverified-revert-scan` is not a weaker version of the first row - it is
 the merge state with the revert question unanswered. Grep a symbol the PR *added* at the
-ring commit before recording delivery, per `effort-lifecycle.md → Classifier Blind Spots`.
+ring commit before recording delivery, per `effort-drift.md → Classifier Blind Spots`.
 If the repo is gone (a torn-down service, an archived fork), say the check is unavailable
 and leave the doc alone rather than recording delivery on ancestry.
 

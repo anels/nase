@@ -25,7 +25,7 @@ Three assertions, each catching a drift the others cannot see:
      to a cleanup file under `workspace/tasks/archive/`, not to a checkbox left ticked.
 
 Assertion B keys on **location**, not on `status:`, because location is what
-*Terminal Destination* in `.claude/docs/effort-lifecycle.md` makes authoritative. A root
+*Terminal Destination* in `.claude/docs/effort-model.md` makes authoritative. A root
 file whose `status:` is already terminal is therefore reported as its own finding rather
 than being silently exempted from B - otherwise this gate would demand a queue pointer for
 an effort that should have been moved out.

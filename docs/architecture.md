@@ -214,7 +214,9 @@ Default to `worker`; do not use `architect` for `lookup` work. Each role also ca
 
 An effort is one file, `workspace/efforts/{slug}.md`. `/nase:design` creates it, later skills
 edit it in place, and `.claude/scripts/effort-state.py` is the only classifier allowed to decide
-what stage it is in. `.claude/docs/effort-lifecycle.md` owns the full rules.
+what stage it is in. `.claude/docs/effort-lifecycle.md` indexes the full rules, split across
+`effort-model.md` (vocabulary and invariants), `effort-drift.md` (live-state
+reconciliation), and `effort-transitions.md` (per-skill edits).
 
 ### Who does what
 

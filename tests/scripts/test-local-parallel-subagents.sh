@@ -77,12 +77,12 @@ assert_contains "kb-review tests collision-safe backup writers" ".claude/command
 assert_contains "kb-review executes exact code proposals" ".claude/commands/nase/kb-review.md" "not repair-ready until that test executes successfully"
 assert_contains "kb-review reruns full preflight for exact proposals" ".claude/commands/nase/kb-review.md" "every deterministic preflight command"
 assert_contains "kb-review separates local repairs from destructive and external actions" ".claude/commands/nase/kb-review.md" "External, credential, deletion, and rotation actions"
-assert_contains "effort lifecycle points to stable kb-review section" ".claude/docs/effort-lifecycle.md" 'Deep review -> Authoritative state'
+assert_contains "effort model points to stable kb-review section" ".claude/docs/effort-model.md" 'Deep review -> Authoritative state'
 assert_contains "kb relationship graph points to stable kb-review section" ".claude/docs/kb-relationship-graph.md" 'Deep review -> Content and relationships'
 assert_contains "kb staleness points to stable kb-review section" ".claude/docs/kb-staleness.md" 'Deep review -> Content and relationships'
 assert_contains "kb write routing points to stable kb-review section" ".claude/docs/kb-write-routing.md" 'Deep review -> Content and relationships'
 assert_contains "lesson promotion points to stable kb-review section" ".claude/docs/lessons-format.md" 'Deep review -> Content and relationships'
-assert_cmd "effort lifecycle has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/effort-lifecycle.md" '/nase:kb-review` Step'
+assert_cmd "effort model has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/effort-model.md" '/nase:kb-review` Step'
 assert_cmd "kb relationship graph has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/kb-relationship-graph.md" '/nase:kb-review` Step'
 assert_cmd "kb staleness has no removed kb-review steps" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/kb-staleness.md" '/nase:kb-review` (Steps'
 assert_cmd "kb write routing has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/kb-write-routing.md" '/nase:kb-review` Step'

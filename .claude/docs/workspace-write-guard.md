@@ -95,7 +95,7 @@ failure. If another writer replaces a path, it preserves that entry in place or
 moves it to a unique recovery path instead of deleting or overwriting it:
 
 For an effort transition the destination is not always `done/` - take it from
-`transition.destination_dir` per `.claude/docs/effort-lifecycle.md → Terminal
+`transition.destination_dir` per `.claude/docs/effort-model.md → Terminal
 Destination`. `apply-move` creates the destination parent, so a first-of-year
 archive folder needs no separate `mkdir`.
 
