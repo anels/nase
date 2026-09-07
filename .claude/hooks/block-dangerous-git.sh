@@ -613,6 +613,17 @@ has_arg() {
   return 1
 }
 
+git_config_is_read_only() {
+  # git's own read actions. `--list` and its short form print; every `--get` variant
+  # queries. Anything else on a --global or --system invocation is treated as a write.
+  local flag
+  for flag in --get --get-all --get-regexp --get-urlmatch --get-color --get-colorbool --list; do
+    has_flag "$flag" && return 0
+  done
+  has_short_flag "l" && return 0
+  return 1
+}
+
 scan_git_config_args() {
   local idx=1 arg key value
 
@@ -788,12 +799,30 @@ apply_policy() {
       ;;
     checkout|restore)
       if has_arg "." || has_arg ":/" || has_arg ":(top)"; then
-        block 'git checkout/restore . or :/ (discards working tree)'
+        # `git restore --staged` rewrites index entries from HEAD and leaves every file
+        # alone, so a whole-tree pathspec cannot discard work there. Adding --worktree,
+        # or using it on its own, does touch files and still blocks. `git checkout` has
+        # no index-only mode, so it is never exempt.
+        if [ "$subcmd" = "restore" ] \
+          && has_flag "--staged" && ! has_flag "--worktree"; then
+          :
+        else
+          block 'git checkout/restore . or :/ (discards working tree)'
+        fi
       fi
       ;;
     config)
       if has_flag "--global" || has_flag "--system"; then
-        block 'git config --global/--system (modifies user/system config)'
+        # An explicit read-only action is distinguishable from a write, so reading user
+        # or system config is allowed. A bare `git config --global some.key` is a read
+        # too, but telling that from `git config --global some.key value` needs argument
+        # counting rather than a flag, and this guard stays on the conservative end of
+        # anything it cannot distinguish.
+        if git_config_is_read_only; then
+          :
+        else
+          block 'git config --global/--system (modifies user/system config)'
+        fi
       fi
       scan_git_config_args
       ;;

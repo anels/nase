@@ -299,6 +299,86 @@ PY
 # kb-search.sh exits 2 for "no mentions" and any other non-zero when the scan itself
 # failed. Collapsing those two into one empty row reports a broken KB read as "nothing
 # references this file", which is a claim the reader acts on.
+# Several paths are one kb-search invocation, not one each: the script walks every KB
+# file per call, so per-path spawning multiplied a fixed cost by --max-kb-paths. Sections
+# are keyed by the header naming their own path, because a path with no hits still gets a
+# header and reading by position would shift every later path by one.
+assert_cmd "kb mentions sweep once and split by header" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+calls = []
+real_run = subprocess.run
+
+OUTPUT = "\n".join([
+    '## KB Search - "mentions:src/a.ts" - 2 result(s)',
+    "",
+    "**File:** `workspace/kb/general/a.md`",
+    "alpha body",
+    "",
+    "---",
+    "",
+    '## KB Search - "mentions:src/gone.ts" - no results',
+    "",
+    "---",
+    "",
+    '## KB Search - "mentions:src/b.ts" - 1 result(s)',
+    "",
+    "**File:** `workspace/kb/general/b.md`",
+    "bravo body",
+    "",
+    "---",
+    "",
+])
+
+
+def fake(argv, **kwargs):
+    if argv[:1] == ["bash"] and "kb-search.sh" in str(argv[1]):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, OUTPUT, "")
+    return real_run(argv, **kwargs)
+
+
+try:
+    subprocess.run = fake
+    rows = module.kb_mentions_for_paths(["src/a.ts", "src/gone.ts", "src/b.ts"], 10)
+finally:
+    subprocess.run = real_run
+
+assert len(calls) == 1, f"expected one sweep, got {len(calls)}"
+passed = [arg for arg in calls[0] if arg.startswith("mentions:")]
+assert passed == ["mentions:src/a.ts", "mentions:src/gone.ts", "mentions:src/b.ts"], passed
+
+by_path = {row["path"]: row["hits"] for row in rows}
+# The path with no hits contributes no row, as before; the other two keep their own body
+# and must not borrow each other's.
+assert set(by_path) == {"src/a.ts", "src/b.ts"}, sorted(by_path)
+assert "alpha body" in by_path["src/a.ts"], by_path["src/a.ts"]
+assert "bravo body" not in by_path["src/a.ts"], by_path["src/a.ts"]
+assert "bravo body" in by_path["src/b.ts"], by_path["src/b.ts"]
+assert "alpha body" not in by_path["src/b.ts"], by_path["src/b.ts"]
+
+# A timeout is one verdict for every path now, which is the trade for one file walk.
+def slow(argv, **kwargs):
+    if argv[:1] == ["bash"] and "kb-search.sh" in str(argv[1]):
+        raise subprocess.TimeoutExpired(argv, 45)
+    return real_run(argv, **kwargs)
+
+
+try:
+    subprocess.run = slow
+    rows = module.kb_mentions_for_paths(["src/a.ts", "src/b.ts"], 10)
+finally:
+    subprocess.run = real_run
+assert [row["path"] for row in rows] == ["src/a.ts", "src/b.ts"], rows
+assert all("timed out" in row["unavailable"] for row in rows), rows
+PY
+
 assert_cmd "kb mentions separate an empty answer from a failed scan" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
 import importlib.util
 import subprocess
@@ -320,7 +400,10 @@ def stub(exit_code, out="", err=""):
 
 
 try:
-    subprocess.run = stub(0, out="## KB Search - hit\n")
+    # A real hit always renders a `**File:**` line; a stub without one is not the live
+    # shape, and the caller uses that marker to tell a rendered entry from a bare
+    # "no results" header.
+    subprocess.run = stub(0, out="## KB Search - hit\n\n**File:** `workspace/kb/general/a.md`\nbody\n")
     hits = module.kb_mentions_for_paths(["src/a.ts"], 1)
     assert len(hits) == 1 and hits[0]["hits"], hits
     assert "unavailable" not in hits[0], hits

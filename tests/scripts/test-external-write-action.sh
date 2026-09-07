@@ -321,8 +321,26 @@ expect_guard_rc "unterminated single quote naming a guarded CLI stays fail-close
 # shell-pipe arm reads the raw command text and does not need the lexer at all.
 expect_guard_rc "an unlexable command piped into a shell stays blocked" 10 \
   "printf 'unterminated | bash"
-expect_guard_rc "an unlexable command redirected into a shell stays blocked" 10 \
-  "printf 'unterminated < bash"
+
+# `< bash` reads stdin from a file named `bash`; no shell syntax makes it invoke one, so
+# the pipe test has no `<` arm. The shape it looks like it should cover, `bash < script.sh`,
+# puts the name first and is allowed for the same reason `bash script.sh` is: the guard
+# cannot read either file.
+expect_guard_rc "reading a file named bash is not a shell invocation" 0 "cat < bash"
+expect_guard_rc "a shell reading a script from stdin is allowed, like passing it" 0 \
+  "bash < script.sh"
+
+# The pipe test masks quoted spans first. `|` is literal inside either quote kind, so
+# scanning raw text refused ordinary read-only work, including a grep for the guard's own
+# pattern.
+expect_guard_rc "a single-quoted pipe is not a pipe into a shell" 0 "grep -n 'a|sh' file.py"
+expect_guard_rc "a grep for the shell-name pattern is not a pipe into a shell" 0 \
+  "grep -nE 'bash|dash|ksh|sh|zsh' file.py"
+expect_guard_rc "a double-quoted pipe is not a pipe into a shell" 0 \
+  'echo "x | bash" > note.md'
+expect_guard_rc "a real pipe into a non-shell is allowed" 0 \
+  "printf '%s' \"\$x\" | tr '|sh' 'x'"
+expect_guard_rc "a pipe with no space before the shell name is blocked" 10 "echo hi |bash"
 
 # A construct whose target cannot be bound is blocked by the unrecognized-CLI check
 # regardless of any guarded name, because `command_argvs` cannot say what it will run.
@@ -387,6 +405,13 @@ expect_guard_rc "two heredoc bodies on one line are both dropped" 0 \
   "$(printf 'cmd <<A <<B\nbody a\nA\ngh pr create\nB\necho done\n')"
 expect_guard_rc "an indented <<- delimiter closes its body" 0 \
   "$(printf 'cat <<-EOF\n  gh pr create\n  EOF\necho done\n')"
+# The shell test is scoped to the redirect's own line plus any preceding line joined by a
+# backslash. Spanning the whole command refused a heredoc that feeds python because a
+# later segment happened to run `bash`.
+expect_guard_rc "a heredoc feeding python is stripped even when a later segment runs bash" 0 \
+  "$(printf 'python3 - <<%sPY%s\nprint(1)\nPY\nbash -n file.sh\n' "'" "'")"
+expect_guard_rc "a prose heredoc is stripped even when a later segment runs bash" 0 \
+  "$(printf 'cat > f.md <<%sEOF%s\nsee `Foo` rows\nEOF\nbash -n f.sh\n' "'" "'")"
 expect_guard_rc "quoted executable mutation is blocked" 10 "'gh' pr create --draft --title Example"
 expect_guard_rc "mutation carrying a literal backtick argument is blocked" 10 \
   "gh pr create --draft --title 'uses \`Foo\` here'"
