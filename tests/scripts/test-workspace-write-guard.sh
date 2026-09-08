@@ -38,6 +38,15 @@ print(format(os.stat(sys.argv[1]).st_mode & 0o7777, "o"))
 PY
 }
 
+file_mtime_ns() {
+  python3 - "$1" <<'PY'
+import os
+import sys
+
+print(os.stat(sys.argv[1]).st_mtime_ns)
+PY
+}
+
 mkdir -p "$TMPROOT/workspace/kb/projects" "$TMPROOT/workspace/tmp" "$TMPROOT/.claude/commands/nase/workspace"
 mkdir -p "$TMPROOT/workspace/journals"
 
@@ -94,6 +103,7 @@ move_destination="$TMPROOT/workspace/efforts/done/move.md"
 mkdir -p "$(dirname "$move_source")"
 printf 'old move\n' > "$move_source"
 chmod 600 "$move_source"
+touch -t 202601020304 "$move_source"
 printf 'new move\n' > "$proposal"
 python3 "$SCRIPT" stage \
   --root "$TMPROOT" \
@@ -116,6 +126,8 @@ python3 "$SCRIPT" apply-move \
 assert_cmd "apply-move removes source" test ! -e "$move_source"
 assert_cmd "apply-move writes staged destination" grep -qx 'new move' "$move_destination"
 assert_cmd "apply-move preserves source mode" test "$(file_mode "$move_destination")" = "600"
+assert_cmd "apply-move refreshes mtime because the content changed" \
+  test "$(file_mtime_ns "$move_destination")" != "$move_mtime_ns"
 
 archive_source="$TMPROOT/workspace/efforts/done/archive-me.md"
 archive_destination="$TMPROOT/workspace/efforts/archive/2026/archive-me.md"
@@ -129,6 +141,7 @@ import time
 old = time.time() - 70 * 86400
 os.utime(sys.argv[1], (old, old))
 PY
+archive_mtime_ns=$(file_mtime_ns "$archive_source")
 python3 "$SCRIPT" move-existing \
   --root "$TMPROOT" \
   --target workspace/efforts/done/archive-me.md \
@@ -136,6 +149,10 @@ python3 "$SCRIPT" move-existing \
   --older-than-days 60 > "$TMPROOT/move-existing.json"
 assert_cmd "move-existing removes old source" test ! -e "$archive_source"
 assert_cmd "move-existing preserves content" grep -qx 'archive content' "$archive_destination"
+assert_cmd "move-existing preserves source mtime" \
+  test "$(file_mtime_ns "$archive_destination")" = "$archive_mtime_ns"
+assert_cmd "move-existing reports the preserved mtime" \
+  test "$(json_field "$TMPROOT/move-existing.json" destination_state.mtime_ns)" = "$archive_mtime_ns"
 python3 - "$TMPROOT/move-existing.json" <<'PY'
 import json
 import sys
