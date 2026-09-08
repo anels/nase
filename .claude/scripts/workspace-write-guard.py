@@ -368,6 +368,8 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
     committed = False
     staged_sha256 = sha256_file(staged)
     source_mode = int(str(current["mode"]), 8)
+    raw_preserve_mtime_ns = getattr(args, "preserve_mtime_ns", None)
+    preserve_mtime_ns = None if raw_preserve_mtime_ns is None else int(raw_preserve_mtime_ns)
 
     def path_is_created_destination(path: Path) -> bool:
         if not destination_created or destination_identity is None:
@@ -448,6 +450,10 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
     try:
         shutil.copyfile(staged, tmp_destination)
         os.chmod(tmp_destination, source_mode)
+        # `month-efforts.sh` and `effort-rollup-evidence.py` read an effort's terminal
+        # month off the doc mtime, so a pure relocation must not re-date it.
+        if preserve_mtime_ns is not None:
+            os.utime(tmp_destination, ns=(preserve_mtime_ns, preserve_mtime_ns))
         fsync_file(tmp_destination)
         stat = tmp_destination.stat()
         destination_identity = (stat.st_dev, stat.st_ino)
@@ -567,6 +573,7 @@ def cmd_move_existing(args: argparse.Namespace) -> None:
                 expected_mtime_ns=state["mtime_ns"],
                 expected_sha256=state["sha256"],
                 expected_staged_sha256=sha256_file(staged),
+                preserve_mtime_ns=state["mtime_ns"],
             )
             cmd_apply_move_unlocked(move_args)
             staged.unlink(missing_ok=True)

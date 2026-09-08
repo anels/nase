@@ -85,6 +85,13 @@ It applies the same repository mutation lock and no-clobber move contract withou
 a human review stage. Exit `4` means the archive destination already exists; the
 source and destination are both retained.
 
+`move-existing` relocates a doc without changing it, so it carries the source
+mtime onto the destination. That mtime is load-bearing: `month-efforts.sh` and
+`effort-rollup-evidence.py` both read an effort's terminal month off it, so a
+retention move that re-dated the file would report a long-closed effort as
+delivered in the month it was archived. `apply` and `apply-move` publish new
+content, so a fresh mtime is correct for them.
+
 For a guarded rename that also replaces file content, use `apply-move` instead
 of `apply` followed by `mv`. It rechecks the source and atomically refuses an
 existing destination, so a stale `done/{slug}.md` cannot be overwritten. It
