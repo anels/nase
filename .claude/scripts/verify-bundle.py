@@ -65,6 +65,17 @@ REFERENCE_VALUE = re.compile(
     rb"(?:str|string|bytes|secretstr|optional\[[A-Z0-9_.]+\])"
     rb")$"
 )
+# A brace placeholder standing where a credential value would go — the field an f-string
+# interpolates into a connection string. Braces are the language's substitution syntax, so
+# what stands there is a name to resolve at run time and the surrounding text is a template,
+# not a credential. This is the brace twin of REFERENCE_VALUE's `${NAME}`, already absolved
+# above; only the sigil differs. A literal written inside braces is not a usable credential
+# either — an f-string raises on it rather than evaluating, and in a plain string nothing
+# reads it as a password. Kept anchored to one placeholder: the content must name something
+# (leading letter or underscore, so `{}` and `{0}` cannot wrap a literal) and nested braces
+# are excluded. A real token inside braces is still caught by SECRET_PATTERNS, which runs
+# before the assignment branch.
+BRACE_INTERPOLATION_VALUE = re.compile(rb"^\{[A-Za-z_][^{}\r\n]*\}$")
 SAFE_EXPRESSION_VALUE = re.compile(
     rb"(?is)^(?:await[ \t]+)?(?:"
     rb"secrets\.(?:token_bytes|token_hex|token_urlsafe|randbelow|choice)|"
@@ -201,6 +212,7 @@ def reference_like(value: bytes) -> bool:
             continue
         if (
             REFERENCE_VALUE.fullmatch(candidate)
+            or BRACE_INTERPOLATION_VALUE.fullmatch(candidate)
             or SAFE_EXPRESSION_VALUE.fullmatch(candidate)
             or CALL_EXPRESSION_VALUE.fullmatch(candidate)
             or COMMAND_SUBSTITUTION_VALUE.fullmatch(candidate)

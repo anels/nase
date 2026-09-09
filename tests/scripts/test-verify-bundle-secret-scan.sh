@@ -465,6 +465,70 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(module.secret_kind(source), "credential-assignment")
 
+    def test_brace_interpolation_is_not_a_credential(self):
+        # An f-string / format placeholder is substitution syntax: the value resolves at
+        # run time, so what stands here is a template. The brace twin of `${NAME}`, which
+        # the scanner already absolves; only the sigil differs.
+        field = b"pass" + b"word"
+        opener, closer = b"{", b"}"
+        for value in (
+            opener + b"conn_dict['" + field.capitalize() + b"']" + closer,
+            opener + b"cfg[" + b'"pw"' + b"]" + closer,
+            opener + b"self." + field + closer,
+            opener + b"settings.api_key" + closer,
+            opener + field + closer,
+        ):
+            source = field + b"=" + value
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_connection_string_template_is_not_a_credential(self):
+        # The exact shape that blocked an FSD bundle: one f-string whose every field is
+        # interpolated, so no literal appears anywhere in it.
+        field = b"pass" + b"word"
+        opener, closer = b"{", b"}"
+
+        def placeholder(name):
+            return opener + b"conn_dict['" + name + b"']" + closer
+
+        source = (
+            b"conn_str = f"
+            + b'"'
+            + b"Server="
+            + placeholder(b"Server")
+            + b";UID="
+            + placeholder(b"User Id")
+            + b";"
+            + b"PWD"
+            + b"="
+            + placeholder(field.capitalize())
+            + b";Encrypt="
+            + placeholder(b"Encrypt")
+            + b'"'
+        )
+        self.assertIsNone(module.secret_kind(source))
+
+    def test_brace_wrapper_cannot_launder_a_known_token(self):
+        # SECRET_PATTERNS runs before the assignment branch, so a real token stays caught
+        # whatever wraps it.
+        source = b"PWD" + b"={" + b"ghp_" + b"A" * 24 + b"}"
+        self.assertEqual(module.secret_kind(source), "known-token")
+
+    def test_brace_interpolation_does_not_mask_a_later_secret(self):
+        field = b"pass" + b"word"
+        source = (
+            field + b"={" + b"conn_dict['pw']" + b"}\n"
+            + b"client_secret" + b'="hardcoded-canary-4831"\n'
+        )
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
+    def test_multiple_placeholders_in_one_value_stay_flagged(self):
+        # The rule is anchored to exactly one placeholder, so a value that is not a single
+        # substitution gets no absolution from it.
+        field = b"pass" + b"word"
+        source = field + b"={a}{b}"
+        self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_scanner_sources_do_not_trip_their_own_preflight(self):
         for path in (
             BUNDLE,

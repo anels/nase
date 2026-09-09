@@ -16,7 +16,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 CATEGORY_ORDER = [
     "Setup & health",
     "Knowledge base",
@@ -47,7 +46,9 @@ class Command:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render or validate the /nase command catalog.")
+    parser = argparse.ArgumentParser(
+        description="Render or validate the /nase command catalog."
+    )
     parser.add_argument("--root", default=".", help="nase workspace root")
     parser.add_argument(
         "--format",
@@ -55,11 +56,29 @@ def parse_args() -> argparse.Namespace:
         default="readme",
         help="output format",
     )
-    parser.add_argument("--command-limit", type=int, default=5, help="compact commands per category; 0 = unlimited")
-    parser.add_argument("--purpose-chars", type=int, default=180, help="compact description width; 0 = unlimited")
+    parser.add_argument(
+        "--command-limit",
+        type=int,
+        default=5,
+        help="compact commands per category; 0 = unlimited",
+    )
+    parser.add_argument(
+        "--purpose-chars",
+        type=int,
+        default=180,
+        help="compact description width; 0 = unlimited",
+    )
     readme_mode = parser.add_mutually_exclusive_group()
-    readme_mode.add_argument("--check-readme", action="store_true", help="fail when README Available commands drift")
-    readme_mode.add_argument("--write-readme", action="store_true", help="replace the generated README command section")
+    readme_mode.add_argument(
+        "--check-readme",
+        action="store_true",
+        help="fail when README Available commands drift",
+    )
+    readme_mode.add_argument(
+        "--write-readme",
+        action="store_true",
+        help="replace the generated README command section",
+    )
     return parser.parse_args()
 
 
@@ -74,7 +93,7 @@ def unquote(value: str) -> str:
 
 def parse_frontmatter(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8", errors="replace")
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     if not match:
         raise ValueError(f"{path}: missing YAML frontmatter")
 
@@ -104,7 +123,9 @@ def load_catalog(root: Path) -> list[Command]:
             errors.append(str(exc))
             continue
 
-        missing = [field for field in ("description", "category") if not fields.get(field)]
+        missing = [
+            field for field in ("description", "category") if not fields.get(field)
+        ]
         if missing:
             errors.append(f"{path}: missing frontmatter field(s): {', '.join(missing)}")
             continue
@@ -196,13 +217,17 @@ def render_readme(commands: list[Command]) -> str:
     return "\n".join(lines).rstrip()
 
 
-def render_help_compact(commands: list[Command], command_limit: int, purpose_chars: int) -> str:
+def render_help_compact(
+    commands: list[Command], command_limit: int, purpose_chars: int
+) -> str:
     lines = ["## Commands"]
     for category, rows in grouped(commands):
         lines.append(f"### {category}")
         shown = rows if command_limit <= 0 else rows[:command_limit]
         for row in shown:
-            lines.append(f"- `{row.command}` - {truncate(row.description, purpose_chars)}")
+            lines.append(
+                f"- `{row.command}` - {truncate(row.description, purpose_chars)}"
+            )
         remaining = len(rows) - len(shown)
         if remaining > 0:
             lines.append(f"- (+{remaining} more; run `/nase:help --verbose`)")
@@ -237,7 +262,9 @@ def check_readme(root: Path, expected: str) -> int:
         print("README.md missing", file=sys.stderr)
         return 1
 
-    actual = extract_readme_catalog(readme.read_text(encoding="utf-8", errors="replace"))
+    actual = extract_readme_catalog(
+        readme.read_text(encoding="utf-8", errors="replace")
+    )
     if actual == expected:
         return 0
 
@@ -289,7 +316,11 @@ def main() -> int:
     if args.format == "readme":
         print(readme_output)
     elif args.format == "help-compact":
-        print(render_help_compact(commands, max(args.command_limit, 0), max(args.purpose_chars, 0)))
+        print(
+            render_help_compact(
+                commands, max(args.command_limit, 0), max(args.purpose_chars, 0)
+            )
+        )
     elif args.format == "help-verbose":
         print(readme_output)
     elif args.format == "json":

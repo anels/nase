@@ -25,12 +25,12 @@ See .claude/docs/confluence-publish-conversion.md for the mapping contract.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
 import re
 import shutil
-import base64
 import subprocess
 import sys
 import urllib.error
@@ -53,34 +53,126 @@ DEFAULT_THRESHOLD = {"html": 55000, "markdown": 35000}
 # as nesting leaves the element stack permanently unbalanced. A depth counter
 # that trips on `<meta charset="utf-8">` never leaves <head> and emits nothing.
 VOID = frozenset(
-    "area base br col embed hr img input link meta param source track wbr".split()
+    [
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    ]
 )
 
 PASSTHROUGH = frozenset(
-    "p h1 h2 h3 h4 h5 h6 strong em code table thead tbody tr th td ul ol li "
-    "blockquote pre details summary a".split()
+    [
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "strong",
+        "em",
+        "code",
+        "table",
+        "thead",
+        "tbody",
+        "tr",
+        "th",
+        "td",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "pre",
+        "details",
+        "summary",
+        "a",
+    ]
 )
 
 # Elements that belong inside a paragraph rather than beside one. Emitting one
 # of these at block level makes Confluence wrap it in a paragraph of its own,
 # which is how a sentence carrying inline <code> ends up shattered into
 # one-word lines.
-INLINE_PASSTHROUGH = frozenset("strong em code a br".split())
+INLINE_PASSTHROUGH = frozenset(["strong", "em", "code", "a", "br"])
 
 DROP_TREE = frozenset(
-    "style script head nav footer canvas svg button select textarea form "
-    "dialog noscript template".split()
+    [
+        "style",
+        "script",
+        "head",
+        "nav",
+        "footer",
+        "canvas",
+        "svg",
+        "button",
+        "select",
+        "textarea",
+        "form",
+        "dialog",
+        "noscript",
+        "template",
+    ]
 )
 
-UNWRAP = frozenset("div span section article main header aside figure figcaption".split())
+UNWRAP = frozenset(
+    [
+        "div",
+        "span",
+        "section",
+        "article",
+        "main",
+        "header",
+        "aside",
+        "figure",
+        "figcaption",
+    ]
+)
 
 # Unwrapped wrappers that are inline. They neither open nor close the implicit
 # paragraph their siblings share: closing on `</span>` puts a label/value strip
 # back to one line per piece, and closing on `</small>` splits the sentence that
 # carries it. Every other unwrapped wrapper is block-level and does both.
 UNWRAP_INLINE = frozenset(
-    "span small abbr sup sub mark kbd samp var time cite q u s strike big tt "
-    "del ins label font nobr data dfn output bdi bdo".split()
+    [
+        "span",
+        "small",
+        "abbr",
+        "sup",
+        "sub",
+        "mark",
+        "kbd",
+        "samp",
+        "var",
+        "time",
+        "cite",
+        "q",
+        "u",
+        "s",
+        "strike",
+        "big",
+        "tt",
+        "del",
+        "ins",
+        "label",
+        "font",
+        "nobr",
+        "data",
+        "dfn",
+        "output",
+        "bdi",
+        "bdo",
+    ]
 )
 
 # `<b>`/`<i>` are the presentational spellings of emphasis. Unwrapping them threw
@@ -88,10 +180,15 @@ UNWRAP_INLINE = frozenset(
 # indistinguishable from its values once the grid was gone.
 TAG_ALIAS = {"b": "strong", "i": "em"}
 
-CHART_CLASS = re.compile(r"(?:^|[\s-])(bar|bars|track|spark|sparkline|meter|gauge)(?:$|[\s-])")
+CHART_CLASS = re.compile(
+    r"(?:^|[\s-])(bar|bars|track|spark|sparkline|meter|gauge)(?:$|[\s-])"
+)
 PANEL_CLASS = (
     ("panel-warning", re.compile(r"(?:^|[\s-])(warn|warning|caution)(?:$|[\s-])")),
-    ("panel-error", re.compile(r"(?:^|[\s-])(bad|crit|critical|error|danger)(?:$|[\s-])")),
+    (
+        "panel-error",
+        re.compile(r"(?:^|[\s-])(bad|crit|critical|error|danger)(?:$|[\s-])"),
+    ),
     ("panel-success", re.compile(r"(?:^|[\s-])(good|ok|success|pass)(?:$|[\s-])")),
     ("panel-note", re.compile(r"(?:^|[\s-])(note|callout|aside)(?:$|[\s-])")),
 )
@@ -106,13 +203,17 @@ HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 # mangled page where a clear error would not.
 NESTING_RULES = (
     ("li", ("table", "details") + HEADINGS, "heading/table/expand inside a list item"),
-    ("panel", ("table", "details", "blockquote", "panel"), "table/expand/blockquote/panel inside a panel"),
+    (
+        "panel",
+        ("table", "details", "blockquote", "panel"),
+        "table/expand/blockquote/panel inside a panel",
+    ),
     ("cell", ("table",), "table inside a table cell"),
 )
 
 DEFAULT_CONTENT_WIDTH = 1080
 
-GRID_RULE = re.compile(r"\.([a-z0-9_-]+)[^{]*\{([^}]*)\}", re.I)
+GRID_RULE = re.compile(r"\.([a-z0-9_-]+)[^{]*\{([^}]*)\}", re.IGNORECASE)
 CLASS_ATTR = re.compile(r"""class=["']([^"']*)["']""")
 
 
@@ -125,7 +226,7 @@ def layout_classes(source: str) -> set[str]:
     They are rasterized instead.
     """
     found = set()
-    for style in re.findall(r"<style[^>]*>(.*?)</style>", source, re.S):
+    for style in re.findall(r"<style[^>]*>(.*?)</style>", source, re.DOTALL):
         for match in GRID_RULE.finditer(style):
             if re.search(r"display:\s*grid", match.group(2)):
                 found.add(match.group(1).lower())
@@ -175,7 +276,7 @@ class NestingViolation(Exception):
 
 
 class Block:
-    __slots__ = ("html", "level", "heading", "visuals")
+    __slots__ = ("heading", "html", "level", "visuals")
 
     def __init__(self, level=None, heading=""):
         self.html: list[str] = []
@@ -195,8 +296,13 @@ class Block:
 
 
 class HtmlPlusEmitter(HTMLParser):
-    def __init__(self, source_text: str, rasterize: list[str], no_rasterize: bool,
-                 rasterize_only: list[str] | None = None):
+    def __init__(
+        self,
+        source_text: str,
+        rasterize: list[str],
+        no_rasterize: bool,
+        rasterize_only: list[str] | None = None,
+    ):
         super().__init__(convert_charrefs=True)
         self.source_text = source_text
         self.line_offsets = [0]
@@ -326,7 +432,7 @@ class HtmlPlusEmitter(HTMLParser):
         else:
             # Nothing but whitespace landed in it - a wrapper that held only
             # another wrapper. Drop the paragraph rather than ship an empty one.
-            del self.block.html[start - 1:]
+            del self.block.html[start - 1 :]
 
     def open_unwrapped(self, tag: str) -> None:
         """Enter a wrapper that emits nothing of its own.
@@ -351,7 +457,9 @@ class HtmlPlusEmitter(HTMLParser):
             else:
                 present = container in self.stack
             if present and probe in forbidden:
-                raise NestingViolation(description, self.current_heading or "(before the first heading)")
+                raise NestingViolation(
+                    description, self.current_heading or "(before the first heading)"
+                )
 
     # ---- parser callbacks -------------------------------------------------
     def handle_starttag(self, tag, attrs):
@@ -440,8 +548,10 @@ class HtmlPlusEmitter(HTMLParser):
         else:
             self.close_auto_p()
 
-        if self.stack and self.stack[-1] in ("table", "thead", "tbody", "tr") and tag not in (
-            "tr", "td", "th", "thead", "tbody"
+        if (
+            self.stack
+            and self.stack[-1] in ("table", "thead", "tbody", "tr")
+            and tag not in ("tr", "td", "th", "thead", "tbody")
         ):
             # An element orphaned inside a row, outside any cell. Malformed
             # source, but the content is real - a dropped <td> around a PR link
@@ -520,7 +630,7 @@ class HtmlPlusEmitter(HTMLParser):
                 self.capture_depth -= 1
                 if self.capture_depth == 0:
                     end = self.source_text.find(">", self.abs_offset()) + 1
-                    markup = self.source_text[self.capture_start:end]
+                    markup = self.source_text[self.capture_start : end]
                     self.capture_start = None
                     self.capture_visual(markup)
             return
@@ -534,21 +644,29 @@ class HtmlPlusEmitter(HTMLParser):
         if tag in VOID:
             return
 
-        if tag == "div" and self.stack[-1:] == ["~autop"] and self.stack[-2:-1] == ["panel"]:
+        if (
+            tag == "div"
+            and self.stack[-1:] == ["~autop"]
+            and self.stack[-2:-1] == ["panel"]
+        ):
             # The panel's own implicit paragraph. Close it before the branch
             # below looks at the top of the stack, or the panel never closes and
             # the next panel reads as a panel nested inside this one.
             self.close_auto_p()
         if self.stack and self.stack[-1] == "panel" and tag == "div":
             self.stack.pop()
-            start = self.panel_starts.pop() if self.panel_starts else len(self.block.html)
+            start = (
+                self.panel_starts.pop() if self.panel_starts else len(self.block.html)
+            )
             inner = "".join(self.block.html[start:])
             # Fallback for a panel whose content the implicit-paragraph rule did
             # not reach: bare inline runs get one paragraph per run from
             # Confluence, which fragments a sentence across lines. Wrap the whole
             # run in a single <p> instead. Panels containing real blocks are left
             # alone - nesting a <p> around them would be invalid.
-            if inner.strip() and not re.search(r"<(p|table|ul|ol|blockquote|details|h[1-6])[ >]", inner):
+            if inner.strip() and not re.search(
+                r"<(p|table|ul|ol|blockquote|details|h[1-6])[ >]", inner
+            ):
                 del self.block.html[start:]
                 self.block.html.append("<p>%s</p>" % inner.strip())
             self.emit("</div>")
@@ -566,8 +684,12 @@ class HtmlPlusEmitter(HTMLParser):
                 self.close_auto_p()
             self.emit_gap()
             return
-        if tag == "tr" and self.stack and self.stack[-1] == "td" \
-                and (len(self.stack) - 1) in self.auto_cells:
+        if (
+            tag == "tr"
+            and self.stack
+            and self.stack[-1] == "td"
+            and (len(self.stack) - 1) in self.auto_cells
+        ):
             self.auto_cells.discard(len(self.stack) - 1)
             self.stack.pop()
             self.emit("</td>")
@@ -594,7 +716,11 @@ class HtmlPlusEmitter(HTMLParser):
             return
         if self.gap_pending:
             self.gap_pending = False
-            if not data[:1].isspace() and self.last_char and not self.last_char.isspace():
+            if (
+                not data[:1].isspace()
+                and self.last_char
+                and not self.last_char.isspace()
+            ):
                 self.emit(" ")
         if self.stack and self.stack[-1] in ("table", "thead", "tbody", "tr"):
             # Text directly inside a table but outside any cell is invalid HTML.
@@ -666,7 +792,9 @@ class HtmlPlusEmitter(HTMLParser):
 
 
 def viewbox_dimensions(svg_markup: str) -> tuple[int, int]:
-    match = re.search(r'viewBox\s*=\s*["\']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)', svg_markup)
+    match = re.search(
+        r'viewBox\s*=\s*["\']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)', svg_markup
+    )
     if not match:
         return (0, 0)
     return (int(float(match.group(1))), int(float(match.group(2))))
@@ -678,7 +806,7 @@ def markdown_blocks(text: str) -> tuple[str, list[Block], list[str]]:
     if body.startswith("---\n"):
         end = body.find("\n---", 4)
         if end != -1:
-            body = body[body.find("\n", end + 1) + 1:]
+            body = body[body.find("\n", end + 1) + 1 :]
 
     title = ""
     lines = body.splitlines(keepends=True)
@@ -687,10 +815,16 @@ def markdown_blocks(text: str) -> tuple[str, list[Block], list[str]]:
         lines = lines[1:]
 
     for pattern, message in (
-        (r"^!\[[^\]]*\]\(", "local image reference: markdown passthrough cannot carry it"),
-        (r"^```mermaid", "mermaid fence: markdown passthrough renders it as plain code"),
+        (
+            r"^!\[[^\]]*\]\(",
+            "local image reference: markdown passthrough cannot carry it",
+        ),
+        (
+            r"^```mermaid",
+            "mermaid fence: markdown passthrough renders it as plain code",
+        ),
     ):
-        if re.search(pattern, body, re.M):
+        if re.search(pattern, body, re.MULTILINE):
             warnings.append(message)
 
     blocks = [Block()]
@@ -766,7 +900,9 @@ def clamp(text: str, limit: int) -> str:
     return cut.rstrip(" ,;:-") + "…"
 
 
-def page_title(base: str, page: list[Block], index: int, carried: str) -> tuple[str, str]:
+def page_title(
+    base: str, page: list[Block], index: int, carried: str
+) -> tuple[str, str]:
     """Return (title, heading to carry forward). A page produced by a
     block-boundary break has no heading of its own, so it continues the last
     heading seen rather than degrading to "part N"."""
@@ -777,7 +913,11 @@ def page_title(base: str, page: list[Block], index: int, carried: str) -> tuple[
     if own:
         title = "%s - %s" % (base, clamp(own, HEADING_FRAGMENT_LIMIT))
     elif carried:
-        title = "%s - %s (cont. %d)" % (base, clamp(carried, HEADING_FRAGMENT_LIMIT), index + 1)
+        title = "%s - %s (cont. %d)" % (
+            base,
+            clamp(carried, HEADING_FRAGMENT_LIMIT),
+            index + 1,
+        )
     else:
         title = "%s - part %d" % (base, index + 1)
     return clamp(title, TITLE_LIMIT), heading
@@ -827,7 +967,10 @@ def cmd_plan(args) -> int:
             warnings.append(
                 "dropped %d text run(s) sitting inside a table but outside any cell - "
                 "the source markup is malformed there: %s"
-                % (len(emitter.stray_table_text), ", ".join(emitter.stray_table_text[:6]))
+                % (
+                    len(emitter.stray_table_text),
+                    ", ".join(emitter.stray_table_text[:6]),
+                )
             )
         prose_images = [
             visual["png"]
@@ -851,7 +994,9 @@ def cmd_plan(args) -> int:
                 for value in CLASS_ATTR.findall(raw)
                 for token in value.split()
             }
-            missing = sorted(emitter.grid_classes - emitter.matched_grid_classes - present)
+            missing = sorted(
+                emitter.grid_classes - emitter.matched_grid_classes - present
+            )
             if missing:
                 warnings.append(
                     "--rasterize-only named %s, which matched nothing in the source - a typo "
@@ -860,12 +1005,19 @@ def cmd_plan(args) -> int:
                 )
 
     title = resolve_title(args.title, head_title, blocks, source_path)
-    if kind == "html" and blocks and blocks[0].level == 1 and blocks[0].heading.strip() == title.strip():
+    if (
+        kind == "html"
+        and blocks
+        and blocks[0].level == 1
+        and blocks[0].heading.strip() == title.strip()
+    ):
         # Strip only the duplicated <h1> element. The block also carries the
         # content that follows it, including any chart placeholder, so dropping
         # the whole block silently deletes the top of the document.
         first = blocks[0]
-        without_h1 = re.sub(r"^\s*<h1>.*?</h1>\s*", "", first.text(), count=1, flags=re.S)
+        without_h1 = re.sub(
+            r"^\s*<h1>.*?</h1>\s*", "", first.text(), count=1, flags=re.DOTALL
+        )
         first.html = [without_h1]
         first.level = None
         first.heading = ""
@@ -918,9 +1070,22 @@ def cmd_plan(args) -> int:
                 "title": title_text,
                 "body_file": body_file,
                 "bytes": nbytes,
-                "bytes_without_visuals": sum(b.nbytes(with_visuals=False) for b in page),
+                "bytes_without_visuals": sum(
+                    b.nbytes(with_visuals=False) for b in page
+                ),
                 "visuals": [
-                    {k: v[k] for k in ("id", "png", "width", "height", "text_chars", "kind", "status")}
+                    {
+                        k: v[k]
+                        for k in (
+                            "id",
+                            "png",
+                            "width",
+                            "height",
+                            "text_chars",
+                            "kind",
+                            "status",
+                        )
+                    }
                     for v in visuals
                 ],
             }
@@ -943,7 +1108,9 @@ def cmd_plan(args) -> int:
             str(v["id"]): v["markup"] for b in blocks for v in b.visuals
         },
         "_style": extract_styles(raw) if kind == "html" else "",
-        "_content_width": content_width(raw) if kind == "html" else DEFAULT_CONTENT_WIDTH,
+        "_content_width": content_width(raw)
+        if kind == "html"
+        else DEFAULT_CONTENT_WIDTH,
     }
     plan_path = os.path.join(args.out_dir, "plan.json")
     with open(plan_path, "w", encoding="utf-8") as handle:
@@ -954,9 +1121,14 @@ def cmd_plan(args) -> int:
     print("title       %s" % title)
     print("pages       %d (threshold %d B)" % (len(pages), threshold))
     for page in pages:
-        print("  [%d] %-58s %7d B  %d chart(s)"
-              % (page["index"], page["title"][:58], page["bytes"], len(page["visuals"])))
-    print("charts      %d to rasterize, %d chart-class subtrees dropped" % (total_visuals, dropped))
+        print(
+            "  [%d] %-58s %7d B  %d chart(s)"
+            % (page["index"], page["title"][:58], page["bytes"], len(page["visuals"]))
+        )
+    print(
+        "charts      %d to rasterize, %d chart-class subtrees dropped"
+        % (total_visuals, dropped)
+    )
     print("without visuals: %d B total" % without_total)
     for warning in warnings:
         print("warning     %s" % warning)
@@ -965,7 +1137,7 @@ def cmd_plan(args) -> int:
 
 
 def extract_styles(raw: str) -> str:
-    return "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", raw, re.S))
+    return "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", raw, re.DOTALL))
 
 
 def find_chrome() -> str | None:
@@ -1005,7 +1177,8 @@ def render_document(style: str, markup: str, width: int, measure: bool) -> str:
         "<script>window.addEventListener('load',function(){"
         "var b=document.querySelector('.__block').getBoundingClientRect();"
         "document.title='H'+Math.ceil(b.height);});</script>"
-        if measure else ""
+        if measure
+        else ""
     )
     return (
         '<!doctype html><html data-theme="light"><head><meta charset="utf-8">'
@@ -1022,9 +1195,14 @@ def measure_height(chrome: str, path: str, width: int) -> int:
     """Chrome screenshots a viewport, not an element, so the height has to be
     read back before the capture or every PNG carries a tail of blank page."""
     argv = [
-        chrome, "--headless", "--disable-gpu", "--hide-scrollbars",
-        "--virtual-time-budget=4000", "--window-size=%d,800" % width,
-        "--dump-dom", "file://%s" % path,
+        chrome,
+        "--headless",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--virtual-time-budget=4000",
+        "--window-size=%d,800" % width,
+        "--dump-dom",
+        "file://%s" % path,
     ]
     try:
         done = subprocess.run(argv, capture_output=True, timeout=30, text=True)
@@ -1064,7 +1242,10 @@ def cmd_render(args) -> int:
                 width = visual["width"] or page_width
                 height = visual["height"] or 600
                 markup = re.sub(
-                    r"<svg\b", '<svg width="%d" height="%d"' % (width, height), markup, count=1
+                    r"<svg\b",
+                    '<svg width="%d" height="%d"' % (width, height),
+                    markup,
+                    count=1,
                 )
                 doc_width = width
             else:
@@ -1074,7 +1255,9 @@ def cmd_render(args) -> int:
             html_path = os.path.join(assets, "visual-%02d.html" % visual["id"])
             if not height:
                 with open(html_path, "w", encoding="utf-8") as handle:
-                    handle.write(render_document(style, markup, doc_width, measure=True))
+                    handle.write(
+                        render_document(style, markup, doc_width, measure=True)
+                    )
                 height = measure_height(chrome, html_path, doc_width)
                 if not height:
                     visual["status"] = "skipped:unmeasurable"
@@ -1148,8 +1331,18 @@ def api_token(service: str, account: str) -> str:
             # confirmation makes it sit on a GUI prompt that a headless run can never
             # answer. Time out into the environment path instead of hanging the publish.
             done = subprocess.run(
-                ["security", "find-generic-password", "-w", "-s", service, "-a", account],
-                capture_output=True, text=True, timeout=KEYCHAIN_TIMEOUT_SECONDS,
+                [
+                    "security",
+                    "find-generic-password",
+                    "-w",
+                    "-s",
+                    service,
+                    "-a",
+                    account,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=KEYCHAIN_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired:
             # Bound no name to the exception: its captured stdout holds a partial read
@@ -1190,12 +1383,16 @@ def multipart(fields: dict, filename: str, payload: bytes) -> tuple[bytes, str]:
     out = []
     for key, value in fields.items():
         out.append(
-            ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n"
-             % (boundary, key, value)).encode()
+            (
+                '--%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n'
+                % (boundary, key, value)
+            ).encode()
         )
     out.append(
-        ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n"
-         "Content-Type: image/png\r\n\r\n" % (boundary, filename)).encode()
+        (
+            '--%s\r\nContent-Disposition: form-data; name="file"; filename="%s"\r\n'
+            "Content-Type: image/png\r\n\r\n" % (boundary, filename)
+        ).encode()
     )
     out.append(payload)
     out.append(("\r\n--%s--\r\n" % boundary).encode())
@@ -1216,7 +1413,9 @@ def post_png(url: str, email: str, token: str, path: str) -> dict:
         return json.loads(response.read().decode())
 
 
-def upload_attachment(site: str, email: str, token: str, page_id: str, path: str) -> dict:
+def upload_attachment(
+    site: str, email: str, token: str, page_id: str, path: str
+) -> dict:
     return post_png("https://%s%s" % (site, ATTACH_PATH % page_id), email, token, path)
 
 
@@ -1282,7 +1481,7 @@ def media_id_of(result: dict) -> str:
 
 PLACEHOLDER_RE = (
     r'<div data-type="panel-info"><p><strong>Chart:</strong>'
-    r'(?:(?!</div>).)*?attach <code>%s</code>(?:(?!</div>).)*?</p></div>'
+    r"(?:(?!</div>).)*?attach <code>%s</code>(?:(?!</div>).)*?</p></div>"
 )
 
 
@@ -1293,7 +1492,7 @@ def replace_placeholder(body: str, png: str, node: str) -> tuple[str, bool]:
     is regenerated by `plan` and only the filename is guaranteed stable across
     a re-plan.
     """
-    pattern = re.compile(PLACEHOLDER_RE % re.escape(png), re.S)
+    pattern = re.compile(PLACEHOLDER_RE % re.escape(png), re.DOTALL)
     updated, count = pattern.subn(node, body, count=1)
     return updated, bool(count)
 
@@ -1315,7 +1514,8 @@ def resolve_site(explicit: str) -> str:
             continue
         found = re.search(
             r"^\s*baseUrl:\s*(?:https://)?([A-Za-z0-9.-]+)",
-            open(config, encoding="utf-8").read(), re.M,
+            open(config, encoding="utf-8").read(),
+            re.MULTILINE,
         )
         if found:
             return found.group(1).rstrip("/")
@@ -1384,8 +1584,13 @@ def cmd_attach(args) -> int:
             'data-width-type="pixel"><div data-type="media" data-media-type="file" '
             'data-id="%s" data-collection="contentId-%s" data-width="%d" data-height="%d">'
             "</div></figure>"
-            % (visual["width"], media_id, args.page_id,
-               visual["width"] * 2, visual["height"] * 2)
+            % (
+                visual["width"],
+                media_id,
+                args.page_id,
+                visual["width"] * 2,
+                visual["height"] * 2,
+            )
         )
         body, swapped = replace_placeholder(body, visual["png"], node)
         if not swapped:
@@ -1481,7 +1686,9 @@ def cmd_ledger_lookup(args) -> int:
     and silently lose the untouched tail.
     """
     source = os.path.abspath(args.source)
-    stem = re.sub(r"[-_]?\d{4}-\d{2}(-\d{2})?$", "", os.path.splitext(os.path.basename(source))[0])
+    stem = re.sub(
+        r"[-_]?\d{4}-\d{2}(-\d{2})?$", "", os.path.splitext(os.path.basename(source))[0]
+    )
 
     latest: dict[int, dict] = {}
     family: list[dict] = []
@@ -1502,11 +1709,17 @@ def cmd_ledger_lookup(args) -> int:
                 "action": "update" if prior else "create",
                 "page_id": prior.get("page_id") if prior else None,
                 "page_url": prior.get("page_url") if prior else None,
-                "published_body_sha256": prior.get("published_body_sha256") if prior else None,
+                "published_body_sha256": prior.get("published_body_sha256")
+                if prior
+                else None,
             }
         )
     orphans = [
-        {"page_index": index, "page_id": rec.get("page_id"), "page_url": rec.get("page_url")}
+        {
+            "page_index": index,
+            "page_id": rec.get("page_id"),
+            "page_url": rec.get("page_url"),
+        }
         for index, rec in sorted(latest.items())
         if index >= args.pages
     ]

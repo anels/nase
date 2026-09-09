@@ -44,7 +44,9 @@ def atomic_write(path: pathlib.Path | str, data: bytes) -> None:
     """
     target = pathlib.Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, raw_temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    descriptor, raw_temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.", dir=target.parent
+    )
     temporary = pathlib.Path(raw_temporary)
     try:
         with os.fdopen(descriptor, "wb") as handle:

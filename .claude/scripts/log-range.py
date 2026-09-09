@@ -20,6 +20,7 @@ Exit codes:
   0  success (output may be empty if no logs exist in range)
   1  invalid arguments
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,8 +45,11 @@ def main() -> int:
     )
     parser.add_argument("start", help="START_DATE YYYY-MM-DD")
     parser.add_argument("end", help="END_DATE YYYY-MM-DD")
-    parser.add_argument("--root", default=None,
-                        help="nase repo root (default: derived from script location via __file__)")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help="nase repo root (default: derived from script location via __file__)",
+    )
     parser.add_argument("--logs-dir", default="workspace/logs")
     parser.add_argument("--separator", choices=("space", "newline"), default="space")
     args = parser.parse_args()

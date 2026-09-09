@@ -13,8 +13,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 # The tool probe is the one call here that does not go through nase_git, so it carries
 # its own bound. A preflight that hangs looks exactly like one that is working, and the
@@ -33,7 +32,10 @@ def lines(text: str) -> list[str]:
 def default_branch(repo: Path) -> dict[str, Any]:
     sym = run_git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
     if sym.returncode == 0 and sym.stdout.strip().startswith("origin/"):
-        return {"branch": sym.stdout.strip().removeprefix("origin/"), "source": "origin/HEAD"}
+        return {
+            "branch": sym.stdout.strip().removeprefix("origin/"),
+            "source": "origin/HEAD",
+        }
     remote = run_git(repo, "remote", "show", "origin")
     match = re.search(r"HEAD branch:\s*(\S+)", remote.stdout)
     if match:
@@ -68,7 +70,11 @@ def module_inventory(repo: Path, max_items: int) -> list[str]:
     interesting = [
         path
         for path in files
-        if re.search(r"(helper|service|util|client|controller|handler|module)", path, re.I)
+        if re.search(
+            r"(helper|service|util|client|controller|handler|module)",
+            path,
+            re.IGNORECASE,
+        )
     ]
     inventory = [f"dir:{item}" for item in top_dirs[:max_items]]
     remaining = max(0, max_items - len(inventory))
@@ -87,14 +93,18 @@ def task_terms(task: str) -> list[str]:
     return terms[:20]
 
 
-def kb_candidates(kb_file: Path | None, task: str, max_lines: int) -> list[dict[str, Any]]:
+def kb_candidates(
+    kb_file: Path | None, task: str, max_lines: int
+) -> list[dict[str, Any]]:
     if not kb_file or not kb_file.is_file():
         return []
     terms = task_terms(task)
     if not terms:
         return []
     matches: list[dict[str, Any]] = []
-    for idx, line in enumerate(kb_file.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for idx, line in enumerate(
+        kb_file.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         lowered = line.lower()
         if any(term in lowered for term in terms):
             matches.append({"line": idx, "text": line.strip()[:240]})
@@ -137,7 +147,7 @@ def tool_availability(root: Path) -> list[dict[str, Any]]:
 
 
 def frontmatter_field(text: str, field: str) -> str:
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     if not match:
         return ""
     for line in match.group(1).splitlines():
@@ -190,7 +200,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--task", required=True)
     parser.add_argument("--kb-file")
-    parser.add_argument("--json", action="store_true", help="Emit JSON; retained for command readability")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON; retained for command readability",
+    )
     parser.add_argument("--max-inventory-items", type=int, default=15)
     parser.add_argument("--max-kb-lines", type=int, default=10)
     args = parser.parse_args(argv)

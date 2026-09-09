@@ -22,9 +22,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import fsync_dir, sha256_file  # noqa: E402
-from workspace_lock import LockError, held  # noqa: E402
-
+from nase_fs import fsync_dir, sha256_file
+from workspace_lock import LockError, held
 
 VERSION = 1
 JOURNAL_RELATIVE = Path(".nase-restore/transaction.json")
@@ -104,7 +103,9 @@ def zip_members(archive: Path) -> list[dict[str, Any]]:
                     if stat.S_ISDIR(mode):
                         is_dir = True
                     elif not stat.S_ISREG(mode):
-                        raise RestoreError(f"zip member is not a regular file or directory: {info.filename!r}")
+                        raise RestoreError(
+                            f"zip member is not a regular file or directory: {info.filename!r}"
+                        )
                 records.append(
                     {
                         "archive_path": info.filename,
@@ -144,7 +145,14 @@ def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
         raise RestoreError(f"7z listing failed: {result.stderr.strip()}")
     lines = result.stdout.splitlines()
     try:
-        start = next(index for index, line in enumerate(lines) if re.fullmatch(r"-{10,}", line.strip())) + 1
+        start = (
+            next(
+                index
+                for index, line in enumerate(lines)
+                if re.fullmatch(r"-{10,}", line.strip())
+            )
+            + 1
+        )
     except StopIteration as exc:
         raise RestoreError("7z listing has no member metadata separator") from exc
     records: list[dict[str, Any]] = []
@@ -160,11 +168,22 @@ def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
                     raise RestoreError("7z member record is missing Path")
                 if link_keys or unix_mode.startswith("l"):
                     raise RestoreError(f"7z link member is not allowed: {path!r}")
-                is_dir = current.get("Folder") == "+" or attrs.startswith("D") or unix_mode.startswith("d")
+                is_dir = (
+                    current.get("Folder") == "+"
+                    or attrs.startswith("D")
+                    or unix_mode.startswith("d")
+                )
                 if not attrs and "Folder" not in current:
                     raise RestoreError(f"7z cannot prove member type is safe: {path!r}")
-                if not is_dir and unix_mode and unix_mode[0] not in ("-", ".") and not attrs.startswith("A"):
-                    raise RestoreError(f"7z member type is not a regular file: {path!r}")
+                if (
+                    not is_dir
+                    and unix_mode
+                    and unix_mode[0] not in ("-", ".")
+                    and not attrs.startswith("A")
+                ):
+                    raise RestoreError(
+                        f"7z member type is not a regular file: {path!r}"
+                    )
                 try:
                     size = int(current.get("Size", "0"))
                 except ValueError as exc:
@@ -187,14 +206,23 @@ def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
     return records
 
 
-def validated_members(records: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+def validated_members(
+    records: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
     normalized: list[tuple[dict[str, Any], str]] = []
     for record in records:
         normalized.append((record, normalize_member(str(record["archive_path"]))))
-    has_wrapped = any(path == "workspace" or path.startswith("workspace/") for _, path in normalized)
-    has_flat = any(path != "workspace" and not path.startswith("workspace/") for _, path in normalized)
+    has_wrapped = any(
+        path == "workspace" or path.startswith("workspace/") for _, path in normalized
+    )
+    has_flat = any(
+        path != "workspace" and not path.startswith("workspace/")
+        for _, path in normalized
+    )
     if has_wrapped and has_flat:
-        raise RestoreError("archive mixes flat payload with top-level workspace/ payload")
+        raise RestoreError(
+            "archive mixes flat payload with top-level workspace/ payload"
+        )
     shape = "wrapped" if has_wrapped else "flat"
     output: list[dict[str, Any]] = []
     seen_exact: set[str] = set()
@@ -209,7 +237,9 @@ def validated_members(records: list[dict[str, Any]]) -> tuple[str, list[dict[str
                 continue
             relative = archive_path.removeprefix("workspace/")
         if relative in seen_exact:
-            raise RestoreError(f"archive contains duplicate normalized path: {relative!r}")
+            raise RestoreError(
+                f"archive contains duplicate normalized path: {relative!r}"
+            )
         folded = unicodedata.normalize("NFC", relative).casefold()
         if folded in seen_folded and seen_folded[folded] != relative:
             raise RestoreError(f"archive contains Unicode/case collision: {relative!r}")
@@ -271,7 +301,10 @@ def inventory(path: Path) -> dict[str, Any]:
                         "sha256": content_hash,
                     }
                 )
-        payload = {"exists": True, "entries": sorted(entries, key=lambda item: str(item["path"]))}
+        payload = {
+            "exists": True,
+            "entries": sorted(entries, key=lambda item: str(item["path"])),
+        }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     payload["inventory_hash"] = hashlib.sha256(encoded).hexdigest()
     payload["file_count"] = sum(item["type"] == "file" for item in payload["entries"])
@@ -296,7 +329,9 @@ def inspect_archive(root: Path, archive: Path, manifest_out: Path) -> dict[str, 
     shape, members = validated_members(archive_records(archive))
     current = inventory(root / "workspace")
     archive_files = {str(item["path"]) for item in members if item["type"] == "file"}
-    local_files = {str(item["path"]) for item in current["entries"] if item["type"] == "file"}
+    local_files = {
+        str(item["path"]) for item in current["entries"] if item["type"] == "file"
+    }
     manifest = {
         "version": VERSION,
         "root": str(root),
@@ -322,12 +357,16 @@ def verify_manifest(root: Path, manifest: dict[str, Any]) -> Path:
         raise RestoreError("manifest archive metadata is missing")
     archive = Path(str(archive_data.get("path", ""))).resolve(strict=True)
     info = archive.stat()
-    if info.st_size != archive_data.get("size") or sha256_file(archive) != archive_data.get("sha256"):
+    if info.st_size != archive_data.get("size") or sha256_file(
+        archive
+    ) != archive_data.get("sha256"):
         raise RestoreError("archive changed after inspect; inspect and confirm again")
     expected_workspace = manifest.get("workspace")
     if not isinstance(expected_workspace, dict):
         raise RestoreError("manifest workspace metadata is missing")
-    if inventory(root / "workspace")["inventory_hash"] != expected_workspace.get("inventory_hash"):
+    if inventory(root / "workspace")["inventory_hash"] != expected_workspace.get(
+        "inventory_hash"
+    ):
         raise RestoreError("workspace changed after inspect; inspect and confirm again")
     shape, members = validated_members(archive_records(archive))
     if shape != manifest.get("payload_shape") or members != manifest.get("members"):
@@ -340,11 +379,15 @@ def expected_tree(members: list[dict[str, Any]]) -> tuple[set[str], set[str]]:
     directories = {str(item["path"]) for item in members if item["type"] == "directory"}
     for path in [*files, *directories]:
         parts = PurePosixPath(path).parts
-        directories.update(str(PurePosixPath(*parts[:index])) for index in range(1, len(parts)))
+        directories.update(
+            str(PurePosixPath(*parts[:index])) for index in range(1, len(parts))
+        )
     return files, directories
 
 
-def validate_candidate(candidate: Path, members: list[dict[str, Any]]) -> dict[str, Any]:
+def validate_candidate(
+    candidate: Path, members: list[dict[str, Any]]
+) -> dict[str, Any]:
     expected_files, expected_dirs = expected_tree(members)
     actual_files: set[str] = set()
     actual_dirs: set[str] = set()
@@ -360,17 +403,25 @@ def validate_candidate(candidate: Path, members: list[dict[str, Any]]) -> dict[s
             elif stat.S_ISREG(info.st_mode):
                 inode = (info.st_dev, info.st_ino)
                 if info.st_nlink != 1 or inode in inodes:
-                    raise RestoreError(f"candidate contains a hard-link alias: {relative!r}")
+                    raise RestoreError(
+                        f"candidate contains a hard-link alias: {relative!r}"
+                    )
                 inodes.add(inode)
                 actual_files.add(relative)
             else:
-                raise RestoreError(f"candidate contains a link or special file: {relative!r}")
+                raise RestoreError(
+                    f"candidate contains a link or special file: {relative!r}"
+                )
     if actual_files != expected_files or actual_dirs != expected_dirs:
-        raise RestoreError("extracted candidate does not match inspected archive members")
+        raise RestoreError(
+            "extracted candidate does not match inspected archive members"
+        )
     return inventory(candidate)
 
 
-def validate_recovery_candidate(candidate: Path, expected_hash: object) -> dict[str, Any]:
+def validate_recovery_candidate(
+    candidate: Path, expected_hash: object
+) -> dict[str, Any]:
     if not candidate.is_dir() or candidate.is_symlink():
         raise RestoreError(f"validated candidate is missing or unsafe: {candidate}")
     inodes: set[tuple[int, int]] = set()
@@ -402,13 +453,18 @@ def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -
             if item is None and normalized == "workspace":
                 continue
             if item is None:
-                raise RestoreError(f"zip member was not in inspected manifest: {info.filename!r}")
+                raise RestoreError(
+                    f"zip member was not in inspected manifest: {info.filename!r}"
+                )
             destination = candidate / str(item["path"])
             if item["type"] == "directory":
                 destination.mkdir(parents=True, exist_ok=True)
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
-            with source.open(info) as read_handle, destination.open("xb") as write_handle:
+            with (
+                source.open(info) as read_handle,
+                destination.open("xb") as write_handle,
+            ):
                 shutil.copyfileobj(read_handle, write_handle)
                 write_handle.flush()
                 os.fsync(write_handle.fileno())
@@ -417,8 +473,13 @@ def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -
                 destination.chmod(mode)
 
 
-def copy_verified_archive(root: Path, archive: Path, expected_sha256: str, transaction_id: str) -> Path:
-    snapshot = root.parent / f".{root.name}-restore-archive-{transaction_id}{archive.suffix.lower()}"
+def copy_verified_archive(
+    root: Path, archive: Path, expected_sha256: str, transaction_id: str
+) -> Path:
+    snapshot = (
+        root.parent
+        / f".{root.name}-restore-archive-{transaction_id}{archive.suffix.lower()}"
+    )
     digest = hashlib.sha256()
     try:
         with archive.open("rb") as source, snapshot.open("xb") as destination:
@@ -428,7 +489,9 @@ def copy_verified_archive(root: Path, archive: Path, expected_sha256: str, trans
             destination.flush()
             os.fsync(destination.fileno())
         if digest.hexdigest() != expected_sha256:
-            raise RestoreError("archive changed while preparing restore; inspect and confirm again")
+            raise RestoreError(
+                "archive changed while preparing restore; inspect and confirm again"
+            )
         fsync_dir(root.parent)
         return snapshot
     except Exception:
@@ -474,7 +537,11 @@ def extract_candidate(
                 ) from exc
             if result.returncode:
                 raise RestoreError(f"7z extraction failed: {result.stderr.strip()}")
-            source = extraction / "workspace" if manifest["payload_shape"] == "wrapped" else extraction
+            source = (
+                extraction / "workspace"
+                if manifest["payload_shape"] == "wrapped"
+                else extraction
+            )
             if not source.is_dir() or source.is_symlink():
                 raise RestoreError("7z payload root is not a real directory")
             if source == extraction:
@@ -506,7 +573,9 @@ def clear_journal(root: Path) -> None:
     fsync_dir(journal_path.parent)
 
 
-def validate_journal_paths(root: Path, journal: dict[str, Any]) -> dict[str, Path | None]:
+def validate_journal_paths(
+    root: Path, journal: dict[str, Any]
+) -> dict[str, Path | None]:
     transaction_id = journal.get("transaction_id")
     if not isinstance(transaction_id, str):
         raise RestoreError("restore journal transaction ID is missing")
@@ -514,28 +583,44 @@ def validate_journal_paths(root: Path, journal: dict[str, Any]) -> dict[str, Pat
         if uuid.UUID(transaction_id).hex != transaction_id:
             raise ValueError
     except ValueError as exc:
-        raise RestoreError("restore journal transaction ID is not a canonical UUID") from exc
+        raise RestoreError(
+            "restore journal transaction ID is not a canonical UUID"
+        ) from exc
 
-    expected_candidate = root.parent / f".{root.name}-restore-candidate-{transaction_id}"
+    expected_candidate = (
+        root.parent / f".{root.name}-restore-candidate-{transaction_id}"
+    )
     if journal.get("candidate") != str(expected_candidate):
-        raise RestoreError("restore journal candidate path is outside its transaction namespace")
+        raise RestoreError(
+            "restore journal candidate path is outside its transaction namespace"
+        )
 
     snapshot_timestamp = journal.get("snapshot_timestamp")
     snapshot_dir_raw = journal.get("snapshot_dir")
     snapshot_workspace_raw = journal.get("snapshot_workspace")
     if journal.get("had_old_content"):
-        if not isinstance(snapshot_timestamp, str) or not SNAPSHOT_TIMESTAMP_RE.fullmatch(snapshot_timestamp):
+        if not isinstance(
+            snapshot_timestamp, str
+        ) or not SNAPSHOT_TIMESTAMP_RE.fullmatch(snapshot_timestamp):
             raise RestoreError("restore journal snapshot timestamp is invalid")
-        expected_snapshot_dir = root.parent / f"workspace-pre-restore-{snapshot_timestamp}-{transaction_id}"
+        expected_snapshot_dir = (
+            root.parent / f"workspace-pre-restore-{snapshot_timestamp}-{transaction_id}"
+        )
         expected_snapshot_workspace = expected_snapshot_dir / "workspace"
         if snapshot_dir_raw != str(expected_snapshot_dir):
-            raise RestoreError("restore journal snapshot path is outside its transaction namespace")
+            raise RestoreError(
+                "restore journal snapshot path is outside its transaction namespace"
+            )
         if snapshot_workspace_raw != str(expected_snapshot_workspace):
             raise RestoreError("restore journal snapshot workspace path is malformed")
         if expected_snapshot_dir.is_symlink():
             raise RestoreError("restore snapshot directory cannot be a symlink")
     else:
-        if snapshot_timestamp is not None or snapshot_dir_raw is not None or snapshot_workspace_raw is not None:
+        if (
+            snapshot_timestamp is not None
+            or snapshot_dir_raw is not None
+            or snapshot_workspace_raw is not None
+        ):
             raise RestoreError("restore journal unexpectedly contains snapshot paths")
         expected_snapshot_dir = None
         expected_snapshot_workspace = None
@@ -551,7 +636,9 @@ def validate_journal_paths(root: Path, journal: dict[str, Any]) -> dict[str, Pat
     }
 
 
-def verified_snapshot(journal: dict[str, Any], paths: dict[str, Path | None]) -> Path | None:
+def verified_snapshot(
+    journal: dict[str, Any], paths: dict[str, Path | None]
+) -> Path | None:
     snapshot = paths["snapshot_workspace"]
     if snapshot is None or not snapshot.exists():
         return None
@@ -598,7 +685,9 @@ def promote_candidate(root: Path, journal: dict[str, Any]) -> None:
 
 def finish_promoted(root: Path, journal: dict[str, Any]) -> dict[str, Any]:
     try:
-        live = validate_recovery_candidate(root / "workspace", journal.get("candidate_inventory_hash"))
+        live = validate_recovery_candidate(
+            root / "workspace", journal.get("candidate_inventory_hash")
+        )
     except RestoreError as exc:
         raise RestoreError(
             "promoted workspace inventory changed; preserving journal and recovery artifacts: "
@@ -624,13 +713,17 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
             archive = verify_manifest(root, manifest)
             journal_path = root / JOURNAL_RELATIVE
             if journal_path.exists():
-                raise RestoreError(f"restore journal already exists; run recover: {journal_path}")
+                raise RestoreError(
+                    f"restore journal already exists; run recover: {journal_path}"
+                )
             transaction_id = uuid.uuid4().hex
             archive_snapshot = copy_verified_archive(
                 root, archive, str(manifest["archive"]["sha256"]), transaction_id
             )
             try:
-                candidate, candidate_inventory = extract_candidate(root, archive_snapshot, manifest, transaction_id)
+                candidate, candidate_inventory = extract_candidate(
+                    root, archive_snapshot, manifest, transaction_id
+                )
             finally:
                 try:
                     archive_snapshot.unlink()
@@ -641,7 +734,10 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
             old_inventory = inventory(workspace)
             has_old_content = bool(old_inventory["entries"])
             snapshot_timestamp = time.strftime("%Y%m%dT%H%M%S")
-            snapshot_dir = root.parent / f"workspace-pre-restore-{snapshot_timestamp}-{transaction_id}"
+            snapshot_dir = (
+                root.parent
+                / f"workspace-pre-restore-{snapshot_timestamp}-{transaction_id}"
+            )
             journal: dict[str, Any] = {
                 "version": VERSION,
                 "state": "prepared",
@@ -654,7 +750,9 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
                 "candidate_inventory_hash": candidate_inventory["inventory_hash"],
                 "snapshot_timestamp": snapshot_timestamp if has_old_content else None,
                 "snapshot_dir": str(snapshot_dir) if has_old_content else None,
-                "snapshot_workspace": str(snapshot_dir / "workspace") if has_old_content else None,
+                "snapshot_workspace": str(snapshot_dir / "workspace")
+                if has_old_content
+                else None,
                 "had_live_workspace": old_inventory["exists"],
                 "had_old_content": has_old_content,
             }
@@ -732,7 +830,10 @@ def finish_rollback(
         except OSError:
             pass
     clear_journal(root)
-    result: dict[str, Any] = {"status": "rolled_back", "workspace": str(root / "workspace")}
+    result: dict[str, Any] = {
+        "status": "rolled_back",
+        "workspace": str(root / "workspace"),
+    }
     if retained_candidate is not None:
         result["retained_candidate"] = str(retained_candidate)
     return result
@@ -788,7 +889,9 @@ def recover_restore(root: Path) -> dict[str, Any]:
                 if workspace.exists():
                     if not journal.get("had_live_workspace"):
                         raise foreign_workspace_error(root, paths)
-                    if inventory(workspace)["inventory_hash"] != journal.get("old_inventory_hash"):
+                    if inventory(workspace)["inventory_hash"] != journal.get(
+                        "old_inventory_hash"
+                    ):
                         raise RestoreError(
                             "prepared restore workspace drifted; preserving workspace, candidate, and journal"
                         )
@@ -820,20 +923,26 @@ def recover_restore(root: Path) -> dict[str, Any]:
                     raise foreign_workspace_error(root, paths)
                 if candidate.exists():
                     try:
-                        validate_recovery_candidate(candidate, journal.get("candidate_inventory_hash"))
+                        validate_recovery_candidate(
+                            candidate, journal.get("candidate_inventory_hash")
+                        )
                     except RestoreError as exc:
                         return rollback_invalid_candidate(root, journal, paths, exc)
                     promote_candidate(root, journal)
                     return finish_promoted(root, journal)
                 if rollback_snapshot(root, journal, paths):
                     return finish_rollback(root, paths)
-                raise RestoreError("candidate and rollback snapshot are both unavailable")
+                raise RestoreError(
+                    "candidate and rollback snapshot are both unavailable"
+                )
             if state == "new_promoted":
                 if workspace.exists():
                     return finish_promoted(root, journal)
                 if rollback_snapshot(root, journal, paths):
                     return finish_rollback(root, paths)
-                raise RestoreError("promoted workspace and rollback snapshot are both unavailable")
+                raise RestoreError(
+                    "promoted workspace and rollback snapshot are both unavailable"
+                )
             raise RestoreError(f"unknown restore journal state: {state!r}")
     except LockError as exc:
         raise RestoreError(str(exc)) from exc
@@ -861,7 +970,9 @@ def resolve_backup(target_raw: str, selection: str) -> str:
     if not str(resolved).startswith(f"{target_real}{os.sep}"):
         raise RestoreError("selected backup is outside backup-target")
     if not re.fullmatch(r"nase-backup-.*\.(zip|7z)", resolved.name):
-        raise RestoreError("selected backup name must be nase-backup-*.zip or nase-backup-*.7z")
+        raise RestoreError(
+            "selected backup name must be nase-backup-*.zip or nase-backup-*.7z"
+        )
     return str(resolved)
 
 
@@ -889,7 +1000,9 @@ def main() -> int:
         if args.command == "resolve-backup":
             print(resolve_backup(args.target, args.selection))
         elif args.command == "inspect":
-            result = inspect_archive(Path(args.root), Path(args.archive), Path(args.manifest_out))
+            result = inspect_archive(
+                Path(args.root), Path(args.archive), Path(args.manifest_out)
+            )
             print(
                 json.dumps(
                     {
@@ -899,7 +1012,11 @@ def main() -> int:
                 )
             )
         elif args.command == "apply":
-            print(json.dumps(apply_restore(Path(args.root), Path(args.manifest)), sort_keys=True))
+            print(
+                json.dumps(
+                    apply_restore(Path(args.root), Path(args.manifest)), sort_keys=True
+                )
+            )
         else:
             print(json.dumps(recover_restore(Path(args.root)), sort_keys=True))
     except (RestoreError, FileNotFoundError, OSError) as exc:

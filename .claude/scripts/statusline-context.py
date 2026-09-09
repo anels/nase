@@ -40,7 +40,9 @@ def main() -> int:
     input_tokens = intval(usage.get("input_tokens"))
     cache_read = intval(usage.get("cache_read_input_tokens"))
     cache_write = intval(usage.get("cache_creation_input_tokens"))
-    print(f"{model} | ctx {pct}% | in {input_tokens} | cache r{cache_read}/w{cache_write}")
+    print(
+        f"{model} | ctx {pct}% | in {input_tokens} | cache r{cache_read}/w{cache_write}"
+    )
     return 0
 
 

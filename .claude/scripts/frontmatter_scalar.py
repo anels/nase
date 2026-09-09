@@ -41,7 +41,12 @@ def normalize_scalar(raw: str) -> str:
             parsed.extend((char, value[index + 1]))
             index += 2
             continue
-        if quote == "'" and char == quote and index + 1 < len(value) and value[index + 1] == quote:
+        if (
+            quote == "'"
+            and char == quote
+            and index + 1 < len(value)
+            and value[index + 1] == quote
+        ):
             parsed.append(quote)
             index += 2
             continue

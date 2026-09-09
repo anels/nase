@@ -13,16 +13,19 @@ from pathlib import Path
 
 from command_catalog import load_catalog, render_help_compact, render_readme
 
-
 DEFAULT_COMMAND_LIMIT = 5
 DEFAULT_SKILL_LIMIT = 10
 DEFAULT_PURPOSE_CHARS = 180
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render nase help from README.md and workspace dirs.")
+    parser = argparse.ArgumentParser(
+        description="Render nase help from README.md and workspace dirs."
+    )
     parser.add_argument("--root", default=".", help="nase workspace root")
-    parser.add_argument("--verbose", action="store_true", help="Emit full README sections")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Emit full README sections"
+    )
     parser.add_argument("--command-limit", type=int, default=DEFAULT_COMMAND_LIMIT)
     parser.add_argument("--skill-limit", type=int, default=DEFAULT_SKILL_LIMIT)
     parser.add_argument("--purpose-chars", type=int, default=DEFAULT_PURPOSE_CHARS)
@@ -34,11 +37,11 @@ def read_text(path: Path) -> str:
 
 
 def extract_section(text: str, header: str) -> str:
-    pattern = re.compile(rf"^## {re.escape(header)}\s*$", re.M)
+    pattern = re.compile(rf"^## {re.escape(header)}\s*$", re.MULTILINE)
     match = pattern.search(text)
     if not match:
         return ""
-    next_match = re.search(r"^## .+$", text[match.end() :], re.M)
+    next_match = re.search(r"^## .+$", text[match.end() :], re.MULTILINE)
     end = match.end() + next_match.start() if next_match else len(text)
     return text[match.start() : end].strip()
 
@@ -78,7 +81,9 @@ def render_workspace_layout(root: Path, verbose: bool) -> str:
             lines.append(f"- `{rel}/` - {label}, {count_md_files(path)} md file(s)")
     if verbose and (workspace / "kb").is_dir():
         for path in sorted((workspace / "kb").iterdir()):
-            if path.is_dir() and f"workspace/kb/{path.name}" not in {rel for rel, _ in paths}:
+            if path.is_dir() and f"workspace/kb/{path.name}" not in {
+                rel for rel, _ in paths
+            }:
                 rel = path.relative_to(root).as_posix()
                 lines.append(f"- `{rel}/` - {count_md_files(path)} md file(s)")
     if len(lines) == 1:
@@ -88,7 +93,11 @@ def render_workspace_layout(root: Path, verbose: bool) -> str:
 
 def render_workspace_skills(root: Path, limit: int) -> str:
     skill_dir = root / "workspace" / "skills"
-    names = sorted(path.stem for path in skill_dir.glob("*.md")) if skill_dir.is_dir() else []
+    names = (
+        sorted(path.stem for path in skill_dir.glob("*.md"))
+        if skill_dir.is_dir()
+        else []
+    )
     lines = ["## Workspace Skills"]
     if not names:
         lines.append("- none")
@@ -108,7 +117,11 @@ def main() -> int:
     readme = root / "README.md"
     text = read_text(readme) if readme.is_file() else ""
 
-    intro = extract_intro(text) if text else "A personal AI engineering workspace for Claude Code."
+    intro = (
+        extract_intro(text)
+        if text
+        else "A personal AI engineering workspace for Claude Code."
+    )
     hooks = extract_section(text, "Hooks at a glance")
 
     try:
@@ -129,11 +142,19 @@ def main() -> int:
             print(hooks)
             print()
     else:
-        print(render_help_compact(commands, max(args.command_limit, 0), max(args.purpose_chars, 0)))
+        print(
+            render_help_compact(
+                commands, max(args.command_limit, 0), max(args.purpose_chars, 0)
+            )
+        )
         print()
         print("## Hooks")
-        print("- Lifecycle hooks, safety guards, backup/logging, and validation helpers are wired in `.claude/settings.json`.")
-        print("- Run `/nase:doctor` for a health check or `/nase:help --verbose` for the full hook table.")
+        print(
+            "- Lifecycle hooks, safety guards, backup/logging, and validation helpers are wired in `.claude/settings.json`."
+        )
+        print(
+            "- Run `/nase:doctor` for a health check or `/nase:help --verbose` for the full hook table."
+        )
         print()
 
     skill_limit = 0 if args.verbose else max(args.skill_limit, 0)

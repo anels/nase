@@ -29,8 +29,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 CONFIG_FILES = (
     ".commitlintrc.json",
@@ -149,7 +148,9 @@ def branch_state(repo: Path) -> dict[str, Any]:
     # case-insensitive filesystem the two can even be the same ref. Letting an
     # unattended amend through on a capitalization is not a tradeoff worth making.
     folded = name.casefold()
-    protected = folded in PROTECTED_BRANCHES or folded.startswith(PROTECTED_BRANCH_PREFIXES)
+    protected = folded in PROTECTED_BRANCHES or folded.startswith(
+        PROTECTED_BRANCH_PREFIXES
+    )
     return {"branch": name, "is_protected": protected}
 
 
@@ -159,7 +160,12 @@ def commitlint(repo: Path) -> dict[str, Any]:
         path = repo / name
         if not path.is_file():
             continue
-        entry: dict[str, Any] = {"file": name, "parsed": False, "rules": None, "note": None}
+        entry: dict[str, Any] = {
+            "file": name,
+            "parsed": False,
+            "rules": None,
+            "note": None,
+        }
         if name.endswith(".json"):
             try:
                 config = json.loads(path.read_text(encoding="utf-8"))

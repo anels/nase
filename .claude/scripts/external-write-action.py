@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Prepare, authorize, and execute one payload-bound external CLI mutation."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,9 +17,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-from nase_fs import sha256_bytes, sha256_file  # noqa: E402
-
+import nase_git
+from nase_fs import sha256_bytes, sha256_file
 
 TOKEN_TTL_SECONDS = 300
 # Deliberately generous: one `terraform apply` or `az deployment create` can
@@ -35,19 +35,60 @@ GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 30
 MANIFEST_VERSION = 1
 MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AZURE_MUTATING_VERBS = {
-    "add", "apply", "assign", "build", "cancel", "create", "delete", "import",
-    "invoke-action", "purge", "remove", "restart", "resume", "set", "start", "stop",
-    "swap", "unassign", "update",
+    "add",
+    "apply",
+    "assign",
+    "build",
+    "cancel",
+    "create",
+    "delete",
+    "import",
+    "invoke-action",
+    "purge",
+    "remove",
+    "restart",
+    "resume",
+    "set",
+    "start",
+    "stop",
+    "swap",
+    "unassign",
+    "update",
 }
 AZURE_READ_VERBS = {
-    "check", "describe", "exists", "get", "list", "query", "show", "status", "view", "what-if",
+    "check",
+    "describe",
+    "exists",
+    "get",
+    "list",
+    "query",
+    "show",
+    "status",
+    "view",
+    "what-if",
 }
 AZURE_GLOBAL_FLAGS = {"--debug", "--help", "-h", "--only-show-errors", "--verbose"}
 AZURE_GLOBAL_OPTIONS = {"--output", "-o", "--query", "--subscription"}
 AZURE_SAFE_READ_GROUPS = {
-    "account", "acr", "ad", "aks", "cloud", "deployment", "devops", "extension",
-    "functionapp", "graph", "group", "monitor", "network", "pipelines", "repos",
-    "resource", "role", "storage", "webapp",
+    "account",
+    "acr",
+    "ad",
+    "aks",
+    "cloud",
+    "deployment",
+    "devops",
+    "extension",
+    "functionapp",
+    "graph",
+    "group",
+    "monitor",
+    "network",
+    "pipelines",
+    "repos",
+    "resource",
+    "role",
+    "storage",
+    "webapp",
 }
 AZURE_SENSITIVE_READ_RE = re.compile(
     r"(?i)(?:^|[\s/_.=?&-])(?:"
@@ -56,7 +97,11 @@ AZURE_SENSITIVE_READ_RE = re.compile(
     r")(?:$|[\s/_.=?&-])"
 )
 GITHUB_AUTH_ENV_VARS = {
-    "GH_REPO", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+    "GH_REPO",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
 }
 PAYLOAD_FILE_FLAGS = {"--body-file", "--input", "--file"}
 SHELL_SEPARATORS = {";", "&&", "&", "|", "||", "(", ")", "\n"}
@@ -65,10 +110,12 @@ GUARDED_EXECUTABLES = ("gh", "az", "kubectl", "terraform")
 # A path prefix still names the same binary, so `/usr/bin/gh` counts; a longer word that
 # merely starts with one does not, so `github`, `azure`, and `terraform-docs` do not.
 GUARDED_MENTION_RE = re.compile(
-    r"(?<![\w-])(?:" + "|".join(GUARDED_EXECUTABLES) + r")(?![\w.-])", re.I
+    r"(?<![\w-])(?:" + "|".join(GUARDED_EXECUTABLES) + r")(?![\w.-])", re.IGNORECASE
 )
 HEREDOC_RE = re.compile(r"<<-?(?!<)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
-PIPE_INTO_SHELL_RE = re.compile(r"\|\s*(?:" + "|".join(sorted(SHELL_INTERPRETERS)) + r")\b")
+PIPE_INTO_SHELL_RE = re.compile(
+    r"\|\s*(?:" + "|".join(sorted(SHELL_INTERPRETERS)) + r")\b"
+)
 
 
 class ActionError(Exception):
@@ -140,8 +187,29 @@ def mutation_system(argv: list[str]) -> str | None:
                 not methods and has_payload
             ):
                 return "github"
-        if len(words) >= 2 and words[0] in {"pr", "issue", "release", "repo", "gist", "label", "variable", "secret", "cache"}:
-            if words[1] in {"create", "edit", "close", "reopen", "ready", "review", "merge", "delete", "comment", "set"}:
+        if len(words) >= 2 and words[0] in {
+            "pr",
+            "issue",
+            "release",
+            "repo",
+            "gist",
+            "label",
+            "variable",
+            "secret",
+            "cache",
+        }:
+            if words[1] in {
+                "create",
+                "edit",
+                "close",
+                "reopen",
+                "ready",
+                "review",
+                "merge",
+                "delete",
+                "comment",
+                "set",
+            }:
                 return "github"
         if words[:2] == ["workflow", "run"]:
             return "github"
@@ -162,13 +230,35 @@ def mutation_system(argv: list[str]) -> str | None:
         return None
 
     if executable == "kubectl":
-        if words and words[0] in {"annotate", "apply", "cordon", "create", "delete", "drain", "edit", "label", "patch", "replace", "scale", "taint", "uncordon"}:
+        if words and words[0] in {
+            "annotate",
+            "apply",
+            "cordon",
+            "create",
+            "delete",
+            "drain",
+            "edit",
+            "label",
+            "patch",
+            "replace",
+            "scale",
+            "taint",
+            "uncordon",
+        }:
             return "kubernetes"
-        if len(words) >= 2 and words[0] == "rollout" and words[1] in {"pause", "restart", "resume", "undo"}:
+        if (
+            len(words) >= 2
+            and words[0] == "rollout"
+            and words[1] in {"pause", "restart", "resume", "undo"}
+        ):
             return "kubernetes"
         return None
 
-    if executable == "terraform" and terraform_subcommand(words) in {"apply", "destroy", "import"}:
+    if executable == "terraform" and terraform_subcommand(words) in {
+        "apply",
+        "destroy",
+        "import",
+    }:
         return "terraform"
 
     return None
@@ -184,7 +274,7 @@ def option_values(argv: list[str], *names: str) -> list[str]:
             if value.startswith(f"{name}="):
                 values.append(value.split("=", 1)[1])
             elif len(name) == 2 and value.startswith(name) and len(value) > len(name):
-                values.append(value[len(name):].removeprefix("="))
+                values.append(value[len(name) :].removeprefix("="))
     return values
 
 
@@ -199,16 +289,16 @@ def graphql_read_query(argv: list[str]) -> bool:
         return False
     query_values = [
         value.split("=", 1)[1]
-        for value in option_values(
-            argv[3:], "-f", "-F", "--raw-field", "--field"
-        )
+        for value in option_values(argv[3:], "-f", "-F", "--raw-field", "--field")
         if value.startswith("query=")
     ]
     if len(query_values) != 1:
         return False
     query = query_values[0].lstrip()
     return not re.search(r"\bmutation\b", query, re.IGNORECASE) and (
-        query.startswith("query") or query.startswith("{") or query.startswith("fragment")
+        query.startswith("query")
+        or query.startswith("{")
+        or query.startswith("fragment")
     )
 
 
@@ -257,10 +347,18 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
     elif executable == "az":
         file_flags.update({"--template-file", "--yaml-path"})
     elif executable == "kubectl":
-        file_flags.update({
-            "-f", "-k", "--cert", "--filename", "--from-env-file", "--from-file",
-            "--key", "--kustomize",
-        })
+        file_flags.update(
+            {
+                "-f",
+                "-k",
+                "--cert",
+                "--filename",
+                "--from-env-file",
+                "--from-file",
+                "--key",
+                "--kustomize",
+            }
+        )
     elif executable == "terraform":
         file_flags.add("-var-file")
 
@@ -281,33 +379,56 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
             candidates.append((index, candidate))
 
     if executable == "gh" and argv[1:3] == ["gist", "create"]:
-        candidates.extend(positional_arguments(
-            argv,
-            3,
-            {"-d", "--desc", "-f", "--filename"},
-        ))
+        candidates.extend(
+            positional_arguments(
+                argv,
+                3,
+                {"-d", "--desc", "-f", "--filename"},
+            )
+        )
     elif executable == "gh" and argv[1:3] == ["release", "create"]:
         positionals = positional_arguments(
             argv,
             3,
             {
-                "--discussion-category", "-n", "--notes", "-F", "--notes-file",
-                "--notes-start-tag", "--target", "-t", "--title", "-R", "--repo",
+                "--discussion-category",
+                "-n",
+                "--notes",
+                "-F",
+                "--notes-file",
+                "--notes-start-tag",
+                "--target",
+                "-t",
+                "--title",
+                "-R",
+                "--repo",
             },
         )
         candidates.extend(
-            (index, value.split("#", 1)[0])
-            for index, value in positionals[1:]
+            (index, value.split("#", 1)[0]) for index, value in positionals[1:]
         )
 
-    if system == "terraform" and terraform_subcommand([word.lower() for word in argv[1:]]) == "apply":
+    if (
+        system == "terraform"
+        and terraform_subcommand([word.lower() for word in argv[1:]]) == "apply"
+    ):
         subcommand_index = next(
-            index for index, value in enumerate(argv[1:], 1) if not value.startswith("-")
+            index
+            for index, value in enumerate(argv[1:], 1)
+            if not value.startswith("-")
         )
         positionals = positional_arguments(
             argv,
             subcommand_index + 1,
-            {"-backup", "-lock-timeout", "-parallelism", "-state", "-state-out", "-var", "-var-file"},
+            {
+                "-backup",
+                "-lock-timeout",
+                "-parallelism",
+                "-state",
+                "-state-out",
+                "-var",
+                "-var-file",
+            },
         )
         candidates.extend(positionals[-1:])
 
@@ -323,7 +444,9 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
         path = resolve_payload_path(root, value)
         if not path.is_file():
             raise ActionError(f"payload file does not exist: {value}")
-        files.append({"arg_index": index, "path": str(path), "sha256": sha256_file(path)})
+        files.append(
+            {"arg_index": index, "path": str(path), "sha256": sha256_file(path)}
+        )
     return files
 
 
@@ -445,7 +568,9 @@ def github_target_owner(
         elif first:
             derived = explicit_owner
         elif any("/" in value and not value.startswith("-") for value in tail):
-            raise ActionError("owned GitHub repository target must be the first argument")
+            raise ActionError(
+                "owned GitHub repository target must be the first argument"
+            )
         elif argv[2] == "create":
             derived = explicit_owner
 
@@ -473,10 +598,14 @@ def github_target_owner(
         if resource_owners:
             resource_owner = next(iter(resource_owners.values()))
             if derived and derived.casefold() != resource_owner.casefold():
-                raise ActionError("GitHub repository selector does not match the PR/issue URL")
+                raise ActionError(
+                    "GitHub repository selector does not match the PR/issue URL"
+                )
             derived = resource_owner
             if not selectors and not explicit_owner:
-                raise ActionError("GitHub PR/issue URL mutation requires --github-owner")
+                raise ActionError(
+                    "GitHub PR/issue URL mutation requires --github-owner"
+                )
 
     if (
         derived is None
@@ -502,7 +631,9 @@ def github_target_owner(
         else:
             if host == "github.com":
                 if explicit_owner and owner.casefold() != explicit_owner.casefold():
-                    raise ActionError("explicit GitHub owner does not match the current origin")
+                    raise ActionError(
+                        "explicit GitHub owner does not match the current origin"
+                    )
                 return owner
     raise ActionError("cannot map the GitHub target owner to an approved account")
 
@@ -512,7 +643,9 @@ def configured_github_account(root: Path, owner: str) -> str:
     try:
         text = config.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ActionError("workspace/config.md GitHub account mapping is required") from exc
+        raise ActionError(
+            "workspace/config.md GitHub account mapping is required"
+        ) from exc
 
     def value(key: str) -> str:
         match = re.search(rf"(?m)^{re.escape(key)}:\s*(.*?)\s*$", text)
@@ -528,7 +661,9 @@ def configured_github_account(root: Path, owner: str) -> str:
     raise ActionError("GitHub target owner has no approved account mapping")
 
 
-def github_subprocess_environment(host: str, token: str | None = None) -> dict[str, str]:
+def github_subprocess_environment(
+    host: str, token: str | None = None
+) -> dict[str, str]:
     environment = os.environ.copy()
     for key in GITHUB_AUTH_ENV_VARS:
         environment.pop(key, None)
@@ -622,8 +757,13 @@ def run_github_action(
     approved, host = validated_github_account(root, action)
     executable = action["argv"][0]
     token = github_account_token(executable, host, approved)
-    if github_token_actor(executable, root, host, token).casefold() != approved.casefold():
-        raise ActionError("approved GitHub token actor does not match its account mapping")
+    if (
+        github_token_actor(executable, root, host, token).casefold()
+        != approved.casefold()
+    ):
+        raise ActionError(
+            "approved GitHub token actor does not match its account mapping"
+        )
     return subprocess.run(
         action["argv"],
         cwd=root,
@@ -653,7 +793,7 @@ def action_payload(
             "gh api -f/--raw-field does not read files, so "
             f"{', '.join(offenders)} would post the path as the body text; "
             "build the payload with `jq -n --rawfile body \"$FILE\" '{body:$body}'` "
-            "and pass `--input \"$PAYLOAD_FILE\"` instead "
+            'and pass `--input "$PAYLOAD_FILE"` instead '
             "(see .claude/docs/github-queries.md -> Reply To A Review Thread)"
         )
     files = payload_files(root, argv, system)
@@ -679,7 +819,9 @@ def ensure_manifest_path(root: Path, path: Path) -> Path:
     try:
         resolved.relative_to(external_action_dir(root).resolve())
     except ValueError as exc:
-        raise ActionError("manifest must live under workspace/tmp/external-actions") from exc
+        raise ActionError(
+            "manifest must live under workspace/tmp/external-actions"
+        ) from exc
     return resolved
 
 
@@ -689,7 +831,9 @@ def load_manifest(root: Path, path: Path) -> tuple[Path, dict[str, Any]]:
         data = json.loads(resolved.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ActionError(f"cannot read manifest: {exc}") from exc
-    if data.get("version") != MANIFEST_VERSION or not isinstance(data.get("action"), dict):
+    if data.get("version") != MANIFEST_VERSION or not isinstance(
+        data.get("action"), dict
+    ):
         raise ActionError("manifest schema is invalid")
     action = data["action"]
     if data.get("action_sha256") != sha256(action):
@@ -706,7 +850,9 @@ def load_manifest(root: Path, path: Path) -> tuple[Path, dict[str, Any]]:
         or action.get("github_host") != "github.com"
     ):
         raise ActionError("GitHub manifest target or account is invalid")
-    expected_payload = sha256({"argv": argv, "payload_files": action.get("payload_files", [])})
+    expected_payload = sha256(
+        {"argv": argv, "payload_files": action.get("payload_files", [])}
+    )
     if action.get("payload_sha256") != expected_payload:
         raise ActionError("manifest payload hash does not match")
     return resolved, data
@@ -723,7 +869,7 @@ PROSE_TEXT_SUFFIXES = {"", ".md", ".txt", ".markdown"}
 PROSE_BODY_KEYS = {"body", "body_text"}
 # `gh api .../pulls/{n}/reviews` is how a review is actually submitted, so the
 # endpoint form has to be recognized too, not just the `gh pr` porcelain.
-PROSE_API_ENDPOINTS = re.compile(r"/(pulls|issues)/", re.I)
+PROSE_API_ENDPOINTS = re.compile(r"/(pulls|issues)/", re.IGNORECASE)
 
 
 def prose_surface(argv: list[str]) -> str | None:
@@ -733,7 +879,11 @@ def prose_surface(argv: list[str]) -> str | None:
     if not words:
         return None
     if words[0] == "api":
-        return "github-review-reply" if any(PROSE_API_ENDPOINTS.search(w) for w in words[1:]) else None
+        return (
+            "github-review-reply"
+            if any(PROSE_API_ENDPOINTS.search(w) for w in words[1:])
+            else None
+        )
     for prefix, surface in PROSE_SURFACES:
         if tuple(words[: len(prefix)]) == prefix:
             return surface
@@ -788,7 +938,16 @@ def prose_gate_findings(root: Path, path: Path, surface: str) -> list[str]:
     for label, text in prose_bodies(path):
         try:
             completed = subprocess.run(
-                [sys.executable, str(lint), "--surface", surface, "--file", "-", "--format", "json"],
+                [
+                    sys.executable,
+                    str(lint),
+                    "--surface",
+                    surface,
+                    "--file",
+                    "-",
+                    "--format",
+                    "json",
+                ],
                 input=text,
                 capture_output=True,
                 text=True,
@@ -858,7 +1017,9 @@ def command_segments(command: str) -> list[list[str]]:
 
 def unwrap_shell_segment(segment: list[str]) -> list[str]:
     index = 0
-    while index < len(segment) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", segment[index]):
+    while index < len(segment) and re.match(
+        r"^[A-Za-z_][A-Za-z0-9_]*=", segment[index]
+    ):
         index += 1
     while index < len(segment):
         executable = Path(segment[index]).name
@@ -867,7 +1028,9 @@ def unwrap_shell_segment(segment: list[str]) -> list[str]:
             continue
         if executable == "env":
             index += 1
-            while index < len(segment) and (segment[index].startswith("-") or "=" in segment[index]):
+            while index < len(segment) and (
+                segment[index].startswith("-") or "=" in segment[index]
+            ):
                 index += 1
             continue
         if executable in {"sudo", "doas"}:
@@ -1035,14 +1198,16 @@ def strip_heredoc_bodies(command: str) -> str:
 
 def is_dynamic_shell_command(command: str) -> bool:
     """Detect shell constructs whose executed command cannot be statically bound."""
-    return bool(re.search(
-        r"`|\$\(|(?:^|[;&|]\s*)\s*(?:alias|eval|source)\b|"
-        r"(?:^|[;&|]\s*)\s*(?:"
-        r"function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|"
-        r"[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)"
-        r")\s*\{",
-        blank_single_quoted_spans(command),
-    ))
+    return bool(
+        re.search(
+            r"`|\$\(|(?:^|[;&|]\s*)\s*(?:alias|eval|source)\b|"
+            r"(?:^|[;&|]\s*)\s*(?:"
+            r"function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|"
+            r"[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)"
+            r")\s*\{",
+            blank_single_quoted_spans(command),
+        )
+    )
 
 
 def command_argvs(command: str, depth: int = 0):
@@ -1062,7 +1227,13 @@ def command_argvs(command: str, depth: int = 0):
         if not argv:
             continue
         executable = Path(argv[0]).name
-        if re.search(r"[$`]", executable) or executable in {"alias", "eval", "function", "source", "."}:
+        if re.search(r"[$`]", executable) or executable in {
+            "alias",
+            "eval",
+            "function",
+            "source",
+            ".",
+        }:
             yield ["__unrecognized_shell_command__"]
             continue
         yield argv
@@ -1100,7 +1271,11 @@ def known_safe_external_command(argv: list[str]) -> bool:
             shows_token = any(
                 word == "--show-token"
                 or word.startswith("--show-token=")
-                or (word.startswith("-") and not word.startswith("--") and "t" in word[1:])
+                or (
+                    word.startswith("-")
+                    and not word.startswith("--")
+                    and "t" in word[1:]
+                )
                 for word in words[2:]
             )
             return len(words) >= 2 and words[1] == "status" and not shows_token
@@ -1116,7 +1291,12 @@ def known_safe_external_command(argv: list[str]) -> bool:
                 method.upper() in {"GET", "HEAD"} for method in methods
             )
         return len(words) >= 2 and words[1] in {
-            "checks", "diff", "list", "status", "view", "watch",
+            "checks",
+            "diff",
+            "list",
+            "status",
+            "view",
+            "watch",
         }
     if executable == "az":
         command_path = azure_command_path(words)
@@ -1135,29 +1315,43 @@ def known_safe_external_command(argv: list[str]) -> bool:
             word in AZURE_READ_VERBS for word in command_path[1:]
         )
     if executable == "kubectl":
-        if not words or any(
-            re.fullmatch(r"secrets?(?:\.[^./,]+)*\.?(?:/.*)?", resource)
-            for word in words[1:]
-            for resource in word.split(",")
-        ) or any(
-            word == "--raw" or word.startswith("--raw=") for word in words[1:]
-        ) or (
-            words[0] == "get"
-            and any(
-                word in {"-f", "-k", "--filename", "--kustomize"}
-                or word.startswith(("--filename=", "--kustomize="))
+        if (
+            not words
+            or any(
+                re.fullmatch(r"secrets?(?:\.[^./,]+)*\.?(?:/.*)?", resource)
                 for word in words[1:]
+                for resource in word.split(",")
+            )
+            or any(word == "--raw" or word.startswith("--raw=") for word in words[1:])
+            or (
+                words[0] == "get"
+                and any(
+                    word in {"-f", "-k", "--filename", "--kustomize"}
+                    or word.startswith(("--filename=", "--kustomize="))
+                    for word in words[1:]
+                )
             )
         ):
             return False
         if words[0] == "config":
             return len(words) >= 2 and words[1] in {"current-context", "get-contexts"}
         return words[0] in {
-            "api-resources", "cluster-info", "describe", "get", "logs", "top", "version",
+            "api-resources",
+            "cluster-info",
+            "describe",
+            "get",
+            "logs",
+            "top",
+            "version",
         }
     if executable == "terraform":
         return terraform_subcommand(words) in {
-            "fmt", "graph", "plan", "providers", "validate", "version",
+            "fmt",
+            "graph",
+            "plan",
+            "providers",
+            "validate",
+            "version",
         }
     return True
 
@@ -1177,11 +1371,16 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     argv = list(args.argv)
     if argv and argv[0] == "--":
         argv.pop(0)
-    action = action_payload(args.root, args.system, args.summary, argv, args.github_owner)
+    action = action_payload(
+        args.root, args.system, args.summary, argv, args.github_owner
+    )
     action_dir = external_action_dir(args.root)
     action_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(action_dir, 0o700)
-    path = action_dir / f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex}.json"
+    path = (
+        action_dir
+        / f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex}.json"
+    )
     manifest = {"version": MANIFEST_VERSION, "created_at": utc_now(), "action": action}
     manifest["action_sha256"] = sha256(action)
     write_json(path, manifest)
@@ -1192,11 +1391,15 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 def cmd_authorize(args: argparse.Namespace) -> int:
     _, manifest = load_manifest(args.root, args.manifest)
     if not 0 < args.ttl_seconds <= TOKEN_TTL_SECONDS:
-        raise ActionError(f"token TTL must be between 1 and {TOKEN_TTL_SECONDS} seconds")
+        raise ActionError(
+            f"token TTL must be between 1 and {TOKEN_TTL_SECONDS} seconds"
+        )
     path = token_path(args.root)
     active_claim = next(path.parent.glob(f"{path.name}.executing-*"), None)
     if path.exists() or active_claim is not None:
-        raise ActionError("an external-write token is already active; execute or remove it before authorizing another action")
+        raise ActionError(
+            "an external-write token is already active; execute or remove it before authorizing another action"
+        )
     token = {
         "version": MANIFEST_VERSION,
         "action_sha256": manifest["action_sha256"],
@@ -1204,7 +1407,11 @@ def cmd_authorize(args: argparse.Namespace) -> int:
         "ttl_seconds": args.ttl_seconds,
     }
     write_json(path, token)
-    print(json.dumps({"token": str(path), "expires_in_seconds": args.ttl_seconds}, sort_keys=True))
+    print(
+        json.dumps(
+            {"token": str(path), "expires_in_seconds": args.ttl_seconds}, sort_keys=True
+        )
+    )
     return 0
 
 
@@ -1253,7 +1460,10 @@ def cmd_execute(args: argparse.Namespace) -> int:
                 completed = run_github_action(args.root, action, args.timeout_seconds)
             else:
                 completed = subprocess.run(
-                    action["argv"], cwd=args.root, check=False, timeout=args.timeout_seconds
+                    action["argv"],
+                    cwd=args.root,
+                    check=False,
+                    timeout=args.timeout_seconds,
                 )
         except subprocess.TimeoutExpired:
             # Not a failure: the CLI may have applied the mutation before the bound
@@ -1313,22 +1523,38 @@ def cmd_guard(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument(
+        "--root", type=Path, default=Path(__file__).resolve().parents[2]
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare = subparsers.add_parser("prepare", help="write an action manifest")
-    prepare.add_argument("--system", required=True, choices=("github", "azure", "kubernetes", "terraform"))
+    prepare.add_argument(
+        "--system",
+        required=True,
+        choices=("github", "azure", "kubernetes", "terraform"),
+    )
     prepare.add_argument("--summary", required=True)
     prepare.add_argument("--github-owner")
     prepare.add_argument("argv", nargs=argparse.REMAINDER)
     prepare.set_defaults(func=cmd_prepare)
 
-    authorize = subparsers.add_parser("authorize", help="write one short-lived approval token")
+    authorize = subparsers.add_parser(
+        "authorize", help="write one short-lived approval token"
+    )
     authorize.add_argument("--manifest", required=True, type=Path)
-    authorize.add_argument("--ttl-seconds", "--ttl", dest="ttl_seconds", type=int, default=TOKEN_TTL_SECONDS)
+    authorize.add_argument(
+        "--ttl-seconds",
+        "--ttl",
+        dest="ttl_seconds",
+        type=int,
+        default=TOKEN_TTL_SECONDS,
+    )
     authorize.set_defaults(func=cmd_authorize)
 
-    execute = subparsers.add_parser("execute", help="run an authorized action without a shell")
+    execute = subparsers.add_parser(
+        "execute", help="run an authorized action without a shell"
+    )
     execute.add_argument("--manifest", required=True, type=Path)
     execute.add_argument(
         "--timeout-seconds",

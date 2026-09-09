@@ -18,9 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import fsync_dir, sha256_bytes, sha256_file  # noqa: E402
-from workspace_lock import LockBusyError, LockError, held  # noqa: E402
-
+from nase_fs import fsync_dir, sha256_bytes, sha256_file
+from workspace_lock import LockBusyError, LockError, held
 
 LESSONS_HEADER = (
     "# Lessons Archive\n\n"
@@ -30,9 +29,7 @@ MARKER_PREFIX = "<!-- nase-archive:"
 JOURNAL_VERSION = 1
 LESSONS_PATTERN = re.compile(r"(?m)^## [a-z]+ -- (\d{4}-\d{2}-\d{2})")
 SECTION_PATTERN = re.compile(r"(?m)^## ")
-TECH_TRENDS_PATTERN = re.compile(
-    r"(?m)^## Tech Digest \u2014 (\d{4}-\d{2}-\d{2})"
-)
+TECH_TRENDS_PATTERN = re.compile(r"(?m)^## Tech Digest \u2014 (\d{4}-\d{2}-\d{2})")
 MARKER_PATTERN = re.compile(
     r"<!-- nase-archive:([0-9a-f]{64}) source=([0-9a-f]{64}) "
     r"offset=(\d+) occurrence=(\d+) content-occurrence=(\d+) "
@@ -61,9 +58,13 @@ def safe_parent(root: Path, path: Path, *, create: bool = False) -> Path:
     try:
         root_metadata = lexical_root.lstat()
     except OSError as exc:
-        raise ArchiveError(f"repository root cannot be inspected: {lexical_root}: {exc}") from exc
+        raise ArchiveError(
+            f"repository root cannot be inspected: {lexical_root}: {exc}"
+        ) from exc
     if not stat.S_ISDIR(root_metadata.st_mode) or lexical_root.is_symlink():
-        raise ArchiveError(f"repository root is not a lexical directory: {lexical_root}")
+        raise ArchiveError(
+            f"repository root is not a lexical directory: {lexical_root}"
+        )
     current = lexical_root
     for part in lexical_path.relative_to(lexical_root).parts[:-1]:
         current /= part
@@ -75,7 +76,9 @@ def safe_parent(root: Path, path: Path, *, create: bool = False) -> Path:
             current.mkdir()
             metadata = current.lstat()
         except OSError as exc:
-            raise ArchiveError(f"archive parent cannot be inspected: {current}: {exc}") from exc
+            raise ArchiveError(
+                f"archive parent cannot be inspected: {current}: {exc}"
+            ) from exc
         if not stat.S_ISDIR(metadata.st_mode) or current.is_symlink():
             raise ArchiveError(f"archive parent is not a lexical directory: {current}")
     return lexical_path
@@ -86,14 +89,18 @@ def open_safe_regular(root: Path, path: Path, label: str) -> int:
     try:
         metadata = lexical_path.lstat()
     except OSError as exc:
-        raise ArchiveError(f"{label} cannot be inspected: {lexical_path}: {exc}") from exc
+        raise ArchiveError(
+            f"{label} cannot be inspected: {lexical_path}: {exc}"
+        ) from exc
     if not stat.S_ISREG(metadata.st_mode) or lexical_path.is_symlink():
         raise ArchiveError(f"{label} is not a lexical regular file: {lexical_path}")
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(lexical_path, flags)
     except OSError as exc:
-        raise ArchiveError(f"{label} cannot be opened safely: {lexical_path}: {exc}") from exc
+        raise ArchiveError(
+            f"{label} cannot be opened safely: {lexical_path}: {exc}"
+        ) from exc
     opened = os.fstat(descriptor)
     if (
         not stat.S_ISREG(opened.st_mode)
@@ -179,7 +186,9 @@ def recover_orphaned_backup(root: Path, path: Path, label: str) -> None:
         try:
             metadata = candidate.lstat()
         except OSError as exc:
-            raise ArchiveError(f"{label} backup cannot be inspected: {candidate}: {exc}") from exc
+            raise ArchiveError(
+                f"{label} backup cannot be inspected: {candidate}: {exc}"
+            ) from exc
         if stat.S_ISREG(metadata.st_mode):
             backups.append(candidate)
     if not backups:
@@ -227,7 +236,9 @@ def atomic_replace(
         mode = 0o644
     else:
         if not stat.S_ISREG(existing.st_mode):
-            raise ArchiveError(f"replacement target is not a lexical regular file: {path}")
+            raise ArchiveError(
+                f"replacement target is not a lexical regular file: {path}"
+            )
         mode = stat.S_IMODE(existing.st_mode)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.tmp-", dir=path.parent)
     tmp = Path(tmp_name)
@@ -244,12 +255,16 @@ def atomic_replace(
             try:
                 os.link(tmp, path, follow_symlinks=False)
             except FileExistsError as exc:
-                raise ArchiveError(f"replacement target appeared before publish: {path}") from exc
+                raise ArchiveError(
+                    f"replacement target appeared before publish: {path}"
+                ) from exc
         else:
             try:
                 os.rename(path, backup)
             except FileNotFoundError as exc:
-                raise ArchiveError(f"replacement target disappeared before publish: {path}") from exc
+                raise ArchiveError(
+                    f"replacement target disappeared before publish: {path}"
+                ) from exc
             claimed = True
             if not snapshot_matches(backup, snapshot):
                 try:
@@ -262,7 +277,9 @@ def atomic_replace(
             try:
                 os.link(tmp, path, follow_symlinks=False)
             except FileExistsError as exc:
-                raise ArchiveError(f"replacement target reappeared before publish: {path}") from exc
+                raise ArchiveError(
+                    f"replacement target reappeared before publish: {path}"
+                ) from exc
             backup.unlink()
             claimed = False
         fsync_dir(path.parent)
@@ -311,7 +328,9 @@ def parse_sections(text: str, pattern: re.Pattern[str]) -> tuple[str, list[Secti
     return text[: matches[0].start()], sections
 
 
-def marker(transaction_id: str, sequence: int, source_sha: str, section: Section) -> str:
+def marker(
+    transaction_id: str, sequence: int, source_sha: str, section: Section
+) -> str:
     section_sha = sha256_bytes(section.text.encode("utf-8"))
     transaction = hashlib.sha256(
         f"{transaction_id}:{sequence}".encode("ascii")
@@ -437,7 +456,9 @@ def load_journal(root: Path, kind: str, source: Path) -> dict[str, object] | Non
         if not destination.is_relative_to((root / "workspace").resolve(strict=False)):
             raise ArchiveError(f"archive journal destination is invalid: {destination}")
         if kind == "lessons":
-            valid_destination = entry["destination"] == "workspace/tasks/lessons-archive.md"
+            valid_destination = (
+                entry["destination"] == "workspace/tasks/lessons-archive.md"
+            )
             valid_header = entry["header"] == LESSONS_HEADER
         else:
             match = re.fullmatch(
@@ -446,13 +467,17 @@ def load_journal(root: Path, kind: str, source: Path) -> dict[str, object] | Non
             )
             valid_destination = match is not None
             valid_header = bool(
-                match and entry["header"] == f"# Tech Trends Archive \u2014 {match.group(1)}\n"
+                match
+                and entry["header"]
+                == f"# Tech Trends Archive \u2014 {match.group(1)}\n"
             )
             section_year = re.match(
                 r"^## Tech Digest \u2014 (\d{4})-\d{2}-\d{2}", entry["text"]
             )
             valid_destination = bool(
-                valid_destination and section_year and section_year.group(1) == match.group(1)
+                valid_destination
+                and section_year
+                and section_year.group(1) == match.group(1)
             )
         if not valid_destination or not valid_header:
             raise ArchiveError(f"archive journal target is invalid: {path}")
@@ -475,13 +500,16 @@ def load_journal(root: Path, kind: str, source: Path) -> dict[str, object] | Non
 def write_journal(root: Path, kind: str, data: dict[str, object]) -> None:
     path = journal_path(root, kind)
     safe_parent(root, path, create=True)
-    if read_safe_regular_state(
-        root, path, "archive journal", missing_ok=True, create_parent=True
-    ) is not None:
+    if (
+        read_safe_regular_state(
+            root, path, "archive journal", missing_ok=True, create_parent=True
+        )
+        is not None
+    ):
         raise ArchiveError(f"archive transaction already exists: {path}")
-    encoded = (json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
-        "utf-8"
-    )
+    encoded = (
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
 
     def validate(tmp: Path) -> None:
         if json.loads(tmp.read_text(encoding="utf-8")) != data:
@@ -530,10 +558,7 @@ def pending_snapshot_state(
 ) -> str:
     if source_sha == data["cleaned_sha"]:
         return "cleaned"
-    if (
-        source_sha != data["source_sha"]
-        or source_mtime_ns != data["source_mtime_ns"]
-    ):
+    if source_sha != data["source_sha"] or source_mtime_ns != data["source_mtime_ns"]:
         raise ArchiveError(
             "source changed after archive commit; source and journal preserved; "
             f"transaction={data['transaction_id']}"
@@ -575,7 +600,9 @@ def prepare_journal(
     header_for,
 ) -> dict[str, object]:
     if load_journal(root, kind, source) is not None:
-        raise ArchiveError(f"archive transaction already exists: {journal_path(root, kind)}")
+        raise ArchiveError(
+            f"archive transaction already exists: {journal_path(root, kind)}"
+        )
     data = {
         "version": JOURNAL_VERSION,
         "kind": kind,
@@ -609,9 +636,7 @@ def prepare_journal(
     return data
 
 
-def derive_cleaned_content(
-    kind: str, source_text: str, data: dict[str, object]
-) -> str:
+def derive_cleaned_content(kind: str, source_text: str, data: dict[str, object]) -> str:
     pattern = LESSONS_PATTERN if kind == "lessons" else TECH_TRENDS_PATTERN
     preamble, sections = parse_sections(source_text, pattern)
     entries = data["entries"]
@@ -626,7 +651,9 @@ def derive_cleaned_content(
         offset = int(marker_match.group(3))
         section = next((value for value in sections if value.offset == offset), None)
         if section is None or occurrence in selected_occurrences:
-            raise ArchiveError("archive journal occurrence cannot derive source cleanup")
+            raise ArchiveError(
+                "archive journal occurrence cannot derive source cleanup"
+            )
         if (
             section.date is None
             or section.occurrence != occurrence
@@ -646,7 +673,9 @@ def derive_cleaned_content(
         derived != data["cleaned_text"]
         or sha256_bytes(derived.encode("utf-8")) != data["cleaned_sha"]
     ):
-        raise ArchiveError("archive journal after-image does not match its removal plan")
+        raise ArchiveError(
+            "archive journal after-image does not match its removal plan"
+        )
     return derived
 
 
@@ -697,13 +726,15 @@ def rotate_lessons(root: Path) -> int:
     pending = load_journal(root, "lessons", source)
     if pending is not None:
         recover_orphaned_backup(root, source, "archive source")
-    source_state = read_safe_regular_state(root, source, "archive source", missing_ok=True)
+    source_state = read_safe_regular_state(
+        root, source, "archive source", missing_ok=True
+    )
     if source_state is None:
         if pending is not None:
             raise ArchiveError(
                 "source no longer matches pending archive transaction; "
                 f"journal preserved; transaction={pending['transaction_id']}"
-        )
+            )
         return 0
     raw, source_metadata = source_state
     source_sha = sha256_bytes(raw)
@@ -727,9 +758,7 @@ def rotate_lessons(root: Path) -> int:
             f"[pre-compact] archived {selected_count} promoted lesson(s) older than 90 days"
         )
         return selected_count
-    preamble, sections = parse_sections(
-        raw.decode("utf-8"), LESSONS_PATTERN
-    )
+    preamble, sections = parse_sections(raw.decode("utf-8"), LESSONS_PATTERN)
     cutoff = datetime.now() - timedelta(days=90)
     selected = [
         section
@@ -766,7 +795,9 @@ def rotate_lessons(root: Path) -> int:
         source_state,
     )
     delete_journal_after_cleanup(root, "lessons", source, transaction)
-    print(f"[pre-compact] archived {selected_count} promoted lesson(s) older than 90 days")
+    print(
+        f"[pre-compact] archived {selected_count} promoted lesson(s) older than 90 days"
+    )
     return selected_count
 
 
@@ -775,13 +806,15 @@ def rotate_tech_trends(root: Path) -> int:
     pending = load_journal(root, "tech-trends", source)
     if pending is not None:
         recover_orphaned_backup(root, source, "archive source")
-    source_state = read_safe_regular_state(root, source, "archive source", missing_ok=True)
+    source_state = read_safe_regular_state(
+        root, source, "archive source", missing_ok=True
+    )
     if source_state is None:
         if pending is not None:
             raise ArchiveError(
                 "source no longer matches pending archive transaction; "
                 f"journal preserved; transaction={pending['transaction_id']}"
-        )
+            )
         return 0
     raw, source_metadata = source_state
     source_sha = sha256_bytes(raw)
@@ -805,11 +838,13 @@ def rotate_tech_trends(root: Path) -> int:
             f"[session-start] archived {selected_count} tech digest entries older than 30 days"
         )
         return selected_count
-    preamble, sections = parse_sections(
-        raw.decode("utf-8"), TECH_TRENDS_PATTERN
-    )
+    preamble, sections = parse_sections(raw.decode("utf-8"), TECH_TRENDS_PATTERN)
     cutoff = datetime.now() - timedelta(days=30)
-    selected = [section for section in sections if section.date is not None and section.date < cutoff]
+    selected = [
+        section
+        for section in sections
+        if section.date is not None and section.date < cutoff
+    ]
     selected_occurrences = {s.occurrence for s in selected}
     cleaned_content = preamble + "".join(
         s.text for s in sections if s.occurrence not in selected_occurrences
@@ -847,7 +882,9 @@ def rotate_tech_trends(root: Path) -> int:
         source_state,
     )
     delete_journal_after_cleanup(root, "tech-trends", source, transaction)
-    print(f"[session-start] archived {selected_count} tech digest entries older than 30 days")
+    print(
+        f"[session-start] archived {selected_count} tech digest entries older than 30 days"
+    )
     return selected_count
 
 

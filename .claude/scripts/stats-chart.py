@@ -22,7 +22,6 @@ import datetime
 import math
 import sys
 
-
 WEEKDAY_ABBREV = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 

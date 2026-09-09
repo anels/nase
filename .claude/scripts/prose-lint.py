@@ -27,8 +27,8 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 SURFACES = (
     "slack-dm",
@@ -57,7 +57,10 @@ EMOJI_RANGES = (
 BULLET = r"[-*•]"
 
 VERDICTS = (
-    (0, "clean on mechanical markers; the shape checks in Part 1 and Part 6 still apply"),
+    (
+        0,
+        "clean on mechanical markers; the shape checks in Part 1 and Part 6 still apply",
+    ),
     (2, "acceptable; fix if cheap"),
     (5, "read it again - co-occurrence is what readers notice"),
     (10**9, "rewrite rather than patch; patched model prose keeps its shape"),
@@ -97,7 +100,7 @@ class Rule:
     message: str
     fix: str
     pattern: re.Pattern[str] | None = None
-    checker: Callable[["Document", "Rule"], list[Finding]] | None = None
+    checker: Callable[[Document, Rule], list[Finding]] | None = None
 
 
 @dataclass
@@ -119,7 +122,16 @@ class Document:
 
     def finding(self, rule: Rule, offset: int, matched: str) -> Finding:
         line, col = self.position(offset)
-        return Finding(line, col, rule.kind, rule.rule_id, rule.tier, matched, rule.message, rule.fix)
+        return Finding(
+            line,
+            col,
+            rule.kind,
+            rule.rule_id,
+            rule.tier,
+            matched,
+            rule.message,
+            rule.fix,
+        )
 
 
 # --- masking ---------------------------------------------------------------
@@ -188,10 +200,18 @@ def check_nominalization(doc: Document, rule: Rule) -> list[Finding]:
         words = _words(para)
         if len(words) < 60:
             continue
-        hits = [w for w in words if re.search(r"\w{4,}(ment|tion|sion|ance|ence)$", w, re.I)]
+        hits = [
+            w
+            for w in words
+            if re.search(r"\w{4,}(ment|tion|sion|ance|ence)$", w, re.IGNORECASE)
+        ]
         ratio = len(hits) / len(words)
         if ratio > 0.12:
-            findings.append(doc.finding(rule, offset, f"{len(hits)}/{len(words)} words ({ratio:.0%})"))
+            findings.append(
+                doc.finding(
+                    rule, offset, f"{len(hits)}/{len(words)} words ({ratio:.0%})"
+                )
+            )
     return findings
 
 
@@ -199,7 +219,11 @@ def check_no_short_sentence(doc: Document, rule: Rule) -> list[Finding]:
     lengths = _sentence_lengths(doc)
     if len(lengths) < 3 or any(n <= 8 for n in lengths):
         return []
-    return [doc.finding(rule, 0, f"{len(lengths)} sentences, shortest is {min(lengths)} words")]
+    return [
+        doc.finding(
+            rule, 0, f"{len(lengths)} sentences, shortest is {min(lengths)} words"
+        )
+    ]
 
 
 def check_uniform_sentence_length(doc: Document, rule: Rule) -> list[Finding]:
@@ -209,7 +233,9 @@ def check_uniform_sentence_length(doc: Document, rule: Rule) -> list[Finding]:
     if max(lengths) < 12:
         # A run of uniformly short sentences is terse writing, not model cadence.
         return []
-    return [doc.finding(rule, 0, f"sentence lengths {min(lengths)}-{max(lengths)} words")]
+    return [
+        doc.finding(rule, 0, f"sentence lengths {min(lengths)}-{max(lengths)} words")
+    ]
 
 
 # The lookbehind keeps a longer enumeration from matching on its last three
@@ -219,7 +245,9 @@ _TRIAD = re.compile(r"(?<!,\s)\b([a-z]{4,}), ([a-z]{4,}),? and ([a-z]{4,})\b")
 
 
 def check_triad(doc: Document, rule: Rule) -> list[Finding]:
-    return [doc.finding(rule, m.start(), m.group(0)) for m in _TRIAD.finditer(doc.masked)]
+    return [
+        doc.finding(rule, m.start(), m.group(0)) for m in _TRIAD.finditer(doc.masked)
+    ]
 
 
 _CONCRETE = (
@@ -243,7 +271,9 @@ def check_specificity(doc: Document, rule: Rule) -> list[Finding]:
         raw = doc.text[offset : offset + len(para)]
         if any(p.search(raw) for p in _CONCRETE) or _MIDSENTENCE_CAPITAL.search(raw):
             continue
-        findings.append(doc.finding(rule, offset, "paragraph with no name, number, path or id"))
+        findings.append(
+            doc.finding(rule, offset, "paragraph with no name, number, path or id")
+        )
     return findings
 
 
@@ -267,7 +297,11 @@ _JIRA_SECTIONS = ("Context", "Scope", "Acceptance", "References")
 
 def check_jira_sections(doc: Document, rule: Rule) -> list[Finding]:
     missing = [
-        name for name in _JIRA_SECTIONS if not re.search(rf"^#{{1,4}}\s*{name}\b", doc.text, re.I | re.M)
+        name
+        for name in _JIRA_SECTIONS
+        if not re.search(
+            rf"^#{{1,4}}\s*{name}\b", doc.text, re.IGNORECASE | re.MULTILINE
+        )
     ]
     if not missing:
         return []
@@ -372,7 +406,10 @@ TEMPLATES = (
     (r"\blet me know if you have any questions\b", "delete"),
     (r"\bhappy to help\b", "delete"),
     (r"\bgreat question\b", "delete"),
-    (r"\bit'?s worth noting( that)?\b|\bit is important to note\b", "verify the claim, then state it directly"),
+    (
+        r"\bit'?s worth noting( that)?\b|\bit is important to note\b",
+        "verify the claim, then state it directly",
+    ),
     (r"\bgenerally speaking\b", "delete"),
     (r"\bnot just\b[^.!?\n]{0,80}?\bbut\b", "keep only the second half"),
     (r"\bnot only\b[^.!?\n]{0,80}?\bbut\b", "keep only the second half"),
@@ -381,9 +418,14 @@ TEMPLATES = (
     (r"\bplays a (crucial|pivotal|key) role\b", "say what it does"),
     (r"\bstands as a testament\b", "state the fact"),
     (r"\bgame[- ]chang(er|ing)\b", "say what changed"),
-    (r"\bexperts (argue|agree|say)\b|\bindustry reports suggest\b|\bit is widely recognized\b",
-     "name the source or drop the sentence"),
-    (r"^\s*(Certainly|Moreover|Additionally|Furthermore|In essence|Ultimately)\b[,:]?", "delete the opener"),
+    (
+        r"\bexperts (argue|agree|say)\b|\bindustry reports suggest\b|\bit is widely recognized\b",
+        "name the source or drop the sentence",
+    ),
+    (
+        r"^\s*(Certainly|Moreover|Additionally|Furthermore|In essence|Ultimately)\b[,:]?",
+        "delete the opener",
+    ),
 )
 
 
@@ -396,11 +438,29 @@ def _vocab_rules() -> list[Rule]:
     ):
         for stem, fix in table:
             rules.append(
-                Rule(f"REG-{tier}", "marker", tier, SURFACES, label, fix, re.compile(rf"\b(?:{stem})\b", re.I))
+                Rule(
+                    f"REG-{tier}",
+                    "marker",
+                    tier,
+                    SURFACES,
+                    label,
+                    fix,
+                    re.compile(rf"\b(?:{stem})\b", re.IGNORECASE),
+                )
             )
     for stem, fix in TEMPLATES:
-        flags = re.I | re.M if stem.startswith("^") else re.I
-        rules.append(Rule("TPL", "marker", "TEMPLATE", SURFACES, "templated shape", fix, re.compile(stem, flags)))
+        flags = re.IGNORECASE | re.MULTILINE if stem.startswith("^") else re.IGNORECASE
+        rules.append(
+            Rule(
+                "TPL",
+                "marker",
+                "TEMPLATE",
+                SURFACES,
+                "templated shape",
+                fix,
+                re.compile(stem, flags),
+            )
+        )
     return rules
 
 
@@ -418,7 +478,7 @@ RULES: list[Rule] = _vocab_rules() + [
             r",\s+(highlighting|underscoring|emphasizing|showcasing|resonating with|fostering|"
             r"bolstering|exemplifying|ensuring|reflecting|contributing to|paving the way|enabling|"
             r"allowing)\b",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     Rule(
@@ -437,7 +497,7 @@ RULES: list[Rule] = _vocab_rules() + [
         SURFACES,
         "that-clause as subject (~2.6x the human rate)",
         "rewrite as `X happened, which suggests ...`",
-        re.compile(r"(?:^|(?<=[.!?]\s))\s*That the \w+", re.M),
+        re.compile(r"(?:^|(?<=[.!?]\s))\s*That the \w+", re.MULTILINE),
     ),
     Rule(
         "SYN-SHORT",
@@ -476,7 +536,7 @@ RULES: list[Rule] = _vocab_rules() + [
         re.compile(
             r"\bthe (data|market|culture|conversation|decision|system|code|architecture|industry|"
             r"landscape) (tells|rewards|shifts|moves|decides|wants|knows|emerges|demands|suggests)\b",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     Rule(
@@ -505,7 +565,7 @@ RULES: list[Rule] = _vocab_rules() + [
         SURFACES,
         "bold-term definition list",
         "write it as a sentence, or use a real table",
-        re.compile(rf"^\s*{BULLET}\s*\*\*[^*\n]+\*\*\s*:", re.M),
+        re.compile(rf"^\s*{BULLET}\s*\*\*[^*\n]+\*\*\s*:", re.MULTILINE),
     ),
     Rule(
         "FMT-EMOJI",
@@ -514,7 +574,7 @@ RULES: list[Rule] = _vocab_rules() + [
         SURFACES,
         "emoji-led bullet",
         "delete the emoji; lead with the noun",
-        re.compile(rf"^\s*{BULLET}\s*(:[a-z0-9_+-]+:|[{EMOJI_RANGES}])", re.M),
+        re.compile(rf"^\s*{BULLET}\s*(:[a-z0-9_+-]+:|[{EMOJI_RANGES}])", re.MULTILINE),
     ),
     Rule(
         "SLK-EMBED",
@@ -541,7 +601,7 @@ RULES: list[Rule] = _vocab_rules() + [
         SLACK,
         "literal bullet character; it is plain text and never renders as a list",
         "write `- item`, per slack-draft-style.md Formatting Mechanics",
-        re.compile(r"^\s*•", re.M),
+        re.compile(r"^\s*•", re.MULTILINE),
     ),
     Rule(
         "REV-ANCHOR",
@@ -562,7 +622,7 @@ RULES: list[Rule] = _vocab_rules() + [
         re.compile(
             r"\b(consider improving|test(ing)? (this )?thoroughly|it would be good to|"
             r"it might be worth|as appropriate|where appropriate|consider adding more)\b",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     Rule(
@@ -572,7 +632,7 @@ RULES: list[Rule] = _vocab_rules() + [
         REVIEW,
         "second-person interrogation; comment on the code, never the developer",
         "state the problem the code has",
-        re.compile(r"\bwhy (did|do|would) you\b", re.I),
+        re.compile(r"\bwhy (did|do|would) you\b", re.IGNORECASE),
     ),
     Rule(
         "REV-COURTESY",
@@ -584,7 +644,7 @@ RULES: list[Rule] = _vocab_rules() + [
         re.compile(
             r"^\s*(Good catch|Nice catch|Great catch|Good job|Nice work|"
             r"Thanks for (bringing this up|catching|flagging))\b",
-            re.I | re.M,
+            re.IGNORECASE | re.MULTILINE,
         ),
     ),
     Rule(
@@ -619,7 +679,11 @@ def lint(text: str, surface: str) -> list[Finding]:
             continue
         assert rule.pattern is not None
         for match in rule.pattern.finditer(doc.masked):
-            findings.append(doc.finding(rule, match.start(), doc.text[match.start() : match.end()].strip()))
+            findings.append(
+                doc.finding(
+                    rule, match.start(), doc.text[match.start() : match.end()].strip()
+                )
+            )
     findings.sort(key=lambda f: (f.kind != "gate", f.line, f.col, f.rule))
     return findings
 
@@ -675,7 +739,9 @@ def render_human(findings: list[Finding], surface: str, threshold: int) -> str:
     else:
         out.append(f"Result: PASS - {len(markers)} markers, threshold is {threshold}.")
     out.append("")
-    out.append("This counts patterns. It is not evidence of authorship, in either direction.")
+    out.append(
+        "This counts patterns. It is not evidence of authorship, in either direction."
+    )
     return "\n".join(out)
 
 
@@ -686,7 +752,9 @@ def list_rules() -> str:
     rows = ["rule\tkind\ttier\tsurfaces\tmessage"]
     for rule_id, rule in sorted(seen.items()):
         scope = "*" if rule.surfaces == SURFACES else ",".join(rule.surfaces)
-        rows.append(f"{rule_id}\t{rule.kind}\t{rule.tier or '-'}\t{scope}\t{rule.message}")
+        rows.append(
+            f"{rule_id}\t{rule.kind}\t{rule.tier or '-'}\t{scope}\t{rule.message}"
+        )
     return "\n".join(rows)
 
 
@@ -695,7 +763,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--surface", choices=SURFACES)
     parser.add_argument("--file", help="path to the draft, or - for stdin")
     parser.add_argument("--format", choices=("human", "json"), default="human")
-    parser.add_argument("--threshold", type=int, default=5, help="marker count above which the run fails")
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=5,
+        help="marker count above which the run fails",
+    )
     parser.add_argument("--list-rules", action="store_true")
     return parser.parse_args(argv)
 

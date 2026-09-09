@@ -8,7 +8,6 @@ import functools
 import importlib.util
 import io
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -16,18 +15,50 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 ALIAS_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-GITHUB_PR_RE = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)")
+GITHUB_PR_RE = re.compile(
+    r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)"
+)
 JIRA_RE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]*)(?![A-Z0-9-])")
-CONFLUENCE_RE = re.compile(r"https://[A-Za-z0-9.-]+\.atlassian\.net/wiki/[A-Za-z0-9_?&=./%#+:-]+")
+CONFLUENCE_RE = re.compile(
+    r"https://[A-Za-z0-9.-]+\.atlassian\.net/wiki/[A-Za-z0-9_?&=./%#+:-]+"
+)
 BACKTICK_RE = re.compile(r"`([^`\r\n]+)`")
 SOURCE_SUFFIXES = {
-    ".c", ".cc", ".cfg", ".conf", ".cpp", ".cs", ".css", ".go", ".h", ".hpp",
-    ".html", ".ini", ".java", ".js", ".json", ".jsx", ".kt", ".md", ".mjs", ".py",
-    ".rb", ".rs", ".scala", ".sh", ".sql", ".swift", ".toml", ".ts", ".tsx", ".txt",
-    ".xml", ".yaml", ".yml",
+    ".c",
+    ".cc",
+    ".cfg",
+    ".conf",
+    ".cpp",
+    ".cs",
+    ".css",
+    ".go",
+    ".h",
+    ".hpp",
+    ".html",
+    ".ini",
+    ".java",
+    ".js",
+    ".json",
+    ".jsx",
+    ".kt",
+    ".md",
+    ".mjs",
+    ".py",
+    ".rb",
+    ".rs",
+    ".scala",
+    ".sh",
+    ".sql",
+    ".swift",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml",
 }
 
 
@@ -45,7 +76,8 @@ def load_module(name: str, path: Path) -> Any:
 
 
 SECRET = load_module(
-    "nase_citation_secret_scan", SCRIPT_ROOT / ".claude" / "scripts" / "verify-bundle.py"
+    "nase_citation_secret_scan",
+    SCRIPT_ROOT / ".claude" / "scripts" / "verify-bundle.py",
 )
 
 
@@ -94,7 +126,9 @@ def contains_symlink(path: Path, root: Path) -> bool:
     return False
 
 
-def validate_artifact(path: str, primary_alias: str, primary_root: Path) -> tuple[Path, str]:
+def validate_artifact(
+    path: str, primary_alias: str, primary_root: Path
+) -> tuple[Path, str]:
     artifact = Path(path).expanduser()
     if artifact.is_symlink() or not artifact.is_file():
         raise ValidationError("artifact must be a regular non-symlink file")
@@ -106,13 +140,29 @@ def validate_artifact(path: str, primary_alias: str, primary_root: Path) -> tupl
     return resolved, f"{primary_alias}:{resolved.relative_to(primary_root).as_posix()}"
 
 
-def result(kind: str, ref: str, status: str, detail: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {"kind": kind, "ref": ref, "status": status, "detail": detail, "metadata": metadata or {}}
+def result(
+    kind: str,
+    ref: str,
+    status: str,
+    detail: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "ref": ref,
+        "status": status,
+        "detail": detail,
+        "metadata": metadata or {},
+    }
 
 
-def run_command(args: list[str], timeout: int) -> tuple[str, str, int] | tuple[None, str, None]:
+def run_command(
+    args: list[str], timeout: int
+) -> tuple[str, str, int] | tuple[None, str, None]:
     try:
-        completed = subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=False)
+        completed = subprocess.run(
+            args, text=True, capture_output=True, timeout=timeout, check=False
+        )
     except FileNotFoundError:
         return None, "missing-cli", None
     except subprocess.TimeoutExpired:
@@ -124,18 +174,35 @@ def failure_detail(stderr: str) -> tuple[str, str]:
     lowered = stderr.lower()
     if any(token in lowered for token in ("404", "not found", "could not resolve to")):
         return "BROKEN", "not-found"
-    if any(token in lowered for token in ("auth", "login", "unauthorized", "forbidden", "401", "403")):
+    if any(
+        token in lowered
+        for token in ("auth", "login", "unauthorized", "forbidden", "401", "403")
+    ):
         return "UNKNOWN", "auth-unavailable"
     if any(token in lowered for token in ("rate limit", "secondary rate", "429")):
         return "UNKNOWN", "rate-limited"
-    if any(token in lowered for token in ("network", "timed out", "timeout", "connection", "resolve host", "502", "503", "504")):
+    if any(
+        token in lowered
+        for token in (
+            "network",
+            "timed out",
+            "timeout",
+            "connection",
+            "resolve host",
+            "502",
+            "503",
+            "504",
+        )
+    ):
         return "UNKNOWN", "network-unavailable"
     return "UNKNOWN", "authority-error"
 
 
 @functools.lru_cache(maxsize=8)
 def github_auth(timeout: int) -> tuple[bool, str]:
-    _, stderr, returncode = run_command(["gh", "auth", "status", "--hostname", "github.com"], timeout)
+    _, stderr, returncode = run_command(
+        ["gh", "auth", "status", "--hostname", "github.com"], timeout
+    )
     if returncode is None:
         return False, stderr
     if returncode != 0:
@@ -174,7 +241,16 @@ def validate_github(ref: str, timeout: int) -> dict[str, Any]:
     if not accessible:
         return result("github_pr", ref, "UNKNOWN", detail)
     stdout, stderr, returncode = run_command(
-        ["gh", "pr", "view", number, "--repo", f"{owner}/{repo}", "--json", "number,title,state,mergedAt,author,url"],
+        [
+            "gh",
+            "pr",
+            "view",
+            number,
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "number,title,state,mergedAt,author,url",
+        ],
         timeout,
     )
     if returncode is None:
@@ -185,9 +261,12 @@ def validate_github(ref: str, timeout: int) -> dict[str, Any]:
     try:
         data = json.loads(stdout or "")
         returned = GITHUB_PR_RE.fullmatch(str(data["url"]))
-        if not returned or int(data["number"]) != int(number) or (
-            returned.group(1).lower(), returned.group(2).lower(), returned.group(3)
-        ) != (owner.lower(), repo.lower(), number):
+        if (
+            not returned
+            or int(data["number"]) != int(number)
+            or (returned.group(1).lower(), returned.group(2).lower(), returned.group(3))
+            != (owner.lower(), repo.lower(), number)
+        ):
             raise KeyError("authority identity mismatch")
         metadata = {
             "number": data["number"],
@@ -212,7 +291,16 @@ def validate_jira(key: str, timeout: int) -> dict[str, Any]:
         _, detail = failure_detail(stderr)
         return result("jira", key, "UNKNOWN", detail)
     stdout, stderr, returncode = run_command(
-        ["acli", "jira", "workitem", "view", key, "--fields", "summary,status,assignee", "--json"],
+        [
+            "acli",
+            "jira",
+            "workitem",
+            "view",
+            key,
+            "--fields",
+            "summary,status,assignee",
+            "--json",
+        ],
         timeout,
     )
     if returncode is None:
@@ -231,15 +319,29 @@ def validate_jira(key: str, timeout: int) -> dict[str, Any]:
     assignee_value = fields.get("assignee")
     metadata = {
         "summary": safe_text(fields.get("summary", "")),
-        "status": safe_text(status_value.get("name") if isinstance(status_value, dict) else status_value, 100),
-        "assignee": safe_text(assignee_value.get("displayName") if isinstance(assignee_value, dict) else assignee_value, 200),
+        "status": safe_text(
+            status_value.get("name")
+            if isinstance(status_value, dict)
+            else status_value,
+            100,
+        ),
+        "assignee": safe_text(
+            assignee_value.get("displayName")
+            if isinstance(assignee_value, dict)
+            else assignee_value,
+            200,
+        ),
     }
     return result("jira", key, "OK", "resolved", metadata)
 
 
 def eligible_path_token(token: str) -> tuple[str, int] | None:
     token = token.strip()
-    if not token or token.startswith("/nase:") or re.match(r"^[a-z][a-z0-9+.-]*://", token, re.I):
+    if (
+        not token
+        or token.startswith("/nase:")
+        or re.match(r"^[a-z][a-z0-9+.-]*://", token, re.IGNORECASE)
+    ):
         return None
     if any(marker in token for marker in ("*", "?", "[", "]", "{", "}", "$(", "${")):
         return None
@@ -249,7 +351,11 @@ def eligible_path_token(token: str) -> tuple[str, int] | None:
     if not raw_line.isdigit() or int(raw_line) < 1 or not base or "\0" in base:
         return None
     path_part = base.split(":", 1)[-1]
-    if not Path(path_part).is_absolute() and "/" not in path_part and Path(path_part).suffix.lower() not in SOURCE_SUFFIXES:
+    if (
+        not Path(path_part).is_absolute()
+        and "/" not in path_part
+        and Path(path_part).suffix.lower() not in SOURCE_SUFFIXES
+    ):
         return None
     return base, int(raw_line)
 
@@ -279,7 +385,9 @@ def validate_line(alias: str, root: Path, path: Path, line: int) -> dict[str, An
     except (OSError, UnicodeDecodeError):
         return result("path", canonical, "BROKEN", "unreadable-file")
     if line > line_count:
-        return result("path", canonical, "BROKEN", "line-out-of-range", {"line_count": line_count})
+        return result(
+            "path", canonical, "BROKEN", "line-out-of-range", {"line_count": line_count}
+        )
     return result("path", canonical, "OK", "resolved")
 
 
@@ -302,10 +410,14 @@ def validate_path(base: str, line: int, roots: dict[str, Path]) -> dict[str, Any
     if ":" in base:
         alias, raw_path = base.split(":", 1)
         if not ALIAS_RE.fullmatch(alias):
-            return result("path", f"{alias}:{raw_path}:{line}", "BROKEN", "invalid-root-alias")
+            return result(
+                "path", f"{alias}:{raw_path}:{line}", "BROKEN", "invalid-root-alias"
+            )
         root = roots.get(alias)
         if root is None:
-            return result("path", f"{alias}:{raw_path}:{line}", "UNKNOWN", "unavailable-root")
+            return result(
+                "path", f"{alias}:{raw_path}:{line}", "UNKNOWN", "unavailable-root"
+            )
         candidate, error = safe_candidate(root, raw_path)
         if error:
             return result("path", f"{alias}:{raw_path}:{line}", "BROKEN", error)
@@ -322,7 +434,9 @@ def validate_path(base: str, line: int, roots: dict[str, Path]) -> dict[str, Any
         if candidate is not None and candidate.is_file():
             matches.append((alias, root, candidate))
     if not matches:
-        return result("path", f"unqualified:{base}:{line}", "UNKNOWN", "unqualified-root")
+        return result(
+            "path", f"unqualified:{base}:{line}", "UNKNOWN", "unqualified-root"
+        )
     if len(matches) > 1:
         return result("path", f"unqualified:{base}:{line}", "UNKNOWN", "ambiguous-root")
     alias, root, candidate = matches[0]
@@ -336,7 +450,11 @@ def extract(text: str, roots: dict[str, Path], timeout: int) -> list[dict[str, A
     for key in JIRA_RE.findall(text):
         found.append(validate_jira(key, timeout))
     for match in CONFLUENCE_RE.finditer(text):
-        found.append(result("confluence", match.group(0).rstrip(".,;)"), "UNKNOWN", "mcp-required"))
+        found.append(
+            result(
+                "confluence", match.group(0).rstrip(".,;)"), "UNKNOWN", "mcp-required"
+            )
+        )
     for token in BACKTICK_RE.findall(text):
         parsed = eligible_path_token(token)
         if parsed:
@@ -369,8 +487,12 @@ def main() -> int:
             if alias in roots:
                 raise ValidationError(f"duplicate root alias: {alias}")
             roots[alias] = root
-        artifact, artifact_ref = validate_artifact(args.artifact, primary_alias, primary_root)
-        results = extract(artifact.read_text(encoding="utf-8"), roots, args.timeout_seconds)
+        artifact, artifact_ref = validate_artifact(
+            args.artifact, primary_alias, primary_root
+        )
+        results = extract(
+            artifact.read_text(encoding="utf-8"), roots, args.timeout_seconds
+        )
     except (OSError, UnicodeDecodeError, ValidationError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -393,7 +515,9 @@ def main() -> int:
     if args.format == "json":
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(f"artifact={artifact_ref} ok={summary['ok']} broken={summary['broken']} unknown={summary['unknown']}")
+        print(
+            f"artifact={artifact_ref} ok={summary['ok']} broken={summary['broken']} unknown={summary['unknown']}"
+        )
         for item in results:
             print(f"{item['status']} {item['kind']} {item['ref']} {item['detail']}")
     if summary["broken"]:
