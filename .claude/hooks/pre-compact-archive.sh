@@ -44,7 +44,6 @@ fi
 EFFORTS_DONE="$NASE_ROOT/workspace/efforts/done"
 if [ -d "$EFFORTS_DONE" ] && [ -n "$PYTHON" ]; then
   YEAR=$(date +%Y)
-  ARCHIVE_DIR="$NASE_ROOT/workspace/efforts/archive/$YEAR"
   moved=0
   # mtime > 60 days. Use find -mtime for cross-shell portability.
   while IFS= read -r -d '' f; do

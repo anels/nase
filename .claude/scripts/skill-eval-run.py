@@ -907,15 +907,13 @@ def receipt_current(receipt: dict[str, Any], binding: dict[str, Any]) -> bool:
         and receipt.get("fixture", {}).get("tree_sha256") != binding["fixture_sha"]
     ):
         return False
-    if (
+    return not (
         "filesystem_policy_sha" in binding
         and receipt.get("runtime", {})
         .get("isolation", {})
         .get("filesystem_policy_sha256")
         != binding["filesystem_policy_sha"]
-    ):
-        return False
-    return True
+    )
 
 
 def load_receipts(directory: Path) -> tuple[list[dict[str, Any]], int]:

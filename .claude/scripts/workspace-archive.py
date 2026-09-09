@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from nase_fs import fsync_dir, sha256_bytes, sha256_file
+from nase_time import calendar_day, local_now
 from workspace_lock import LockBusyError, LockError, held
 
 LESSONS_HEADER = (
@@ -72,7 +73,9 @@ def safe_parent(root: Path, path: Path, *, create: bool = False) -> Path:
             metadata = current.lstat()
         except FileNotFoundError:
             if not create:
-                raise ArchiveError(f"archive parent does not exist: {current}")
+                raise ArchiveError(
+                    f"archive parent does not exist: {current}"
+                ) from None
             current.mkdir()
             metadata = current.lstat()
         except OSError as exc:
@@ -140,7 +143,7 @@ def read_safe_regular_state(
     except FileNotFoundError:
         if missing_ok:
             return None
-        raise ArchiveError(f"{label} does not exist: {lexical_path}")
+        raise ArchiveError(f"{label} does not exist: {lexical_path}") from None
     descriptor = open_safe_regular(root, lexical_path, label)
     with os.fdopen(descriptor, "rb") as handle:
         return handle.read(), os.fstat(handle.fileno())
@@ -310,7 +313,7 @@ def parse_sections(text: str, pattern: re.Pattern[str]) -> tuple[str, list[Secti
             occurrence = -1
             content_occurrence = -1
         else:
-            date = datetime.strptime(dated.group(1), "%Y-%m-%d")
+            date = calendar_day(dated.group(1))
             section_sha = sha256_bytes(section_text.encode("utf-8"))
             occurrence = canonical_occurrence
             content_occurrence = content_counts.get(section_sha, 0)
@@ -551,7 +554,6 @@ def prove_existing_archives(root: Path, data: dict[str, object]) -> None:
 
 
 def pending_snapshot_state(
-    source: Path,
     source_sha: str,
     source_mtime_ns: int,
     data: dict[str, object],
@@ -740,7 +742,7 @@ def rotate_lessons(root: Path) -> int:
     source_sha = sha256_bytes(raw)
     source_mtime_ns = source_metadata.st_mtime_ns
     if pending is not None:
-        state = pending_snapshot_state(source, source_sha, source_mtime_ns, pending)
+        state = pending_snapshot_state(source_sha, source_mtime_ns, pending)
         if state == "cleaned":
             prove_existing_archives(root, pending)
             delete_journal_after_cleanup(root, "lessons", source, pending)
@@ -759,7 +761,7 @@ def rotate_lessons(root: Path) -> int:
         )
         return selected_count
     preamble, sections = parse_sections(raw.decode("utf-8"), LESSONS_PATTERN)
-    cutoff = datetime.now() - timedelta(days=90)
+    cutoff = local_now() - timedelta(days=90)
     selected = [
         section
         for section in sections
@@ -820,7 +822,7 @@ def rotate_tech_trends(root: Path) -> int:
     source_sha = sha256_bytes(raw)
     source_mtime_ns = source_metadata.st_mtime_ns
     if pending is not None:
-        state = pending_snapshot_state(source, source_sha, source_mtime_ns, pending)
+        state = pending_snapshot_state(source_sha, source_mtime_ns, pending)
         if state == "cleaned":
             prove_existing_archives(root, pending)
             delete_journal_after_cleanup(root, "tech-trends", source, pending)
@@ -839,7 +841,7 @@ def rotate_tech_trends(root: Path) -> int:
         )
         return selected_count
     preamble, sections = parse_sections(raw.decode("utf-8"), TECH_TRENDS_PATTERN)
-    cutoff = datetime.now() - timedelta(days=30)
+    cutoff = local_now() - timedelta(days=30)
     selected = [
         section
         for section in sections

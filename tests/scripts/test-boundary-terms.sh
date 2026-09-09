@@ -24,7 +24,7 @@ PROBE_TIER2="Ware""house9"
 PROBE_EXEMPT="Public ${PROBE_TIER1}"
 
 new_repo() {
-  local name="$1" repo="$TMPROOT/$1"
+  local repo="$TMPROOT/$1"
   mkdir -p "$repo/workspace"
   git -C "$repo" init -q
   git -C "$repo" config user.email t@example.com

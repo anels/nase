@@ -95,6 +95,10 @@ check "chart: viewBox width"  "$(jqp "$out/plan.json" "d['pages'][0]['visuals'][
 check "chart: viewBox height" "$(jqp "$out/plan.json" "d['pages'][0]['visuals'][0]['height']")" "200"
 body=$(cat "$out"/page-000.body.html)
 check_contains "chart: placeholder emitted" "$body" 'attach <code>chart-01.png</code>'
+# The label names which chart is missing. Without it the panel reads the same for
+# every chart on the page, so a reader cannot tell which one to attach.
+check_contains "chart: placeholder names its heading" "$body" \
+  '<strong>Chart:</strong> Chart Text - attach'
 # the image already carries its labels, so a second text copy is page clutter
 check_absent   "chart: no text duplicate of the image" "$body" 'Chart data (text)'
 check_absent   "chart: svg markup not inlined" "$body" '<svg'

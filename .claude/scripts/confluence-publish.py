@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -37,6 +38,7 @@ import urllib.error
 import urllib.request
 from html import unescape
 from html.parser import HTMLParser
+from pathlib import Path
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -202,7 +204,7 @@ HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 # first execute on someone's report, and a wrong transformation ships a quietly
 # mangled page where a clear error would not.
 NESTING_RULES = (
-    ("li", ("table", "details") + HEADINGS, "heading/table/expand inside a list item"),
+    ("li", ("table", "details", *HEADINGS), "heading/table/expand inside a list item"),
     (
         "panel",
         ("table", "details", "blockquote", "panel"),
@@ -268,7 +270,7 @@ def simple_selector_match(selector: str, tag: str, attrs: dict) -> bool:
     return selector == tag
 
 
-class NestingViolation(Exception):
+class NestingViolationError(Exception):
     def __init__(self, description: str, context: str) -> None:
         super().__init__(description)
         self.description = description
@@ -457,7 +459,7 @@ class HtmlPlusEmitter(HTMLParser):
             else:
                 present = container in self.stack
             if present and probe in forbidden:
-                raise NestingViolation(
+                raise NestingViolationError(
                     description, self.current_heading or "(before the first heading)"
                 )
 
@@ -532,7 +534,7 @@ class HtmlPlusEmitter(HTMLParser):
                 self.stack.append("panel")
                 if self.structural_depth() == 1:
                     self.open_block()
-                self.emit('<div data-type="%s">' % panel)
+                self.emit(f'<div data-type="{panel}">')
                 self.panel_starts.append(len(self.block.html))
             else:
                 self.open_unwrapped(tag)
@@ -576,23 +578,23 @@ class HtmlPlusEmitter(HTMLParser):
         if tag == "a":
             href = attrs.get("href", "")
             if JIRA_URL.fullmatch(href.strip()):
-                return '<a href="%s" data-card-appearance="inline">' % escape(href)
-            return '<a href="%s">' % escape(href)
+                return f'<a href="{escape(href)}" data-card-appearance="inline">'
+            return f'<a href="{escape(href)}">'
         if tag in ("td", "th"):
             extra = ""
             for key in ("colspan", "rowspan"):
                 value = attrs.get(key, "")
                 if value.isdigit() and int(value) > 1:
-                    extra += ' %s="%s"' % (key, value)
-            return "<%s%s>" % (tag, extra)
+                    extra += f' {key}="{value}"'
+            return f"<{tag}{extra}>"
         if tag == "code":
             match = LANGUAGE_CLASS.search(attrs.get("class", ""))
             if match and "pre" in self.stack:
-                return '<code class="language-%s">' % match.group(1)
+                return f'<code class="language-{match.group(1)}">'
             return "<code>"
         if tag == "table":
             return "<table>"
-        return "<%s>" % tag
+        return f"<{tag}>"
 
     def handle_startendtag(self, tag, attrs):
         """Self-closing non-void tags must leave no state behind.
@@ -668,7 +670,7 @@ class HtmlPlusEmitter(HTMLParser):
                 r"<(p|table|ul|ol|blockquote|details|h[1-6])[ >]", inner
             ):
                 del self.block.html[start:]
-                self.block.html.append("<p>%s</p>" % inner.strip())
+                self.block.html.append(f"<p>{inner.strip()}</p>")
             self.emit("</div>")
             return
         if tag in UNWRAP or tag not in PASSTHROUGH:
@@ -698,7 +700,7 @@ class HtmlPlusEmitter(HTMLParser):
                 self.stack.pop()
             if self.stack:
                 self.stack.pop()
-        self.emit("</%s>" % tag)
+        self.emit(f"</{tag}>")
         if tag in HEADINGS and not self.block.heading:
             self.block.heading = self.current_heading
 
@@ -762,16 +764,16 @@ class HtmlPlusEmitter(HTMLParser):
 
     def capture_visual(self, markup: str) -> None:
         self.visual_seq += 1
-        name = "chart-%02d.png" % self.visual_seq
+        name = f"chart-{self.visual_seq:02d}.png"
         is_svg = markup.lstrip().startswith("<svg")
         width, height = viewbox_dimensions(markup) if is_svg else (0, 0)
         chart_text = unescape(re.sub(r"<[^>]+>", " ", markup))
         chart_text = re.sub(r"\s+", " ", chart_text).strip()
 
+        label = escape(self.current_heading or f"chart {self.visual_seq}")
         placeholder = (
-            '<div data-type="panel-info"><p><strong>Chart:</strong> %s'
-            " - attach <code>%s</code> here.</p></div>"
-            % (escape(self.current_heading or "chart %d" % self.visual_seq), name)
+            f'<div data-type="panel-info"><p><strong>Chart:</strong> {label}'
+            f" - attach <code>{name}</code> here.</p></div>"
         )
         if self.structural_depth() == 0:
             self.open_block()
@@ -911,21 +913,19 @@ def page_title(
     if index == 0:
         return clamp(base, TITLE_LIMIT), heading
     if own:
-        title = "%s - %s" % (base, clamp(own, HEADING_FRAGMENT_LIMIT))
+        title = f"{base} - {clamp(own, HEADING_FRAGMENT_LIMIT)}"
     elif carried:
-        title = "%s - %s (cont. %d)" % (
-            base,
-            clamp(carried, HEADING_FRAGMENT_LIMIT),
-            index + 1,
+        title = (
+            f"{base} - {clamp(carried, HEADING_FRAGMENT_LIMIT)} (cont. {index + 1})"
         )
     else:
-        title = "%s - part %d" % (base, index + 1)
+        title = f"{base} - part {index + 1}"
     return clamp(title, TITLE_LIMIT), heading
 
 
 def cmd_plan(args) -> int:
     source_path = os.path.abspath(args.source)
-    raw = open(source_path, encoding="utf-8").read()
+    raw = Path(source_path).read_text(encoding="utf-8")
     kind = "markdown" if source_path.lower().endswith((".md", ".markdown")) else "html"
     threshold = args.split_threshold or DEFAULT_THRESHOLD[kind]
     warnings: list[str] = []
@@ -953,11 +953,11 @@ def cmd_plan(args) -> int:
         try:
             emitter.feed(raw)
             emitter.close()
-        except NestingViolation as exc:
+        except NestingViolationError as exc:
             sys.stderr.write(
-                "NESTING: %s, under %s.\n"
+                f"NESTING: {exc.description}, under {exc.context}.\n"
                 "Confluence rejects this construct. Restructure the source, or "
-                "publish that section separately.\n" % (exc.description, exc.context)
+                "publish that section separately.\n"
             )
             return EXIT_NESTING
         head_title = emitter.title_from_head
@@ -965,12 +965,9 @@ def cmd_plan(args) -> int:
         dropped = emitter.dropped_subtrees
         if emitter.stray_table_text:
             warnings.append(
-                "dropped %d text run(s) sitting inside a table but outside any cell - "
-                "the source markup is malformed there: %s"
-                % (
-                    len(emitter.stray_table_text),
-                    ", ".join(emitter.stray_table_text[:6]),
-                )
+                f"dropped {len(emitter.stray_table_text)} text run(s) sitting inside "
+                "a table but outside any cell - the source markup is malformed "
+                f"there: {', '.join(emitter.stray_table_text[:6])}"
             )
         prose_images = [
             visual["png"]
@@ -980,11 +977,11 @@ def cmd_plan(args) -> int:
         ]
         if prose_images:
             warnings.append(
-                "%d rasterized block(s) contain no bar, track, spark, meter or svg, so they "
-                "are most likely prose being turned into an image - and an imaged block "
-                "stops being searchable, copyable and clickable: %s. Scope the capture with "
+                f"{len(prose_images)} rasterized block(s) contain no bar, track, "
+                "spark, meter or svg, so they are most likely prose being turned into "
+                "an image - and an imaged block stops being searchable, copyable and "
+                f"clickable: {', '.join(prose_images)}. Scope the capture with "
                 "--rasterize-only <class> if that is not intended."
-                % (len(prose_images), ", ".join(prose_images))
             )
         if args.rasterize_only:
             # A named class that exists but never captured sits inside another named
@@ -999,9 +996,9 @@ def cmd_plan(args) -> int:
             )
             if missing:
                 warnings.append(
-                    "--rasterize-only named %s, which matched nothing in the source - a typo "
-                    "leaves the real charts unwrapped into label soup with no image to "
-                    "replace them" % ", ".join(missing)
+                    f"--rasterize-only named {', '.join(missing)}, which matched "
+                    "nothing in the source - a typo leaves the real charts unwrapped "
+                    "into label soup with no image to replace them"
                 )
 
     title = resolve_title(args.title, head_title, blocks, source_path)
@@ -1052,14 +1049,14 @@ def cmd_plan(args) -> int:
             heading = next((b.heading for b in page if b.heading), "(untitled section)")
             biggest = max(b.nbytes() for b in page)
             sys.stderr.write(
-                "OVERSIZE: page %d (%r) is %d bytes, over the %d cap, and its largest "
-                "single block is %d bytes so no boundary can break it.\n"
+                f"OVERSIZE: page {index} ({heading!r}) is {nbytes} bytes, over the "
+                f"{CAP_BYTES} cap, and its largest single block is {biggest} bytes so "
+                "no boundary can break it.\n"
                 "Split that block in the source - a long table or code listing is the "
                 "usual cause - or publish it as its own document.\n"
-                % (index, heading, nbytes, CAP_BYTES, biggest)
             )
             return EXIT_OVERSIZE
-        body_file = os.path.join(args.out_dir, "page-%03d.body.%s" % (index, ext))
+        body_file = os.path.join(args.out_dir, f"page-{index:03d}.body.{ext}")
         with open(body_file, "w", encoding="utf-8") as handle:
             handle.write(body)
         visuals = [v for b in page for v in b.visuals]
@@ -1117,22 +1114,21 @@ def cmd_plan(args) -> int:
         json.dump(plan, handle, indent=2)
 
     total_visuals = sum(len(p["visuals"]) for p in pages)
-    print("source      %s (%s)" % (source_path, kind))
-    print("title       %s" % title)
-    print("pages       %d (threshold %d B)" % (len(pages), threshold))
+    print(f"source      {source_path} ({kind})")
+    print(f"title       {title}")
+    print(f"pages       {len(pages)} (threshold {threshold} B)")
     for page in pages:
         print(
-            "  [%d] %-58s %7d B  %d chart(s)"
-            % (page["index"], page["title"][:58], page["bytes"], len(page["visuals"]))
+            f"  [{page['index']}] {page['title'][:58]:<58} {page['bytes']:7d} B  "
+            f"{len(page['visuals'])} chart(s)"
         )
     print(
-        "charts      %d to rasterize, %d chart-class subtrees dropped"
-        % (total_visuals, dropped)
+        f"charts      {total_visuals} to rasterize, {dropped} chart-class subtrees dropped"
     )
-    print("without visuals: %d B total" % without_total)
+    print(f"without visuals: {without_total} B total")
     for warning in warnings:
-        print("warning     %s" % warning)
-    print("plan        %s" % plan_path)
+        print(f"warning     {warning}")
+    print(f"plan        {plan_path}")
     return 0
 
 
@@ -1182,12 +1178,11 @@ def render_document(style: str, markup: str, width: int, measure: bool) -> str:
     )
     return (
         '<!doctype html><html data-theme="light"><head><meta charset="utf-8">'
-        "<style>%s\nhtml,body{margin:0;padding:0;background:#fff}"
-        ".__shim{width:%dpx;padding:0;margin:0;max-width:none}"
-        ".__block{display:inline-block;width:%dpx;padding:12px;box-sizing:border-box}"
-        "</style>%s</head>"
-        '<body><div class="wrap __shim"><div class="__block">%s</div></div></body></html>'
-        % (force_light(style), width, width, probe, markup)
+        f"<style>{force_light(style)}\nhtml,body{{margin:0;padding:0;background:#fff}}"
+        f".__shim{{width:{width}px;padding:0;margin:0;max-width:none}}"
+        f".__block{{display:inline-block;width:{width}px;padding:12px;box-sizing:border-box}}"
+        f"</style>{probe}</head>"
+        f'<body><div class="wrap __shim"><div class="__block">{markup}</div></div></body></html>'
     )
 
 
@@ -1200,12 +1195,14 @@ def measure_height(chrome: str, path: str, width: int) -> int:
         "--disable-gpu",
         "--hide-scrollbars",
         "--virtual-time-budget=4000",
-        "--window-size=%d,800" % width,
+        f"--window-size={width},800",
         "--dump-dom",
-        "file://%s" % path,
+        f"file://{path}",
     ]
     try:
-        done = subprocess.run(argv, capture_output=True, timeout=30, text=True)
+        done = subprocess.run(
+            argv, capture_output=True, timeout=30, text=True, check=False
+        )
     except subprocess.TimeoutExpired:
         return 0
     found = re.search(r"<title>H(\d+)</title>", done.stdout or "")
@@ -1243,7 +1240,7 @@ def cmd_render(args) -> int:
                 height = visual["height"] or 600
                 markup = re.sub(
                     r"<svg\b",
-                    '<svg width="%d" height="%d"' % (width, height),
+                    f'<svg width="{width}" height="{height}"',
                     markup,
                     count=1,
                 )
@@ -1252,7 +1249,7 @@ def cmd_render(args) -> int:
                 doc_width = page_width
                 height = 0
 
-            html_path = os.path.join(assets, "visual-%02d.html" % visual["id"])
+            html_path = os.path.join(assets, f"visual-{visual['id']:02d}.html")
             if not height:
                 with open(html_path, "w", encoding="utf-8") as handle:
                     handle.write(
@@ -1276,9 +1273,9 @@ def cmd_render(args) -> int:
                 "--hide-scrollbars",
                 "--force-device-scale-factor=2",
                 "--default-background-color=ffffffff",
-                "--window-size=%d,%d" % (doc_width, height),
-                "--screenshot=%s" % target,
-                "file://%s" % html_path,
+                f"--window-size={doc_width},{height}",
+                f"--screenshot={target}",
+                f"file://{html_path}",
             ]
             try:
                 subprocess.run(argv, capture_output=True, timeout=30, check=False)
@@ -1299,8 +1296,8 @@ def cmd_render(args) -> int:
         for visual in page["visuals"]:
             counts[visual["status"]] = counts.get(visual["status"], 0) + 1
     for status, count in sorted(counts.items()):
-        print("%-24s %d" % (status, count))
-    print("assets      %s" % assets)
+        print(f"{status:<24} {count}")
+    print(f"assets      {assets}")
     return 0
 
 
@@ -1308,7 +1305,7 @@ KEYCHAIN_SERVICE = "nase-confluence"
 ATTACH_PATH = "/wiki/rest/api/content/%s/child/attachment"
 
 
-TOKEN_ENV = "CONFLUENCE_API_TOKEN"
+TOKEN_ENV = "CONFLUENCE_API_TOKEN"  # noqa: S105 - the variable name, not its value
 
 
 def api_token(service: str, account: str) -> str:
@@ -1343,6 +1340,7 @@ def api_token(service: str, account: str) -> str:
                 capture_output=True,
                 text=True,
                 timeout=KEYCHAIN_TIMEOUT_SECONDS,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             # Bound no name to the exception: its captured stdout holds a partial read
@@ -1360,21 +1358,20 @@ def api_token(service: str, account: str) -> str:
         # The stored item is very likely fine, so telling the user to add one would send
         # them to fix the wrong thing.
         raise RuntimeError(
-            "the keychain lookup for %r did not answer within %ds, and %s is unset.\n"
+            f"the keychain lookup for {account!r} did not answer within "
+            f"{KEYCHAIN_TIMEOUT_SECONDS}s, and {TOKEN_ENV} is unset.\n"
             "  A keychain item whose ACL asks for confirmation blocks until someone clicks the\n"
             "  prompt, which a headless run cannot do. Either approve it once in the GUI and\n"
             "  choose Always Allow, or bypass the keychain for this run:\n"
-            "    export %s=<token>"
-            % (account, KEYCHAIN_TIMEOUT_SECONDS, TOKEN_ENV, TOKEN_ENV)
+            f"    export {TOKEN_ENV}=<token>"
         )
 
     raise RuntimeError(
-        "no Atlassian API token found for %r.\n"
-        "  macOS:     security add-generic-password -U -s %s -a %s -w\n"
+        f"no Atlassian API token found for {account!r}.\n"
+        f"  macOS:     security add-generic-password -U -s {service} -a {account} -w\n"
         "             (then paste the token at the prompt)\n"
-        "  elsewhere: export %s=<token>\n"
+        f"  elsewhere: export {TOKEN_ENV}=<token>\n"
         "Create the token at https://id.atlassian.com/manage-profile/security/api-tokens"
-        % (account, service, account, TOKEN_ENV)
     )
 
 
@@ -1383,40 +1380,53 @@ def multipart(fields: dict, filename: str, payload: bytes) -> tuple[bytes, str]:
     out = []
     for key, value in fields.items():
         out.append(
-            (
-                '--%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n'
-                % (boundary, key, value)
-            ).encode()
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
         )
     out.append(
         (
-            '--%s\r\nContent-Disposition: form-data; name="file"; filename="%s"\r\n'
-            "Content-Type: image/png\r\n\r\n" % (boundary, filename)
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            "Content-Type: image/png\r\n\r\n"
         ).encode()
     )
     out.append(payload)
-    out.append(("\r\n--%s--\r\n" % boundary).encode())
-    return b"".join(out), "multipart/form-data; boundary=%s" % boundary
+    out.append(f"\r\n--{boundary}--\r\n".encode())
+    return b"".join(out), f"multipart/form-data; boundary={boundary}"
+
+
+def open_https(request: urllib.request.Request, timeout: int):
+    """Open an https request, refusing any other scheme.
+
+    Every URL here is built from an `https://{site}/...` literal today. The check
+    costs nothing and catches the call site that one day takes a URL from data,
+    where `file:` would turn an upload into a local-file read.
+    """
+    if request.type != "https":
+        raise RuntimeError(f"refusing a non-https request: {request.full_url}")
+    return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310
 
 
 def post_png(url: str, email: str, token: str, path: str) -> dict:
     name = os.path.basename(path)
-    body, content_type = multipart({"minorEdit": "true"}, name, open(path, "rb").read())
-    request = urllib.request.Request(url, data=body, method="POST")
+    body, content_type = multipart(
+        {"minorEdit": "true"}, name, Path(path).read_bytes()
+    )
+    # `open_https` below refuses anything but https, so the scheme is checked before
+    # a byte is sent.
+    request = urllib.request.Request(url, data=body, method="POST")  # noqa: S310
     request.add_header("Content-Type", content_type)
     request.add_header("X-Atlassian-Token", "nocheck")
     request.add_header(
         "Authorization",
-        "Basic " + base64.b64encode(("%s:%s" % (email, token)).encode()).decode(),
+        "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode(),
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with open_https(request, 60) as response:
         return json.loads(response.read().decode())
 
 
 def upload_attachment(
     site: str, email: str, token: str, page_id: str, path: str
 ) -> dict:
-    return post_png("https://%s%s" % (site, ATTACH_PATH % page_id), email, token, path)
+    return post_png(f"https://{site}{ATTACH_PATH % page_id}", email, token, path)
 
 
 def update_attachment_data(
@@ -1433,7 +1443,7 @@ def update_attachment_data(
     attachment listing embeds the superseded version - bytes current, page stale.
     """
     return post_png(
-        "https://%s%s/%s/data" % (site, ATTACH_PATH % page_id, attachment_id),
+        f"https://{site}{ATTACH_PATH % page_id}/{attachment_id}/data",
         email,
         token,
         path,
@@ -1447,14 +1457,14 @@ def existing_attachments(site: str, email: str, token: str, page_id: str) -> dic
     is what addresses the attachment when its bytes need replacing.
     """
     request = urllib.request.Request(
-        "https://%s/wiki/api/v2/pages/%s/attachments?limit=250" % (site, page_id)
+        f"https://{site}/wiki/api/v2/pages/{page_id}/attachments?limit=250"
     )
     request.add_header(
         "Authorization",
-        "Basic " + base64.b64encode(("%s:%s" % (email, token)).encode()).decode(),
+        "Basic " + base64.b64encode(f"{email}:{token}".encode()).decode(),
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with open_https(request, 30) as response:
             data = json.loads(response.read().decode())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         # Worst case this misses an existing attachment and uploads a second
@@ -1514,7 +1524,7 @@ def resolve_site(explicit: str) -> str:
             continue
         found = re.search(
             r"^\s*baseUrl:\s*(?:https://)?([A-Za-z0-9.-]+)",
-            open(config, encoding="utf-8").read(),
+            Path(config).read_text(encoding="utf-8"),
             re.MULTILINE,
         )
         if found:
@@ -1534,20 +1544,20 @@ def cmd_attach(args) -> int:
 
     page = next((p for p in plan["pages"] if p["index"] == args.page_index), None)
     if page is None:
-        sys.stderr.write("no page with index %d in the plan\n" % args.page_index)
+        sys.stderr.write(f"no page with index {args.page_index} in the plan\n")
         return 2
     # Retry anything not already attached: a failed upload (auth, network) must
     # be re-runnable without hand-editing the plan, and an already-attached
     # visual must not be uploaded twice.
     pending = [v for v in page["visuals"] if v.get("status") != "attached"]
     if not pending:
-        print("nothing to attach for page %d" % args.page_index)
+        print(f"nothing to attach for page {args.page_index}")
         return 0
 
     token = api_token(args.keychain_service, args.account)
     already = existing_attachments(site, args.account, token, args.page_id)
     body_path = page["body_file"]
-    body = open(body_path, encoding="utf-8").read()
+    body = Path(body_path).read_text(encoding="utf-8")
 
     for visual in pending:
         png = os.path.join(assets, visual["png"])
@@ -1568,29 +1578,24 @@ def cmd_attach(args) -> int:
                     upload_attachment(site, args.account, token, args.page_id, png)
                 )
         except urllib.error.HTTPError as exc:
-            visual["status"] = "attach-failed:http-%d" % exc.code
-            sys.stderr.write("upload %s failed: HTTP %d\n" % (visual["png"], exc.code))
+            visual["status"] = f"attach-failed:http-{exc.code}"
+            sys.stderr.write(f"upload {visual['png']} failed: HTTP {exc.code}\n")
             continue
         except (urllib.error.URLError, OSError) as exc:
             visual["status"] = "attach-failed:network"
-            sys.stderr.write("upload %s failed: %s\n" % (visual["png"], exc))
+            sys.stderr.write(f"upload {visual['png']} failed: {exc}\n")
             continue
         if not media_id:
             visual["status"] = "attach-failed:no-media-id"
             continue
 
         node = (
-            '<figure data-type="media-single" data-layout="center" data-width="%d" '
-            'data-width-type="pixel"><div data-type="media" data-media-type="file" '
-            'data-id="%s" data-collection="contentId-%s" data-width="%d" data-height="%d">'
+            f'<figure data-type="media-single" data-layout="center" '
+            f'data-width="{visual["width"]}" data-width-type="pixel">'
+            '<div data-type="media" data-media-type="file" '
+            f'data-id="{media_id}" data-collection="contentId-{args.page_id}" '
+            f'data-width="{visual["width"] * 2}" data-height="{visual["height"] * 2}">'
             "</div></figure>"
-            % (
-                visual["width"],
-                media_id,
-                args.page_id,
-                visual["width"] * 2,
-                visual["height"] * 2,
-            )
         )
         body, swapped = replace_placeholder(body, visual["png"], node)
         if not swapped:
@@ -1609,8 +1614,8 @@ def cmd_attach(args) -> int:
     for visual in page["visuals"]:
         counts[visual["status"]] = counts.get(visual["status"], 0) + 1
     for status, count in sorted(counts.items()):
-        print("%-28s %d" % (status, count))
-    print("body        %s (%d B)" % (body_path, page["bytes"]))
+        print(f"{status:<28} {count}")
+    print(f"body        {body_path} ({page['bytes']} B)")
     return 0 if all(v["status"] == "attached" for v in pending) else 1
 
 
@@ -1626,7 +1631,7 @@ def transient_source(path: str) -> bool:
     parts = os.path.normpath(path).split(os.sep)
     return any(
         first == "workspace" and second == "tmp"
-        for first, second in zip(parts, parts[1:])
+        for first, second in itertools.pairwise(parts)
     )
 
 
@@ -1636,10 +1641,10 @@ def read_ledger(path: str) -> list[dict]:
     records = []
     with open(path, encoding="utf-8") as handle:
         for line in handle:
-            line = line.strip()
-            if line:
+            stripped = line.strip()
+            if stripped:
                 try:
-                    records.append(json.loads(line))
+                    records.append(json.loads(stripped))
                 except json.JSONDecodeError:
                     continue
     return records
@@ -1649,11 +1654,11 @@ def cmd_ledger_append(args) -> int:
     source = os.path.abspath(args.source)
     if transient_source(source) and not args.allow_transient_source:
         sys.stderr.write(
-            "ERROR: transient ledger source: %s\n"
+            f"ERROR: transient ledger source: {source}\n"
             "Re-publishes key on this exact path, so a cleaned scratch dir turns every "
             "page back into a create and duplicates the Confluence family. Pass the durable "
             "artifact you published from (the promoted report), or --allow-transient-source "
-            "when the publication really is throwaway.\n" % source
+            "when the publication really is throwaway.\n"
         )
         return 2
     record = {
@@ -1674,7 +1679,7 @@ def cmd_ledger_append(args) -> int:
     os.makedirs(os.path.dirname(args.ledger) or ".", exist_ok=True)
     with open(args.ledger, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
-    print("appended page_index=%s page_id=%s" % (args.page_index, args.page_id))
+    print(f"appended page_index={args.page_index} page_id={args.page_id}")
     return 0
 
 

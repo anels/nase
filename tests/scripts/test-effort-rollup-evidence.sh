@@ -694,9 +694,8 @@ module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
-# `gh pr view` per PR is the whole runtime of a wide month, and the views are
-# independent. A barrier asserts the overlap without timing: every call must be in
-# flight before any returns, so a serial fetch deadlocks and trips the timeout.
+# A barrier asserts the overlap without timing: every call must be in flight before
+# any returns, so a serial fetch deadlocks and trips the timeout.
 plan = {f"example/service#{number}": ["gh", "pr", "view", str(number)] for number in (1, 2, 3)}
 barrier = threading.Barrier(len(plan), timeout=10)
 

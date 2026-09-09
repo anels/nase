@@ -466,7 +466,8 @@ def _vocab_rules() -> list[Rule]:
 
 # --- rule table ------------------------------------------------------------
 
-RULES: list[Rule] = _vocab_rules() + [
+RULES: list[Rule] = [
+    *_vocab_rules(),
     Rule(
         "SYN-ING",
         "marker",
@@ -678,12 +679,12 @@ def lint(text: str, surface: str) -> list[Finding]:
             findings.extend(rule.checker(doc, rule))
             continue
         assert rule.pattern is not None
-        for match in rule.pattern.finditer(doc.masked):
-            findings.append(
-                doc.finding(
-                    rule, match.start(), doc.text[match.start() : match.end()].strip()
-                )
+        findings.extend(
+            doc.finding(
+                rule, match.start(), doc.text[match.start() : match.end()].strip()
             )
+            for match in rule.pattern.finditer(doc.masked)
+        )
     findings.sort(key=lambda f: (f.kind != "gate", f.line, f.col, f.rule))
     return findings
 
@@ -727,8 +728,7 @@ def render_human(findings: list[Finding], surface: str, threshold: int) -> str:
         if not rows:
             continue
         out.append(f"  {tier}: {len(rows)}")
-        for f in rows:
-            out.append(f"      {f.line}:{f.col} {f.matched}  -> {f.fix}")
+        out.extend(f"      {f.line}:{f.col} {f.matched}  -> {f.fix}" for f in rows)
 
     out.append("")
     out.append(f"Markers: {summary['verdict']}")

@@ -288,15 +288,13 @@ def run_gh_all(plan: dict[str, list[str]]) -> dict[str, str]:
     """Run independent `gh` reads concurrently and return stdout keyed by plan name.
 
     Every call is a separate `gh` process reading a different endpoint, so the only
-    shared state is the network. Results are keyed rather than ordered, so output is
-    identical to running them one at a time. A failing call still raises
-    `CalledProcessError`; which one raises first is no longer the plan order, so no
-    caller may depend on that. Keys are read back in plan order to keep the raised
-    error stable for a fixed set of failures.
+    shared state is the network. Futures are read back in plan order, so both the
+    returned mapping and the `CalledProcessError` a failing call raises match a
+    serial run.
     """
     if len(plan) < 2:
         return {name: run_gh(args) for name, args in plan.items()}
-    with ThreadPoolExecutor(max_workers=len(plan)) as pool:
+    with ThreadPoolExecutor(max_workers=min(GH_MAX_PARALLEL, len(plan))) as pool:
         pending = {name: pool.submit(run_gh, args) for name, args in plan.items()}
         return {name: future.result() for name, future in pending.items()}
 
@@ -506,8 +504,7 @@ def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, An
             cwd=root,
             check=False,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=KB_SEARCH_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
@@ -753,8 +750,7 @@ def is_bot_login(login: str | None) -> bool:
     return (
         lowered in BOT_LOGINS
         or lowered in EXTRA_BOT_LOGINS
-        or lowered.endswith("[bot]")
-        or lowered.endswith("-bot")
+        or lowered.endswith(("[bot]", "-bot"))
     )
 
 
@@ -838,8 +834,7 @@ def adjacent_same_file_overlap(
 def prep_state(
     pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_chars: int
 ) -> dict[str, Any]:
-    # Metadata is one call; thread pagination is many. Overlap them: neither reads the
-    # other's result, so the command costs the slower of the two rather than their sum.
+    # Metadata does not feed thread pagination, so the two reads can overlap.
     with ThreadPoolExecutor(max_workers=1) as pool:
         pending_metadata = pool.submit(run_gh, gh_metadata_args(pr, "full"))
         response = unresolved_threads_from_response(
@@ -948,7 +943,9 @@ def _fetch_remaining_comments(thread: dict[str, Any]) -> dict[str, Any]:
         response = json.loads(raw)
         node = response.get("data", {}).get("node")
         if not isinstance(node, dict):
-            raise RuntimeError(
+            # A malformed GraphQL response is a runtime failure of the call, not a
+            # type error the caller could have avoided.
+            raise RuntimeError(  # noqa: TRY004
                 f"could not fetch comments for thread {thread.get('id')}"
             )
         page = node.get("comments") or {}
@@ -986,16 +983,14 @@ def fetch_review_threads(pr: dict[str, Any]) -> dict[str, Any]:
                 if key != "reviewThreads"
             }
 
-        nodes = list(threads_connection.get("nodes") or [])
+        nodes = threads_connection.get("nodes") or []
         # Each thread pages its own comments; the pages of one thread say nothing about
-        # another's. `map` keeps input order, so the thread list is unchanged.
-        if len(nodes) > 1:
+        # another's.
+        if nodes:
             with ThreadPoolExecutor(
                 max_workers=min(GH_MAX_PARALLEL, len(nodes))
             ) as pool:
                 all_threads.extend(pool.map(_fetch_remaining_comments, nodes))
-        else:
-            all_threads.extend(_fetch_remaining_comments(thread) for thread in nodes)
 
         page_info = _connection_page_info(threads_connection)
         if not page_info["hasNextPage"]:

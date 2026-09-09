@@ -20,7 +20,7 @@ from frontmatter_scalar import (
     normalize_scalar,
 )
 from nase_git import resolve_root
-from nase_time import parse_ts
+from nase_time import local_today, parse_ts
 
 LOG_NAME_RE = re.compile(r"^(20\d\d-\d\d-\d\d)\.md$")
 # A session entry is `- HH:MM | summary`. The skill tag (`- HH:MM | fsd: ...`) is
@@ -94,7 +94,7 @@ def log_files(root: pathlib.Path, days: int) -> list[pathlib.Path]:
 
 def date_cutoff(days: int) -> date:
     try:
-        return date.today() - timedelta(days=max(days, 0))
+        return local_today() - timedelta(days=max(days, 0))
     except OverflowError:
         return date.min
 
@@ -358,16 +358,16 @@ def scan_todo(root: pathlib.Path) -> list[dict[str, Any]]:
                     idx,
                 )
             )
-        for raw in EFFORT_REF_RE.findall(line):
-            if not (root / raw).is_file():
-                issues.append(
-                    finding(
-                        "todo_broken_effort_ref",
-                        rel,
-                        f"Effort reference does not resolve: {raw}",
-                        idx,
-                    )
-                )
+        issues.extend(
+            finding(
+                "todo_broken_effort_ref",
+                rel,
+                f"Effort reference does not resolve: {raw}",
+                idx,
+            )
+            for raw in EFFORT_REF_RE.findall(line)
+            if not (root / raw).is_file()
+        )
     return issues
 
 

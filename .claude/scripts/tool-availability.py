@@ -39,6 +39,7 @@ TOOLS: tuple[Tool, ...] = (
         "shell and hook validation",
     ),
     Tool("baseline", "shfmt", "shfmt", "shfmt", "shell formatting"),
+    Tool("baseline", "ruff", "ruff", "ruff", "Python lint gate"),
     Tool(
         "ci",
         "actionlint",
@@ -141,8 +142,7 @@ def selected_tools(args: argparse.Namespace) -> list[Tool]:
     if args.all:
         return list(TOOLS)
     groups = args.group or ["baseline"]
-    selected = [tool for tool in TOOLS if tool.group in groups]
-    return selected
+    return [tool for tool in TOOLS if tool.group in groups]
 
 
 def status_for(tool: Tool) -> dict[str, str | None]:

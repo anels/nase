@@ -80,13 +80,13 @@ def main() -> int:
                 f"DRIFT    {path}: language preflight pointer is missing or "
                 f"reworded. Use the canonical spelling verbatim: {canonical}"
             )
-        for restatement in RESTATEMENTS:
-            if restatement in text:
-                failures.append(
-                    f"INLINE   {path}: restates the preflight rules "
-                    f"({restatement}). Delete the restatement and point at "
-                    f"{source_doc} instead."
-                )
+        failures.extend(
+            f"INLINE   {path}: restates the preflight rules "
+            f"({restatement}). Delete the restatement and point at "
+            f"{source_doc} instead."
+            for restatement in RESTATEMENTS
+            if restatement in text
+        )
 
     if failures:
         print("\n".join(failures), file=sys.stderr)

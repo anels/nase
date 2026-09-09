@@ -48,6 +48,17 @@ SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || true)
 SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally; GitHub Actions still runs this gate.'
 ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || true)
 ACTIONLINT_SKIP='SKIP: actionlint is not installed locally; GitHub Actions still runs this gate.'
+RUFF_BIN=$(command -v ruff 2>/dev/null || true)
+RUFF_SKIP='SKIP: ruff is not installed locally (pip install ruff); GitHub Actions still runs this gate.'
+
+# Every tracked shell file. `bash -n` and shellcheck read the same list so a new
+# script cannot land in one gate and miss the other.
+SHELL_FILES=()
+for _shell_file in .claude/hooks/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh \
+  tests/scripts/*.sh workspace/skills/scripts/*.sh; do
+  [[ -f "$_shell_file" ]] && SHELL_FILES+=("$_shell_file")
+done
+unset _shell_file
 
 HOOK_TESTS=(tests/hooks/test-*.sh)
 SCRIPT_TESTS=(tests/scripts/test-*.sh workspace/skills/scripts/test-*.sh)
@@ -136,7 +147,7 @@ Modes:
 
 Major gate groups:
   syntax: bash hooks/scripts, Python helpers, settings JSON
-  lint: shellcheck when installed, actionlint when installed
+  lint: ruff over Python, shellcheck over every shell file, actionlint - each when installed
   catalog: command_catalog.py --check-readme
   wiring: hook registrations and workspace validation
   docs: shared-doc reference integrity, canonical pointer wording, KB domain-map contract, skill doctrine, and advisory skill trigger overlap
@@ -148,8 +159,7 @@ EOF
 run_bash_syntax() {
   section "bash syntax"
   local f
-  for f in .claude/hooks/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh tests/scripts/*.sh workspace/skills/scripts/*.sh; do
-    [[ -f "$f" ]] || continue
+  for f in "${SHELL_FILES[@]}"; do
     run_gate "bash -n $f" bash -n "$f"
   done
 }
@@ -164,15 +174,37 @@ run_python_syntax() {
   run_gate "compile .claude/scripts/*.py workspace/skills/scripts/*.py" python3 -m py_compile "${py_files[@]}"
 }
 
+run_ruff() {
+  section "python lint"
+  if [[ -z "$RUFF_BIN" ]]; then
+    printf '%s\n' "$RUFF_SKIP"
+    return 0
+  fi
+  run_gate "ruff check" "$RUFF_BIN" check --no-cache .
+  # `.ruff.toml` excludes `workspace/` wholesale because it is scratch space, but the
+  # skill scripts under it are skill surface with their own tests. Pass them by name -
+  # an explicit path is linted despite the exclude - so a Python skill script is held
+  # to the same gate as the shell twins already in SHELL_FILES.
+  local skill_py=() f
+  for f in workspace/skills/scripts/*.py; do
+    [[ -f "$f" ]] && skill_py+=("$f")
+  done
+  if [[ "${#skill_py[@]}" -gt 0 ]]; then
+    run_gate "ruff check ${#skill_py[@]} workspace skill script(s)" \
+      "$RUFF_BIN" check --no-cache "${skill_py[@]}"
+  fi
+}
+
 run_json() {
   section "JSON"
   run_gate "settings.json parses" bash -c 'python3 -m json.tool .claude/settings.json >/dev/null'
 }
 
-run_shellcheck_hooks() {
-  section "shellcheck (hooks)"
+run_shellcheck_scripts() {
+  section "shellcheck (all shell)"
   if [[ -n "$SHELLCHECK_BIN" ]]; then
-    run_gate "shellcheck .claude/hooks/*.sh" "$SHELLCHECK_BIN" -S warning .claude/hooks/*.sh
+    run_gate "shellcheck ${#SHELL_FILES[@]} shell file(s)" \
+      "$SHELLCHECK_BIN" -S warning "${SHELL_FILES[@]}"
   else
     printf '%s\n' "$SHELLCHECK_SKIP"
   fi
@@ -226,7 +258,13 @@ check_skill_bash_blocks() {
       skill_fail=1
     fi
     if [[ -n "$SHELLCHECK_BIN" ]]; then
-      if ! sc=$(printf '%s\n' "$blocks" | "$SHELLCHECK_BIN" --shell=bash -S error - 2>&1); then
+      # Snippet-only suppressions, passed here rather than in a repo-root
+      # .shellcheckrc so they cannot reach a real script.
+      # SC2148 no shebang, SC2154/SC2034 `{repo}`-style placeholders, SC1091 illustrative
+      # `source` paths, SC2016 single-quoted `$var` in jq filters, SC2260/SC2261
+      # `<owner>/<repo>` reading as a redirection.
+      if ! sc=$(printf '%s\n' "$blocks" | "$SHELLCHECK_BIN" --shell=bash -S error \
+        -e SC2148,SC2154,SC1091,SC2034,SC2016,SC2260,SC2261 - 2>&1); then
         printf 'FAIL: shellcheck errors in %s:\n%s\n' "$f" "$sc" >&2
         skill_fail=1
       fi
@@ -422,6 +460,7 @@ run_changed_extras() {
 run_fast() {
   run_bash_syntax
   run_python_syntax
+  run_ruff
   run_json
   run_actionlint
   run_hook_wiring
@@ -440,8 +479,9 @@ run_fast() {
 run_full() {
   run_bash_syntax
   run_python_syntax
+  run_ruff
   run_json
-  run_shellcheck_hooks
+  run_shellcheck_scripts
   run_actionlint
   run_hook_wiring
   run_command_catalog

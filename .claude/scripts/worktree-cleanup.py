@@ -108,9 +108,11 @@ def dirty_items(worktree: Path) -> list[str]:
         raise GitError(
             submodule_status.stderr.strip() or "could not inspect submodules"
         )
-    for line in submodule_status.stdout.splitlines():
-        if line and line[0] in "-+U":
-            items.append(f"submodule-state:{line}")
+    items.extend(
+        f"submodule-state:{line}"
+        for line in submodule_status.stdout.splitlines()
+        if line and line[0] in "-+U"
+    )
 
     # ponytail: one fixed shell probe covers nested submodules; replace only if Git adds a structured recursive status API.
     probe = git(

@@ -229,6 +229,37 @@ ln -s "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one/artifact-link.md"
 assert_cmd "symlink artifact is rejected before extraction" bash -c '! "$1" "$2" --root "one=$3" --format json >/dev/null 2>&1' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact-link.md" "$TMPDIR_TEST/one"
 write_artifact "$TMPDIR_TEST/outside/artifact.md" 'No citations.'
 assert_cmd "artifact outside primary root is rejected" bash -c '! "$1" "$2" --root "one=$3" --format json >/dev/null 2>&1' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/outside/artifact.md" "$TMPDIR_TEST/one"
+# `failure_detail` indexes its verdict table by category with no default, and it sits
+# on every citation path. A category added to nase_gh without a verdict here would
+# crash the validator rather than degrade it, and nothing else would catch that.
+assert_cmd "every gh failure category has a citation verdict" \
+  "$PYTHON_BIN" - "$ROOT" <<'VERDICTS'
+import importlib.util
+import pathlib
+import sys
+
+scripts = pathlib.Path(sys.argv[1]) / ".claude" / "scripts"
+sys.path.insert(0, str(scripts))
+spec = importlib.util.spec_from_file_location(
+    "citation_validator", scripts / "citation-validator.py"
+)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+import nase_gh
+
+probes = {
+    "rate-limited": "API rate limit exceeded",
+    "auth-failed": "authentication required",
+    "transient-network": "network connection failed",
+    "not-found": "pull request not found",
+    "command-failed": "",
+}
+for expected, stderr in probes.items():
+    assert nase_gh.failure_category(stderr)[0] == expected, (stderr, expected)
+assert set(module._CATEGORY_VERDICT) == set(probes), module._CATEGORY_VERDICT
+VERDICTS
+
 assert_cmd "validator never requests a shell" bash -c '! grep -Eq "shell[[:space:]]*=[[:space:]]*True" "$1"' _ "$SCRIPT"
 
 if [[ "$failures" -eq 0 ]]; then

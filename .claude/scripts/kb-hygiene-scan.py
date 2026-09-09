@@ -15,13 +15,13 @@ import re
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
+from nase_time import calendar_day, local_today
 
 SOURCE_EXTS = {
     ".bicep",
@@ -210,8 +210,8 @@ def normalize_heading(title: str) -> str:
 
 def today_value(raw: str | None) -> date:
     if raw:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    return date.today()
+        return calendar_day(raw).date()
+    return local_today()
 
 
 def issue(
@@ -285,7 +285,7 @@ def content_line_count(path: pathlib.Path) -> int:
     count = 0
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#") or stripped.startswith("<!--"):
+        if not stripped or stripped.startswith(("#", "<!--")):
             continue
         count += 1
     return count
@@ -327,15 +327,15 @@ def workspace_scan(root: pathlib.Path) -> dict[str, Any]:
         )
 
     targets = domain_map_targets(root)
-    for target in sorted(targets):
-        if not (root / target).is_file():
-            issues.append(
-                workspace_issue(
-                    "domain_map_missing_target",
-                    "Domain map target does not exist.",
-                    pathlib.Path(target),
-                )
-            )
+    issues.extend(
+        workspace_issue(
+            "domain_map_missing_target",
+            "Domain map target does not exist.",
+            pathlib.Path(target),
+        )
+        for target in sorted(targets)
+        if not (root / target).is_file()
+    )
 
     mapped = {path for path in targets if path.startswith("workspace/kb/")}
     for file_path in files:
@@ -461,7 +461,7 @@ def scan(args: argparse.Namespace) -> dict[str, Any]:
 
         last_updated = LAST_UPDATED_RE.search(line)
         if last_updated:
-            parsed = datetime.strptime(last_updated.group(1), "%Y-%m-%d").date()
+            parsed = calendar_day(last_updated.group(1)).date()
             age = (today - parsed).days
             if age > args.stale_days:
                 issues.append(

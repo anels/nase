@@ -41,7 +41,7 @@ impact.
 
 | Group | Tools | Use |
 |-------|-------|-----|
-| `baseline` | `rg`, `fd`, `yq`, `shellcheck`, `shfmt` | Fast repo exploration and common local verification. `/nase:doctor` checks these as warning-only. |
+| `baseline` | `rg`, `fd`, `yq`, `shellcheck`, `shfmt`, `ruff` | Fast repo exploration and common local verification. `/nase:doctor` checks these as warning-only. `shellcheck` and `ruff` are the two lint gates `tests/check-all.sh` runs on every invocation. |
 | `ci` | `actionlint` | GitHub Actions validation only when workflow files are in scope. Not part of the default install recommendation. |
 | `review` | `ast-grep`, `semgrep`, `trivy` | Structural code claims and focused security/dependency/container/IaC review. |
 | `security` | `gitleaks`, `hadolint` | Secret scanning plus Dockerfile-only linting. `hadolint` is advanced and not part of the default install recommendation. |
@@ -58,7 +58,7 @@ impact.
 | Skill | Tooling rule |
 |-------|--------------|
 | `discuss-pr` | Use `rg`/`fd` for focused context gathering; use `difft` for syntax-aware diff summaries; use `yq` for YAML diffs; use `actionlint` only for changed GitHub Actions workflows when installed; use `ast-grep` for structural pattern claims; use focused `semgrep`/`trivy`/`gitleaks` only when risk signals justify it. Use `hadolint` only for changed Dockerfiles when it is already installed. |
-| `fsd` / `address-comments` | Run optional post-edit gates by changed file type: shell -> `shellcheck` and optional `shfmt -d`; GitHub Actions -> `actionlint` only when installed; secret-risk or staged diff -> `gitleaks`; YAML/config -> `yq`; repeated code-pattern edits -> `ast-grep`; Dockerfile -> `hadolint` only when already installed. Use `shfmt -d`, never a bare `shfmt` or `-w`: the diff mode's non-zero exit is what makes it a gate, and both skills run these gates after their evidence is captured, so a write costs `fsd` its frozen candidate tree and pushes `address-comments` outside the accepted thread's scope. |
+| `fsd` / `address-comments` | Run optional post-edit gates by changed file type: Python -> `ruff check`; shell -> `shellcheck` and optional `shfmt -d`; GitHub Actions -> `actionlint` only when installed; secret-risk or staged diff -> `gitleaks`; YAML/config -> `yq`; repeated code-pattern edits -> `ast-grep`; Dockerfile -> `hadolint` only when already installed. Use `shfmt -d`, never a bare `shfmt` or `-w`: the diff mode's non-zero exit is what makes it a gate, and both skills run these gates after their evidence is captured, so a write costs `fsd` its frozen candidate tree and pushes `address-comments` outside the accepted thread's scope. |
 | `onboard` | Use `rg`/`fd` for inventory, `rga` only for docs-heavy repos or archives, `just` only when a Justfile exists, optional `ctags` only for very large or unfamiliar repos where symbol inventory would reduce later searches, and `yq` for config/pipeline parsing. Do not write local tool availability into repo KB. |
 | `tech-debt-audit` | Optional `semgrep`, `trivy`, and `gitleaks` passes can seed candidates, but verified evidence remains required. Use `actionlint` only for GitHub Actions-heavy repos and `hadolint` only for Dockerfile-heavy repos when already installed. |
 | `skill-audit` | The stdlib `skill-audit-scan.py` pattern scan stays canonical; `semgrep` may supplement injection or exfiltration checks when installed. |

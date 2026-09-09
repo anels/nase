@@ -9,6 +9,7 @@ workflow.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -49,8 +50,7 @@ def stable_session_id(explicit: str | None = None) -> str | None:
 
 
 def session_slug(session: str) -> str:
-    digest = hashlib.sha256(session.encode("utf-8")).hexdigest()[:16]
-    return digest
+    return hashlib.sha256(session.encode("utf-8")).hexdigest()[:16]
 
 
 def context_path(root: pathlib.Path, session: str) -> pathlib.Path:
@@ -162,10 +162,8 @@ def activate(args: argparse.Namespace) -> int:
     except Exception:
         return 0
     # After the write, so a reaper failure can never cost us this activation.
-    try:
+    with contextlib.suppress(Exception):
         reap_stale_contexts(root, utc_now())
-    except Exception:
-        pass
     return 0
 
 
@@ -221,7 +219,7 @@ def recent_duplicate(jsonl: pathlib.Path, event: dict[str, Any], now: datetime) 
     for line in reversed(lines):
         try:
             existing = json.loads(line)
-        except Exception:
+        except Exception:  # noqa: S112 - a malformed line is skipped data, not an error path
             continue
         if not all(
             existing.get(k) == event.get(k)

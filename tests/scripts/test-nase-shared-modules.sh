@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Regression tests for .claude/scripts/nase_git.py and .claude/scripts/nase_fs.py
+# Regression tests for .claude/scripts/nase_git.py, nase_fs.py and nase_gh.py
 #
-# These two modules hold the single copy of a policy every consumer depends on. What has
+# These modules hold the single copy of a policy every consumer depends on. What has
 # to hold: every git call is bounded and a timeout is distinguishable from a failure; the
 # environment is merged rather than replaced; a streaming read always reaps its process;
-# and the durable write is actually durable and leaves nothing behind.
+# the durable write is actually durable and leaves nothing behind; and a failed `gh`
+# read is classified the same way for every caller.
 #
 # Run from repo root:  bash tests/scripts/test-nase-shared-modules.sh
 
@@ -40,7 +41,7 @@ run_case() {
 PRELUDE='
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path("'"$ROOT"'") / ".claude" / "scripts"))
-import nase_git, nase_fs
+import nase_git, nase_fs, nase_gh
 '
 
 # --- nase_git.run ---------------------------------------------------------
@@ -305,6 +306,81 @@ if grep -q 'fsync_dir(target.parent)' "$ROOT/.claude/scripts/nase_fs.py"; then
 else
   bad "atomic_write fsyncs the parent directory, not only the file"
 fi
+
+# --- nase_gh.failure_category ---------------------------------------------
+#
+# The categories drive retry decisions, so a misread is not cosmetic: a permanent
+# failure read as transient is retried and then reported as a network problem, and a
+# transient blip read as not-found becomes a false permanent verdict.
+
+run_case "phrase-only stderr classifies without an HTTP status" "$PRELUDE"'
+cases = {
+    "pull request not found": "not-found",
+    "could not resolve to a PullRequest": "not-found",
+    "authentication required": "auth-failed",
+    "API rate limit exceeded": "rate-limited",
+    "network connection failed": "transient-network",
+    "request timed out": "transient-network",
+    "": "command-failed",
+}
+for stderr, expected in cases.items():
+    actual, _ = nase_gh.failure_category(stderr)
+    assert actual == expected, (stderr, actual, expected)
+'
+
+run_case "a status code classifies only in the HTTP <code> shape" "$PRELUDE"'
+for stderr, expected in {
+    "HTTP 404: Not Found": "not-found",
+    "HTTP 401": "auth-failed",
+    "HTTP 429": "rate-limited",
+    "HTTP 503": "transient-network",
+}.items():
+    actual, _ = nase_gh.failure_category(stderr)
+    assert actual == expected, (stderr, actual)
+'
+
+run_case "a PR number that looks like a status code is not a server error" "$PRELUDE"'
+# gh echoes the number it was given. Matching bare "503" as a status read this
+# permanent failure as transient, so it was retried and then reported as a network
+# problem.
+stderr = "GraphQL: Could not resolve to a PullRequest with the number of 503."
+actual, _ = nase_gh.failure_category(stderr)
+assert actual == "not-found", actual
+'
+
+run_case "rate limit reports the wait the authority asked for" "$PRELUDE"'
+category, wait = nase_gh.failure_category("secondary rate limit; retry-after 42")
+assert (category, wait) == ("rate-limited", 42), (category, wait)
+category, wait = nase_gh.failure_category("API rate limit exceeded")
+assert (category, wait) == ("rate-limited", None), (category, wait)
+'
+
+run_case "a transient failure outranks a not-found phrase in the same stderr" "$PRELUDE"'
+# The module documents this precedence, and only a caller that retries acts on the
+# difference. A wrong not-found there turns a recoverable blip into a permanent
+# verdict; a wrong transient-network costs one retry.
+stderr = "HTTP 503: Service Unavailable - pull request not found"
+actual, _ = nase_gh.failure_category(stderr)
+assert actual == "transient-network", actual
+'
+
+# --- nase_gh.run ----------------------------------------------------------
+
+run_case "run reports a hang as exit 124 rather than raising" "$PRELUDE"'
+done = nase_gh.run(["sh", "-c", "sleep 5"], timeout=0.3)
+assert done.returncode == nase_gh.TIMEOUT_RETURNCODE, done
+'
+
+run_case "run reports a missing binary as exit 127 rather than raising" "$PRELUDE"'
+done = nase_gh.run(["nase-gh-probe-does-not-exist"])
+assert done.returncode == nase_gh.MISSING_BINARY_RETURNCODE, done
+assert done.stderr, "a missing binary must say why"
+'
+
+run_case "run captures both streams and preserves the exit code" "$PRELUDE"'
+done = nase_gh.run(["sh", "-c", "echo out; echo err >&2; exit 3"])
+assert (done.returncode, done.stdout.strip(), done.stderr.strip()) == (3, "out", "err"), done
+'
 
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

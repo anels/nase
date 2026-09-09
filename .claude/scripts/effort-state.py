@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import datetime
 import json
 import re
 import sys
@@ -15,6 +14,7 @@ from frontmatter_scalar import (
     extract_frontmatter_scalar,
     normalize_scalar,
 )
+from nase_time import local_today
 
 STAGE_DISPLAY = {
     "planning": "Planning",
@@ -736,7 +736,7 @@ def transition(
 ) -> dict[str, object]:
     destination_dir = terminal_destination_dir(
         classification,
-        archive_year if archive_year is not None else datetime.date.today().year,
+        archive_year if archive_year is not None else local_today().year,
     )
     if classification["pr_references"].get("validation_errors"):
         return {"action": "none", "status": None, "reason": "invalid-pr-reference"}

@@ -331,9 +331,10 @@ def validate_assertion(case_id: str, assertion: dict[str, Any]) -> None:
     if not isinstance(pattern, str) or not pattern:
         raise EvalError(f"{case_id}: {assertion_type} needs pattern")
     re.compile(pattern, re.MULTILINE)
-    if assertion_type in {"min_count_regex", "max_count_regex"}:
-        if not isinstance(assertion.get("count"), int):
-            raise EvalError(f"{case_id}: {assertion_type} needs integer count")
+    if assertion_type in {"min_count_regex", "max_count_regex"} and not isinstance(
+        assertion.get("count"), int
+    ):
+        raise EvalError(f"{case_id}: {assertion_type} needs integer count")
 
 
 def find_case(eval_set: dict[str, Any], case_id: str) -> dict[str, Any]:

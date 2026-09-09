@@ -187,7 +187,7 @@ def mutation_system(argv: list[str]) -> str | None:
                 not methods and has_payload
             ):
                 return "github"
-        if len(words) >= 2 and words[0] in {
+        if len(words) >= 2 and words[0] in {  # noqa: SIM102
             "pr",
             "issue",
             "release",
@@ -198,6 +198,9 @@ def mutation_system(argv: list[str]) -> str | None:
             "secret",
             "cache",
         }:
+            # The object set and the verb set are separate contracts: a new `gh`
+            # noun and a new mutating verb arrive independently. Keep them nested
+            # so a reader sees which list a missing entry belongs to.
             if words[1] in {
                 "create",
                 "edit",
@@ -296,9 +299,7 @@ def graphql_read_query(argv: list[str]) -> bool:
         return False
     query = query_values[0].lstrip()
     return not re.search(r"\bmutation\b", query, re.IGNORECASE) and (
-        query.startswith("query")
-        or query.startswith("{")
-        or query.startswith("fragment")
+        query.startswith(("query", "{", "fragment"))
     )
 
 
@@ -472,9 +473,13 @@ def literal_at_file_fields(root: Path, argv: list[str]) -> list[str]:
             field = value.split("=", 1)[1]
         if field:
             key, delimiter, text = field.partition("=")
-            if delimiter and text.startswith("@") and len(text) > 1:
-                if resolve_payload_path(root, text[1:]).is_file():
-                    offenders.append(f"{key}=@{text[1:]}")
+            if (
+                delimiter
+                and text.startswith("@")
+                and len(text) > 1
+                and resolve_payload_path(root, text[1:]).is_file()
+            ):
+                offenders.append(f"{key}=@{text[1:]}")
         index += 1
     return offenders
 
@@ -1361,9 +1366,12 @@ def command_has_unrecognized_external_cli(command: str) -> bool:
         if argv == ["__unrecognized_shell_command__"]:
             return True
         executable = Path(argv[0]).name.lower() if argv else ""
-        if executable in GUARDED_EXECUTABLES and mutation_system(argv) is None:
-            if not known_safe_external_command(argv):
-                return True
+        if (
+            executable in GUARDED_EXECUTABLES
+            and mutation_system(argv) is None
+            and not known_safe_external_command(argv)
+        ):
+            return True
     return False
 
 

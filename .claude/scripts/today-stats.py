@@ -27,8 +27,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
+
+from nase_time import local_today
 
 NASE_ROOT = Path(__file__).resolve().parents[2]
 PROMPT_TOOL_DEDUPE_WINDOW = timedelta(seconds=60)
@@ -139,7 +141,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--date",
-        default=date.today().isoformat(),
+        default=local_today().isoformat(),
         help="ISO date to query (default: today)",
     )
     parser.add_argument(

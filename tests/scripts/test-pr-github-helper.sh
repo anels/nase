@@ -474,10 +474,8 @@ spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
-# Four endpoint reads, none of which needs another's answer. A barrier is the
-# order-independent way to assert overlap: every call must be in flight before any
-# returns, so a serial implementation deadlocks and trips the timeout instead of
-# quietly costing four round trips.
+# A barrier asserts the overlap without timing: every one of the four reads must be
+# in flight before any returns, so a serial implementation deadlocks on the timeout.
 barrier = threading.Barrier(4, timeout=10)
 metadata = {
     "number": 42,

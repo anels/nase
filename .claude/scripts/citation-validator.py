@@ -10,10 +10,18 @@ import io
 import json
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_gh import (
+    MISSING_BINARY_RETURNCODE,
+    TIMEOUT_RETURNCODE,
+    failure_category,
+)
+from nase_gh import run as nase_gh_run
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 ALIAS_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -159,43 +167,30 @@ def result(
 def run_command(
     args: list[str], timeout: int
 ) -> tuple[str, str, int] | tuple[None, str, None]:
-    try:
-        completed = subprocess.run(
-            args, text=True, capture_output=True, timeout=timeout, check=False
-        )
-    except FileNotFoundError:
+    completed = nase_gh_run(args, timeout=timeout)
+    if completed.returncode == MISSING_BINARY_RETURNCODE:
         return None, "missing-cli", None
-    except subprocess.TimeoutExpired:
+    if completed.returncode == TIMEOUT_RETURNCODE:
         return None, "timeout", None
     return completed.stdout, completed.stderr[:4096], completed.returncode
 
 
+# The shared classification names the failure; this table names what a citation
+# verdict does with it. Only `not-found` is a statement about the citation itself -
+# every other category says the authority could not be reached, which is not the
+# same as the reference being wrong.
+_CATEGORY_VERDICT = {
+    "not-found": ("BROKEN", "not-found"),
+    "auth-failed": ("UNKNOWN", "auth-unavailable"),
+    "rate-limited": ("UNKNOWN", "rate-limited"),
+    "transient-network": ("UNKNOWN", "network-unavailable"),
+    "command-failed": ("UNKNOWN", "authority-error"),
+}
+
+
 def failure_detail(stderr: str) -> tuple[str, str]:
-    lowered = stderr.lower()
-    if any(token in lowered for token in ("404", "not found", "could not resolve to")):
-        return "BROKEN", "not-found"
-    if any(
-        token in lowered
-        for token in ("auth", "login", "unauthorized", "forbidden", "401", "403")
-    ):
-        return "UNKNOWN", "auth-unavailable"
-    if any(token in lowered for token in ("rate limit", "secondary rate", "429")):
-        return "UNKNOWN", "rate-limited"
-    if any(
-        token in lowered
-        for token in (
-            "network",
-            "timed out",
-            "timeout",
-            "connection",
-            "resolve host",
-            "502",
-            "503",
-            "504",
-        )
-    ):
-        return "UNKNOWN", "network-unavailable"
-    return "UNKNOWN", "authority-error"
+    category, _ = failure_category(stderr)
+    return _CATEGORY_VERDICT[category]
 
 
 @functools.lru_cache(maxsize=8)
@@ -445,16 +440,14 @@ def validate_path(base: str, line: int, roots: dict[str, Path]) -> dict[str, Any
 
 def extract(text: str, roots: dict[str, Path], timeout: int) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
-    for match in GITHUB_PR_RE.finditer(text):
-        found.append(validate_github(match.group(0), timeout))
-    for key in JIRA_RE.findall(text):
-        found.append(validate_jira(key, timeout))
-    for match in CONFLUENCE_RE.finditer(text):
-        found.append(
-            result(
-                "confluence", match.group(0).rstrip(".,;)"), "UNKNOWN", "mcp-required"
-            )
-        )
+    found.extend(
+        validate_github(match.group(0), timeout) for match in GITHUB_PR_RE.finditer(text)
+    )
+    found.extend(validate_jira(key, timeout) for key in JIRA_RE.findall(text))
+    found.extend(
+        result("confluence", match.group(0).rstrip(".,;)"), "UNKNOWN", "mcp-required")
+        for match in CONFLUENCE_RE.finditer(text)
+    )
     for token in BACKTICK_RE.findall(text):
         parsed = eligible_path_token(token)
         if parsed:

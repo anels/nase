@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
+from nase_time import local_today
+
 USE_DEDUPE = timedelta(seconds=60)
 
 
@@ -33,7 +35,7 @@ def parse_args() -> argparse.Namespace:
         "--root", type=Path, default=Path(__file__).resolve().parents[2]
     )
     parser.add_argument("--jsonl", type=Path)
-    parser.add_argument("--date", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--date", type=date.fromisoformat, default=local_today())
     parser.add_argument("--window", type=int, default=60)
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument("--output", type=Path)
@@ -248,11 +250,11 @@ def usage_table(rows: list[dict[str, object]]) -> list[str]:
         "| Skill | Total | 7d | 30d | Last used | Outcome |",
         "|---|--:|--:|--:|---|---:|",
     ]
-    for row in rows:
-        lines.append(
-            f"| {row['skill']} | {row['total']} | {row['last_7d']} | {row['last_30d']} | "
-            f"{row['last_used']} | {rate(row['tool_success_rate'])} |"
-        )
+    lines.extend(
+        f"| {row['skill']} | {row['total']} | {row['last_7d']} | {row['last_30d']} | "
+        f"{row['last_used']} | {rate(row['tool_success_rate'])} |"
+        for row in rows
+    )
     return lines
 
 
@@ -303,10 +305,11 @@ def render(
             "|---|--:|--:|--:|--:|",
         ]
     )
-    for row in hotspots[:15]:
-        lines.append(
-            f"| {row['skill']} | {row['total']} | {row['bytes']} | {row['estimated_tokens']} | {row['weighted_tokens']} |"
-        )
+    lines.extend(
+        f"| {row['skill']} | {row['total']} | {row['bytes']} | "
+        f"{row['estimated_tokens']} | {row['weighted_tokens']} |"
+        for row in hotspots[:15]
+    )
 
     candidates = [row for row in rows if row["tier"] in {"cold", "unused"}]
     lines.extend(["", "## Suggested deprecation candidates", ""])
