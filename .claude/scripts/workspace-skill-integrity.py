@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify ignored workspace skill sources against generated command wrappers."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,9 +8,7 @@ import hashlib
 import json
 import os
 import re
-import sys
 from pathlib import Path
-
 
 MANIFEST_VERSION = 1
 MARKER = "<!-- NASE-GENERATED-WORKSPACE-SKILL"
@@ -25,7 +24,9 @@ def manifest_path(root: Path) -> Path:
 
 def source_files(root: Path) -> dict[str, Path]:
     directory = root / "workspace" / "skills"
-    return {path.stem: path for path in sorted(directory.glob("*.md")) if path.is_file()}
+    return {
+        path.stem: path for path in sorted(directory.glob("*.md")) if path.is_file()
+    }
 
 
 def frontmatter_block(text: str, key: str) -> str | None:
@@ -33,7 +34,9 @@ def frontmatter_block(text: str, key: str) -> str | None:
     if not match:
         return None
     lines = match.group(1).splitlines()
-    start = next((index for index, line in enumerate(lines) if line.startswith(f"{key}:")), None)
+    start = next(
+        (index for index, line in enumerate(lines) if line.startswith(f"{key}:")), None
+    )
     if start is None:
         return None
     end = start + 1
@@ -72,7 +75,9 @@ def mirror_errors(root: Path, sources: dict[str, Path]) -> list[str]:
                 if block and block not in wrapper_text:
                     errors.append(f"{name}: wrapper {key} metadata differs")
 
-    for native in sorted((root / ".claude" / "skills").glob("nase-workspace-*/SKILL.md")):
+    for native in sorted(
+        (root / ".claude" / "skills").glob("nase-workspace-*/SKILL.md")
+    ):
         native_text = native.read_text(encoding="utf-8")
         if MARKER in native_text:
             errors.append(f"{native}: obsolete generated native mirror remains")
@@ -95,7 +100,9 @@ def write_manifest(root: Path) -> dict[str, object]:
     path = manifest_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     os.chmod(temporary, 0o600)
     temporary.replace(path)
     return payload
@@ -106,10 +113,14 @@ def load_manifest(root: Path) -> dict[str, object]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ValueError("local skill manifest is missing; run write-manifest after reviewing local sources") from exc
+        raise ValueError(
+            "local skill manifest is missing; run write-manifest after reviewing local sources"
+        ) from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"local skill manifest is invalid: {exc}") from exc
-    if payload.get("version") != MANIFEST_VERSION or not isinstance(payload.get("sources"), dict):
+    if payload.get("version") != MANIFEST_VERSION or not isinstance(
+        payload.get("sources"), dict
+    ):
         raise ValueError("local skill manifest schema is invalid")
     return payload
 
@@ -158,11 +169,19 @@ def changed(root: Path) -> dict[str, object]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument(
+        "--root", type=Path, default=Path(__file__).resolve().parents[2]
+    )
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("write-manifest", help="refresh the ignored local source hashes")
-    commands.add_parser("check", help="verify source, wrapper, and legacy-mirror cleanup")
-    commands.add_parser("changed", help="list local sources that differ from the reviewed manifest")
+    commands.add_parser(
+        "write-manifest", help="refresh the ignored local source hashes"
+    )
+    commands.add_parser(
+        "check", help="verify source, wrapper, and legacy-mirror cleanup"
+    )
+    commands.add_parser(
+        "changed", help="list local sources that differ from the reviewed manifest"
+    )
     return parser
 
 

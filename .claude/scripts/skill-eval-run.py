@@ -22,14 +22,21 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-from nase_fs import atomic_write, sha256_bytes  # noqa: E402
-
+import nase_git
+from nase_fs import atomic_write, sha256_bytes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = REPO_ROOT / "workspace" / "stats" / "skill-evals" / "runs"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "workspace" / "stats" / "skill-evals" / "outputs"
-ENV_ALLOWLIST = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR")
+ENV_ALLOWLIST = (
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TMPDIR",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+)
 AUTH_SOURCES = ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 DISPOSABLE_ENV = {
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
@@ -38,7 +45,15 @@ DISPOSABLE_ENV = {
 }
 OUTPUT_LIMIT = 512 * 1024
 REQUIRED_ROUTING_REPETITIONS = 3
-DENIED_TOOLS = ["Bash", "Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch"]
+DENIED_TOOLS = [
+    "Bash",
+    "Edit",
+    "Write",
+    "NotebookEdit",
+    "Agent",
+    "WebFetch",
+    "WebSearch",
+]
 FILESYSTEM_POLICY = {
     "sandbox": {
         "enabled": True,
@@ -66,12 +81,19 @@ def load_module(name: str, path: Path) -> Any:
     return module
 
 
-EVAL = load_module("nase_pr_review_eval", REPO_ROOT / ".claude" / "scripts" / "pr-review-eval.py")
-SECRET = load_module("nase_verify_bundle", REPO_ROOT / ".claude" / "scripts" / "verify-bundle.py")
+EVAL = load_module(
+    "nase_pr_review_eval", REPO_ROOT / ".claude" / "scripts" / "pr-review-eval.py"
+)
+SECRET = load_module(
+    "nase_verify_bundle", REPO_ROOT / ".claude" / "scripts" / "verify-bundle.py"
+)
 
 
 def canonical_bytes(value: Any) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    ).encode()
 
 
 def file_sha(path: Path) -> str:
@@ -107,7 +129,10 @@ def scan_bytes(data: bytes) -> str | None:
 
 def command_inventory() -> list[dict[str, str]]:
     completed = nase_git.run(
-        "ls-files", "-z", ".claude/commands/nase/*.md", ".claude/commands/nase/**/*.md",
+        "ls-files",
+        "-z",
+        ".claude/commands/nase/*.md",
+        ".claude/commands/nase/**/*.md",
         repo=REPO_ROOT,
         check=True,
     )
@@ -118,11 +143,16 @@ def command_inventory() -> list[dict[str, str]]:
             continue
         relative = os.fsdecode(raw_path)
         source = REPO_ROOT / relative
-        match = re.search(r"(?m)^name:\s*(nase:(?:workspace:)?[a-z0-9][a-z0-9-]*)\s*$", source.read_text())
+        match = re.search(
+            r"(?m)^name:\s*(nase:(?:workspace:)?[a-z0-9][a-z0-9-]*)\s*$",
+            source.read_text(),
+        )
         if not match or match.group(1) in seen:
             raise RunError(f"invalid or duplicate command name: {relative}")
         seen.add(match.group(1))
-        inventory.append({"name": match.group(1), "path": relative, "sha256": file_sha(source)})
+        inventory.append(
+            {"name": match.group(1), "path": relative, "sha256": file_sha(source)}
+        )
     if not inventory:
         raise RunError("tracked NASE command inventory is empty")
     return sorted(inventory, key=lambda item: (item["name"], item["path"]))
@@ -159,7 +189,9 @@ def install_inventory(project: Path, inventory: list[dict[str, str]]) -> None:
         copy_file(REPO_ROOT / item["path"], project / item["path"])
 
 
-def parse_json_output(completed: subprocess.CompletedProcess[str], label: str) -> dict[str, Any]:
+def parse_json_output(
+    completed: subprocess.CompletedProcess[str], label: str
+) -> dict[str, Any]:
     try:
         value = json.loads(completed.stdout)
     except (json.JSONDecodeError, TypeError) as exc:
@@ -172,7 +204,11 @@ def parse_json_output(completed: subprocess.CompletedProcess[str], label: str) -
 def parent_auth(claude: str) -> tuple[dict[str, str], str]:
     try:
         completed = subprocess.run(
-            [claude, "auth", "status"], text=True, capture_output=True, timeout=15, check=False
+            [claude, "auth", "status"],
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RunError("unauthenticated: parent auth status unavailable") from exc
@@ -186,7 +222,9 @@ def parent_auth(claude: str) -> tuple[dict[str, str], str]:
     if provider != "firstParty" or source not in AUTH_SOURCES:
         raise RunError("unsupported-auth-source")
     if not os.environ.get(str(source)):
-        raise RunError("unsupported-auth-source: selected environment credential is absent")
+        raise RunError(
+            "unsupported-auth-source: selected environment credential is absent"
+        )
     return {"provider": str(provider), "source_name": str(source)}, str(source)
 
 
@@ -200,24 +238,39 @@ def child_environment(home: Path, source: str) -> dict[str, str]:
     return child
 
 
-def verify_child_auth(claude: str, child: dict[str, str], expected: dict[str, str]) -> None:
+def verify_child_auth(
+    claude: str, child: dict[str, str], expected: dict[str, str]
+) -> None:
     try:
         completed = subprocess.run(
-            [claude, "auth", "status"], env=child, text=True, capture_output=True, timeout=15, check=False
+            [claude, "auth", "status"],
+            env=child,
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RunError("child-auth-mismatch") from exc
     if completed.returncode != 0:
         raise RunError("child-auth-mismatch")
     status = parse_json_output(completed, "child auth status")
-    actual = {"provider": status.get("apiProvider"), "source_name": status.get("apiKeySource")}
+    actual = {
+        "provider": status.get("apiProvider"),
+        "source_name": status.get("apiKeySource"),
+    }
     if status.get("loggedIn") is not True or actual != expected:
         raise RunError("child-auth-mismatch")
 
 
 def claude_version(claude: str, child: dict[str, str]) -> str:
     completed = subprocess.run(
-        [claude, "--version"], env=child, text=True, capture_output=True, timeout=15, check=False
+        [claude, "--version"],
+        env=child,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
     )
     if completed.returncode != 0:
         raise RunError("claude-version-unavailable")
@@ -274,15 +327,24 @@ def invoke(
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return {"error": "timeout", "duration_ms": int((time.monotonic() - started) * 1000)}
+        return {
+            "error": "timeout",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        }
     except OSError:
-        return {"error": "runtime-unavailable", "duration_ms": int((time.monotonic() - started) * 1000)}
+        return {
+            "error": "runtime-unavailable",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        }
     parsed = parse_stream(completed.stdout)
     parsed.update(
         {
             "returncode": completed.returncode,
-            "duration_ms": parsed.get("duration_ms") or int((time.monotonic() - started) * 1000),
-            "stderr_sha256": sha256_bytes(completed.stderr.encode()) if completed.stderr else None,
+            "duration_ms": parsed.get("duration_ms")
+            or int((time.monotonic() - started) * 1000),
+            "stderr_sha256": sha256_bytes(completed.stderr.encode())
+            if completed.stderr
+            else None,
         }
     )
     if completed.returncode != 0:
@@ -297,7 +359,11 @@ def invoke(
 def event_blocks(event: dict[str, Any]) -> list[dict[str, Any]]:
     message = event.get("message")
     content = message.get("content") if isinstance(message, dict) else None
-    return [block for block in content if isinstance(block, dict)] if isinstance(content, list) else []
+    return (
+        [block for block in content if isinstance(block, dict)]
+        if isinstance(content, list)
+        else []
+    )
 
 
 def parse_stream(text: str) -> dict[str, Any]:
@@ -326,17 +392,25 @@ def parse_stream(text: str) -> dict[str, Any]:
             parsed["init_seen"] = True
             parsed["resolved_model"] = event.get("model")
             skills = event.get("skills", [])
-            parsed["available_skills"] = sorted(str(item) for item in skills if str(item).startswith("nase:"))
+            parsed["available_skills"] = sorted(
+                str(item) for item in skills if str(item).startswith("nase:")
+            )
         for block in event_blocks(event):
             if block.get("type") == "tool_use":
                 name = str(block.get("name", ""))
-                inputs = block.get("input") if isinstance(block.get("input"), dict) else {}
+                inputs = (
+                    block.get("input") if isinstance(block.get("input"), dict) else {}
+                )
                 tool_id = str(block.get("id", ""))
                 if name == "Skill":
-                    parsed["skill_uses"].append({"skill": inputs.get("skill"), "tool_use_id": tool_id})
+                    parsed["skill_uses"].append(
+                        {"skill": inputs.get("skill"), "tool_use_id": tool_id}
+                    )
                 elif name in {"Read", "Grep"}:
                     path = inputs.get("file_path") or inputs.get("path") or ""
-                    parsed["reads"].append({"tool": name, "path": str(path), "tool_use_id": tool_id})
+                    parsed["reads"].append(
+                        {"tool": name, "path": str(path), "tool_use_id": tool_id}
+                    )
             elif block.get("type") == "tool_result":
                 tool_id = str(block.get("tool_use_id", ""))
                 content = block.get("content", "")
@@ -349,7 +423,11 @@ def parse_stream(text: str) -> dict[str, Any]:
         if event.get("type") == "result":
             parsed["terminal_seen"] = True
             result = event.get("result", "")
-            parsed["result"] = result if isinstance(result, str) else json.dumps(result, sort_keys=True)
+            parsed["result"] = (
+                result
+                if isinstance(result, str)
+                else json.dumps(result, sort_keys=True)
+            )
             parsed["total_cost_usd"] = event.get("total_cost_usd", 0)
             parsed["duration_ms"] = event.get("duration_ms")
             parsed["resolved_model"] = event.get("model") or parsed["resolved_model"]
@@ -358,7 +436,12 @@ def parse_stream(text: str) -> dict[str, Any]:
 
 def cost_error(parsed: dict[str, Any], budget: float) -> str | None:
     value = parsed.get("total_cost_usd")
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
         return "invalid-cost-evidence"
     if value > budget:
         return "budget-exceeded"
@@ -380,7 +463,10 @@ def base_receipt(
         "recorded_at": utc_now(),
         "lane": lane,
         "behavior_scope": behavior_scope,
-        "eval_set": {"path": relative_repo_path(eval_path), "sha256": file_sha(eval_path)},
+        "eval_set": {
+            "path": relative_repo_path(eval_path),
+            "sha256": file_sha(eval_path),
+        },
         "case": {
             "id": case["id"],
             "score_case_id": case.get("score_case"),
@@ -430,14 +516,22 @@ def run_routing(args: argparse.Namespace) -> int:
     target = by_name.get(case["skill"])
     if target is None:
         raise RunError("target skill is absent from tracked inventory")
-    manifest_dir = safe_directory(args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir")
+    manifest_dir = safe_directory(
+        args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir"
+    )
     claude, auth, source = prepare_runtime()
     overall_ok = True
     batch_id = str(uuid.uuid4())
     for repetition_index in range(args.repetitions):
         run_id = str(uuid.uuid4())
         receipt = base_receipt(
-            "routing", "automatic-routing", run_id, eval_path, case, REPO_ROOT / target["path"], case["prompt"]
+            "routing",
+            "automatic-routing",
+            run_id,
+            eval_path,
+            case,
+            REPO_ROOT / target["path"],
+            case["prompt"],
         )
         receipt["skill_inventory"] = inventory_binding(inventory)
         with tempfile.TemporaryDirectory(prefix="nase-routing-") as temporary:
@@ -471,9 +565,16 @@ def run_routing(args: argparse.Namespace) -> int:
         if not error:
             error = cost_error(parsed, args.max_budget_usd)
         uses = parsed.get("skill_uses", [])
-        target_use = next((item for item in uses if item.get("skill") == case["skill"]), None)
-        adjacent_use = next((item for item in uses if item.get("skill") == case.get("adjacent_skill")), None)
-        passed = bool(target_use) if case["expect"] == "invoke" else not bool(target_use)
+        target_use = next(
+            (item for item in uses if item.get("skill") == case["skill"]), None
+        )
+        adjacent_use = next(
+            (item for item in uses if item.get("skill") == case.get("adjacent_skill")),
+            None,
+        )
+        passed = (
+            bool(target_use) if case["expect"] == "invoke" else not bool(target_use)
+        )
         if error:
             status = "error"
             reason = str(error)
@@ -486,11 +587,18 @@ def run_routing(args: argparse.Namespace) -> int:
             "requested_model": args.model,
             "resolved_model": parsed.get("resolved_model"),
             "available_skills": parsed.get("available_skills", []),
-            "isolation": {"environment_policy": "allowlist-v1", "filesystem_policy_sha256": None, "forbidden_canary_sha256": None, "forbidden_read_control": None},
+            "isolation": {
+                "environment_policy": "allowlist-v1",
+                "filesystem_policy_sha256": None,
+                "forbidden_canary_sha256": None,
+                "forbidden_read_control": None,
+            },
             "auth": auth,
         }
         receipt["invocation_evidence"] = {
-            "kind": "automatic-skill-tool-use" if target_use else ("adjacent-skill-tool-use" if adjacent_use else "none"),
+            "kind": "automatic-skill-tool-use"
+            if target_use
+            else ("adjacent-skill-tool-use" if adjacent_use else "none"),
             "session_id": run_id,
             "tool_use_id": evidence.get("tool_use_id") if evidence else None,
             "adjacent_skill": adjacent_use.get("skill") if adjacent_use else None,
@@ -509,12 +617,19 @@ def run_routing(args: argparse.Namespace) -> int:
         }
         receipt["result"] = {"status": status, "reason": reason}
         receipt_path = persist_receipt(receipt, manifest_dir)
-        print(json.dumps({"receipt": str(receipt_path), "status": status, "reason": reason}, sort_keys=True))
+        print(
+            json.dumps(
+                {"receipt": str(receipt_path), "status": status, "reason": reason},
+                sort_keys=True,
+            )
+        )
         overall_ok = overall_ok and status == "pass"
     return 0 if overall_ok else 1
 
 
-def output_project(project: Path, case: dict[str, Any], eval_path: Path) -> tuple[Path, bytes]:
+def output_project(
+    project: Path, case: dict[str, Any], eval_path: Path
+) -> tuple[Path, bytes]:
     skill_path = EVAL.command_path(REPO_ROOT, case["skill"])
     copy_file(skill_path, project / relative_repo_path(skill_path))
     for source in sorted((REPO_ROOT / ".claude" / "docs").glob("*.md")):
@@ -526,19 +641,31 @@ def output_project(project: Path, case: dict[str, Any], eval_path: Path) -> tupl
     return skill_path, settings
 
 
-def output_controls(parsed: dict[str, Any], case: dict[str, Any], forbidden: str) -> dict[str, Any]:
+def output_controls(
+    parsed: dict[str, Any], case: dict[str, Any], forbidden: str
+) -> dict[str, Any]:
     reads = parsed.get("reads", [])
     results = parsed.get("tool_results", {})
-    forbidden_reads = [item for item in reads if str(item.get("path", "")).endswith("forbidden-read/sentinel.txt")]
+    forbidden_reads = [
+        item
+        for item in reads
+        if str(item.get("path", "")).endswith("forbidden-read/sentinel.txt")
+    ]
     denied = False
     for item in forbidden_reads:
         result = results.get(item.get("tool_use_id"), {})
         content = str(result.get("content", ""))
-        denied = denied or bool(result.get("is_error")) or bool(re.search(r"(?i)(denied|not allowed|permission)", content))
+        denied = (
+            denied
+            or bool(result.get("is_error"))
+            or bool(re.search(r"(?i)(denied|not allowed|permission)", content))
+        )
     required: dict[str, bool] = {}
     for required_path in case["required_reads"]:
         expected = f"fixture/{required_path}"
-        matching = [item for item in reads if str(item.get("path", "")).endswith(expected)]
+        matching = [
+            item for item in reads if str(item.get("path", "")).endswith(expected)
+        ]
         required[required_path] = any(
             item.get("tool_use_id") in results
             and not bool(results[item["tool_use_id"]].get("is_error"))
@@ -549,10 +676,19 @@ def output_controls(parsed: dict[str, Any], case: dict[str, Any], forbidden: str
             for item in matching
         )
     result_text = str(parsed.get("result", ""))
-    canaries = {sha256_bytes(item.encode()): item in result_text for item in case["required_canaries"]}
-    transcript_text = result_text + "\n" + "\n".join(str(value.get("content", "")) for value in results.values())
+    canaries = {
+        sha256_bytes(item.encode()): item in result_text
+        for item in case["required_canaries"]
+    }
+    transcript_text = (
+        result_text
+        + "\n"
+        + "\n".join(str(value.get("content", "")) for value in results.values())
+    )
     return {
-        "filesystem_boundary_ok": bool(forbidden_reads) and denied and forbidden not in transcript_text,
+        "filesystem_boundary_ok": bool(forbidden_reads)
+        and denied
+        and forbidden not in transcript_text,
         "required_reads": required,
         "required_reads_ok": all(required.values()),
         "canaries": canaries,
@@ -564,7 +700,9 @@ def run_output(args: argparse.Namespace) -> int:
     eval_path = Path(args.eval_set).resolve()
     eval_set = EVAL.load_eval_set(str(eval_path))
     case = EVAL.find_runtime_case(eval_set, args.runtime_case)
-    manifest_dir = safe_directory(args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir")
+    manifest_dir = safe_directory(
+        args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir"
+    )
     output_dir = safe_directory(args.output_dir, DEFAULT_OUTPUT_DIR, "output-dir")
     claude, auth, source = prepare_runtime()
     overall_ok = True
@@ -612,7 +750,11 @@ def run_output(args: argparse.Namespace) -> int:
             )
         controls = output_controls(parsed, case, forbidden)
         result_bytes = str(parsed.get("result", "")).encode()
-        secret_kind = scan_bytes(result_bytes) if len(result_bytes) <= OUTPUT_LIMIT else "output-too-large"
+        secret_kind = (
+            scan_bytes(result_bytes)
+            if len(result_bytes) <= OUTPUT_LIMIT
+            else "output-too-large"
+        )
         error = parsed.get("error")
         if not error and parsed.get("resolved_model") != args.model:
             error = "model-mismatch"
@@ -621,7 +763,11 @@ def run_output(args: argparse.Namespace) -> int:
         if not error:
             error = cost_error(parsed, args.max_budget_usd)
         target_use = next(
-            (item for item in parsed.get("skill_uses", []) if item.get("skill") == case["skill"]),
+            (
+                item
+                for item in parsed.get("skill_uses", [])
+                if item.get("skill") == case["skill"]
+            ),
             None,
         )
         if not error and target_use is None:
@@ -631,7 +777,10 @@ def run_output(args: argparse.Namespace) -> int:
         if not controls["filesystem_boundary_ok"]:
             error = error or "filesystem-boundary-failed"
         output_path: Path | None = None
-        score: dict[str, Any] = {"ok": False, "error": error or "output-controls-failed"}
+        score: dict[str, Any] = {
+            "ok": False,
+            "error": error or "output-controls-failed",
+        }
         if not error and controls["required_reads_ok"] and controls["canaries_ok"]:
             output_path = output_dir / f"{run_id}.txt"
             atomic_write(output_path, result_bytes)
@@ -648,8 +797,12 @@ def run_output(args: argparse.Namespace) -> int:
         receipt["fixture"] = {
             "path": case["fixture_dir"],
             "tree_sha256": fixture_sha,
-            "required_read_hashes": {name: fixture_hashes[name] for name in case["required_reads"]},
-            "canary_hashes": [sha256_bytes(item.encode()) for item in case["required_canaries"]],
+            "required_read_hashes": {
+                name: fixture_hashes[name] for name in case["required_reads"]
+            },
+            "canary_hashes": [
+                sha256_bytes(item.encode()) for item in case["required_canaries"]
+            ],
         }
         receipt["runtime"] = {
             "claude_code_version": version,
@@ -660,7 +813,9 @@ def run_output(args: argparse.Namespace) -> int:
                 "environment_policy": "allowlist-v1",
                 "filesystem_policy_sha256": sha256_bytes(settings),
                 "forbidden_canary_sha256": sha256_bytes(forbidden.encode()),
-                "forbidden_read_control": "passed" if controls["filesystem_boundary_ok"] else "failed",
+                "forbidden_read_control": "passed"
+                if controls["filesystem_boundary_ok"]
+                else "failed",
             },
             "auth": auth,
         }
@@ -692,16 +847,34 @@ def run_output(args: argparse.Namespace) -> int:
             "secret_scan": "passed" if secret_kind is None else "failed",
             "receipt_secret_scan": "passed",
         }
-        receipt["result"] = {"status": status, "reason": "all-controls-passed" if passed else (error or "output-expectation-mismatch")}
+        receipt["result"] = {
+            "status": status,
+            "reason": "all-controls-passed"
+            if passed
+            else (error or "output-expectation-mismatch"),
+        }
         receipt_path = persist_receipt(receipt, manifest_dir)
-        print(json.dumps({"receipt": str(receipt_path), "status": status, "reason": receipt["result"]["reason"]}, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "receipt": str(receipt_path),
+                    "status": status,
+                    "reason": receipt["result"]["reason"],
+                },
+                sort_keys=True,
+            )
+        )
         overall_ok = overall_ok and passed
     return 0 if overall_ok else 1
 
 
 def current_binding(eval_path: Path, case: dict[str, Any], lane: str) -> dict[str, Any]:
     skill_path = EVAL.command_path(REPO_ROOT, case["skill"])
-    prompt = case["prompt"] if lane == "routing" else f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
+    prompt = (
+        case["prompt"]
+        if lane == "routing"
+        else f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
+    )
     binding: dict[str, Any] = {
         "eval_sha": file_sha(eval_path),
         "skill_sha": file_sha(skill_path),
@@ -711,7 +884,9 @@ def current_binding(eval_path: Path, case: dict[str, Any], lane: str) -> dict[st
         binding["inventory"] = inventory_binding(command_inventory())
     else:
         binding["fixture_sha"] = tree_binding(eval_path.parent / case["fixture_dir"])[0]
-        binding["filesystem_policy_sha"] = sha256_bytes(canonical_bytes(FILESYSTEM_POLICY))
+        binding["filesystem_policy_sha"] = sha256_bytes(
+            canonical_bytes(FILESYSTEM_POLICY)
+        )
     return binding
 
 
@@ -722,11 +897,23 @@ def receipt_current(receipt: dict[str, Any], binding: dict[str, Any]) -> bool:
         return False
     if receipt.get("case", {}).get("prompt_sha256") != binding["prompt_sha"]:
         return False
-    if "inventory" in binding and receipt.get("skill_inventory") != binding["inventory"]:
+    if (
+        "inventory" in binding
+        and receipt.get("skill_inventory") != binding["inventory"]
+    ):
         return False
-    if "fixture_sha" in binding and receipt.get("fixture", {}).get("tree_sha256") != binding["fixture_sha"]:
+    if (
+        "fixture_sha" in binding
+        and receipt.get("fixture", {}).get("tree_sha256") != binding["fixture_sha"]
+    ):
         return False
-    if "filesystem_policy_sha" in binding and receipt.get("runtime", {}).get("isolation", {}).get("filesystem_policy_sha256") != binding["filesystem_policy_sha"]:
+    if (
+        "filesystem_policy_sha" in binding
+        and receipt.get("runtime", {})
+        .get("isolation", {})
+        .get("filesystem_policy_sha256")
+        != binding["filesystem_policy_sha"]
+    ):
         return False
     return True
 
@@ -815,7 +1002,9 @@ def output_receipt_passes(receipt: dict[str, Any]) -> bool:
 
 
 def coverage(args: argparse.Namespace) -> int:
-    manifest_dir = safe_directory(args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir")
+    manifest_dir = safe_directory(
+        args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir"
+    )
     receipts, invalid_receipts = load_receipts(manifest_dir)
     rows: list[dict[str, Any]] = []
     stale = 0
@@ -834,28 +1023,52 @@ def coverage(args: argparse.Namespace) -> int:
                 if not str(case["skill"]).startswith("nase:workspace:")
             }
         )
-        routing_by_skill = {skill: [case for case in eval_set.get("routing_cases", []) if case["skill"] == skill] for skill in skills}
-        runtime_by_skill = {case["skill"]: case for case in eval_set.get("runtime_cases", [])}
+        routing_by_skill = {
+            skill: [
+                case
+                for case in eval_set.get("routing_cases", [])
+                if case["skill"] == skill
+            ]
+            for skill in skills
+        }
+        runtime_by_skill = {
+            case["skill"]: case for case in eval_set.get("runtime_cases", [])
+        }
         for skill in skills:
             routing_cases = routing_by_skill[skill]
             expectations = {case["expect"] for case in routing_cases}
-            structural = "complete" if expectations == EVAL.ROUTING_EXPECTATIONS else "missing"
+            structural = (
+                "complete" if expectations == EVAL.ROUTING_EXPECTATIONS else "missing"
+            )
             missing_positive += "invoke" not in expectations
             missing_near_miss += "not_invoke" not in expectations
             invocation_states: list[str] = []
             for case in routing_cases:
                 binding = current_binding(eval_path, case, "routing")
-                candidates = [receipt for receipt in receipts if receipt.get("lane") == "routing" and receipt.get("case", {}).get("id") == case["id"]]
-                current = [receipt for receipt in candidates if receipt_current(receipt, binding)]
+                candidates = [
+                    receipt
+                    for receipt in receipts
+                    if receipt.get("lane") == "routing"
+                    and receipt.get("case", {}).get("id") == case["id"]
+                ]
+                current = [
+                    receipt
+                    for receipt in candidates
+                    if receipt_current(receipt, binding)
+                ]
                 stale += len(candidates) - len(current)
-                statuses = [receipt.get("result", {}).get("status") for receipt in current]
+                statuses = [
+                    receipt.get("result", {}).get("status") for receipt in current
+                ]
                 errors += statuses.count("error")
                 state, flipped = routing_batch_state(current)
                 flips += flipped
                 if state == "missing" and candidates and not current:
                     state = "stale"
                 invocation_states.append(state)
-            if invocation_states and all(state == "stable-pass" for state in invocation_states):
+            if invocation_states and all(
+                state == "stable-pass" for state in invocation_states
+            ):
                 invocation = "stable-pass"
             elif "error" in invocation_states:
                 invocation = "error"
@@ -873,18 +1086,60 @@ def coverage(args: argparse.Namespace) -> int:
                 human = "manual-only"
             else:
                 binding = current_binding(eval_path, runtime_case, "output")
-                candidates = [receipt for receipt in receipts if receipt.get("lane") == "output" and receipt.get("case", {}).get("id") == runtime_case["id"]]
-                current = [receipt for receipt in candidates if receipt_current(receipt, binding)]
+                candidates = [
+                    receipt
+                    for receipt in receipts
+                    if receipt.get("lane") == "output"
+                    and receipt.get("case", {}).get("id") == runtime_case["id"]
+                ]
+                current = [
+                    receipt
+                    for receipt in candidates
+                    if receipt_current(receipt, binding)
+                ]
                 stale += len(candidates) - len(current)
-                passing = [receipt for receipt in current if output_receipt_passes(receipt)]
-                errors += sum(receipt.get("result", {}).get("status") == "error" for receipt in current)
-                rejected += sum(receipt.get("human_review", {}).get("status") == "rejected" for receipt in current)
-                outcome = "fixture-backed-pass" if passing else (
-                    "error" if any(receipt.get("result", {}).get("status") == "error" for receipt in current)
-                    else "stale" if candidates and not current else "missing"
+                passing = [
+                    receipt for receipt in current if output_receipt_passes(receipt)
+                ]
+                errors += sum(
+                    receipt.get("result", {}).get("status") == "error"
+                    for receipt in current
                 )
-                human = "accepted" if any(receipt.get("human_review", {}).get("status") == "accepted" for receipt in passing) else "pending"
-            rows.append({"skill": skill, "structural": structural, "invocation": invocation, "outcome": outcome, "human": human})
+                rejected += sum(
+                    receipt.get("human_review", {}).get("status") == "rejected"
+                    for receipt in current
+                )
+                outcome = (
+                    "fixture-backed-pass"
+                    if passing
+                    else (
+                        "error"
+                        if any(
+                            receipt.get("result", {}).get("status") == "error"
+                            for receipt in current
+                        )
+                        else "stale"
+                        if candidates and not current
+                        else "missing"
+                    )
+                )
+                human = (
+                    "accepted"
+                    if any(
+                        receipt.get("human_review", {}).get("status") == "accepted"
+                        for receipt in passing
+                    )
+                    else "pending"
+                )
+            rows.append(
+                {
+                    "skill": skill,
+                    "structural": structural,
+                    "invocation": invocation,
+                    "outcome": outcome,
+                    "human": human,
+                }
+            )
     payload = {
         "schema_version": 1,
         "rows": sorted(rows, key=lambda row: row["skill"]),
@@ -904,7 +1159,11 @@ def coverage(args: argparse.Namespace) -> int:
 
 def review(args: argparse.Namespace) -> int:
     receipt_path = Path(args.receipt)
-    if ".." in receipt_path.parts or receipt_path.is_symlink() or not receipt_path.is_file():
+    if (
+        ".." in receipt_path.parts
+        or receipt_path.is_symlink()
+        or not receipt_path.is_file()
+    ):
         raise RunError("receipt must be an existing non-symlink file")
     try:
         receipt = json.loads(receipt_path.read_text())
@@ -917,13 +1176,22 @@ def review(args: argparse.Namespace) -> int:
     case = EVAL.find_runtime_case(eval_set, receipt.get("case", {}).get("id", ""))
     if not receipt_current(receipt, current_binding(eval_path, case, "output")):
         raise RunError("receipt is stale")
-    receipt["human_review"] = {"status": args.status, "reviewed_at": utc_now(), "note": args.note}
+    receipt["human_review"] = {
+        "status": args.status,
+        "reviewed_at": utc_now(),
+        "note": args.note,
+    }
     data = canonical_bytes(receipt)
     kind = scan_bytes(data)
     if kind:
         raise RunError(f"review-note-secret-scan:{kind}")
     atomic_write(receipt_path.resolve(), data)
-    print(json.dumps({"receipt": str(receipt_path.resolve()), "status": args.status}, sort_keys=True))
+    print(
+        json.dumps(
+            {"receipt": str(receipt_path.resolve()), "status": args.status},
+            sort_keys=True,
+        )
+    )
     return 0
 
 

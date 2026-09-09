@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Classify one active effort file with the shared lifecycle contract."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,8 +10,11 @@ import re
 import sys
 from pathlib import Path
 
-from frontmatter_scalar import canonical_bool, extract_frontmatter_scalar, normalize_scalar
-
+from frontmatter_scalar import (
+    canonical_bool,
+    extract_frontmatter_scalar,
+    normalize_scalar,
+)
 
 STAGE_DISPLAY = {
     "planning": "Planning",
@@ -24,8 +28,12 @@ CHECKBOX_RE = re.compile(r"^\s*-\s*\[([ xX])\]\s+(.+?)\s*$")
 PR_REFERENCE_RE = re.compile(
     r"https://github\.com/[^/\s]+/[^/\s]+/pull/[1-9]\d*|\b[^/\s]+/[^#\s]+#[1-9]\d*"
 )
-FULL_PR_RE = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)")
-QUALIFIED_PR_RE = re.compile(r"(?<![A-Za-z0-9_.-/])([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)\b")
+FULL_PR_RE = re.compile(
+    r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)"
+)
+QUALIFIED_PR_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-/])([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)\b"
+)
 BARE_PR_RE = re.compile(r"(?<![\w#])#([1-9]\d*)\b")
 MARKDOWN_PR_LINK_RE = re.compile(
     r"\[([^]]+)\]\(\s*https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*[^)]*\)"
@@ -35,9 +43,7 @@ BLOCKED_BY_KEY_RE = re.compile(r"(?i)^blocked-by\s*:")
 FRONTMATTER_LIST_ITEM_RE = re.compile(r"^\s*-\s+\S")
 REPO_KEY_RE = re.compile(r"(?i)^repo\s*:\s*(.+?)\s*$")
 REPO_FULL_NAME_RE = re.compile(r"^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$")
-TARGET_PR_COUNT_RE = re.compile(
-    r"(?i)(?:\*\*)?Target PR count(?:\*\*)?\s*:\s*(\d+)\b"
-)
+TARGET_PR_COUNT_RE = re.compile(r"(?i)(?:\*\*)?Target PR count(?:\*\*)?\s*:\s*(\d+)\b")
 LIFECYCLE_HEADING_RE = re.compile(r"^(#{2,6})\s+Lifecycle\s*$", re.IGNORECASE)
 HEADING_RE = re.compile(r"^(#{1,6})\s+\S")
 
@@ -143,7 +149,9 @@ def document_structure(text: str, lines: list[str]) -> dict[str, object]:
         extract_frontmatter_scalar(text, key)[0] is not None
         for key in ("closed_reason", "closure", "resolution", "superseded_by")
     )
-    partial_raw, partial_singleton = extract_frontmatter_scalar(text, "partial_delivery")
+    partial_raw, partial_singleton = extract_frontmatter_scalar(
+        text, "partial_delivery"
+    )
     if partial_raw is None:
         partial_delivery, partial_valid = None, True
     elif not partial_singleton:
@@ -318,8 +326,15 @@ def collect_pr_references(
     refs: list[dict[str, object]] = []
     label_ranges = markdown_label_ranges(line)
     for owner, repo, number in FULL_PR_RE.findall(line):
-        refs.append({"owner": owner, "repo": repo, "number": int(number),
-                     "source": source, "line": line_number})
+        refs.append(
+            {
+                "owner": owner,
+                "repo": repo,
+                "number": int(number),
+                "source": source,
+                "line": line_number,
+            }
+        )
     for match in qualified_pr_matches(line):
         owner, repo, number = match.groups()
         # A row disclaiming its own numbers usually cites the wrong resolution as the
@@ -331,8 +346,15 @@ def collect_pr_references(
                 {"number": int(number), "line": line_number, "reason": "denied-in-row"}
             )
             continue
-        refs.append({"owner": owner, "repo": repo, "number": int(number),
-                     "source": source, "line": line_number})
+        refs.append(
+            {
+                "owner": owner,
+                "repo": repo,
+                "number": int(number),
+                "source": source,
+                "line": line_number,
+            }
+        )
     remainder = QUALIFIED_PR_RE.sub(
         lambda match: " " * len(match.group(0)),
         FULL_PR_RE.sub(lambda match: " " * len(match.group(0)), line),
@@ -355,14 +377,21 @@ def collect_pr_references(
         # it silently is not - the effort would read `no-delivery-pr` forever with
         # nothing naming the row that holds the number.
         discarded.extend(
-            {"number": int(match.group(1)), "line": line_number,
-             "reason": "outside-lifecycle"}
+            {
+                "number": int(match.group(1)),
+                "line": line_number,
+                "reason": "outside-lifecycle",
+            }
             for match in bare_matches
         )
         return refs
     if denied:
         discarded.extend(
-            {"number": int(match.group(1)), "line": line_number, "reason": "denied-in-row"}
+            {
+                "number": int(match.group(1)),
+                "line": line_number,
+                "reason": "denied-in-row",
+            }
             for match in bare_matches
         )
         return refs
@@ -373,7 +402,9 @@ def collect_pr_references(
             key=lambda entry: (
                 abs(entry[0] - line_number),
                 abs(entry[1] - match.start()) if entry[0] == line_number else 0,
-                entry[1] > match.start() if entry[0] == line_number else entry[0] > line_number,
+                entry[1] > match.start()
+                if entry[0] == line_number
+                else entry[0] > line_number,
                 entry[0],
                 entry[1],
             ),
@@ -385,8 +416,15 @@ def collect_pr_references(
                 {"number": number, "line": line_number, "reason": "no-repo-context"}
             )
             continue
-        refs.append({"owner": repo_context[0], "repo": repo_context[1],
-                     "number": number, "source": source, "line": line_number})
+        refs.append(
+            {
+                "owner": repo_context[0],
+                "repo": repo_context[1],
+                "number": number,
+                "source": source,
+                "line": line_number,
+            }
+        )
     return refs
 
 
@@ -399,7 +437,11 @@ def dedupe_references(refs: list[dict[str, object]]) -> list[dict[str, object]]:
             seen[key] = ref
     return sorted(
         seen.values(),
-        key=lambda ref: (str(ref["owner"]).casefold(), str(ref["repo"]).casefold(), int(str(ref["number"]))),
+        key=lambda ref: (
+            str(ref["owner"]).casefold(),
+            str(ref["repo"]).casefold(),
+            int(str(ref["number"])),
+        ),
     )
 
 
@@ -438,7 +480,11 @@ def pr_references(text: str) -> dict[str, object]:
         if count > 1:
             validation_errors.append(f"invalid-{key}")
     repo_values = repo_tokens(lines)
-    if len(repo_values) == 1 and "/" in repo_values[0] and not REPO_FULL_NAME_RE.fullmatch(repo_values[0]):
+    if (
+        len(repo_values) == 1
+        and "/" in repo_values[0]
+        and not REPO_FULL_NAME_RE.fullmatch(repo_values[0])
+    ):
         validation_errors.append("invalid-repo")
 
     def frontmatter_refs(line_number: int, line: str) -> list[dict[str, object]]:
@@ -495,7 +541,11 @@ def pr_references(text: str) -> dict[str, object]:
     # key carrying its value inline is a scalar and was already resolved above - only
     # `prs` rejects that shape, and `blocked-by` accepts a scalar per the frontmatter
     # contract, including short free text that has no PR to resolve at all.
-    if key_counts.get("prs") == 1 and "prs" not in inline_values and "delivery" not in list_entries:
+    if (
+        key_counts.get("prs") == 1
+        and "prs" not in inline_values
+        and "delivery" not in list_entries
+    ):
         validation_errors.append("invalid-prs")
     if (
         key_counts.get("blocked-by") == 1
@@ -510,11 +560,18 @@ def pr_references(text: str) -> dict[str, object]:
             continue
         if canonical_label(match.group(2)) != "PR opened":
             continue
-        in_lifecycle = any(start <= line_number < end for start, end in lifecycle_ranges)
+        in_lifecycle = any(
+            start <= line_number < end for start, end in lifecycle_ranges
+        )
         delivery.extend(
             collect_pr_references(
-                line_number, line, "lifecycle:PR opened", in_lifecycle,
-                explicit, fallback_repo, discarded
+                line_number,
+                line,
+                "lifecycle:PR opened",
+                in_lifecycle,
+                explicit,
+                fallback_repo,
+                discarded,
             )
         )
 
@@ -564,22 +621,34 @@ def classify(text: str) -> dict[str, object]:
         if canonical and is_checked:
             checked.add(canonical)
             evidence.append({"label": canonical, "line": line_number, "text": label})
-            if canonical in {"PR opened", "Merged"} and OUTSTANDING_CLAUSE_RE.search(label):
+            if canonical in {"PR opened", "Merged"} and OUTSTANDING_CLAUSE_RE.search(
+                label
+            ):
                 undelivered.append({"line": line_number, "text": label})
         if not is_checked and label.lower().startswith("follow-up:"):
             pending_followups += 1
         in_lifecycle = any(
             start <= line_number < end for start, end in lifecycle_ranges
         )
-        if not is_checked and in_lifecycle and not label.lower().startswith("follow-up:"):
+        if (
+            not is_checked
+            and in_lifecycle
+            and not label.lower().startswith("follow-up:")
+        ):
             plain_label = strip_emphasis(label)
             if canonical_label(plain_label) == "Merged":
-                if OUTSTANDING_CLAUSE_RE.search(label) or PARTIAL_MERGED_RE.search(label):
+                if OUTSTANDING_CLAUSE_RE.search(label) or PARTIAL_MERGED_RE.search(
+                    label
+                ):
                     undelivered.append({"line": line_number, "text": label})
                 else:
                     stale_merged_candidates.append(
-                        {"label": "Merged", "line": line_number, "text": label,
-                         "bare_label": plain_label.lower() == "merged"}
+                        {
+                            "label": "Merged",
+                            "line": line_number,
+                            "text": label,
+                            "bare_label": plain_label.lower() == "merged",
+                        }
                     )
             elif POST_DEPLOY_LIFECYCLE_RE.search(plain_label):
                 pending_postdeploy_validation.append(
@@ -643,7 +712,9 @@ def classify(text: str) -> dict[str, object]:
     }
 
 
-def terminal_destination_dir(classification: dict[str, object], archive_year: int) -> str:
+def terminal_destination_dir(
+    classification: dict[str, object], archive_year: int
+) -> str:
     """Directory a terminal transition files the effort into.
 
     `done/` is the record of what this workspace delivered, so a `tracking_only`
@@ -763,7 +834,9 @@ def transition(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--file", required=True, type=Path, help="active effort Markdown file")
+    parser.add_argument(
+        "--file", required=True, type=Path, help="active effort Markdown file"
+    )
     parser.add_argument(
         "--delivery-pr-state",
         action="append",

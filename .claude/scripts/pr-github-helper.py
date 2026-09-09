@@ -9,20 +9,23 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 # One `gh` call. Thread pagination issues many of them, so this bounds a single
 # hung call, not the whole command.
 GH_TIMEOUT_SECONDS = 60
 # GNU `timeout`'s convention, so a caller can tell a stalled read from a gh error.
 GH_TIMEOUT_EXIT = 124
+# Concurrent `gh` reads. Bounded so a PR with many review threads cannot open one
+# process per thread, and low enough to stay clear of GitHub's secondary rate limits.
+GH_MAX_PARALLEL = 8
 # `kb-search.sh` re-walks workspace/kb per call and is measurably the slowest thing
 # this helper invokes, so it gets its own, wider bound.
 KB_SEARCH_TIMEOUT_SECONDS = 45
@@ -192,15 +195,30 @@ def gh_metadata_args(pr: dict[str, Any], variant: str) -> list[str]:
 
 
 def gh_review_comments_args(pr: dict[str, Any]) -> list[str]:
-    return ["gh", "api", f"repos/{pr['repo_full_name']}/pulls/{pr['number']}/comments", "--paginate"]
+    return [
+        "gh",
+        "api",
+        f"repos/{pr['repo_full_name']}/pulls/{pr['number']}/comments",
+        "--paginate",
+    ]
 
 
 def gh_reviews_args(pr: dict[str, Any]) -> list[str]:
-    return ["gh", "api", f"repos/{pr['repo_full_name']}/pulls/{pr['number']}/reviews", "--paginate"]
+    return [
+        "gh",
+        "api",
+        f"repos/{pr['repo_full_name']}/pulls/{pr['number']}/reviews",
+        "--paginate",
+    ]
 
 
 def gh_issue_comments_args(pr: dict[str, Any]) -> list[str]:
-    return ["gh", "api", f"repos/{pr['repo_full_name']}/issues/{pr['number']}/comments", "--paginate"]
+    return [
+        "gh",
+        "api",
+        f"repos/{pr['repo_full_name']}/issues/{pr['number']}/comments",
+        "--paginate",
+    ]
 
 
 def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> list[str]:
@@ -221,7 +239,9 @@ def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> lis
     return args
 
 
-def gh_thread_comments_args(thread_id: str, comment_cursor: str | None = None) -> list[str]:
+def gh_thread_comments_args(
+    thread_id: str, comment_cursor: str | None = None
+) -> list[str]:
     args = ["gh", "api", "graphql", "-F", f"threadId={thread_id}"]
     if comment_cursor:
         args.extend(["-F", f"commentCursor={comment_cursor}"])
@@ -233,9 +253,22 @@ def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
     return {
         "pr": pr,
         "metadata": gh_metadata_args(pr, variant),
-        "diff_full": ["gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"]],
+        "diff_full": [
+            "gh",
+            "pr",
+            "diff",
+            str(pr["number"]),
+            "--repo",
+            pr["repo_full_name"],
+        ],
         "diff_names": [
-            "gh", "pr", "diff", str(pr["number"]), "--repo", pr["repo_full_name"], "--name-only",
+            "gh",
+            "pr",
+            "diff",
+            str(pr["number"]),
+            "--repo",
+            pr["repo_full_name"],
+            "--name-only",
         ],
         "review_comments": gh_review_comments_args(pr),
         "reviews": gh_reviews_args(pr),
@@ -251,7 +284,26 @@ def run_gh(args: list[str]) -> str:
     return completed.stdout
 
 
-def run_git(repo: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
+def run_gh_all(plan: dict[str, list[str]]) -> dict[str, str]:
+    """Run independent `gh` reads concurrently and return stdout keyed by plan name.
+
+    Every call is a separate `gh` process reading a different endpoint, so the only
+    shared state is the network. Results are keyed rather than ordered, so output is
+    identical to running them one at a time. A failing call still raises
+    `CalledProcessError`; which one raises first is no longer the plan order, so no
+    caller may depend on that. Keys are read back in plan order to keep the raised
+    error stable for a fixed set of failures.
+    """
+    if len(plan) < 2:
+        return {name: run_gh(args) for name, args in plan.items()}
+    with ThreadPoolExecutor(max_workers=len(plan)) as pool:
+        pending = {name: pool.submit(run_gh, args) for name, args in plan.items()}
+        return {name: future.result() for name, future in pending.items()}
+
+
+def run_git(
+    repo: Path, *args: str, check: bool = False
+) -> subprocess.CompletedProcess[str]:
     return nase_git.run(*args, repo=repo, text=True, check=check)
 
 
@@ -402,7 +454,11 @@ def render_diff_stat(metadata: dict[str, Any]) -> str:
             total_deletions += deletions
             rows.append(f" {path} | {additions + deletions} +{additions} -{deletions}")
 
-    file_count = int(metadata["changedFiles"]) if metadata.get("changedFiles") is not None else len(rows)
+    file_count = (
+        int(metadata["changedFiles"])
+        if metadata.get("changedFiles") is not None
+        else len(rows)
+    )
     if not rows and file_count == 0:
         return ""
 
@@ -533,7 +589,9 @@ def file_at_ref(repo: Path, ref: str, path: str) -> tuple[bool, str]:
 
 
 def diff_for_file(repo: Path, base_ref: str, head_ref: str, path: str) -> str:
-    result = run_git(repo, "diff", "--no-ext-diff", f"{base_ref}..{head_ref}", "--", path)
+    result = run_git(
+        repo, "diff", "--no-ext-diff", f"{base_ref}..{head_ref}", "--", path
+    )
     return result.stdout if result.returncode == 0 else ""
 
 
@@ -558,11 +616,18 @@ def thread_dossier(
 
     return {
         **summarize_thread(thread, max_body_chars),
-        "comments": [summarize_comment(item, max_body_chars) for item in comments_connection_nodes(thread)],
+        "comments": [
+            summarize_comment(item, max_body_chars)
+            for item in comments_connection_nodes(thread)
+        ],
         "headRef": head_ref,
         "baseRef": base_ref,
-        "headExcerpt": line_excerpt(head_text, line_int, context_lines) if head_ok else {"available": False},
-        "baseExcerpt": line_excerpt(base_text, line_int, context_lines) if base_ok else {"available": False},
+        "headExcerpt": line_excerpt(head_text, line_int, context_lines)
+        if head_ok
+        else {"available": False},
+        "baseExcerpt": line_excerpt(base_text, line_int, context_lines)
+        if base_ok
+        else {"available": False},
         "diffAvailable": bool(diff.strip()),
         "kbMentions": kb_mentions_for_paths([path], 1) if path else [],
     }
@@ -576,21 +641,43 @@ def other_feedback_surfaces(pr: dict[str, Any], max_body_chars: int) -> dict[str
     read returns an honest zero while real feedback sits one API call away.
     Submissions with an empty body carry nothing a thread does not already hold.
     """
-    reviews = flatten_json_items(run_gh(gh_reviews_args(pr)))
-    issue_comments = flatten_json_items(run_gh(gh_issue_comments_args(pr)))
+    raw = run_gh_all(
+        {
+            "reviews": gh_reviews_args(pr),
+            "issue_comments": gh_issue_comments_args(pr),
+        }
+    )
+    reviews = flatten_json_items(raw["reviews"])
+    issue_comments = flatten_json_items(raw["issue_comments"])
     submissions = [summarize_review(item, max_body_chars) for item in reviews]
     return {
         "reviewSubmissions": [item for item in submissions if item["body"]],
-        "issueComments": [summarize_comment(item, max_body_chars) for item in issue_comments],
+        "issueComments": [
+            summarize_comment(item, max_body_chars) for item in issue_comments
+        ],
     }
 
 
-def review_context(pr: dict[str, Any], max_body_chars: int, max_kb_paths: int) -> dict[str, Any]:
-    metadata = json.loads(run_gh(gh_metadata_args(pr, "light")))
+def review_context(
+    pr: dict[str, Any], max_body_chars: int, max_kb_paths: int
+) -> dict[str, Any]:
+    raw = run_gh_all(
+        {
+            "metadata": gh_metadata_args(pr, "light"),
+            "comments": gh_review_comments_args(pr),
+            "reviews": gh_reviews_args(pr),
+            "issue_comments": gh_issue_comments_args(pr),
+        }
+    )
+    metadata = json.loads(raw["metadata"])
     paths = changed_file_paths(metadata)
-    file_count = int(metadata["changedFiles"]) if metadata.get("changedFiles") is not None else len(paths)
-    comments = flatten_json_items(run_gh(gh_review_comments_args(pr)))
-    reviews = flatten_json_items(run_gh(gh_reviews_args(pr)))
+    file_count = (
+        int(metadata["changedFiles"])
+        if metadata.get("changedFiles") is not None
+        else len(paths)
+    )
+    comments = flatten_json_items(raw["comments"])
+    reviews = flatten_json_items(raw["reviews"])
     return {
         "pr": pr,
         "metadata": metadata,
@@ -598,11 +685,13 @@ def review_context(pr: dict[str, Any], max_body_chars: int, max_kb_paths: int) -
         "changedFiles": paths,
         "changedFilesOmitted": max(0, file_count - len(paths)),
         "diffStat": render_diff_stat(metadata),
-        "reviewComments": [summarize_comment(item, max_body_chars) for item in comments],
+        "reviewComments": [
+            summarize_comment(item, max_body_chars) for item in comments
+        ],
         "reviews": [summarize_review(item, max_body_chars) for item in reviews],
         "issueComments": [
             summarize_comment(item, max_body_chars)
-            for item in flatten_json_items(run_gh(gh_issue_comments_args(pr)))
+            for item in flatten_json_items(raw["issue_comments"])
         ],
         "kbMentions": kb_mentions_for_paths(paths, max_kb_paths),
     }
@@ -615,7 +704,9 @@ def comment_dossiers(
     context_lines: int,
     max_body_chars: int,
 ) -> dict[str, Any]:
-    response = unresolved_threads_from_response(fetch_review_threads(pr), unresolved_only)
+    response = unresolved_threads_from_response(
+        fetch_review_threads(pr), unresolved_only
+    )
     base_ref = f"origin/{response['baseRefName']}"
     head_ref = f"origin/{response['headRefName']}"
     return {
@@ -624,7 +715,9 @@ def comment_dossiers(
         "headRefName": response["headRefName"],
         "headRepository": response["headRepository"],
         "threads": [
-            thread_dossier(local_repo, base_ref, head_ref, thread, context_lines, max_body_chars)
+            thread_dossier(
+                local_repo, base_ref, head_ref, thread, context_lines, max_body_chars
+            )
             for thread in response["threads"]
         ],
         **other_feedback_surfaces(pr, max_body_chars),
@@ -665,7 +758,9 @@ def is_bot_login(login: str | None) -> bool:
     )
 
 
-def bot_decline_candidates(threads: list[dict[str, Any]], max_body_chars: int) -> list[dict[str, Any]]:
+def bot_decline_candidates(
+    threads: list[dict[str, Any]], max_body_chars: int
+) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for thread in threads:
         if thread.get("isResolved"):
@@ -686,7 +781,9 @@ def read_abort_state(
     current_branch_sha: str | None = None,
     current_base_sha: str | None = None,
 ) -> dict[str, Any]:
-    path = state_dir / f"prep-merge-{pr['owner']}-{pr['repo']}-{pr['number']}-abort.json"
+    path = (
+        state_dir / f"prep-merge-{pr['owner']}-{pr['repo']}-{pr['number']}-abort.json"
+    )
     if not path.is_file():
         return {"path": str(path), "exists": False}
     try:
@@ -695,9 +792,12 @@ def read_abort_state(
         # leaves both current values None, and a record with absent or null shas
         # would then "match" and read as a resume point for the current state.
         branch_matches = (
-            current_branch_sha is not None and content.get("branch_sha") == current_branch_sha
+            current_branch_sha is not None
+            and content.get("branch_sha") == current_branch_sha
         )
-        base_matches = current_base_sha is not None and content.get("base_sha") == current_base_sha
+        base_matches = (
+            current_base_sha is not None and content.get("base_sha") == current_base_sha
+        )
         return {
             "path": str(path),
             "exists": True,
@@ -708,30 +808,52 @@ def read_abort_state(
         return {"path": str(path), "exists": True, "error": str(exc)}
 
 
-def adjacent_same_file_overlap(repo: Path, base_branch: str, pr_branch: str, opened_at: str | None) -> dict[str, Any]:
+def adjacent_same_file_overlap(
+    repo: Path, base_branch: str, pr_branch: str, opened_at: str | None
+) -> dict[str, Any]:
     if not opened_at:
         return {"scanRan": False, "reason": "PR opened time unavailable", "files": []}
-    file_result = run_git(repo, "diff", f"origin/{base_branch}..origin/{pr_branch}", "--name-only")
+    file_result = run_git(
+        repo, "diff", f"origin/{base_branch}..origin/{pr_branch}", "--name-only"
+    )
     if file_result.returncode != 0:
         return {"scanRan": False, "reason": file_result.stderr.strip(), "files": []}
 
     overlaps: list[dict[str, Any]] = []
     for path in [line for line in file_result.stdout.splitlines() if line.strip()]:
-        log = run_git(repo, "log", f"origin/{base_branch}", f"--since={opened_at}", "--oneline", "--", path)
+        log = run_git(
+            repo,
+            "log",
+            f"origin/{base_branch}",
+            f"--since={opened_at}",
+            "--oneline",
+            "--",
+            path,
+        )
         if log.returncode == 0 and log.stdout.strip():
             overlaps.append({"path": path, "commits": log.stdout.splitlines()})
     return {"scanRan": True, "files": overlaps}
 
 
-def prep_state(pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_chars: int) -> dict[str, Any]:
-    metadata = json.loads(run_gh(gh_metadata_args(pr, "full")))
-    response = unresolved_threads_from_response(fetch_review_threads(pr), unresolved_only=False)
+def prep_state(
+    pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_chars: int
+) -> dict[str, Any]:
+    # Metadata is one call; thread pagination is many. Overlap them: neither reads the
+    # other's result, so the command costs the slower of the two rather than their sum.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending_metadata = pool.submit(run_gh, gh_metadata_args(pr, "full"))
+        response = unresolved_threads_from_response(
+            fetch_review_threads(pr), unresolved_only=False
+        )
+        metadata = json.loads(pending_metadata.result())
     threads = response["threads"]
     unresolved = [thread for thread in threads if not thread.get("isResolved")]
     remote_ref = f"origin/{metadata.get('headRefName')}"
     remote_head = run_git(local_repo, "rev-parse", remote_ref)
     remote_sha = remote_head.stdout.strip() if remote_head.returncode == 0 else None
-    base_head = run_git(local_repo, "rev-parse", f"origin/{metadata.get('baseRefName')}")
+    base_head = run_git(
+        local_repo, "rev-parse", f"origin/{metadata.get('baseRefName')}"
+    )
     base_sha = base_head.stdout.strip() if base_head.returncode == 0 else None
 
     return {
@@ -743,12 +865,16 @@ def prep_state(pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_c
         "remoteHead": {
             "ref": remote_ref,
             "sha": remote_sha,
-            "matchesMetadata": bool(remote_sha and remote_sha == metadata.get("headRefOid")),
+            "matchesMetadata": bool(
+                remote_sha and remote_sha == metadata.get("headRefOid")
+            ),
             "error": remote_head.stderr.strip() if remote_head.returncode else None,
         },
         "reviewThreads": {
             "total": len(threads),
-            "unresolved": [summarize_thread(thread, max_body_chars) for thread in unresolved],
+            "unresolved": [
+                summarize_thread(thread, max_body_chars) for thread in unresolved
+            ],
             "botDeclineCandidates": bot_decline_candidates(threads, max_body_chars),
         },
         **other_feedback_surfaces(pr, max_body_chars),
@@ -762,7 +888,9 @@ def prep_state(pr: dict[str, Any], local_repo: Path, state_dir: Path, max_body_c
     }
 
 
-def size_gate(metadata: dict[str, Any], warn_threshold: int, stat_threshold: int) -> dict[str, Any]:
+def size_gate(
+    metadata: dict[str, Any], warn_threshold: int, stat_threshold: int
+) -> dict[str, Any]:
     additions = int(metadata.get("additions") or 0)
     deletions = int(metadata.get("deletions") or 0)
     total = additions + deletions
@@ -782,7 +910,9 @@ def size_gate(metadata: dict[str, Any], warn_threshold: int, stat_threshold: int
     return result
 
 
-def unresolved_threads_from_response(response: dict[str, Any], unresolved_only: bool) -> dict[str, Any]:
+def unresolved_threads_from_response(
+    response: dict[str, Any], unresolved_only: bool
+) -> dict[str, Any]:
     pull_request = response["data"]["repository"]["pullRequest"]
     nodes = pull_request.get("reviewThreads", {}).get("nodes") or []
     if unresolved_only:
@@ -811,12 +941,16 @@ def _fetch_remaining_comments(thread: dict[str, Any]) -> dict[str, Any]:
 
     while page_info["hasNextPage"]:
         if not cursor:
-            raise RuntimeError(f"thread {thread.get('id')} comments page is missing endCursor")
+            raise RuntimeError(
+                f"thread {thread.get('id')} comments page is missing endCursor"
+            )
         raw = run_gh(gh_thread_comments_args(str(thread["id"]), str(cursor)))
         response = json.loads(raw)
         node = response.get("data", {}).get("node")
         if not isinstance(node, dict):
-            raise RuntimeError(f"could not fetch comments for thread {thread.get('id')}")
+            raise RuntimeError(
+                f"could not fetch comments for thread {thread.get('id')}"
+            )
         page = node.get("comments") or {}
         nodes.extend(page.get("nodes") or [])
         page_info = _connection_page_info(page)
@@ -847,11 +981,21 @@ def fetch_review_threads(pr: dict[str, Any]) -> dict[str, Any]:
 
         if merged_pull_request is None:
             merged_pull_request = {
-                key: value for key, value in pull_request.items() if key != "reviewThreads"
+                key: value
+                for key, value in pull_request.items()
+                if key != "reviewThreads"
             }
 
-        for thread in threads_connection.get("nodes") or []:
-            all_threads.append(_fetch_remaining_comments(thread))
+        nodes = list(threads_connection.get("nodes") or [])
+        # Each thread pages its own comments; the pages of one thread say nothing about
+        # another's. `map` keeps input order, so the thread list is unchanged.
+        if len(nodes) > 1:
+            with ThreadPoolExecutor(
+                max_workers=min(GH_MAX_PARALLEL, len(nodes))
+            ) as pool:
+                all_threads.extend(pool.map(_fetch_remaining_comments, nodes))
+        else:
+            all_threads.extend(_fetch_remaining_comments(thread) for thread in nodes)
 
         page_info = _connection_page_info(threads_connection)
         if not page_info["hasNextPage"]:
@@ -893,18 +1037,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     metadata.add_argument("--repo", help="owner/repo, required for number-only refs")
     metadata.add_argument("--variant", choices=("light", "full"), default="light")
 
-    threads = sub.add_parser("review-threads", help="Fetch PR review threads via gh api graphql")
+    threads = sub.add_parser(
+        "review-threads", help="Fetch PR review threads via gh api graphql"
+    )
     threads.add_argument("ref")
     threads.add_argument("--repo", help="owner/repo, required for number-only refs")
     threads.add_argument("--unresolved-only", action="store_true")
 
-    review = sub.add_parser("review-context", help="Fetch compact read-only context for PR review")
+    review = sub.add_parser(
+        "review-context", help="Fetch compact read-only context for PR review"
+    )
     review.add_argument("ref")
     review.add_argument("--repo", help="owner/repo, required for number-only refs")
     review.add_argument("--max-body-chars", type=int, default=400)
     review.add_argument("--max-kb-paths", type=int, default=10)
 
-    dossiers = sub.add_parser("comment-dossiers", help="Build compact unresolved review-thread dossiers")
+    dossiers = sub.add_parser(
+        "comment-dossiers", help="Build compact unresolved review-thread dossiers"
+    )
     dossiers.add_argument("ref")
     dossiers.add_argument("--repo", help="owner/repo, required for number-only refs")
     dossiers.add_argument("--local-repo", required=True)
@@ -933,7 +1083,11 @@ def main(argv: list[str]) -> int:
         elif args.command == "metadata":
             sys.stdout.write(run_gh(gh_metadata_args(pr, args.variant)))
         elif args.command == "review-threads":
-            emit_json(unresolved_threads_from_response(fetch_review_threads(pr), args.unresolved_only))
+            emit_json(
+                unresolved_threads_from_response(
+                    fetch_review_threads(pr), args.unresolved_only
+                )
+            )
         elif args.command == "review-context":
             emit_json(review_context(pr, args.max_body_chars, args.max_kb_paths))
         elif args.command == "comment-dossiers":
@@ -950,7 +1104,11 @@ def main(argv: list[str]) -> int:
             state_dir = Path(args.state_dir)
             if not state_dir.is_absolute():
                 state_dir = Path.cwd() / state_dir
-            emit_json(prep_state(pr, Path(args.local_repo).resolve(), state_dir, args.max_body_chars))
+            emit_json(
+                prep_state(
+                    pr, Path(args.local_repo).resolve(), state_dir, args.max_body_chars
+                )
+            )
         return 0
     except UsageError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -964,7 +1122,10 @@ def main(argv: list[str]) -> int:
             command = " ".join(map(str, exc.cmd))
         else:
             command = str(exc.cmd)
-        print(f"error: command timed out after {exc.timeout:.0f}s: {command}", file=sys.stderr)
+        print(
+            f"error: command timed out after {exc.timeout:.0f}s: {command}",
+            file=sys.stderr,
+        )
         return GH_TIMEOUT_EXIT
     except subprocess.CalledProcessError as exc:
         return exc.returncode

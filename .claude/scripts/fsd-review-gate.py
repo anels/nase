@@ -16,8 +16,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 REQUIRED_AXES = ("correctness", "test_quality", "verification_evidence")
 CONDITIONAL_AXES = (
@@ -110,7 +109,9 @@ def exact_keys(value: Any, keys: set[str], where: str) -> dict[str, Any]:
     if actual != keys:
         missing = sorted(keys - actual)
         unknown = sorted(actual - keys)
-        raise InvalidResult(f"{where} keys mismatch: missing={missing}, unknown={unknown}")
+        raise InvalidResult(
+            f"{where} keys mismatch: missing={missing}, unknown={unknown}"
+        )
     return value
 
 
@@ -185,7 +186,9 @@ def validate_inventory(value: Any) -> list[dict[str, str]]:
             {
                 "ref": expected_ref,
                 "id": requirement_id,
-                "summary": nonempty_string(item["summary"], f"inventory[{index - 1}].summary"),
+                "summary": nonempty_string(
+                    item["summary"], f"inventory[{index - 1}].summary"
+                ),
             }
         )
     return result
@@ -227,46 +230,78 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
     )
     if metadata.get("schema_version") != 1:
         raise InvalidResult("bundle metadata schema_version is invalid")
-    for key in ("base_oid", "current_base_oid", "head_oid", "candidate_tree_oid", "current_candidate_tree_oid"):
+    for key in (
+        "base_oid",
+        "current_base_oid",
+        "head_oid",
+        "candidate_tree_oid",
+        "current_candidate_tree_oid",
+    ):
         if not isinstance(metadata[key], str) or not OID_RE.fullmatch(metadata[key]):
             raise InvalidResult(f"bundle metadata {key} is invalid")
-    if not isinstance(metadata["contract_inventory_sha256"], str) or not SHA256_RE.fullmatch(
-        metadata["contract_inventory_sha256"]
-    ):
+    if not isinstance(
+        metadata["contract_inventory_sha256"], str
+    ) or not SHA256_RE.fullmatch(metadata["contract_inventory_sha256"]):
         raise InvalidResult("bundle metadata contract_inventory_sha256 is invalid")
     if metadata["evidence_candidate_tree_oid"] != metadata["candidate_tree_oid"]:
         raise InvalidResult("bundle evidence is not bound to candidate_tree_oid")
-    if type(metadata["changed_path_count"]) is not int or metadata["changed_path_count"] < 0:
+    if (
+        type(metadata["changed_path_count"]) is not int
+        or metadata["changed_path_count"] < 0
+    ):
         raise InvalidResult("bundle metadata changed_path_count is invalid")
     if not isinstance(metadata["changed_paths_sha256"], str) or not SHA256_RE.fullmatch(
         metadata["changed_paths_sha256"]
     ):
         raise InvalidResult("bundle metadata changed_paths_sha256 is invalid")
     evidence = exact_keys(
-        metadata["evidence"], {"byte_count", "sha256", "encoding", "truncated"}, "bundle evidence"
+        metadata["evidence"],
+        {"byte_count", "sha256", "encoding", "truncated"},
+        "bundle evidence",
     )
     if type(evidence["byte_count"]) is not int or evidence["byte_count"] < 0:
         raise InvalidResult("bundle evidence byte_count is invalid")
-    if not isinstance(evidence["sha256"], str) or not SHA256_RE.fullmatch(evidence["sha256"]):
+    if not isinstance(evidence["sha256"], str) or not SHA256_RE.fullmatch(
+        evidence["sha256"]
+    ):
         raise InvalidResult("bundle evidence sha256 is invalid")
     enum_string(evidence["encoding"], {"utf-8", "binary"}, "bundle evidence encoding")
     strict_bool(evidence["truncated"], "bundle evidence truncated")
     if not isinstance(metadata["context_blob_metadata"], list):
         raise InvalidResult("bundle context_blob_metadata must be an array")
     allowed_context_keys = {
-        "tree", "tree_oid", "path", "mode", "type", "oid", "byte_count", "sha256",
-        "encoding", "truncated", "evidence_gap",
+        "tree",
+        "tree_oid",
+        "path",
+        "mode",
+        "type",
+        "oid",
+        "byte_count",
+        "sha256",
+        "encoding",
+        "truncated",
+        "evidence_gap",
     }
     for index, context in enumerate(metadata["context_blob_metadata"]):
-        if not isinstance(context, dict) or not {"tree", "tree_oid", "path"}.issubset(context):
+        if not isinstance(context, dict) or not {"tree", "tree_oid", "path"}.issubset(
+            context
+        ):
             raise InvalidResult(f"bundle context_blob_metadata[{index}] is malformed")
         if set(context) - allowed_context_keys:
-            raise InvalidResult(f"bundle context_blob_metadata[{index}] has unknown keys")
-        enum_string(context["tree"], {"BASE", "CANDIDATE"}, f"bundle context[{index}].tree")
-        if not isinstance(context["tree_oid"], str) or not OID_RE.fullmatch(context["tree_oid"]):
+            raise InvalidResult(
+                f"bundle context_blob_metadata[{index}] has unknown keys"
+            )
+        enum_string(
+            context["tree"], {"BASE", "CANDIDATE"}, f"bundle context[{index}].tree"
+        )
+        if not isinstance(context["tree_oid"], str) or not OID_RE.fullmatch(
+            context["tree_oid"]
+        ):
             raise InvalidResult(f"bundle context[{index}].tree_oid is invalid")
         expected_context_oid = (
-            metadata["base_oid"] if context["tree"] == "BASE" else metadata["candidate_tree_oid"]
+            metadata["base_oid"]
+            if context["tree"] == "BASE"
+            else metadata["candidate_tree_oid"]
         )
         if context["tree_oid"] != expected_context_oid:
             raise InvalidResult(f"bundle context[{index}].tree_oid is stale")
@@ -275,23 +310,34 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
             if key in context and (type(context[key]) is not int or context[key] < 0):
                 raise InvalidResult(f"bundle context[{index}].{key} is invalid")
         if "sha256" in context and (
-            not isinstance(context["sha256"], str) or not SHA256_RE.fullmatch(context["sha256"])
+            not isinstance(context["sha256"], str)
+            or not SHA256_RE.fullmatch(context["sha256"])
         ):
             raise InvalidResult(f"bundle context[{index}].sha256 is invalid")
         if "truncated" in context:
             strict_bool(context["truncated"], f"bundle context[{index}].truncated")
         if "encoding" in context:
-            enum_string(context["encoding"], {"utf-8", "binary"}, f"bundle context[{index}].encoding")
+            enum_string(
+                context["encoding"],
+                {"utf-8", "binary"},
+                f"bundle context[{index}].encoding",
+            )
         if "evidence_gap" in context:
-            nonempty_string(context["evidence_gap"], f"bundle context[{index}].evidence_gap")
+            nonempty_string(
+                context["evidence_gap"], f"bundle context[{index}].evidence_gap"
+            )
     if not isinstance(metadata["evidence_gaps"], list):
         raise InvalidResult("bundle evidence_gaps must be an array")
     normalized_gaps: list[dict[str, str]] = []
     for index, gap in enumerate(metadata["evidence_gaps"]):
-        gap = exact_keys(gap, {"tree", "path", "reason"}, f"bundle evidence_gaps[{index}]")
+        gap = exact_keys(
+            gap, {"tree", "path", "reason"}, f"bundle evidence_gaps[{index}]"
+        )
         normalized_gaps.append(
             {
-                "tree": enum_string(gap["tree"], {"BASE", "CANDIDATE"}, f"bundle gap[{index}].tree"),
+                "tree": enum_string(
+                    gap["tree"], {"BASE", "CANDIDATE"}, f"bundle gap[{index}].tree"
+                ),
                 "path": normalize_path(gap["path"], f"bundle gap[{index}].path"),
                 "reason": nonempty_string(gap["reason"], f"bundle gap[{index}].reason"),
             }
@@ -300,29 +346,41 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
     if not isinstance(metadata["binary_path_metadata"], list):
         raise InvalidResult("bundle binary_path_metadata must be an array")
     for index, item in enumerate(metadata["binary_path_metadata"]):
-        item = exact_keys(item, {"path", "base", "candidate"}, f"bundle binary[{index}]")
+        item = exact_keys(
+            item, {"path", "base", "candidate"}, f"bundle binary[{index}]"
+        )
         normalize_path(item["path"], f"bundle binary[{index}].path")
         for side in ("base", "candidate"):
             entry = item[side]
             if entry is None:
                 continue
-            entry = exact_keys(entry, {"mode", "type", "oid", "byte_count"}, f"bundle binary[{index}].{side}")
+            entry = exact_keys(
+                entry,
+                {"mode", "type", "oid", "byte_count"},
+                f"bundle binary[{index}].{side}",
+            )
             nonempty_string(entry["mode"], f"bundle binary[{index}].{side}.mode")
             nonempty_string(entry["type"], f"bundle binary[{index}].{side}.type")
             if not isinstance(entry["oid"], str) or not OID_RE.fullmatch(entry["oid"]):
                 raise InvalidResult(f"bundle binary[{index}].{side}.oid is invalid")
             if type(entry["byte_count"]) is not int or entry["byte_count"] < 0:
-                raise InvalidResult(f"bundle binary[{index}].{side}.byte_count is invalid")
+                raise InvalidResult(
+                    f"bundle binary[{index}].{side}.byte_count is invalid"
+                )
     return metadata, digest(data)
 
 
-def git(repo: Path, *args: str, env: dict[str, str] | None = None, check: bool = True) -> bytes:
+def git(
+    repo: Path, *args: str, env: dict[str, str] | None = None, check: bool = True
+) -> bytes:
     try:
         result = nase_git.run(*args, repo=repo, env=env)
     except nase_git.GitTimeout as exc:
         raise InvalidResult(str(exc)) from exc
     if check and result.returncode != 0:
-        raise InvalidResult(result.stderr.decode("utf-8", "replace").strip() or "git command failed")
+        raise InvalidResult(
+            result.stderr.decode("utf-8", "replace").strip() or "git command failed"
+        )
     return result.stdout
 
 
@@ -337,7 +395,12 @@ def current_candidate_tree(repo: Path) -> str:
 def validate_artifact(value: Any) -> dict[str, str]:
     artifact = exact_keys(
         value,
-        {"base_oid", "candidate_tree_oid", "bundle_sha256", "contract_inventory_sha256"},
+        {
+            "base_oid",
+            "candidate_tree_oid",
+            "bundle_sha256",
+            "contract_inventory_sha256",
+        },
         "artifact",
     )
     for key in ("base_oid", "candidate_tree_oid"):
@@ -361,7 +424,9 @@ def validate_context_requests(
     if not isinstance(value, list):
         raise InvalidResult("context_requests must be an array")
     if len(value) > CONTEXT_REQUEST_LIMIT:
-        raise InvalidResult(f"context_requests must contain at most {CONTEXT_REQUEST_LIMIT} items")
+        raise InvalidResult(
+            f"context_requests must contain at most {CONTEXT_REQUEST_LIMIT} items"
+        )
     result: list[dict[str, str]] = []
     refs: set[str] = set()
     for index, request in enumerate(value):
@@ -391,11 +456,17 @@ def validate_context_requests(
                 "scope_creep": scope_refs,
             }
         target_type = enum_string(
-            request["target_type"], set(allowed_targets), f"context_requests[{index}].target_type"
+            request["target_type"],
+            set(allowed_targets),
+            f"context_requests[{index}].target_type",
         )
-        target_ref = nonempty_string(request["target_ref"], f"context_requests[{index}].target_ref")
+        target_ref = nonempty_string(
+            request["target_ref"], f"context_requests[{index}].target_ref"
+        )
         if target_ref not in allowed_targets[target_type]:
-            raise InvalidResult(f"context_requests[{index}] target is not linked to this result")
+            raise InvalidResult(
+                f"context_requests[{index}] target is not linked to this result"
+            )
         tree = enum_string(
             request["tree"], ("BASE", "CANDIDATE"), f"context_requests[{index}].tree"
         )
@@ -405,8 +476,12 @@ def validate_context_requests(
                 "target_type": target_type,
                 "target_ref": target_ref,
                 "tree": tree,
-                "path": normalize_path(request["path"], f"context_requests[{index}].path"),
-                "reason": nonempty_string(request["reason"], f"context_requests[{index}].reason"),
+                "path": normalize_path(
+                    request["path"], f"context_requests[{index}].path"
+                ),
+                "reason": nonempty_string(
+                    request["reason"], f"context_requests[{index}].reason"
+                ),
             }
         )
     return result
@@ -433,17 +508,29 @@ def validate_finding(value: Any, index: int) -> dict[str, Any]:
     )
     ref = nonempty_string(finding["ref"], f"findings[{index}].ref")
     axis = enum_string(finding["axis"], QUALITY_AXES, f"findings[{index}].axis")
-    severity = enum_string(finding["severity"], SEVERITIES, f"findings[{index}].severity")
-    path = None if finding["path"] is None else normalize_path(finding["path"], f"findings[{index}].path")
+    severity = enum_string(
+        finding["severity"], SEVERITIES, f"findings[{index}].severity"
+    )
+    path = (
+        None
+        if finding["path"] is None
+        else normalize_path(finding["path"], f"findings[{index}].path")
+    )
     autofixable = strict_bool(finding["autofixable"], f"findings[{index}].autofixable")
     blocker = finding["human_blocker"]
     if blocker is not None:
-        blocker = enum_string(blocker, HUMAN_BLOCKERS, f"findings[{index}].human_blocker")
+        blocker = enum_string(
+            blocker, HUMAN_BLOCKERS, f"findings[{index}].human_blocker"
+        )
     if severity in ("P0", "P1"):
         if autofixable == (blocker is not None):
-            raise InvalidResult(f"findings[{index}] must be autofixable or have one human blocker")
+            raise InvalidResult(
+                f"findings[{index}] must be autofixable or have one human blocker"
+            )
     elif autofixable or blocker is not None:
-        raise InvalidResult("P2 findings must be deferred without autofix or a human blocker")
+        raise InvalidResult(
+            "P2 findings must be deferred without autofix or a human blocker"
+        )
     return {
         **finding,
         "ref": ref,
@@ -452,10 +539,18 @@ def validate_finding(value: Any, index: int) -> dict[str, Any]:
         "path": path,
         "line": line_number(finding["line"], f"findings[{index}].line"),
         "behavior": nonempty_string(finding["behavior"], f"findings[{index}].behavior"),
-        "consequence": nonempty_string(finding["consequence"], f"findings[{index}].consequence"),
-        "evidence": string_list(finding["evidence"], f"findings[{index}].evidence", nonempty=True),
-        "smallest_fix": nonempty_string(finding["smallest_fix"], f"findings[{index}].smallest_fix"),
-        "verification": nonempty_string(finding["verification"], f"findings[{index}].verification"),
+        "consequence": nonempty_string(
+            finding["consequence"], f"findings[{index}].consequence"
+        ),
+        "evidence": string_list(
+            finding["evidence"], f"findings[{index}].evidence", nonempty=True
+        ),
+        "smallest_fix": nonempty_string(
+            finding["smallest_fix"], f"findings[{index}].smallest_fix"
+        ),
+        "verification": nonempty_string(
+            finding["verification"], f"findings[{index}].verification"
+        ),
         "autofixable": autofixable,
         "human_blocker": blocker,
     }
@@ -475,7 +570,11 @@ def validate_quality(value: Any) -> dict[str, Any]:
         },
         "quality result",
     )
-    if type(result["schema_version"]) is not int or result["schema_version"] != 1 or result["kind"] != "quality":
+    if (
+        type(result["schema_version"]) is not int
+        or result["schema_version"] != 1
+        or result["kind"] != "quality"
+    ):
         raise InvalidResult("quality schema_version or kind is invalid")
     artifact = validate_artifact(result["artifact"])
     axes = exact_keys(result["axes"], set(QUALITY_AXES), "axes")
@@ -490,8 +589,12 @@ def validate_quality(value: Any) -> dict[str, Any]:
             raise InvalidResult(f"PASS axis {axis} requires evidence")
         if axis == "test_quality" and status == "PASS":
             theater = ("grep", "coverage", "snapshot", "test count")
-            if evidence and all(any(term in entry.lower() for term in theater) for entry in evidence):
-                raise InvalidResult("test_quality cannot PASS on grep, coverage, snapshot, or test count alone")
+            if evidence and all(
+                any(term in entry.lower() for term in theater) for entry in evidence
+            ):
+                raise InvalidResult(
+                    "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
+                )
         normalized_axes[axis] = {
             "status": status,
             "evidence": evidence,
@@ -499,7 +602,9 @@ def validate_quality(value: Any) -> dict[str, Any]:
         }
     if not isinstance(result["findings"], list):
         raise InvalidResult("findings must be an array")
-    findings = [validate_finding(item, index) for index, item in enumerate(result["findings"])]
+    findings = [
+        validate_finding(item, index) for index, item in enumerate(result["findings"])
+    ]
     finding_refs = [item["ref"] for item in findings]
     if len(finding_refs) != len(set(finding_refs)):
         raise InvalidResult("finding refs must be unique")
@@ -511,24 +616,42 @@ def validate_quality(value: Any) -> dict[str, Any]:
         requirement_refs=set(),
         scope_refs=set(),
     )
-    context_axes = {item["target_ref"] for item in contexts if item["target_type"] == "axis"}
-    context_findings = {item["target_ref"] for item in contexts if item["target_type"] == "finding"}
+    context_axes = {
+        item["target_ref"] for item in contexts if item["target_type"] == "axis"
+    }
+    context_findings = {
+        item["target_ref"] for item in contexts if item["target_type"] == "finding"
+    }
     for axis, item in normalized_axes.items():
-        blocking = [finding for finding in findings if finding["axis"] == axis and finding["severity"] in ("P0", "P1")]
+        blocking = [
+            finding
+            for finding in findings
+            if finding["axis"] == axis and finding["severity"] in ("P0", "P1")
+        ]
         if item["status"] == "FAIL" and not blocking:
             raise InvalidResult(f"FAIL axis {axis} requires a P0/P1 finding")
         if item["status"] in ("PASS", "NOT_APPLICABLE") and blocking:
             raise InvalidResult(f"axis {axis} contradicts its blocking finding")
         if item["status"] == "UNVERIFIABLE":
-            has_context = axis in context_axes or any(finding["ref"] in context_findings for finding in blocking)
+            has_context = axis in context_axes or any(
+                finding["ref"] in context_findings for finding in blocking
+            )
             has_blocker = any(finding["human_blocker"] for finding in blocking)
             if not has_context and not has_blocker:
-                raise InvalidResult(f"UNVERIFIABLE axis {axis} requires linked context or a human blocker")
-    lenses = exact_keys(result["lens_coverage"], set(QUALITY_REVIEW_LENSES), "lens_coverage")
+                raise InvalidResult(
+                    f"UNVERIFIABLE axis {axis} requires linked context or a human blocker"
+                )
+    lenses = exact_keys(
+        result["lens_coverage"], set(QUALITY_REVIEW_LENSES), "lens_coverage"
+    )
     normalized_lenses: dict[str, dict[str, Any]] = {}
     for lens, mapped_axes in QUALITY_REVIEW_LENSES.items():
-        item = exact_keys(lenses[lens], {"status", "evidence", "reason"}, f"lens_coverage.{lens}")
-        status = enum_string(item["status"], AXIS_STATUSES, f"lens_coverage.{lens}.status")
+        item = exact_keys(
+            lenses[lens], {"status", "evidence", "reason"}, f"lens_coverage.{lens}"
+        )
+        status = enum_string(
+            item["status"], AXIS_STATUSES, f"lens_coverage.{lens}.status"
+        )
         if lens != OPTIONAL_QUALITY_LENS and status == "NOT_APPLICABLE":
             raise InvalidResult(f"quality lens {lens} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"lens_coverage.{lens}.evidence")
@@ -540,11 +663,15 @@ def validate_quality(value: Any) -> dict[str, Any]:
             if finding["axis"] in mapped_axes and finding["severity"] in ("P0", "P1")
         ]
         if status == "FAIL" and not mapped_findings:
-            raise InvalidResult(f"FAIL quality lens {lens} requires a mapped P0/P1 finding")
+            raise InvalidResult(
+                f"FAIL quality lens {lens} requires a mapped P0/P1 finding"
+            )
         if status == "UNVERIFIABLE" and not any(
             normalized_axes[axis]["status"] == "UNVERIFIABLE" for axis in mapped_axes
         ):
-            raise InvalidResult(f"UNVERIFIABLE quality lens {lens} requires a mapped unverifiable axis")
+            raise InvalidResult(
+                f"UNVERIFIABLE quality lens {lens} requires a mapped unverifiable axis"
+            )
         normalized_lenses[lens] = {
             "status": status,
             "evidence": evidence,
@@ -565,16 +692,24 @@ def validate_inventory_assessment(value: Any) -> dict[str, Any]:
         {"status", "evidence", "reason", "autofixable", "human_blocker"},
         "inventory_assessment",
     )
-    status = enum_string(item["status"], INVENTORY_STATUSES, "inventory_assessment.status")
-    evidence = string_list(item["evidence"], "inventory_assessment.evidence", nonempty=True)
+    status = enum_string(
+        item["status"], INVENTORY_STATUSES, "inventory_assessment.status"
+    )
+    evidence = string_list(
+        item["evidence"], "inventory_assessment.evidence", nonempty=True
+    )
     autofixable = strict_bool(item["autofixable"], "inventory_assessment.autofixable")
     blocker = item["human_blocker"]
     if blocker is not None:
-        blocker = enum_string(blocker, HUMAN_BLOCKERS, "inventory_assessment.human_blocker")
+        blocker = enum_string(
+            blocker, HUMAN_BLOCKERS, "inventory_assessment.human_blocker"
+        )
     if status == "COMPLETE" and (autofixable or blocker is not None):
         raise InvalidResult("COMPLETE inventory cannot be autofixable or blocked")
     if status == "INCOMPLETE" and autofixable == (blocker is not None):
-        raise InvalidResult("INCOMPLETE inventory must be autofixable or have one human blocker")
+        raise InvalidResult(
+            "INCOMPLETE inventory must be autofixable or have one human blocker"
+        )
     if status == "UNVERIFIABLE" and autofixable:
         raise InvalidResult("UNVERIFIABLE inventory cannot be autofixable")
     return {
@@ -586,7 +721,9 @@ def validate_inventory_assessment(value: Any) -> dict[str, Any]:
     }
 
 
-def validate_requirement(value: Any, inventory_item: dict[str, str], index: int) -> dict[str, Any]:
+def validate_requirement(
+    value: Any, inventory_item: dict[str, str], index: int
+) -> dict[str, Any]:
     item = exact_keys(
         value,
         {"ref", "id", "summary", "status", "evidence", "autofixable", "human_blocker"},
@@ -594,17 +731,27 @@ def validate_requirement(value: Any, inventory_item: dict[str, str], index: int)
     )
     for key in ("ref", "id", "summary"):
         if item[key] != inventory_item[key]:
-            raise InvalidResult(f"requirements[{index}].{key} does not exactly match inventory")
-    status = enum_string(item["status"], REQUIREMENT_STATUSES, f"requirements[{index}].status")
-    evidence = string_list(item["evidence"], f"requirements[{index}].evidence", nonempty=True)
+            raise InvalidResult(
+                f"requirements[{index}].{key} does not exactly match inventory"
+            )
+    status = enum_string(
+        item["status"], REQUIREMENT_STATUSES, f"requirements[{index}].status"
+    )
+    evidence = string_list(
+        item["evidence"], f"requirements[{index}].evidence", nonempty=True
+    )
     autofixable = strict_bool(item["autofixable"], f"requirements[{index}].autofixable")
     blocker = item["human_blocker"]
     if blocker is not None:
-        blocker = enum_string(blocker, HUMAN_BLOCKERS, f"requirements[{index}].human_blocker")
+        blocker = enum_string(
+            blocker, HUMAN_BLOCKERS, f"requirements[{index}].human_blocker"
+        )
     if status == "SATISFIED" and (autofixable or blocker is not None):
         raise InvalidResult("SATISFIED requirements cannot be autofixable or blocked")
     if status == "MISSING" and autofixable == (blocker is not None):
-        raise InvalidResult("MISSING requirements must be autofixable or have one human blocker")
+        raise InvalidResult(
+            "MISSING requirements must be autofixable or have one human blocker"
+        )
     if status == "UNVERIFIABLE" and autofixable:
         raise InvalidResult("UNVERIFIABLE requirements cannot be autofixable")
     return {
@@ -619,13 +766,24 @@ def validate_requirement(value: Any, inventory_item: dict[str, str], index: int)
 def validate_scope(value: Any, index: int) -> dict[str, Any]:
     item = exact_keys(
         value,
-        {"ref", "path", "line", "behavior", "consequence", "evidence", "autofixable", "human_blocker"},
+        {
+            "ref",
+            "path",
+            "line",
+            "behavior",
+            "consequence",
+            "evidence",
+            "autofixable",
+            "human_blocker",
+        },
         f"scope_creep[{index}]",
     )
     autofixable = strict_bool(item["autofixable"], f"scope_creep[{index}].autofixable")
     blocker = item["human_blocker"]
     if blocker is not None:
-        blocker = enum_string(blocker, HUMAN_BLOCKERS, f"scope_creep[{index}].human_blocker")
+        blocker = enum_string(
+            blocker, HUMAN_BLOCKERS, f"scope_creep[{index}].human_blocker"
+        )
     if autofixable == (blocker is not None):
         raise InvalidResult("scope creep must be autofixable or have one human blocker")
     return {
@@ -634,8 +792,12 @@ def validate_scope(value: Any, index: int) -> dict[str, Any]:
         "path": normalize_path(item["path"], f"scope_creep[{index}].path"),
         "line": line_number(item["line"], f"scope_creep[{index}].line"),
         "behavior": nonempty_string(item["behavior"], f"scope_creep[{index}].behavior"),
-        "consequence": nonempty_string(item["consequence"], f"scope_creep[{index}].consequence"),
-        "evidence": string_list(item["evidence"], f"scope_creep[{index}].evidence", nonempty=True),
+        "consequence": nonempty_string(
+            item["consequence"], f"scope_creep[{index}].consequence"
+        ),
+        "evidence": string_list(
+            item["evidence"], f"scope_creep[{index}].evidence", nonempty=True
+        ),
         "autofixable": autofixable,
         "human_blocker": blocker,
     }
@@ -655,11 +817,17 @@ def validate_spec(value: Any, inventory: list[dict[str, str]]) -> dict[str, Any]
         },
         "spec result",
     )
-    if type(result["schema_version"]) is not int or result["schema_version"] != 1 or result["kind"] != "spec":
+    if (
+        type(result["schema_version"]) is not int
+        or result["schema_version"] != 1
+        or result["kind"] != "spec"
+    ):
         raise InvalidResult("spec schema_version or kind is invalid")
     artifact = validate_artifact(result["artifact"])
     inventory_assessment = validate_inventory_assessment(result["inventory_assessment"])
-    if not isinstance(result["requirements"], list) or len(result["requirements"]) != len(inventory):
+    if not isinstance(result["requirements"], list) or len(
+        result["requirements"]
+    ) != len(inventory):
         raise InvalidResult("requirements must have the exact inventory length")
     requirements = [
         validate_requirement(item, inventory[index], index)
@@ -667,7 +835,9 @@ def validate_spec(value: Any, inventory: list[dict[str, str]]) -> dict[str, Any]
     ]
     if not isinstance(result["scope_creep"], list):
         raise InvalidResult("scope_creep must be an array")
-    scope = [validate_scope(item, index) for index, item in enumerate(result["scope_creep"])]
+    scope = [
+        validate_scope(item, index) for index, item in enumerate(result["scope_creep"])
+    ]
     scope_refs = [item["ref"] for item in scope]
     if len(scope_refs) != len(set(scope_refs)):
         raise InvalidResult("scope creep refs must be unique")
@@ -683,8 +853,13 @@ def validate_spec(value: Any, inventory: list[dict[str, str]]) -> dict[str, Any]
     for item in requirements:
         if item["status"] == "UNVERIFIABLE" and item["human_blocker"] is None:
             if ("requirement", item["ref"]) not in context_targets:
-                raise InvalidResult(f"UNVERIFIABLE requirement {item['ref']} requires linked context")
-    if inventory_assessment["status"] == "UNVERIFIABLE" and inventory_assessment["human_blocker"] is None:
+                raise InvalidResult(
+                    f"UNVERIFIABLE requirement {item['ref']} requires linked context"
+                )
+    if (
+        inventory_assessment["status"] == "UNVERIFIABLE"
+        and inventory_assessment["human_blocker"] is None
+    ):
         if ("inventory", "INVENTORY") not in context_targets:
             raise InvalidResult("UNVERIFIABLE inventory requires linked context")
     return {
@@ -717,26 +892,42 @@ def validate_blocking_finding(value: Any, index: int) -> dict[str, Any]:
         },
         f"findings[{index}]",
     )
-    severity = enum_string(finding["severity"], set(BLOCKING_SEVERITIES), f"findings[{index}].severity")
+    severity = enum_string(
+        finding["severity"], set(BLOCKING_SEVERITIES), f"findings[{index}].severity"
+    )
     autofixable = strict_bool(finding["autofixable"], f"findings[{index}].autofixable")
     blocker = finding["human_blocker"]
     if blocker is not None:
         blocker = enum_string(
-            blocker, HUMAN_BLOCKERS - {COMBINED_EXCLUDED_BLOCKER}, f"findings[{index}].human_blocker"
+            blocker,
+            HUMAN_BLOCKERS - {COMBINED_EXCLUDED_BLOCKER},
+            f"findings[{index}].human_blocker",
         )
     if autofixable == (blocker is not None):
-        raise InvalidResult(f"findings[{index}] must be autofixable or have one human blocker")
+        raise InvalidResult(
+            f"findings[{index}] must be autofixable or have one human blocker"
+        )
     return {
         "ref": nonempty_string(finding["ref"], f"findings[{index}].ref"),
         "axis": enum_string(finding["axis"], QUALITY_AXES, f"findings[{index}].axis"),
         "severity": severity,
-        "path": None if finding["path"] is None else normalize_path(finding["path"], f"findings[{index}].path"),
+        "path": None
+        if finding["path"] is None
+        else normalize_path(finding["path"], f"findings[{index}].path"),
         "line": line_number(finding["line"], f"findings[{index}].line"),
         "behavior": nonempty_string(finding["behavior"], f"findings[{index}].behavior"),
-        "consequence": nonempty_string(finding["consequence"], f"findings[{index}].consequence"),
-        "evidence": string_list(finding["evidence"], f"findings[{index}].evidence", nonempty=True),
-        "smallest_fix": nonempty_string(finding["smallest_fix"], f"findings[{index}].smallest_fix"),
-        "verification": nonempty_string(finding["verification"], f"findings[{index}].verification"),
+        "consequence": nonempty_string(
+            finding["consequence"], f"findings[{index}].consequence"
+        ),
+        "evidence": string_list(
+            finding["evidence"], f"findings[{index}].evidence", nonempty=True
+        ),
+        "smallest_fix": nonempty_string(
+            finding["smallest_fix"], f"findings[{index}].smallest_fix"
+        ),
+        "verification": nonempty_string(
+            finding["verification"], f"findings[{index}].verification"
+        ),
         "autofixable": autofixable,
         "human_blocker": blocker,
     }
@@ -754,16 +945,24 @@ def validate_deferred(value: Any) -> list[str]:
     # being dropped unseen.
     for index, item in enumerate(value):
         note = " ".join(nonempty_string(item, f"deferred[{index}]").split())
-        notes.append(note[: DEFERRED_MAX_CHARS - 1] + "…" if len(note) > DEFERRED_MAX_CHARS else note)
+        notes.append(
+            note[: DEFERRED_MAX_CHARS - 1] + "…"
+            if len(note) > DEFERRED_MAX_CHARS
+            else note
+        )
     if len(notes) <= DEFERRED_LIMIT:
         return notes
     # A trimmed tail is reported, not silent: a run that produced 40 nits must not
     # read as one that produced 25.
     dropped = len(notes) - (DEFERRED_LIMIT - 1)
-    return notes[: DEFERRED_LIMIT - 1] + [f"... {dropped} more deferred note(s) trimmed by the gate"]
+    return notes[: DEFERRED_LIMIT - 1] + [
+        f"... {dropped} more deferred note(s) trimmed by the gate"
+    ]
 
 
-def validate_requirement_exception(value: Any, allowed_refs: set[str], index: int) -> dict[str, Any]:
+def validate_requirement_exception(
+    value: Any, allowed_refs: set[str], index: int
+) -> dict[str, Any]:
     item = exact_keys(
         value,
         {"ref", "status", "evidence", "autofixable", "human_blocker"},
@@ -771,22 +970,34 @@ def validate_requirement_exception(value: Any, allowed_refs: set[str], index: in
     )
     ref = nonempty_string(item["ref"], f"requirement_exceptions[{index}].ref")
     if ref not in allowed_refs:
-        raise InvalidResult(f"requirement_exceptions[{index}].ref is not in the inventory")
+        raise InvalidResult(
+            f"requirement_exceptions[{index}].ref is not in the inventory"
+        )
     status = enum_string(
-        item["status"], {"MISSING", "UNVERIFIABLE"}, f"requirement_exceptions[{index}].status"
+        item["status"],
+        {"MISSING", "UNVERIFIABLE"},
+        f"requirement_exceptions[{index}].status",
     )
-    autofixable = strict_bool(item["autofixable"], f"requirement_exceptions[{index}].autofixable")
+    autofixable = strict_bool(
+        item["autofixable"], f"requirement_exceptions[{index}].autofixable"
+    )
     blocker = item["human_blocker"]
     if blocker is not None:
-        blocker = enum_string(blocker, HUMAN_BLOCKERS, f"requirement_exceptions[{index}].human_blocker")
+        blocker = enum_string(
+            blocker, HUMAN_BLOCKERS, f"requirement_exceptions[{index}].human_blocker"
+        )
     if status == "MISSING" and autofixable == (blocker is not None):
-        raise InvalidResult(f"MISSING requirement {ref} must be autofixable or have one human blocker")
+        raise InvalidResult(
+            f"MISSING requirement {ref} must be autofixable or have one human blocker"
+        )
     if status == "UNVERIFIABLE" and autofixable:
         raise InvalidResult(f"UNVERIFIABLE requirement {ref} cannot be autofixable")
     return {
         "ref": ref,
         "status": status,
-        "evidence": string_list(item["evidence"], f"requirement_exceptions[{index}].evidence", nonempty=True),
+        "evidence": string_list(
+            item["evidence"], f"requirement_exceptions[{index}].evidence", nonempty=True
+        ),
         "autofixable": autofixable,
         "human_blocker": blocker,
     }
@@ -820,7 +1031,11 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         },
         "combined result",
     )
-    if type(result["schema_version"]) is not int or result["schema_version"] != 1 or result["kind"] != "combined":
+    if (
+        type(result["schema_version"]) is not int
+        or result["schema_version"] != 1
+        or result["kind"] != "combined"
+    ):
         raise InvalidResult("combined schema_version or kind is invalid")
     artifact = validate_artifact(result["artifact"])
 
@@ -846,15 +1061,24 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
             raise InvalidResult(f"PASS axis {axis} requires evidence")
         if axis == "test_quality" and status == "PASS":
             theater = ("grep", "coverage", "snapshot", "test count")
-            if evidence and all(any(term in entry.lower() for term in theater) for entry in evidence):
-                raise InvalidResult("test_quality cannot PASS on grep, coverage, snapshot, or test count alone")
+            if evidence and all(
+                any(term in entry.lower() for term in theater) for entry in evidence
+            ):
+                raise InvalidResult(
+                    "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
+                )
         normalized_axes[axis] = {"status": status, "evidence": evidence}
         if needs_reason:
-            normalized_axes[axis]["reason"] = nonempty_string(item["reason"], f"axes.{axis}.reason")
+            normalized_axes[axis]["reason"] = nonempty_string(
+                item["reason"], f"axes.{axis}.reason"
+            )
 
     if not isinstance(result["findings"], list):
         raise InvalidResult("findings must be an array")
-    findings = [validate_blocking_finding(item, index) for index, item in enumerate(result["findings"])]
+    findings = [
+        validate_blocking_finding(item, index)
+        for index, item in enumerate(result["findings"])
+    ]
     finding_refs = [item["ref"] for item in findings]
     if len(finding_refs) != len(set(finding_refs)):
         raise InvalidResult("finding refs must be unique")
@@ -869,7 +1093,9 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
     if set(requirements) != set(inventory_refs):
         missing = sorted(set(inventory_refs) - set(requirements))
         unknown = sorted(set(requirements) - set(inventory_refs))
-        raise InvalidResult(f"requirements must cover every inventory ref: missing={missing}, unknown={unknown}")
+        raise InvalidResult(
+            f"requirements must cover every inventory ref: missing={missing}, unknown={unknown}"
+        )
     normalized_requirements = {
         ref: enum_string(requirements[ref], REQUIREMENT_STATUSES, f"requirements.{ref}")
         for ref in inventory_refs
@@ -883,17 +1109,25 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
     exception_refs = [item["ref"] for item in exceptions]
     if len(exception_refs) != len(set(exception_refs)):
         raise InvalidResult("requirement_exceptions refs must be unique")
-    flagged = {ref for ref, status in normalized_requirements.items() if status != "SATISFIED"}
+    flagged = {
+        ref for ref, status in normalized_requirements.items() if status != "SATISFIED"
+    }
     if flagged != set(exception_refs):
-        raise InvalidResult("every non-SATISFIED requirement needs exactly one matching exception entry")
+        raise InvalidResult(
+            "every non-SATISFIED requirement needs exactly one matching exception entry"
+        )
     for item in exceptions:
         if item["status"] != normalized_requirements[item["ref"]]:
-            raise InvalidResult(f"requirement_exceptions {item['ref']} status disagrees with requirements")
+            raise InvalidResult(
+                f"requirement_exceptions {item['ref']} status disagrees with requirements"
+            )
 
     inventory_assessment = validate_inventory_assessment(result["inventory_assessment"])
     if not isinstance(result["scope_creep"], list):
         raise InvalidResult("scope_creep must be an array")
-    scope = [validate_scope(item, index) for index, item in enumerate(result["scope_creep"])]
+    scope = [
+        validate_scope(item, index) for index, item in enumerate(result["scope_creep"])
+    ]
     scope_refs = [item["ref"] for item in scope]
     if len(scope_refs) != len(set(scope_refs)):
         raise InvalidResult("scope creep refs must be unique")
@@ -906,8 +1140,12 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         requirement_refs=set(inventory_refs),
         scope_refs=set(scope_refs),
     )
-    context_axes = {item["target_ref"] for item in contexts if item["target_type"] == "axis"}
-    context_findings = {item["target_ref"] for item in contexts if item["target_type"] == "finding"}
+    context_axes = {
+        item["target_ref"] for item in contexts if item["target_type"] == "axis"
+    }
+    context_findings = {
+        item["target_ref"] for item in contexts if item["target_type"] == "finding"
+    }
     context_targets = {(item["target_type"], item["target_ref"]) for item in contexts}
 
     for axis, item in normalized_axes.items():
@@ -917,10 +1155,14 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         if item["status"] in ("PASS", "NOT_APPLICABLE") and blocking:
             raise InvalidResult(f"axis {axis} contradicts its blocking finding")
         if item["status"] == "UNVERIFIABLE":
-            has_context = axis in context_axes or any(finding["ref"] in context_findings for finding in blocking)
+            has_context = axis in context_axes or any(
+                finding["ref"] in context_findings for finding in blocking
+            )
             has_blocker = any(finding["human_blocker"] for finding in blocking)
             if not has_context and not has_blocker:
-                raise InvalidResult(f"UNVERIFIABLE axis {axis} requires linked context or a human blocker")
+                raise InvalidResult(
+                    f"UNVERIFIABLE axis {axis} requires linked context or a human blocker"
+                )
 
     lenses = exact_keys(result["lenses"], set(QUALITY_REVIEW_LENSES), "lenses")
     normalized_lenses: dict[str, dict[str, Any]] = {}
@@ -932,20 +1174,29 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         evidence = string_list(item["evidence"], f"lenses.{lens}.evidence")
         if status in ("PASS", "FAIL") and not evidence:
             raise InvalidResult(f"{status} lens {lens} requires evidence")
-        mapped_findings = [finding for finding in findings if finding["axis"] in mapped_axes]
+        mapped_findings = [
+            finding for finding in findings if finding["axis"] in mapped_axes
+        ]
         if status == "FAIL" and not mapped_findings:
             raise InvalidResult(f"FAIL lens {lens} requires a mapped P0/P1 finding")
         if status == "UNVERIFIABLE" and not any(
             normalized_axes[axis]["status"] == "UNVERIFIABLE" for axis in mapped_axes
         ):
-            raise InvalidResult(f"UNVERIFIABLE lens {lens} requires a mapped unverifiable axis")
+            raise InvalidResult(
+                f"UNVERIFIABLE lens {lens} requires a mapped unverifiable axis"
+            )
         normalized_lenses[lens] = {"status": status, "evidence": evidence}
 
     for item in exceptions:
         if item["status"] == "UNVERIFIABLE" and item["human_blocker"] is None:
             if ("requirement", item["ref"]) not in context_targets:
-                raise InvalidResult(f"UNVERIFIABLE requirement {item['ref']} requires linked context")
-    if inventory_assessment["status"] == "UNVERIFIABLE" and inventory_assessment["human_blocker"] is None:
+                raise InvalidResult(
+                    f"UNVERIFIABLE requirement {item['ref']} requires linked context"
+                )
+    if (
+        inventory_assessment["status"] == "UNVERIFIABLE"
+        and inventory_assessment["human_blocker"] is None
+    ):
         if ("inventory", "INVENTORY") not in context_targets:
             raise InvalidResult("UNVERIFIABLE inventory requires linked context")
 
@@ -965,11 +1216,11 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
 
 def quality_signature(finding: dict[str, Any]) -> str:
     path = finding["path"] or "@verification"
-    return digest(f"quality\0{finding['axis']}\0{finding['severity']}\0{path}".encode("utf-8"))
+    return digest(f"quality\0{finding['axis']}\0{finding['severity']}\0{path}".encode())
 
 
 def spec_signature(requirement: dict[str, Any]) -> str:
-    return digest(f"spec-requirement\0{requirement['ref']}".encode("utf-8"))
+    return digest(f"spec-requirement\0{requirement['ref']}".encode())
 
 
 def inventory_signature() -> str:
@@ -977,7 +1228,7 @@ def inventory_signature() -> str:
 
 
 def scope_signature(item: dict[str, Any]) -> str:
-    return digest(f"scope\0{item['path']}".encode("utf-8"))
+    return digest(f"scope\0{item['path']}".encode())
 
 
 def dedupe_contexts(requests: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -1002,18 +1253,34 @@ def dedupe_gaps(gaps: list[dict[str, str]]) -> list[dict[str, str]]:
     return result
 
 
-def context_gaps(repo: Path, metadata: dict[str, Any], requests: list[dict[str, str]]) -> list[dict[str, str]]:
+def context_gaps(
+    repo: Path, metadata: dict[str, Any], requests: list[dict[str, str]]
+) -> list[dict[str, str]]:
     gaps: list[dict[str, str]] = []
     for request in requests:
-        tree_oid = metadata["base_oid"] if request["tree"] == "BASE" else metadata["candidate_tree_oid"]
+        tree_oid = (
+            metadata["base_oid"]
+            if request["tree"] == "BASE"
+            else metadata["candidate_tree_oid"]
+        )
         pathspec = f":(literal){request['path']}"
         raw = git(repo, "ls-tree", "-z", tree_oid, "--", pathspec, check=False)
         if not raw:
-            gaps.append({"tree": request["tree"], "path": request["path"], "reason": "missing_path"})
+            gaps.append(
+                {
+                    "tree": request["tree"],
+                    "path": request["path"],
+                    "reason": "missing_path",
+                }
+            )
             continue
         header = raw.split(b"\t", 1)[0].decode("ascii")
         mode, kind, oid = header.split(" ")
-        object_type = git(repo, "cat-file", "-t", oid, check=False).decode("ascii", "replace").strip()
+        object_type = (
+            git(repo, "cat-file", "-t", oid, check=False)
+            .decode("ascii", "replace")
+            .strip()
+        )
         if mode == "120000":
             reason = "symlink"
         elif mode == "160000":
@@ -1024,7 +1291,9 @@ def context_gaps(repo: Path, metadata: dict[str, Any], requests: list[dict[str, 
             reason = "missing_blob"
         else:
             continue
-        gaps.append({"tree": request["tree"], "path": request["path"], "reason": reason})
+        gaps.append(
+            {"tree": request["tree"], "path": request["path"], "reason": reason}
+        )
     return gaps
 
 
@@ -1046,15 +1315,25 @@ def load_state(path: Path) -> dict[str, Any]:
         "bundle_sha256",
         "contract_inventory_sha256",
     }
-    if not isinstance(state, dict) or not {"schema_version", "pending_repairs", "history"}.issubset(state):
+    if not isinstance(state, dict) or not {
+        "schema_version",
+        "pending_repairs",
+        "history",
+    }.issubset(state):
         raise InvalidResult("QA state is malformed")
     if set(state) - allowed or state["schema_version"] != 1:
         raise InvalidResult("QA state keys or version are invalid")
     pending = state["pending_repairs"]
-    if not isinstance(pending, dict) or not set(pending) or not set(pending).issubset(set(KINDS)):
+    if (
+        not isinstance(pending, dict)
+        or not set(pending)
+        or not set(pending).issubset(set(KINDS))
+    ):
         raise InvalidResult("QA pending_repairs is malformed")
     for kind in pending:
-        if not isinstance(pending[kind], list) or any(not isinstance(item, str) for item in pending[kind]):
+        if not isinstance(pending[kind], list) or any(
+            not isinstance(item, str) for item in pending[kind]
+        ):
             raise InvalidResult(f"QA pending_repairs.{kind} is malformed")
     if not isinstance(state["history"], list) or any(
         not isinstance(item, dict) for item in state["history"]
@@ -1071,7 +1350,9 @@ def write_state(path: Path, state: dict[str, Any]) -> None:
     temp_path.replace(path)
 
 
-def validate_combined_transition(history: list[dict[str, Any]], round_number: int) -> None:
+def validate_combined_transition(
+    history: list[dict[str, Any]], round_number: int
+) -> None:
     """Single-pass sequencing.
 
     The pass itself happens once. Two attempts do not count against it, because
@@ -1091,11 +1372,15 @@ def validate_combined_transition(history: list[dict[str, Any]], round_number: in
     last_round = last["qa_round"]
     if type(last_round) is not int or last_round not in (1, 2):
         raise InvalidResult("QA history round is invalid")
-    if last["action"] in ("PROCEED", "AUTOFIX", "NEEDS_HUMAN") or last.get("terminal_status"):
+    if last["action"] in ("PROCEED", "AUTOFIX", "NEEDS_HUMAN") or last.get(
+        "terminal_status"
+    ):
         raise InvalidResult("combined QA is already resolved")
     if last["action"] == "INVALID":
         if sum(1 for item in mine if item["action"] == "INVALID") > 1:
-            raise InvalidResult("combined QA already used its one malformed-result retry")
+            raise InvalidResult(
+                "combined QA already used its one malformed-result retry"
+            )
         expected = last_round
     elif last["action"] == "CONTEXT":
         if sum(1 for item in mine if item["action"] == "CONTEXT") > 1:
@@ -1159,7 +1444,10 @@ def contract(kind: str) -> dict[str, Any]:
             "required_axes": list(REQUIRED_AXES),
             "conditional_axes": list(CONDITIONAL_AXES),
             "review_lenses": {
-                lens: {"mapped_axes": list(mapped), "required": lens != OPTIONAL_QUALITY_LENS}
+                lens: {
+                    "mapped_axes": list(mapped),
+                    "required": lens != OPTIONAL_QUALITY_LENS,
+                }
                 for lens, mapped in QUALITY_REVIEW_LENSES.items()
             },
             "axis_statuses": sorted(AXIS_STATUSES),
@@ -1200,7 +1488,9 @@ def contract(kind: str) -> dict[str, Any]:
                 "lenses": {
                     lens: {
                         "status": "PASS | FAIL | UNVERIFIABLE"
-                        + (" | NOT_APPLICABLE" if lens == OPTIONAL_QUALITY_LENS else ""),
+                        + (
+                            " | NOT_APPLICABLE" if lens == OPTIONAL_QUALITY_LENS else ""
+                        ),
                         "evidence": ["file:line or review observation"],
                     }
                     for lens in QUALITY_REVIEW_LENSES
@@ -1221,7 +1511,9 @@ def contract(kind: str) -> dict[str, Any]:
                         "human_blocker": None,
                     }
                 ],
-                "deferred": ["path/to/file.ext:12 - one-line observation that does not gate"],
+                "deferred": [
+                    "path/to/file.ext:12 - one-line observation that does not gate"
+                ],
                 "requirements": {"REQ-001": "SATISFIED", "REQ-002": "MISSING"},
                 "requirement_exceptions": [
                     {
@@ -1277,9 +1569,14 @@ def contract(kind: str) -> dict[str, Any]:
             "kind": "quality",
             "context_request_limit": CONTEXT_REQUEST_LIMIT,
             "artifact": artifact,
-            "axes": {axis: {"required": axis in REQUIRED_AXES} for axis in QUALITY_AXES},
+            "axes": {
+                axis: {"required": axis in REQUIRED_AXES} for axis in QUALITY_AXES
+            },
             "review_lenses": {
-                lens: {"mapped_axes": list(mapped_axes), "required": lens != OPTIONAL_QUALITY_LENS}
+                lens: {
+                    "mapped_axes": list(mapped_axes),
+                    "required": lens != OPTIONAL_QUALITY_LENS,
+                }
                 for lens, mapped_axes in QUALITY_REVIEW_LENSES.items()
             },
             "axis_statuses": sorted(AXIS_STATUSES),
@@ -1372,7 +1669,9 @@ def contract(kind: str) -> dict[str, Any]:
             "artifact": artifact,
             "inventory_assessment": {
                 "status": "COMPLETE | INCOMPLETE | UNVERIFIABLE",
-                "evidence": ["canonical task/design criterion mapped to REQ, or exact omission"],
+                "evidence": [
+                    "canonical task/design criterion mapped to REQ, or exact omission"
+                ],
                 "reason": "required explanation",
                 "autofixable": False,
                 "human_blocker": None,
@@ -1445,7 +1744,9 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             args.expected_bundle_sha256
         ):
             raise InvalidResult("expected bundle SHA-256 is invalid")
-        if not isinstance(args.expected_base_oid, str) or not OID_RE.fullmatch(args.expected_base_oid):
+        if not isinstance(args.expected_base_oid, str) or not OID_RE.fullmatch(
+            args.expected_base_oid
+        ):
             raise InvalidResult("expected base OID is invalid")
         inventory = validate_inventory(read_json(Path(args.inventory)))
         raw_result = read_json(Path(args.result))
@@ -1469,7 +1770,9 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
         "bundle_sha256": bundle_sha,
         "contract_inventory_sha256": inventory_sha,
     }
-    stale_reasons = [key for key, value in expected.items() if validated["artifact"][key] != value]
+    stale_reasons = [
+        key for key, value in expected.items() if validated["artifact"][key] != value
+    ]
     if bundle_sha != args.expected_bundle_sha256:
         stale_reasons.append("expected_bundle_sha256")
     if metadata["base_oid"] != args.expected_base_oid:
@@ -1496,11 +1799,19 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
     except (InvalidResult, UnicodeDecodeError) as exc:
         stale_reasons.append(f"changed_paths_error:{exc}")
     if args.kind == "spec":
-        for key in ("base_oid", "candidate_tree_oid", "bundle_sha256", "contract_inventory_sha256"):
+        for key in (
+            "base_oid",
+            "candidate_tree_oid",
+            "bundle_sha256",
+            "contract_inventory_sha256",
+        ):
             if state.get(key) != expected[key]:
                 stale_reasons.append(f"quality_{key}")
     try:
-        if current_candidate_tree(Path(args.repo).resolve()) != metadata["candidate_tree_oid"]:
+        if (
+            current_candidate_tree(Path(args.repo).resolve())
+            != metadata["candidate_tree_oid"]
+        ):
             stale_reasons.append("current_candidate_tree_oid")
     except InvalidResult as exc:
         stale_reasons.append(f"candidate_tree_error:{exc}")
@@ -1545,10 +1856,14 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
         signatures = [quality_signature(item) for item in blockers]
         p2_deferred = sum(item["severity"] == "P2" for item in validated["findings"])
     else:
-        missing = [item for item in validated["requirements"] if item["status"] == "MISSING"]
+        missing = [
+            item for item in validated["requirements"] if item["status"] == "MISSING"
+        ]
         scope = validated["scope_creep"]
         blockers = missing + scope
-        signatures = [spec_signature(item) for item in missing] + [scope_signature(item) for item in scope]
+        signatures = [spec_signature(item) for item in missing] + [
+            scope_signature(item) for item in scope
+        ]
         if validated["inventory_assessment"]["status"] == "INCOMPLETE":
             blockers.append(validated["inventory_assessment"])
             signatures.append(inventory_signature())
@@ -1567,7 +1882,9 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             + validated["scope_creep"]
             + [validated["inventory_assessment"]]
         )
-    human = sorted({item["human_blocker"] for item in human_sources if item["human_blocker"]})
+    human = sorted(
+        {item["human_blocker"] for item in human_sources if item["human_blocker"]}
+    )
     if "QA_REPAIR_EXHAUSTED" in human and args.round < 3:
         decision = invalid_decision(
             args.kind,
@@ -1589,8 +1906,12 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
     )
     previous = set(state["pending_repairs"].get(args.kind, []))
     no_progress = sorted(previous.intersection(signatures))
-    previous_history = [item for item in state["history"] if item.get("kind") == args.kind]
-    previous_tree = previous_history[-1].get("candidate_tree_oid") if previous_history else None
+    previous_history = [
+        item for item in state["history"] if item.get("kind") == args.kind
+    ]
+    previous_tree = (
+        previous_history[-1].get("candidate_tree_oid") if previous_history else None
+    )
     no_change = bool(previous and previous_tree == metadata["candidate_tree_oid"])
 
     if args.kind == "combined":

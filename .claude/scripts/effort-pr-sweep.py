@@ -48,7 +48,8 @@ PR_URL_RE = re.compile(r"github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
 PR_QUALIFIED_RE = re.compile(r"\b([\w.-]+)/([\w.-]+)#(\d+)\b")
 ROW_RE = re.compile(r"^- \[(x| )\]\s*(.*)$")
 CANONICAL_RE = re.compile(
-    r"^\**\s*(PR opened|Merged|Deployed|Review passed|Implementation started)\b", re.IGNORECASE
+    r"^\**\s*(PR opened|Merged|Deployed|Review passed|Implementation started)\b",
+    re.IGNORECASE,
 )
 SUBPROCESS_TIMEOUT = 60
 GH_FIELDS = "number,state,reviewDecision,mergedAt,mergeCommit,statusCheckRollup,title,baseRefName"
@@ -60,14 +61,28 @@ EXCLUSION_HINTS = (
     # rather than a guess - check it before the looser text patterns below.
     ("likely-follow-up", re.compile(r"^\**\s*follow[- ]up\b", re.IGNORECASE)),
     ("likely-cherry-pick", re.compile(r"cherry[- ]pick|🍒|backport", re.IGNORECASE)),
-    ("likely-withdrawn", re.compile(r"withdrawn|abandoned|superseded|closed without|not merged",
-                                    re.IGNORECASE)),
-    ("likely-sibling-dependency", re.compile(r"sibling|downstream|upstream|blocked on|"
-                                             r"prerequisite|step 0", re.IGNORECASE)),
+    (
+        "likely-withdrawn",
+        re.compile(
+            r"withdrawn|abandoned|superseded|closed without|not merged", re.IGNORECASE
+        ),
+    ),
+    (
+        "likely-sibling-dependency",
+        re.compile(
+            r"sibling|downstream|upstream|blocked on|"
+            r"prerequisite|step 0",
+            re.IGNORECASE,
+        ),
+    ),
     ("likely-spike", re.compile(r"\bspike\b", re.IGNORECASE)),
-    ("likely-phase-summary", re.compile(
-        r"^\**\s*(phase|step|closing wave)\s|\b(phase\s*\d|wave\s*\d|sub-effort)\b",
-        re.IGNORECASE)),
+    (
+        "likely-phase-summary",
+        re.compile(
+            r"^\**\s*(phase|step|closing wave)\s|\b(phase\s*\d|wave\s*\d|sub-effort)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 
@@ -79,9 +94,13 @@ def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     `gh` call and lose the audit for every other effort.
     """
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT
+        )
     except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(cmd, 124, "", f"timed out after {SUBPROCESS_TIMEOUT}s")
+        return subprocess.CompletedProcess(
+            cmd, 124, "", f"timed out after {SUBPROCESS_TIMEOUT}s"
+        )
     except OSError as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
@@ -104,11 +123,17 @@ def local_paths() -> dict[str, str]:
 
 def classify_state(payload: dict) -> dict:
     checks = payload.get("statusCheckRollup") or []
-    failing = [c.get("name") or c.get("context") for c in checks
-               if c.get("conclusion") in {"FAILURE", "CANCELLED", "TIMED_OUT"}
-               or c.get("state") == "FAILURE"]
-    pending = [c.get("name") or c.get("context") for c in checks
-               if c.get("status") in {"IN_PROGRESS", "QUEUED"} or c.get("state") == "PENDING"]
+    failing = [
+        c.get("name") or c.get("context")
+        for c in checks
+        if c.get("conclusion") in {"FAILURE", "CANCELLED", "TIMED_OUT"}
+        or c.get("state") == "FAILURE"
+    ]
+    pending = [
+        c.get("name") or c.get("context")
+        for c in checks
+        if c.get("status") in {"IN_PROGRESS", "QUEUED"} or c.get("state") == "PENDING"
+    ]
     merge_commit = (payload.get("mergeCommit") or {}).get("oid")
     # The name lists below are capped for display. Carry the true counts too, so a
     # PR with 14 failing checks does not report `fail=6`.
@@ -132,8 +157,18 @@ def classify_state(payload: dict) -> dict:
 def read_pr(ref: tuple[str, str, int]) -> tuple[str, dict]:
     owner, repo, number = ref
     key = f"{owner}/{repo}#{number}"
-    proc = run(["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}",
-                "--json", GH_FIELDS])
+    proc = run(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(number),
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            GH_FIELDS,
+        ]
+    )
     if proc.returncode != 0:
         return key, {"state": "UNREADABLE", "error": proc.stderr.strip()[:200]}
     try:
@@ -165,8 +200,11 @@ def cited_prs(text: str, known_owners: frozenset[str]) -> set[tuple[str, str, in
     missing one: it teaches the reader to skim the list.
     """
     found = {(m[0], m[1], int(m[2])) for m in PR_URL_RE.findall(text)}
-    found |= {(m[0], m[1], int(m[2])) for m in PR_QUALIFIED_RE.findall(text)
-              if m[0] in known_owners}
+    found |= {
+        (m[0], m[1], int(m[2]))
+        for m in PR_QUALIFIED_RE.findall(text)
+        if m[0] in known_owners
+    }
     return found
 
 
@@ -185,8 +223,11 @@ def corpus_files(efforts_dir: Path) -> list[Path]:
     is citing someone else's delivery.
     """
     return sorted(
-        {*efforts_dir.glob("*.md"), *efforts_dir.glob("done/*.md"),
-         *efforts_dir.glob("archive/*/*.md")}
+        {
+            *efforts_dir.glob("*.md"),
+            *efforts_dir.glob("done/*.md"),
+            *efforts_dir.glob("archive/*/*.md"),
+        }
     )
 
 
@@ -201,7 +242,9 @@ def corpus_states(files: list[Path]) -> dict[Path, dict | None]:
         return dict(pool.map(lambda p: (p, effort_state(p)), files))
 
 
-def delivery_owners(states: dict[Path, dict | None]) -> dict[tuple[str, str, int], list[str]]:
+def delivery_owners(
+    states: dict[Path, dict | None],
+) -> dict[tuple[str, str, int], list[str]]:
     """Map each PR to the effort(s) whose structured *delivery* set carries it.
 
     This turns the sweep's hardest judgment call into a lookup. A row can cite a PR for
@@ -228,9 +271,13 @@ def delivery_owners(states: dict[Path, dict | None]) -> dict[tuple[str, str, int
     return owners
 
 
-def audit_effort(path: Path, known_owners: frozenset[str],
-                 owners: dict[tuple[str, str, int], list[str]],
-                 scan_rows: bool, state: dict | None) -> dict:
+def audit_effort(
+    path: Path,
+    known_owners: frozenset[str],
+    owners: dict[tuple[str, str, int], list[str]],
+    scan_rows: bool,
+    state: dict | None,
+) -> dict:
     if state is None:
         return {"effort": path.stem, "error": "effort-state.py failed"}
 
@@ -263,7 +310,7 @@ def audit_effort(path: Path, known_owners: frozenset[str],
     # which is only a question while the effort can still transition. A terminal doc has
     # no transition left to fire, so `--closed` turns the scan off: on this corpus it
     # produced 100 rows no caller of that pass acts on, and most of its payload.
-    for idx, line in (enumerate(path.read_text().splitlines(), 1) if scan_rows else ()):
+    for idx, line in enumerate(path.read_text().splitlines(), 1) if scan_rows else ():
         match = ROW_RE.match(line)
         if not match:
             continue
@@ -273,7 +320,8 @@ def audit_effort(path: Path, known_owners: frozenset[str],
         if not checked:
             continue
         missing = {
-            r for r in found
+            r
+            for r in found
             if (r[0].casefold(), r[1].casefold(), r[2]) not in delivery_refs
             and r[2] not in unqualified_delivery
         }
@@ -290,8 +338,10 @@ def audit_effort(path: Path, known_owners: frozenset[str],
                 # the text hints are a guess from this row's prose. When they disagree the
                 # fact wins, and it demotes the one hint the caller is told to auto-repair.
                 claimed = [
-                    slug for slug in owners.get(
-                        (owner.casefold(), repo.casefold(), number), [])
+                    slug
+                    for slug in owners.get(
+                        (owner.casefold(), repo.casefold(), number), []
+                    )
                     if slug != path.stem
                 ]
                 if claimed:
@@ -314,8 +364,13 @@ def audit_effort(path: Path, known_owners: frozenset[str],
     }
 
 
-def closed_findings(audits: list[dict], live: dict[str, dict], reverts: list[dict],
-                    revert_scan_ran: bool, unscanned_repos: set[str]) -> list[dict]:
+def closed_findings(
+    audits: list[dict],
+    live: dict[str, dict],
+    reverts: list[dict],
+    revert_scan_ran: bool,
+    unscanned_repos: set[str],
+) -> list[dict]:
     """Defects in terminal effort docs, which nothing else re-reads.
 
     `/nase:efforts` counts `done/` and `archive/` without opening them, so a terminal doc
@@ -343,9 +398,19 @@ def closed_findings(audits: list[dict], live: dict[str, dict], reverts: list[dic
     for audit in audits:
         structure = audit.get("structure") or {}
         for defect in structure.get("defects", []):
-            findings.append({"effort": audit["effort"], "path": audit.get("path"),
-                             "defect": defect, "standing": [], "reverted": []})
-        if audit.get("status") != "wontfix" or structure.get("partial_delivery") is True:
+            findings.append(
+                {
+                    "effort": audit["effort"],
+                    "path": audit.get("path"),
+                    "defect": defect,
+                    "standing": [],
+                    "reverted": [],
+                }
+            )
+        if (
+            audit.get("status") != "wontfix"
+            or structure.get("partial_delivery") is True
+        ):
             continue
         merged = [
             (repo, f"{owner}/{repo}#{number}")
@@ -360,18 +425,27 @@ def closed_findings(audits: list[dict], live: dict[str, dict], reverts: list[dic
             # Every merge was reverted: `wontfix` is the honest label and there is nothing
             # to record. Reported so the next reader does not re-derive the same question.
             defect = "reverted-delivery-no-repair"
-        elif not revert_scan_ran or any(repo.casefold() in unscanned for repo, _ in standing):
+        elif not revert_scan_ran or any(
+            repo.casefold() in unscanned for repo, _ in standing
+        ):
             defect = "partial-delivery-unverified-revert-scan"
         else:
             defect = "partial-delivery-unrecorded"
-        findings.append({"effort": audit["effort"], "path": audit.get("path"),
-                         "defect": defect, "standing": [pr for _, pr in standing],
-                         "reverted": rolled_back})
+        findings.append(
+            {
+                "effort": audit["effort"],
+                "path": audit.get("path"),
+                "defect": defect,
+                "standing": [pr for _, pr in standing],
+                "reverted": rolled_back,
+            }
+        )
     return findings
 
 
-def find_reverts(live: dict[str, dict], paths: dict[str, str],
-                 unscanned: set[str]) -> list[dict]:
+def find_reverts(
+    live: dict[str, dict], paths: dict[str, str], unscanned: set[str]
+) -> list[dict]:
     """A revert leaves the original merge commit an ancestor forever, so containment stays
     true after the content is gone. Surface any commit whose subject reverts a PR number.
 
@@ -393,21 +467,39 @@ def find_reverts(live: dict[str, dict], paths: dict[str, str],
         if not repo_path:
             unscanned.add(repo_name)
             continue
-        proc = run(["git", "-C", repo_path, "log", "--all", "-i",
-                    f"--grep=revert.*#{number}\\b", "-3", "--format=%H %s"])
+        proc = run(
+            [
+                "git",
+                "-C",
+                repo_path,
+                "log",
+                "--all",
+                "-i",
+                f"--grep=revert.*#{number}\\b",
+                "-3",
+                "--format=%H %s",
+            ]
+        )
         if proc.returncode != 0 or not proc.stdout.strip():
             continue
         for row in proc.stdout.strip().splitlines():
             rev_sha, _, subject = row.partition(" ")
             if rev_sha.startswith(sha[:8]):
                 continue
-            out.append({"pr": key, "merge_commit": sha[:12],
-                        "revert_commit": rev_sha[:12], "subject": subject[:110]})
+            out.append(
+                {
+                    "pr": key,
+                    "merge_commit": sha[:12],
+                    "revert_commit": rev_sha[:12],
+                    "subject": subject[:110],
+                }
+            )
     return out
 
 
-def print_closed_defects(findings: list[dict], revert_scan_ran: bool,
-                         unscanned_repos: set[str]) -> None:
+def print_closed_defects(
+    findings: list[dict], revert_scan_ran: bool, unscanned_repos: set[str]
+) -> None:
     if not findings:
         print("no terminal-doc defects\n")
         return
@@ -440,16 +532,28 @@ def print_closed_defects(findings: list[dict], revert_scan_ran: bool,
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--efforts-dir", default="workspace/efforts")
-    ap.add_argument("--file", help="audit a single effort file instead of the whole directory")
-    ap.add_argument("--no-live", action="store_true",
-                    help="skip gh reads; label audit only (offline, fast)")
-    ap.add_argument("--check-reverts", action="store_true",
-                    help="look for revert commits naming each merged PR (needs a local clone)")
-    ap.add_argument("--closed", action="store_true",
-                    help="audit terminal docs (done/ + archive/) instead of active efforts")
+    ap.add_argument(
+        "--file", help="audit a single effort file instead of the whole directory"
+    )
+    ap.add_argument(
+        "--no-live",
+        action="store_true",
+        help="skip gh reads; label audit only (offline, fast)",
+    )
+    ap.add_argument(
+        "--check-reverts",
+        action="store_true",
+        help="look for revert commits naming each merged PR (needs a local clone)",
+    )
+    ap.add_argument(
+        "--closed",
+        action="store_true",
+        help="audit terminal docs (done/ + archive/) instead of active efforts",
+    )
     ap.add_argument("--format", choices=["human", "json"], default="human")
     args = ap.parse_args()
 
@@ -478,7 +582,9 @@ def main() -> int:
     cited_anywhere: set[tuple[str, str, int]] = set()
     if not args.closed:
         texts = [path.read_text() for path in files]
-        known_owners = frozenset(m[0] for text in texts for m in PR_URL_RE.findall(text))
+        known_owners = frozenset(
+            m[0] for text in texts for m in PR_URL_RE.findall(text)
+        )
         # Every PR the audited docs name anywhere, prose included. The emitted ownership
         # map is narrowed to these: a caller can only attribute a citation it can see, and
         # shipping the whole corpus map costs ~4k tokens per run of every caller that
@@ -492,17 +598,27 @@ def main() -> int:
     # `--file` can name a doc outside the efforts directory, which the corpus read never
     # covered, so that one falls back to its own read.
     with ThreadPoolExecutor(max_workers=8) as pool:
-        audits = list(pool.map(
-            lambda p: audit_effort(p, known_owners, owners, not args.closed,
-                                   states[p] if p in states else effort_state(p)),
-            files))
+        audits = list(
+            pool.map(
+                lambda p: audit_effort(
+                    p,
+                    known_owners,
+                    owners,
+                    not args.closed,
+                    states[p] if p in states else effort_state(p),
+                ),
+                files,
+            )
+        )
 
     all_refs: set[tuple[str, str, int]] = set()
     for a in audits:
         # The closed audit only asks whether the *delivery* PRs merged. Reading every PR
         # cited anywhere across 189 terminal docs would be an order of magnitude more `gh`
         # calls for state no finding consults.
-        all_refs.update(a.get("delivery_refs", []) if args.closed else a.get("refs", []))
+        all_refs.update(
+            a.get("delivery_refs", []) if args.closed else a.get("refs", [])
+        )
 
     live: dict[str, dict] = {}
     if not args.no_live and all_refs:
@@ -519,8 +635,11 @@ def main() -> int:
     if revert_scan_ran:
         reverts = find_reverts(live, paths, unscanned_repos)
 
-    findings = (closed_findings(audits, live, reverts, revert_scan_ran, unscanned_repos)
-                if args.closed else [])
+    findings = (
+        closed_findings(audits, live, reverts, revert_scan_ran, unscanned_repos)
+        if args.closed
+        else []
+    )
 
     if args.closed:
         # `effort-doc-audit.md -> Part 2` acts on `findings` alone. The active-mode payload
@@ -529,8 +648,11 @@ def main() -> int:
         result = {
             "findings": findings,
             "reverts": reverts,
-            "counts": {"terminal_docs": len(audits), "delivery_prs": len(all_refs),
-                       "defects": len(findings)},
+            "counts": {
+                "terminal_docs": len(audits),
+                "delivery_prs": len(all_refs),
+                "defects": len(findings),
+            },
         }
     else:
         # `delivery_owners` is emitted as a lookup, not just as row annotations. The row
@@ -554,17 +676,23 @@ def main() -> int:
 
     flagged = [a for a in audits if a.get("invisible")]
     if args.closed:
-        print(f"== effort-pr-sweep --closed: {len(audits)} terminal docs, "
-              f"{len(all_refs)} delivery PRs, {len(findings)} defects ==\n")
+        print(
+            f"== effort-pr-sweep --closed: {len(audits)} terminal docs, "
+            f"{len(all_refs)} delivery PRs, {len(findings)} defects ==\n"
+        )
         print_closed_defects(findings, revert_scan_ran, unscanned_repos)
     else:
-        print(f"== effort-pr-sweep: {len(audits)} efforts, {len(all_refs)} unique PRs, "
-              f"{len(flagged)} with an invisible PR ==\n")
+        print(
+            f"== effort-pr-sweep: {len(audits)} efforts, {len(all_refs)} unique PRs, "
+            f"{len(flagged)} with an invisible PR ==\n"
+        )
 
     if live:
         unreadable = [k for k, v in live.items() if v.get("state") == "UNREADABLE"]
         open_prs = sorted(k for k, v in live.items() if v.get("state") == "OPEN")
-        print(f"live: {len(live)} read, {len(open_prs)} OPEN, {len(unreadable)} unreadable")
+        print(
+            f"live: {len(live)} read, {len(open_prs)} OPEN, {len(unreadable)} unreadable"
+        )
         for key in open_prs:
             v = live[key]
             extra = (
@@ -581,7 +709,9 @@ def main() -> int:
     if reverts:
         print("REVERTED - the merge commit is still an ancestor, the content is not:")
         for r in reverts:
-            print(f"    {r['pr']}  merge {r['merge_commit']}  reverted by {r['revert_commit']}")
+            print(
+                f"    {r['pr']}  merge {r['merge_commit']}  reverted by {r['revert_commit']}"
+            )
             print(f"        {r['subject']}")
         print("    Verify by content: grep a symbol the PR ADDED at the ring commit.\n")
 
@@ -598,15 +728,27 @@ def main() -> int:
                 print(f"    L{item['line']:<5} {item['pr']:34} [{item['hint']}]")
                 print(f"          label: {item['label']}")
                 if item.get("owned_by"):
-                    print(f"          owned by: {', '.join(item['owned_by'])}"
-                          f"   (text hint was {item.get('text_hint')})")
-        print("\n    `likely-delivery` is the actionable class: give the row the canonical")
+                    print(
+                        f"          owned by: {', '.join(item['owned_by'])}"
+                        f"   (text hint was {item.get('text_hint')})"
+                    )
+        print(
+            "\n    `likely-delivery` is the actionable class: give the row the canonical"
+        )
         print("    `PR opened` label and keep its own number in the body, e.g.")
-        print("    `- [x] PR opened — **PR-2** — <url>`. The other hints are usually correct")
-        print("    exclusions - relabelling them can fire a transition on evidence that is")
+        print(
+            "    `- [x] PR opened — **PR-2** — <url>`. The other hints are usually correct"
+        )
+        print(
+            "    exclusions - relabelling them can fire a transition on evidence that is"
+        )
         print("    not this effort's delivery.")
-        print("    `sibling-delivery` is never actionable: another effort's delivery set")
-        print("    already claims that PR, so this row cites it as context. Relabelling it")
+        print(
+            "    `sibling-delivery` is never actionable: another effort's delivery set"
+        )
+        print(
+            "    already claims that PR, so this row cites it as context. Relabelling it"
+        )
         print("    would transition this effort on another effort's evidence.")
     else:
         print("no invisible delivery PRs")

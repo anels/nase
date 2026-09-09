@@ -60,7 +60,7 @@ def main() -> int:
     canonical = canonical_pointer(source_doc.read_text(encoding="utf-8"))
     if canonical is None:
         print(
-            f'NO_CANONICAL_BLOCK {source_doc}: expected a <canonical-block '
+            f"NO_CANONICAL_BLOCK {source_doc}: expected a <canonical-block "
             f'name="{BLOCK_NAME}"> section under ## Canonical pointer',
             file=sys.stderr,
         )
@@ -70,7 +70,7 @@ def main() -> int:
     # pointer body itself never varies.
     body = canonical.rstrip(".")
     if "`" in body:
-        body = body[body.index("`"):]
+        body = body[body.index("`") :]
 
     failures: list[str] = []
     for path in targets(root):

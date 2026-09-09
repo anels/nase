@@ -10,10 +10,10 @@ import stat
 import sys
 import time
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 try:
     import fcntl
@@ -98,7 +98,9 @@ def _entry_matches(parent_fd: int, name: str, expected: os.stat_result) -> bool:
     )
 
 
-def _open_child_directory(parent_fd: int, name: str, label: str) -> tuple[int, os.stat_result]:
+def _open_child_directory(
+    parent_fd: int, name: str, label: str
+) -> tuple[int, os.stat_result]:
     expected = _entry_metadata(parent_fd, name, label)
     assert expected is not None
     if not stat.S_ISDIR(expected.st_mode):
@@ -126,7 +128,9 @@ def _open_lock_roots(
     try:
         root_fd = os.open(root, _directory_flags())
     except OSError as exc:
-        raise LockError(f"repository root cannot be opened safely: {root}: {exc}") from exc
+        raise LockError(
+            f"repository root cannot be opened safely: {root}: {exc}"
+        ) from exc
     root_metadata = os.fstat(root_fd)
     if not stat.S_ISDIR(root_metadata.st_mode):
         os.close(root_fd)
@@ -221,7 +225,9 @@ def _validate_lock_contents_at(lock_fd: int) -> None:
         metadata = _entry_metadata(lock_fd, child, "workspace mutation lock owner")
         assert metadata is not None
         if not stat.S_ISREG(metadata.st_mode):
-            raise LockError("workspace mutation lock owner is not a lexical regular file")
+            raise LockError(
+                "workspace mutation lock owner is not a lexical regular file"
+            )
 
 
 def _read_owner_record_at(
@@ -251,14 +257,13 @@ def _read_owner_at(lock_fd: int) -> dict[str, object] | None:
     return record[0] if record is not None else None
 
 
-def _claim_lock(
-    locks_fd: int, expected: os.stat_result, tag: str
-) -> str:
+def _claim_lock(locks_fd: int, expected: os.stat_result, tag: str) -> str:
     while True:
         claim_name = f"{LOCK_NAME}.{tag}-{uuid.uuid4().hex}"
-        if _entry_metadata(
-            locks_fd, claim_name, f"{tag} claim", missing_ok=True
-        ) is None:
+        if (
+            _entry_metadata(locks_fd, claim_name, f"{tag} claim", missing_ok=True)
+            is None
+        ):
             break
     if not _entry_matches(locks_fd, LOCK_NAME, expected):
         raise LockError(f"workspace mutation lock changed before {tag} claim")
@@ -270,7 +275,9 @@ def _claim_lock(
             dst_dir_fd=locks_fd,
         )
     except OSError as exc:
-        raise LockError(f"workspace mutation lock cannot be claimed for {tag}: {exc}") from exc
+        raise LockError(
+            f"workspace mutation lock cannot be claimed for {tag}: {exc}"
+        ) from exc
     if not _entry_matches(locks_fd, claim_name, expected):
         raise LockError(
             f"{tag} claim does not match opened lock; preserved: {claim_name}"
@@ -331,7 +338,9 @@ def _quarantine_stale_at(
             try:
                 os.unlink(OWNER_NAME, dir_fd=lock_fd)
             except OSError as exc:
-                raise LockError(f"quarantined lock owner cannot be removed: {exc}") from exc
+                raise LockError(
+                    f"quarantined lock owner cannot be removed: {exc}"
+                ) from exc
         if not _entry_matches(locks_fd, stale_name, lock_metadata):
             raise LockError("stale lock changed before removal")
         try:
@@ -425,12 +434,7 @@ def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
                 "root": str(root),
             }
             try:
-                flags = (
-                    os.O_WRONLY
-                    | os.O_CREAT
-                    | os.O_EXCL
-                    | _no_follow_flag()
-                )
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _no_follow_flag()
                 owner_fd = os.open(OWNER_NAME, flags, 0o600, dir_fd=lock_fd)
                 with os.fdopen(owner_fd, "w", encoding="utf-8") as handle:
                     json.dump(owner, handle, sort_keys=True)
@@ -483,31 +487,28 @@ def release(lease: Lease) -> None:
             or not _entry_matches(lock_fd, OWNER_NAME, owner_metadata)
         ):
             raise LockError("workspace mutation lock changed before release")
-        if (
-            not _entry_matches(root_fd, LOCKS_NAME, locks_metadata)
-            or not _entry_matches(locks_fd, LOCK_NAME, lock_metadata)
-        ):
+        if not _entry_matches(
+            root_fd, LOCKS_NAME, locks_metadata
+        ) or not _entry_matches(locks_fd, LOCK_NAME, lock_metadata):
             raise LockError("workspace mutation lock changed before release claim")
-        claim_name = _claim_lock(
-            locks_fd, lock_metadata, f"release-{lease.nonce}"
-        )
+        claim_name = _claim_lock(locks_fd, lock_metadata, f"release-{lease.nonce}")
         try:
             os.unlink(OWNER_NAME, dir_fd=lock_fd)
         except OSError as exc:
-            raise LockError(f"workspace mutation lock owner cannot be removed: {exc}") from exc
+            raise LockError(
+                f"workspace mutation lock owner cannot be removed: {exc}"
+            ) from exc
         if not _entry_matches(locks_fd, claim_name, lock_metadata):
             raise LockError("workspace mutation lock claim changed during release")
         try:
             os.rmdir(claim_name, dir_fd=locks_fd)
         except OSError as exc:
-            raise LockError(f"workspace mutation lock cannot be released: {exc}") from exc
-        if (
-            _entry_metadata(
-                locks_fd, claim_name, "workspace mutation lock claim", missing_ok=True
-            )
-            is not None
-            or not _entry_matches(root_fd, LOCKS_NAME, locks_metadata)
-        ):
+            raise LockError(
+                f"workspace mutation lock cannot be released: {exc}"
+            ) from exc
+        if _entry_metadata(
+            locks_fd, claim_name, "workspace mutation lock claim", missing_ok=True
+        ) is not None or not _entry_matches(root_fd, LOCKS_NAME, locks_metadata):
             raise LockError("workspace mutation lock path changed after release")
     finally:
         if lock_fd is not None:

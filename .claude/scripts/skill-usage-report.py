@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-
 USE_DEDUPE = timedelta(seconds=60)
 
 
@@ -30,7 +29,9 @@ class CatalogEntry:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument(
+        "--root", type=Path, default=Path(__file__).resolve().parents[2]
+    )
     parser.add_argument("--jsonl", type=Path)
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
     parser.add_argument("--window", type=int, default=60)
@@ -79,9 +80,13 @@ def read_events(path: Path) -> tuple[list[dict[str, object]], int]:
     return sorted(events, key=lambda item: item["dt"]), malformed
 
 
-def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, dict[str, object]]:
+def aggregate(
+    events: list[dict[str, object]], report_date: date
+) -> dict[str, dict[str, object]]:
     uses: defaultdict[str, list[datetime]] = defaultdict(list)
-    outcomes: defaultdict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "failure": 0})
+    outcomes: defaultdict[str, dict[str, int]] = defaultdict(
+        lambda: {"success": 0, "failure": 0}
+    )
     prompt_times: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
     legacy_times: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
     end = datetime.combine(report_date, time.max).astimezone()
@@ -111,8 +116,13 @@ def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, d
             continue
 
         if event_type in ("tool_succeeded", "tool_failed"):
-            outcomes[skill]["success" if event_type == "tool_succeeded" else "failure"] += 1
-            if any(timedelta(0) <= timestamp - prior <= USE_DEDUPE for prior in prompt_times[key]):
+            outcomes[skill][
+                "success" if event_type == "tool_succeeded" else "failure"
+            ] += 1
+            if any(
+                timedelta(0) <= timestamp - prior <= USE_DEDUPE
+                for prior in prompt_times[key]
+            ):
                 continue
             uses[skill].append(timestamp)
             continue
@@ -124,7 +134,10 @@ def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, d
 
         # Legacy records carry no event_type, and one invocation could emit up to
         # three of them, so they still dedupe against each other.
-        if any(timedelta(0) <= timestamp - prior <= USE_DEDUPE for prior in legacy_times[key]):
+        if any(
+            timedelta(0) <= timestamp - prior <= USE_DEDUPE
+            for prior in legacy_times[key]
+        ):
             continue
         legacy_times[key].append(timestamp)
         if source in ("prompt", "prompt-expansion"):
@@ -140,10 +153,18 @@ def aggregate(events: list[dict[str, object]], report_date: date) -> dict[str, d
         last = max(timestamps, default=None)
         result[skill] = {
             "total": len(timestamps),
-            "last_30d": sum(end - value <= timedelta(days=30) for value in timestamps if value <= end),
-            "last_7d": sum(end - value <= timedelta(days=7) for value in timestamps if value <= end),
+            "last_30d": sum(
+                end - value <= timedelta(days=30)
+                for value in timestamps
+                if value <= end
+            ),
+            "last_7d": sum(
+                end - value <= timedelta(days=7) for value in timestamps if value <= end
+            ),
             "last_used": last.date().isoformat() if last else "never",
-            "days_since_last": max(0, (report_date - last.date()).days) if last else None,
+            "days_since_last": max(0, (report_date - last.date()).days)
+            if last
+            else None,
             "tool_successes": successes,
             "tool_failures": failures,
             "tool_success_rate": successes / observed if observed else None,
@@ -162,7 +183,9 @@ def catalog(root: Path) -> dict[str, CatalogEntry]:
         for path in sorted(base.glob("*.md")):
             name = f"{prefix}{path.stem}"
             text = path.read_text(encoding="utf-8", errors="replace")
-            entries[name] = CatalogEntry(name, source, path, len(text.encode()), len(text.splitlines()))
+            entries[name] = CatalogEntry(
+                name, source, path, len(text.encode()), len(text.splitlines())
+            )
     return entries
 
 
@@ -233,8 +256,13 @@ def usage_table(rows: list[dict[str, object]]) -> list[str]:
     return lines
 
 
-def render(rows: list[dict[str, object]], report_date: date, window: int, malformed: int) -> str:
-    counts = {name: sum(row["tier"] == name for row in rows) for name in ("hot", "active", "cold", "inactive", "unused")}
+def render(
+    rows: list[dict[str, object]], report_date: date, window: int, malformed: int
+) -> str:
+    counts = {
+        name: sum(row["tier"] == name for row in rows)
+        for name in ("hot", "active", "cold", "inactive", "unused")
+    }
     used = sum(int(row["total"]) > 0 for row in rows)
     native = sum(row["source"] == "native" for row in rows)
     workspace = sum(row["source"] == "workspace" for row in rows)
@@ -259,7 +287,11 @@ def render(rows: list[dict[str, object]], report_date: date, window: int, malfor
         lines.extend(["", f"## {heading}", ""])
         lines.extend(usage_table(group) if group else ["None."])
 
-    hotspots = sorted(rows, key=lambda row: (int(row["weighted_tokens"]), int(row["bytes"])), reverse=True)
+    hotspots = sorted(
+        rows,
+        key=lambda row: (int(row["weighted_tokens"]), int(row["bytes"])),
+        reverse=True,
+    )
     lines.extend(
         [
             "",
@@ -281,8 +313,14 @@ def render(rows: list[dict[str, object]], report_date: date, window: int, malfor
     if not candidates:
         lines.append("None.")
     for row in candidates:
-        reason = "unused" if row["tier"] == "unused" else f"last used {row['days_since_last']} days ago"
-        lines.append(f"- {row['skill']} - {reason}; validate independent value before removal")
+        reason = (
+            "unused"
+            if row["tier"] == "unused"
+            else f"last used {row['days_since_last']} days ago"
+        )
+        lines.append(
+            f"- {row['skill']} - {reason}; validate independent value before removal"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -293,27 +331,42 @@ def main() -> int:
     root = args.root.resolve()
     jsonl = (args.jsonl or root / "workspace" / "stats" / "skill-usage.jsonl").resolve()
     if not jsonl.is_file():
-        print(json.dumps({"ok": False, "reason": "No skill usage data", "jsonl": str(jsonl)}))
+        print(
+            json.dumps(
+                {"ok": False, "reason": "No skill usage data", "jsonl": str(jsonl)}
+            )
+        )
         return 0
 
     events, malformed = read_events(jsonl)
     rows = merged_rows(aggregate(events, args.date), catalog(root), args.window)
     report = render(rows, args.date, args.window, malformed)
-    output = (args.output or root / "workspace" / "stats" / f"skill-usage-{args.date.isoformat()}.md").resolve()
+    output = (
+        args.output
+        or root / "workspace" / "stats" / f"skill-usage-{args.date.isoformat()}.md"
+    ).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(report, encoding="utf-8")
     if args.print_report:
         print(report, end="")
 
-    ordered = sorted(rows, key=lambda row: (int(row["total"]), int(row["last_7d"])), reverse=True)
-    counts = {name: sum(row["tier"] == name for row in rows) for name in ("hot", "active", "cold", "inactive", "unused")}
+    ordered = sorted(
+        rows, key=lambda row: (int(row["total"]), int(row["last_7d"])), reverse=True
+    )
+    counts = {
+        name: sum(row["tier"] == name for row in rows)
+        for name in ("hot", "active", "cold", "inactive", "unused")
+    }
     print(
         json.dumps(
             {
                 "ok": True,
                 "output": str(output),
                 "counts": counts,
-                "top": [{"skill": row["skill"], "total": row["total"]} for row in ordered[: args.top]],
+                "top": [
+                    {"skill": row["skill"], "total": row["total"]}
+                    for row in ordered[: args.top]
+                ],
                 "malformed": malformed,
             },
             sort_keys=True,

@@ -16,9 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import sha256_file  # noqa: E402
-from workspace_lock import LockError, held  # noqa: E402
-
+from nase_fs import sha256_file
+from workspace_lock import LockError, held
 
 ALLOWED_DIRS = (
     "workspace/kb",
@@ -42,9 +41,7 @@ ALLOWED_FILES = (
     "workspace/communication-style.md",
     "workspace/confluence-publications.jsonl",
 )
-DISALLOWED_DIRS = (
-    "workspace/tmp",
-)
+DISALLOWED_DIRS = ("workspace/tmp",)
 
 
 class GuardError(Exception):
@@ -120,7 +117,12 @@ def validate_staged(root: Path, value: str) -> Path:
 
 def file_state(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {"exists": False, "mtime_ns": "missing", "mode": "missing", "sha256": "missing"}
+        return {
+            "exists": False,
+            "mtime_ns": "missing",
+            "mode": "missing",
+            "sha256": "missing",
+        }
     if not path.is_file():
         die(f"target is not a regular file: {path}")
     stat = path.stat()
@@ -193,7 +195,9 @@ def cmd_diff(args: argparse.Namespace) -> None:
     sys.stdout.writelines(diff)
 
 
-def states_match(state: dict[str, object], expected_mtime_ns: str, expected_sha256: str) -> bool:
+def states_match(
+    state: dict[str, object], expected_mtime_ns: str, expected_sha256: str
+) -> bool:
     return state["mtime_ns"] == expected_mtime_ns and state["sha256"] == expected_sha256
 
 
@@ -256,7 +260,11 @@ def cmd_apply(args: argparse.Namespace) -> None:
             require_staged_sha(staged, args.expected_staged_sha256, root)
             shutil.copyfile(staged, tmp_target)
             current = file_state(target)
-            mode = int(str(current["mode"]), 8) if current["exists"] else staged.stat().st_mode & 0o7777
+            mode = (
+                int(str(current["mode"]), 8)
+                if current["exists"]
+                else staged.stat().st_mode & 0o7777
+            )
             os.chmod(tmp_target, mode)
             fsync_file(tmp_target)
             if sha256_file(tmp_target) != args.expected_staged_sha256:
@@ -266,14 +274,18 @@ def cmd_apply(args: argparse.Namespace) -> None:
                 os.rename(target, backup)
                 claimed = True
                 claimed_state = file_state(backup)
-                if not states_match(claimed_state, args.expected_mtime_ns, args.expected_sha256):
+                if not states_match(
+                    claimed_state, args.expected_mtime_ns, args.expected_sha256
+                ):
                     note = restore_backup()
                     die(
                         "Target changed while drafting; "
                         f"staged file preserved at {relpath(staged, root)}{note}",
                         code=3,
                     )
-            elif not states_match(current, args.expected_mtime_ns, args.expected_sha256):
+            elif not states_match(
+                current, args.expected_mtime_ns, args.expected_sha256
+            ):
                 die(
                     "Target changed while drafting; "
                     f"staged file preserved at {relpath(staged, root)}",
@@ -337,8 +349,7 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
     current = file_state(source)
     if not current["exists"]:
         die(
-            "Source does not exist; "
-            f"staged file preserved at {relpath(staged, root)}",
+            f"Source does not exist; staged file preserved at {relpath(staged, root)}",
             code=3,
         )
     if not states_match(current, args.expected_mtime_ns, args.expected_sha256):
@@ -358,8 +369,12 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
     nonce = f"{os.getpid()}-{time.time_ns()}"
     tmp_destination = destination.parent / f".{destination.name}.tmp-{nonce}"
     backup_source = source.parent / f".{source.name}.move-backup-{nonce}"
-    recovery_source = root / "workspace" / "tmp" / f"move-recovery-{nonce}{source.suffix}"
-    rollback_path = root / "workspace" / "tmp" / f"move-rollback-{nonce}{destination.suffix}"
+    recovery_source = (
+        root / "workspace" / "tmp" / f"move-recovery-{nonce}{source.suffix}"
+    )
+    rollback_path = (
+        root / "workspace" / "tmp" / f"move-rollback-{nonce}{destination.suffix}"
+    )
     destination_created = False
     destination_identity: tuple[int, int] | None = None
     source_moved = False
@@ -369,7 +384,9 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
     staged_sha256 = sha256_file(staged)
     source_mode = int(str(current["mode"]), 8)
     raw_preserve_mtime_ns = getattr(args, "preserve_mtime_ns", None)
-    preserve_mtime_ns = None if raw_preserve_mtime_ns is None else int(raw_preserve_mtime_ns)
+    preserve_mtime_ns = (
+        None if raw_preserve_mtime_ns is None else int(raw_preserve_mtime_ns)
+    )
 
     def path_is_created_destination(path: Path) -> bool:
         if not destination_created or destination_identity is None:
@@ -439,8 +456,12 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
                 "; rolled-back destination preserved at "
                 f"{relpath(displaced_destination, root)}"
             )
-        elif destination_created and not destination_rolled_back and destination.exists():
-            destination_note = f"; destination preserved at {relpath(destination, root)}"
+        elif (
+            destination_created and not destination_rolled_back and destination.exists()
+        ):
+            destination_note = (
+                f"; destination preserved at {relpath(destination, root)}"
+            )
         raise GuardError(
             f"{message}; staged file preserved at {relpath(staged, root)}"
             f"{recovery_note}{destination_note}",
@@ -512,7 +533,9 @@ def cmd_apply_move_unlocked(args: argparse.Namespace) -> dict[str, object]:
             tmp_destination.unlink()
         if (committed or (restored and not preserve_backup)) and backup_source.exists():
             backup_source.unlink()
-        if (committed or (restored and not preserve_backup)) and recovery_source.exists():
+        if (
+            committed or (restored and not preserve_backup)
+        ) and recovery_source.exists():
             recovery_source.unlink()
 
     return {
@@ -546,7 +569,10 @@ def cmd_move_existing(args: argparse.Namespace) -> None:
             try:
                 source_mode = lexical_source.lstat().st_mode
             except OSError as exc:
-                die(f"Source cannot be inspected: {relpath(lexical_source, root)}: {exc}", code=3)
+                die(
+                    f"Source cannot be inspected: {relpath(lexical_source, root)}: {exc}",
+                    code=3,
+                )
             if (
                 lexical_source != source
                 or not stat.S_ISREG(source_mode)
@@ -608,13 +634,17 @@ def build_parser() -> argparse.ArgumentParser:
     stage.add_argument("--skill", required=True)
     stage.set_defaults(func=cmd_stage)
 
-    diff = sub.add_parser("diff", help="Print a unified diff from target to staged file.")
+    diff = sub.add_parser(
+        "diff", help="Print a unified diff from target to staged file."
+    )
     diff.add_argument("--root", default=None)
     diff.add_argument("--target", required=True)
     diff.add_argument("--staged", required=True)
     diff.set_defaults(func=cmd_diff)
 
-    apply = sub.add_parser("apply", help="Apply a staged file if target metadata still matches.")
+    apply = sub.add_parser(
+        "apply", help="Apply a staged file if target metadata still matches."
+    )
     apply.add_argument("--root", default=None)
     apply.add_argument("--target", required=True)
     apply.add_argument("--staged", required=True)

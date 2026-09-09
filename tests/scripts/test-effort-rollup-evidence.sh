@@ -682,6 +682,36 @@ assert data["coverage"]["status"] == "partial"
 assert data["totals"]["merged_delivery_prs_in_month"] == 2
 PY
 
+assert_cmd "PR views are fetched concurrently" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+import threading
+
+spec = importlib.util.spec_from_file_location("effort_rollup_evidence", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+# `CommandResult` is a dataclass, and `dataclass()` resolves its annotations through
+# `sys.modules`, so the module has to be registered before it executes.
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+# `gh pr view` per PR is the whole runtime of a wide month, and the views are
+# independent. A barrier asserts the overlap without timing: every call must be in
+# flight before any returns, so a serial fetch deadlocks and trips the timeout.
+plan = {f"example/service#{number}": ["gh", "pr", "view", str(number)] for number in (1, 2, 3)}
+barrier = threading.Barrier(len(plan), timeout=10)
+
+
+def fake_run_json(args):
+    barrier.wait()
+    return module.CommandResult("complete", {"number": int(args[3])}, b"{}", 1, None)
+
+
+module.run_json = fake_run_json
+outcomes = module.fetch_concurrently(plan)
+assert sorted(outcomes) == sorted(plan)
+assert outcomes["example/service#2"].data == {"number": 2}
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\neffort-rollup-evidence tests passed.\n'
   exit 0

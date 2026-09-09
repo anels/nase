@@ -14,10 +14,13 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from frontmatter_scalar import canonical_bool, extract_frontmatter_scalar, normalize_scalar  # noqa: E402
-from nase_git import resolve_root  # noqa: E402
-from nase_time import parse_ts  # noqa: E402
-
+from frontmatter_scalar import (
+    canonical_bool,
+    extract_frontmatter_scalar,
+    normalize_scalar,
+)
+from nase_git import resolve_root
+from nase_time import parse_ts
 
 LOG_NAME_RE = re.compile(r"^(20\d\d-\d\d-\d\d)\.md$")
 # A session entry is `- HH:MM | summary`. The skill tag (`- HH:MM | fsd: ...`) is
@@ -30,17 +33,19 @@ CANONICAL_SESSION_RE = re.compile(r"^- \d{2}:\d{2} \| \S.*")
 # above them, not entries in their own right. Counting them as entries produced 26
 # false positives in August alone.
 SESSION_DETAIL_RE = re.compile(r"^- \*\*[^*]+\*\*:")
-PLACEHOLDER_RE = re.compile(r"\b(FILL_IN|TBD|TO_BE_FILLED|FIXME_PLACEHOLDER)\b", re.I)
-REFRESH_RE = re.compile(r"^###\s+20\d\d-\d\d-\d\d\s+[—-]\s+refresh\b", re.I)
+PLACEHOLDER_RE = re.compile(
+    r"\b(FILL_IN|TBD|TO_BE_FILLED|FIXME_PLACEHOLDER)\b", re.IGNORECASE
+)
+REFRESH_RE = re.compile(r"^###\s+20\d\d-\d\d-\d\d\s+[—-]\s+refresh\b", re.IGNORECASE)
 HEARTBEAT_RE = re.compile(
     r"\b(no new commits since|head remains|head verified|commit-count|ownership-count)\b",
-    re.I,
+    re.IGNORECASE,
 )
 STATUS_HEARTBEAT_RE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:\*\*)?(?:incremental scan|refresh(?: status)?|"
     r"repository status|scan status|source status|content hash)\b.*\b"
     r"(?:unchanged|\d+\s+commits?\s+since|no new commits)\b",
-    re.I,
+    re.IGNORECASE,
 )
 # Measured over 2,584 live session entries: median 281, p75 497, p99 2,435, max 4,083.
 # The old 500 sat at p75, so it flagged a quarter of every entry ever written and never
@@ -53,7 +58,9 @@ EFFORT_REF_RE = re.compile(r"workspace/efforts/[A-Za-z0-9_./-]+\.md")
 TODO_CLOSED_RE = re.compile(r"^\s*-\s*\[[xX]\]")
 
 
-def finding(category: str, path: pathlib.Path | str, message: str, line: int | None = None) -> dict[str, Any]:
+def finding(
+    category: str, path: pathlib.Path | str, message: str, line: int | None = None
+) -> dict[str, Any]:
     item: dict[str, Any] = {
         "category": category,
         "path": pathlib.PurePath(path).as_posix(),
@@ -105,9 +112,21 @@ def scan_daily_logs(root: pathlib.Path, days: int) -> list[dict[str, Any]]:
         rel = path.relative_to(root)
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         if not lines or not lines[0].startswith("# Work Log"):
-            issues.append(finding("daily_log_missing_header", rel, "Daily log must start with '# Work Log'."))
+            issues.append(
+                finding(
+                    "daily_log_missing_header",
+                    rel,
+                    "Daily log must start with '# Work Log'.",
+                )
+            )
         if not any(line.strip() == "## Sessions" for line in lines):
-            issues.append(finding("daily_log_missing_sessions", rel, "Daily log must contain a '## Sessions' section."))
+            issues.append(
+                finding(
+                    "daily_log_missing_sessions",
+                    rel,
+                    "Daily log must contain a '## Sessions' section.",
+                )
+            )
 
         in_sessions = False
         for idx, line in enumerate(lines, 1):
@@ -150,13 +169,36 @@ def scan_kb(root: pathlib.Path) -> list[dict[str, Any]]:
         if path.name == ".domain-map.md":
             continue
         rel = path.relative_to(root)
-        for idx, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        for idx, line in enumerate(
+            path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+        ):
             if PLACEHOLDER_RE.search(line):
-                issues.append(finding("kb_placeholder", rel, "Unresolved placeholder in KB content.", idx))
+                issues.append(
+                    finding(
+                        "kb_placeholder",
+                        rel,
+                        "Unresolved placeholder in KB content.",
+                        idx,
+                    )
+                )
             if REFRESH_RE.match(line):
-                issues.append(finding("kb_refresh_block", rel, "Low-value dated refresh block should be compacted.", idx))
+                issues.append(
+                    finding(
+                        "kb_refresh_block",
+                        rel,
+                        "Low-value dated refresh block should be compacted.",
+                        idx,
+                    )
+                )
             if HEARTBEAT_RE.search(line) or STATUS_HEARTBEAT_RE.search(line):
-                issues.append(finding("kb_heartbeat", rel, "Git-recoverable heartbeat fact should not be durable KB.", idx))
+                issues.append(
+                    finding(
+                        "kb_heartbeat",
+                        rel,
+                        "Git-recoverable heartbeat fact should not be durable KB.",
+                        idx,
+                    )
+                )
     return issues
 
 
@@ -165,7 +207,9 @@ def effort_status_vocabulary(root: pathlib.Path) -> tuple[set[str], set[str]]:
     if not path.is_file():
         return set(), set()
     text = path.read_text(encoding="utf-8", errors="replace")
-    section = re.search(r"^## Status Vocabulary\s*$\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    section = re.search(
+        r"^## Status Vocabulary\s*$\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL
+    )
     if not section:
         return set(), set()
     active, separator, done = section.group(1).partition("**Done**")
@@ -216,9 +260,12 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
             )
         )
     canonical = active_statuses | done_statuses
-    candidates = [(path, active_statuses, "active") for path in sorted(efforts.glob("*.md"))]
+    candidates = [
+        (path, active_statuses, "active") for path in sorted(efforts.glob("*.md"))
+    ]
     candidates.extend(
-        (path, done_statuses, "done") for path in sorted((efforts / "done").glob("*.md"))
+        (path, done_statuses, "done")
+        for path in sorted((efforts / "done").glob("*.md"))
     )
     candidates.extend(
         (path, done_statuses, "archive")
@@ -231,7 +278,11 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
         raw_status = extract_frontmatter_scalar(text, "status")[0]
         status = None if raw_status is None else normalize_scalar(raw_status)
         if status is None:
-            issues.append(finding("effort_missing_status", rel, "Effort frontmatter has no status."))
+            issues.append(
+                finding(
+                    "effort_missing_status", rel, "Effort frontmatter has no status."
+                )
+            )
         elif status not in canonical:
             issues.append(
                 finding(
@@ -253,7 +304,9 @@ def scan_efforts(root: pathlib.Path) -> list[dict[str, Any]]:
             scope = None if raw_scope is None else normalize_scalar(raw_scope)
             if scope is None:
                 issues.append(
-                    finding("effort_missing_scope", rel, "Effort frontmatter has no scope.")
+                    finding(
+                        "effort_missing_scope", rel, "Effort frontmatter has no scope."
+                    )
                 )
             elif scope not in canonical_scopes:
                 issues.append(
@@ -293,9 +346,18 @@ def scan_todo(root: pathlib.Path) -> list[dict[str, Any]]:
 
     issues: list[dict[str, Any]] = []
     rel = path.relative_to(root)
-    for idx, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+    for idx, line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+    ):
         if TODO_CLOSED_RE.match(line):
-            issues.append(finding("todo_closed_item", rel, "Closed item remains in the open-work queue.", idx))
+            issues.append(
+                finding(
+                    "todo_closed_item",
+                    rel,
+                    "Closed item remains in the open-work queue.",
+                    idx,
+                )
+            )
         for raw in EFFORT_REF_RE.findall(line):
             if not (root / raw).is_file():
                 issues.append(
@@ -387,7 +449,9 @@ def reject_json_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant: {value}")
 
 
-def scan_kb_usage(root: pathlib.Path, days: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def scan_kb_usage(
+    root: pathlib.Path, days: int
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     path = root / "workspace" / "stats" / "kb-usage.jsonl"
     if not path.is_file():
         return [], {"events": 0, "unknown": 0, "unknown_rate": 0.0, "malformed": 0}
@@ -400,7 +464,9 @@ def scan_kb_usage(root: pathlib.Path, days: int) -> tuple[list[dict[str, Any]], 
         if not line.strip():
             continue
         try:
-            payload = json.loads(line.decode("utf-8"), parse_constant=reject_json_constant)
+            payload = json.loads(
+                line.decode("utf-8"), parse_constant=reject_json_constant
+            )
         except (UnicodeDecodeError, ValueError, RecursionError):
             malformed += 1
             continue
@@ -433,7 +499,12 @@ def scan_kb_usage(root: pathlib.Path, days: int) -> tuple[list[dict[str, Any]], 
                 f"KB usage ledger contains {malformed} malformed nonblank record(s).",
             )
         )
-    return issues, {"events": total, "unknown": unknown, "unknown_rate": rate, "malformed": malformed}
+    return issues, {
+        "events": total,
+        "unknown": unknown,
+        "unknown_rate": rate,
+        "malformed": malformed,
+    }
 
 
 def stale_active_skill_files(root: pathlib.Path) -> int:
@@ -475,25 +546,36 @@ def build_report(root: pathlib.Path, days: int) -> dict[str, Any]:
         "days": days,
         "summary": {
             "total": len(findings),
-            "daily_log_findings": sum(count for cat, count in counts.items() if cat.startswith("daily_log_")),
-            "kb_findings": sum(count for cat, count in counts.items() if cat.startswith("kb_")),
+            "daily_log_findings": sum(
+                count for cat, count in counts.items() if cat.startswith("daily_log_")
+            ),
+            "kb_findings": sum(
+                count for cat, count in counts.items() if cat.startswith("kb_")
+            ),
             "kb_usage": usage_summary,
             "tmp": tmp_summary,
             "stale_active_skill_files": stale_active_skill_files(root),
             "categories": dict(sorted(counts.items())),
         },
-        "findings": sorted(findings, key=lambda item: (item["category"], item["path"], item.get("line", 0))),
+        "findings": sorted(
+            findings,
+            key=lambda item: (item["category"], item["path"], item.get("line", 0)),
+        ),
     }
 
 
 def print_text(report: dict[str, Any], limit: int = 20) -> None:
     summary = report["summary"]
-    print(f"Workspace quality scan: {summary['total']} finding(s), days={report['days']}")
+    print(
+        f"Workspace quality scan: {summary['total']} finding(s), days={report['days']}"
+    )
     print(f"- Daily log findings: {summary['daily_log_findings']}")
     print(f"- KB findings: {summary['kb_findings']}")
     usage = summary["kb_usage"]
     if usage["events"]:
-        print(f"- KB usage unknown: {usage['unknown']}/{usage['events']} ({usage['unknown_rate']:.0%})")
+        print(
+            f"- KB usage unknown: {usage['unknown']}/{usage['events']} ({usage['unknown_rate']:.0%})"
+        )
     print(f"- Stale active-skill context files: {summary['stale_active_skill_files']}")
     for item in report["findings"][:limit]:
         line = f":{item['line']}" if "line" in item else ""
@@ -507,9 +589,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--root", help="workspace root; defaults to NASE_ROOT, then the git top-level"
     )
-    parser.add_argument("--days", type=int, default=30, help="daily-log lookback window")
+    parser.add_argument(
+        "--days", type=int, default=30, help="daily-log lookback window"
+    )
     parser.add_argument("--json", action="store_true", help="emit JSON")
-    parser.add_argument("--strict", action="store_true", help="exit nonzero when findings exist")
+    parser.add_argument(
+        "--strict", action="store_true", help="exit nonzero when findings exist"
+    )
     args = parser.parse_args(argv)
 
     report = build_report(resolve_root(args.root), args.days)

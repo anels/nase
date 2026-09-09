@@ -14,9 +14,8 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from nase_git import resolve_root  # noqa: E402
-from nase_time import parse_ts  # noqa: E402
-
+from nase_git import resolve_root
+from nase_time import parse_ts
 
 KB_EXTENSIONS = {".md", ".sql"}
 VALID_ACCESS = {"read", "resolve", "search-result"}
@@ -45,7 +44,9 @@ def normalize_kb_file(value: str) -> str | None:
     return normalized
 
 
-def load_events(root: pathlib.Path, now: datetime, window: str) -> tuple[list[dict[str, Any]], int]:
+def load_events(
+    root: pathlib.Path, now: datetime, window: str
+) -> tuple[list[dict[str, Any]], int]:
     jsonl = root / "workspace" / "stats" / "kb-usage.jsonl"
     if not jsonl.exists():
         return [], 0
@@ -71,7 +72,12 @@ def load_events(root: pathlib.Path, now: datetime, window: str) -> tuple[list[di
         access = str(payload.get("access", ""))
         source = str(payload.get("source", ""))
         session = str(payload.get("session", "") or "unknown")
-        if ts is None or file_path is None or access not in VALID_ACCESS or source not in VALID_SOURCE:
+        if (
+            ts is None
+            or file_path is None
+            or access not in VALID_ACCESS
+            or source not in VALID_SOURCE
+        ):
             malformed += 1
             continue
         if cutoff is not None and ts < cutoff:
@@ -126,14 +132,18 @@ def table(headers: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
-def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
+def build_report(
+    root: pathlib.Path, args: argparse.Namespace
+) -> tuple[str, dict[str, Any]]:
     now = parse_now(args.now)
     events, malformed = load_events(root, now, args.window)
     mapped = load_mapped_files(root)
     accessed_files = {event["file"] for event in events}
     read_files = {event["file"] for event in events if event["access"] == "read"}
     surfaced_files = {
-        event["file"] for event in events if event["access"] in {"resolve", "search-result"}
+        event["file"]
+        for event in events
+        if event["access"] in {"resolve", "search-result"}
     }
     accessing_skills = {event["skill"] for event in events}
     unread_mapped = sorted(mapped - read_files)
@@ -151,7 +161,9 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
     top_n = int(args.top)
     top_files = sorted_counter(file_counts)[:top_n]
     top_skills = sorted_counter(skill_counts)[:top_n]
-    source_rows = sorted(source_counts.items(), key=lambda item: (item[0][0], item[0][1]))
+    source_rows = sorted(
+        source_counts.items(), key=lambda item: (item[0][0], item[0][1])
+    )
     report_date = now.date().isoformat()
     window_label = "all time" if args.window == "all" else f"last {args.window} days"
 
@@ -183,7 +195,13 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
         ]
         for file_path, count in top_files
     ]
-    lines.extend(["## Top KB Files by Access Event", *table(["File", "Events", "Skills", "Last accessed"], file_rows), ""])
+    lines.extend(
+        [
+            "## Top KB Files by Access Event",
+            *table(["File", "Events", "Skills", "Last accessed"], file_rows),
+            "",
+        ]
+    )
 
     skill_rows = [
         [
@@ -194,10 +212,24 @@ def build_report(root: pathlib.Path, args: argparse.Namespace) -> tuple[str, dic
         ]
         for skill, count in top_skills
     ]
-    lines.extend(["## Top Skills", *table(["Skill", "Events", "Files", "Last accessed"], skill_rows), ""])
+    lines.extend(
+        [
+            "## Top Skills",
+            *table(["Skill", "Events", "Files", "Last accessed"], skill_rows),
+            "",
+        ]
+    )
 
-    source_table_rows = [[access, source, str(count)] for (access, source), count in source_rows]
-    lines.extend(["## Access Source Breakdown", *table(["Access", "Source", "Events"], source_table_rows), ""])
+    source_table_rows = [
+        [access, source, str(count)] for (access, source), count in source_rows
+    ]
+    lines.extend(
+        [
+            "## Access Source Breakdown",
+            *table(["Access", "Source", "Events"], source_table_rows),
+            "",
+        ]
+    )
 
     lines.append("## Unread Mapped KB Files")
     if unread_mapped:
@@ -270,7 +302,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top", default=10, type=int)
     parser.add_argument("--output")
     parser.add_argument("--now", help="test-only current timestamp")
-    parser.add_argument("--verbose", action="store_true", help="print the full report to stdout")
+    parser.add_argument(
+        "--verbose", action="store_true", help="print the full report to stdout"
+    )
     return parser
 
 

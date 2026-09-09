@@ -13,8 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 RETAINED = 3
 INVALID = 2
@@ -45,7 +44,11 @@ def git(
     except nase_git.GitTimeout as exc:
         raise GitError(str(exc)) from exc
     if check and result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        detail = (
+            result.stderr.strip()
+            or result.stdout.strip()
+            or f"exit {result.returncode}"
+        )
         raise GitError(f"git {' '.join(args)}: {detail}")
     return result
 
@@ -56,7 +59,9 @@ def git_bytes(repo: Path, *args: str) -> bytes:
     except nase_git.GitTimeout as exc:
         raise GitError(str(exc)) from exc
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).decode(errors="backslashreplace").strip()
+        detail = (
+            (result.stderr or result.stdout).decode(errors="backslashreplace").strip()
+        )
         raise GitError(f"git {' '.join(args)}: {detail or f'exit {result.returncode}'}")
     return result.stdout
 
@@ -86,17 +91,23 @@ def normalized(path: str | Path) -> Path:
 
 
 def dirty_items(worktree: Path) -> list[str]:
-    items = [line for line in git(
-        worktree,
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=all",
-        "--ignored=matching",
-    ).stdout.splitlines() if line]
+    items = [
+        line
+        for line in git(
+            worktree,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignored=matching",
+        ).stdout.splitlines()
+        if line
+    ]
 
     submodule_status = git(worktree, "submodule", "status", "--recursive", check=False)
     if submodule_status.returncode != 0:
-        raise GitError(submodule_status.stderr.strip() or "could not inspect submodules")
+        raise GitError(
+            submodule_status.stderr.strip() or "could not inspect submodules"
+        )
     for line in submodule_status.stdout.splitlines():
         if line and line[0] in "-+U":
             items.append(f"submodule-state:{line}")
@@ -108,7 +119,7 @@ def dirty_items(worktree: Path) -> list[str]:
         "foreach",
         "--quiet",
         "--recursive",
-        'dirty=$(git status --porcelain=v1 --untracked-files=all --ignored=matching); '
+        "dirty=$(git status --porcelain=v1 --untracked-files=all --ignored=matching); "
         'if test -n "$dirty"; then printf "%s\\n" "$dirty" | sed "s#^#$displaypath:#"; exit 3; fi',
         check=False,
     )
@@ -170,7 +181,12 @@ def retained(message: str, items: list[str] | None = None) -> int:
 def remote_oid(repo: Path, remote_name: str, remote_ref: str) -> tuple[str | None, str]:
     try:
         result = git(
-            repo, "ls-remote", "--exit-code", "--", remote_name, remote_ref,
+            repo,
+            "ls-remote",
+            "--exit-code",
+            "--",
+            remote_name,
+            remote_ref,
             check=False,
             timeout=nase_git.GIT_NETWORK_TIMEOUT_SECONDS,
         )
@@ -203,7 +219,10 @@ def delete_safety_ref(repo: Path, safety_ref: str, expected: str) -> None:
     deleted = git(repo, "update-ref", "-d", safety_ref, expected, check=False)
     if deleted.returncode != 0:
         detail = deleted.stderr.strip() or f"could not delete safety ref {safety_ref}"
-        print(f"WARNING: {detail}; delete it with: git update-ref -d {safety_ref}", file=sys.stderr)
+        print(
+            f"WARNING: {detail}; delete it with: git update-ref -d {safety_ref}",
+            file=sys.stderr,
+        )
 
 
 def cleanup(args: argparse.Namespace) -> int:
@@ -217,14 +236,18 @@ def cleanup(args: argparse.Namespace) -> int:
         raise GitError("--expected-head must be a full 40- or 64-character OID")
 
     records = parse_worktrees(repo)
-    matches = [record for record in records if normalized(str(record["worktree"])) == worktree]
+    matches = [
+        record for record in records if normalized(str(record["worktree"])) == worktree
+    ]
     if len(matches) != 1:
         return retained(f"{worktree} is not exactly one registered worktree")
     if normalized(str(records[0]["worktree"])) == worktree:
         return retained(f"refusing to remove primary worktree {worktree}")
     record = matches[0]
     if "locked" in record:
-        return retained(f"worktree is locked: {record.get('locked') or 'no reason given'}")
+        return retained(
+            f"worktree is locked: {record.get('locked') or 'no reason given'}"
+        )
 
     for state in IN_PROGRESS:
         if git_path(worktree, state).exists():
@@ -242,8 +265,7 @@ def cleanup(args: argparse.Namespace) -> int:
     verified_remote, remote_error = remote_oid(repo, args.remote, args.remote_ref)
     if verified_remote is None:
         return retained(
-            f"could not verify {args.remote}/{args.remote_ref}: "
-            f"{remote_error}"
+            f"could not verify {args.remote}/{args.remote_ref}: {remote_error}"
         )
     if verified_remote != expected:
         return retained(
@@ -253,12 +275,19 @@ def cleanup(args: argparse.Namespace) -> int:
 
     dirty = dirty_items(worktree)
     if dirty:
-        return retained(f"worktree has tracked, untracked, ignored, or submodule changes: {worktree}", dirty)
+        return retained(
+            f"worktree has tracked, untracked, ignored, or submodule changes: {worktree}",
+            dirty,
+        )
 
     safety_ref = f"refs/nase/worktree-cleanup/{uuid.uuid4().hex}"
-    created = git(repo, "update-ref", safety_ref, expected, "0" * len(expected), check=False)
+    created = git(
+        repo, "update-ref", safety_ref, expected, "0" * len(expected), check=False
+    )
     if created.returncode != 0:
-        raise GitError(created.stderr.strip() or f"could not create safety ref {safety_ref}")
+        raise GitError(
+            created.stderr.strip() or f"could not create safety ref {safety_ref}"
+        )
 
     try:
         claimed = worktree.parent / f".{worktree.name}.nase-cleanup-{uuid.uuid4().hex}"
@@ -275,7 +304,9 @@ def cleanup(args: argparse.Namespace) -> int:
                 [f"registered-worktree:{claimed}", f"foreign-path:{worktree}"],
             )
 
-        claimed_head = git(claimed, "rev-parse", "--verify", "HEAD").stdout.strip().lower()
+        claimed_head = (
+            git(claimed, "rev-parse", "--verify", "HEAD").stdout.strip().lower()
+        )
         if claimed_head != expected:
             return retained(
                 f"claimed worktree HEAD changed to {claimed_head}",

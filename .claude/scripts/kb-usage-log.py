@@ -19,9 +19,8 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from nase_git import resolve_root  # noqa: E402
-from nase_time import parse_ts  # noqa: E402
-
+from nase_git import resolve_root
+from nase_time import parse_ts
 
 ALLOWED_ACCESS = {"read", "resolve", "search-result"}
 ALLOWED_SOURCE = {"read-hook", "kb-domain-resolve", "kb-search"}
@@ -180,7 +179,9 @@ def read_context(path: pathlib.Path, now: datetime) -> tuple[str, bool]:
     ts = parse_ts(str(payload.get("ts", "")))
     if ts is None or (now - ts).total_seconds() > CONTEXT_TTL_SECONDS:
         return "unknown", False
-    return normalize_skill(str(payload.get("skill", ""))), bool(payload.get("sessionless", True))
+    return normalize_skill(str(payload.get("skill", ""))), bool(
+        payload.get("sessionless", True)
+    )
 
 
 def active_skill_from_path(path: pathlib.Path, now: datetime) -> str:
@@ -222,7 +223,10 @@ def recent_duplicate(jsonl: pathlib.Path, event: dict[str, Any], now: datetime) 
             existing = json.loads(line)
         except Exception:
             continue
-        if not all(existing.get(k) == event.get(k) for k in ("skill", "file", "access", "source", "session")):
+        if not all(
+            existing.get(k) == event.get(k)
+            for k in ("skill", "file", "access", "source", "session")
+        ):
             continue
         ts = parse_ts(str(existing.get("ts", "")))
         if ts is None:
@@ -275,7 +279,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Record KB usage telemetry")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    activate_parser = subparsers.add_parser("activate", help="store active skill context for this session")
+    activate_parser = subparsers.add_parser(
+        "activate", help="store active skill context for this session"
+    )
     activate_parser.add_argument("--skill", required=True)
     activate_parser.add_argument("--source", default="unknown")
     activate_parser.add_argument("--session")
@@ -284,8 +290,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     record_parser = subparsers.add_parser("record", help="append one KB usage event")
     record_parser.add_argument("--file", required=True)
-    record_parser.add_argument("--access", required=True, choices=sorted(ALLOWED_ACCESS))
-    record_parser.add_argument("--source", required=True, choices=sorted(ALLOWED_SOURCE))
+    record_parser.add_argument(
+        "--access", required=True, choices=sorted(ALLOWED_ACCESS)
+    )
+    record_parser.add_argument(
+        "--source", required=True, choices=sorted(ALLOWED_SOURCE)
+    )
     record_parser.add_argument("--skill")
     record_parser.add_argument("--session")
     record_parser.add_argument("--root")

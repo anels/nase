@@ -14,8 +14,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 ASSERTION_TYPES = {
     "must_contain_regex",
@@ -66,10 +65,14 @@ def load_eval_set(path: str) -> dict[str, Any]:
         routing_by_skill: dict[str, set[str]] = {}
         for case in routing_cases:
             validate_routing_case(case, seen_ids, routeable_skills)
-            routing_by_skill.setdefault(str(case["skill"]), set()).add(str(case["expect"]))
+            routing_by_skill.setdefault(str(case["skill"]), set()).add(
+                str(case["expect"])
+            )
         for skill in sorted(routeable_skills):
             if routing_by_skill.get(skill) != ROUTING_EXPECTATIONS:
-                raise EvalError(f"{skill}: routing cases need invoke and not_invoke coverage")
+                raise EvalError(
+                    f"{skill}: routing cases need invoke and not_invoke coverage"
+                )
 
     runtime_cases = data.get("runtime_cases")
     if runtime_cases is not None:
@@ -110,7 +113,9 @@ def validate_routing_case(
     if missing:
         raise EvalError(f"routing case missing keys: {', '.join(sorted(missing))}")
     if extra:
-        raise EvalError(f"routing case has unsupported keys: {', '.join(sorted(extra))}")
+        raise EvalError(
+            f"routing case has unsupported keys: {', '.join(sorted(extra))}"
+        )
     case_id = str(case["id"])
     if case_id in seen_ids:
         raise EvalError(f"duplicate case id: {case_id}")
@@ -122,7 +127,9 @@ def validate_routing_case(
     if expectation not in ROUTING_EXPECTATIONS:
         raise EvalError(f"{case_id}: invalid routing expectation {expectation!r}")
     suffix = skill.removeprefix("nase:").replace(":", "-")
-    expected_id = f"routing-{suffix}-{'positive' if expectation == 'invoke' else 'near-miss'}"
+    expected_id = (
+        f"routing-{suffix}-{'positive' if expectation == 'invoke' else 'near-miss'}"
+    )
     if case_id != expected_id:
         raise EvalError(f"{case_id}: expected routing id {expected_id}")
     prompt = case["prompt"]
@@ -153,20 +160,34 @@ def safe_relative_path(value: Any, label: str) -> Path:
 def command_path(repo_root: Path, skill: str) -> Path:
     suffix = skill.removeprefix("nase:")
     if suffix.startswith("workspace:"):
-        return repo_root / ".claude" / "commands" / "nase" / "workspace" / f"{suffix.removeprefix('workspace:')}.md"
+        return (
+            repo_root
+            / ".claude"
+            / "commands"
+            / "nase"
+            / "workspace"
+            / f"{suffix.removeprefix('workspace:')}.md"
+        )
     return repo_root / ".claude" / "commands" / "nase" / f"{suffix}.md"
 
 
 def source_paths(repo_root: Path) -> list[Path]:
     try:
         completed = nase_git.run(
-            "ls-files", "-t", "--cached", "--deleted", "--others",
-            "--exclude-standard", "-z",
+            "ls-files",
+            "-t",
+            "--cached",
+            "--deleted",
+            "--others",
+            "--exclude-standard",
+            "-z",
             repo=repo_root,
             check=True,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise EvalError("cannot enumerate repository sources for canary isolation") from exc
+        raise EvalError(
+            "cannot enumerate repository sources for canary isolation"
+        ) from exc
     paths: list[Path] = []
     deleted: set[Path] = set()
     for item in completed.stdout.split(b"\0"):
@@ -175,7 +196,9 @@ def source_paths(repo_root: Path) -> list[Path]:
         try:
             tag, value = item.split(b" ", 1)
         except ValueError as exc:
-            raise EvalError("cannot parse repository sources for canary isolation") from exc
+            raise EvalError(
+                "cannot parse repository sources for canary isolation"
+            ) from exc
         path = repo_root / os.fsdecode(value)
         if tag == b"R":
             deleted.add(path)
@@ -207,7 +230,9 @@ def validate_runtime_case(
     if missing:
         raise EvalError(f"runtime case missing keys: {', '.join(sorted(missing))}")
     if extra:
-        raise EvalError(f"runtime case has unsupported keys: {', '.join(sorted(extra))}")
+        raise EvalError(
+            f"runtime case has unsupported keys: {', '.join(sorted(extra))}"
+        )
     case_id = str(case["id"])
     if case_id in seen_ids:
         raise EvalError(f"duplicate case id: {case_id}")
@@ -256,14 +281,20 @@ def validate_runtime_case(
             raise EvalError(f"{case_id}: required read does not name a fixture file")
 
     canaries = case["required_canaries"]
-    if not isinstance(canaries, list) or not canaries or any(not isinstance(item, str) for item in canaries):
+    if (
+        not isinstance(canaries, list)
+        or not canaries
+        or any(not isinstance(item, str) for item in canaries)
+    ):
         raise EvalError(f"{case_id}: required_canaries must be a unique non-empty list")
     if len(set(canaries)) != len(canaries):
         raise EvalError(f"{case_id}: required_canaries must be a unique non-empty list")
     fixture_bytes = b"\n".join(path.read_bytes() for path in files)
     repo_root = Path(__file__).resolve().parents[2]
     excluded = {eval_source.resolve(), *(path.resolve() for path in files)}
-    other_sources = [path for path in source_paths(repo_root) if path.resolve() not in excluded]
+    other_sources = [
+        path for path in source_paths(repo_root) if path.resolve() not in excluded
+    ]
     for canary in canaries:
         if not 8 <= len(canary) <= 128:
             raise EvalError(f"{case_id}: invalid canary")
@@ -277,7 +308,9 @@ def validate_runtime_case(
                 if encoded in path.read_bytes():
                     raise EvalError(f"{case_id}: canary occurs outside its fixture")
             except OSError as exc:
-                raise EvalError(f"{case_id}: cannot prove canary isolation for {path.name}") from exc
+                raise EvalError(
+                    f"{case_id}: cannot prove canary isolation for {path.name}"
+                ) from exc
 
 
 def validate_assertion(case_id: str, assertion: dict[str, Any]) -> None:
@@ -329,7 +362,9 @@ def score_assertion(assertion: dict[str, Any], text: str) -> dict[str, Any]:
     result = {"name": assertion["name"], "type": assertion_type, "passed": False}
 
     if assertion_type == "must_contain_regex":
-        result["passed"] = re.search(assertion["pattern"], text, re.MULTILINE) is not None
+        result["passed"] = (
+            re.search(assertion["pattern"], text, re.MULTILINE) is not None
+        )
     elif assertion_type == "must_not_contain_regex":
         result["passed"] = re.search(assertion["pattern"], text, re.MULTILINE) is None
     elif assertion_type == "ordered_regex":

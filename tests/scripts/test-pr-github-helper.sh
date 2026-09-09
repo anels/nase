@@ -463,6 +463,64 @@ assert [item["id"] for item in data["reviewSubmissions"]] == [601]
 assert data["issueComments"][0]["body"] == "Quality Gate failed"
 PY
 
+assert_cmd "review-context issues its independent reads concurrently" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import json
+import sys
+import threading
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+# Four endpoint reads, none of which needs another's answer. A barrier is the
+# order-independent way to assert overlap: every call must be in flight before any
+# returns, so a serial implementation deadlocks and trips the timeout instead of
+# quietly costing four round trips.
+barrier = threading.Barrier(4, timeout=10)
+metadata = {
+    "number": 42,
+    "title": "t",
+    "url": "https://github.com/acme/widgets/pull/42",
+    "body": "",
+    "state": "OPEN",
+    "isDraft": False,
+    "headRefOid": "deadbeef",
+    "additions": 1,
+    "deletions": 1,
+    "changedFiles": 1,
+    "files": [{"path": "src/a.ts", "additions": 1, "deletions": 0, "changeType": "MODIFIED"}],
+    "baseRefName": "main",
+}
+
+
+def fake_run_gh(args):
+    barrier.wait()
+    return json.dumps(metadata) if args[:2] == ["gh", "pr"] else "[]"
+
+
+module.run_gh = fake_run_gh
+context = module.review_context(module.normalized_pr("acme", "widgets", 42), 200, 0)
+assert context["metadata"]["number"] == 42
+assert context["reviewComments"] == []
+assert context["reviews"] == []
+assert context["issueComments"] == []
+PY
+
+assert_cmd "run_gh_all keeps a single read serial" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+module.run_gh = lambda args: " ".join(args)
+assert module.run_gh_all({"only": ["gh", "pr", "view"]}) == {"only": "gh pr view"}
+PY
+
 assert_cmd "is_bot_login classifies configured and suffix bots but not humans" \
   env NASE_BOT_LOGINS="severity-reviewer, Another-Reviewer" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
 import importlib.util

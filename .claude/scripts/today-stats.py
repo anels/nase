@@ -21,6 +21,7 @@ Output (stdout, key=value lines):
 Exit 0 always — missing inputs degrade to zeros so the caller can render
 "no data yet" without failing the wrap-up.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,14 +65,16 @@ def collect_skill_usage(root: Path, today: str) -> dict:
                 today_seen = True
                 skill = d.get("skill")
                 if skill:
-                    records.append({
-                        "skill": skill,
-                        "ts": ts,
-                        "source": d.get("source", ""),
-                        "event_type": d.get("event_type", ""),
-                        "session_id": d.get("session_id", ""),
-                        "dt": parse_event_ts(ts),
-                    })
+                    records.append(
+                        {
+                            "skill": skill,
+                            "ts": ts,
+                            "source": d.get("source", ""),
+                            "event_type": d.get("event_type", ""),
+                            "session_id": d.get("session_id", ""),
+                            "dt": parse_event_ts(ts),
+                        }
+                    )
             elif today_seen and ts > today:
                 break
     counts: dict[str, int] = {}
@@ -134,10 +137,16 @@ def main() -> int:
         description="Emit today's skill-usage counts as key=value lines.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--date", default=date.today().isoformat(),
-                        help="ISO date to query (default: today)")
-    parser.add_argument("--root", default=None,
-                        help="nase repo root (default: derived from script location via __file__)")
+    parser.add_argument(
+        "--date",
+        default=date.today().isoformat(),
+        help="ISO date to query (default: today)",
+    )
+    parser.add_argument(
+        "--root",
+        default=None,
+        help="nase repo root (default: derived from script location via __file__)",
+    )
     args = parser.parse_args()
 
     root = Path(args.root) if args.root else NASE_ROOT

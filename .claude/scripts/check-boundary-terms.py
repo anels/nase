@@ -25,8 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-
+import nase_git
 
 TERMS_FILE = Path("workspace/boundary-terms.txt")
 
@@ -45,8 +44,20 @@ ALLOWLIST: dict[str, str] = {
 
 # Binary and font extensions carry no reviewable prose.
 SKIP_SUFFIXES = {
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf",
-    ".zip", ".7z", ".gz", ".woff", ".woff2", ".ttf", ".otf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".7z",
+    ".gz",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
 }
 
 
