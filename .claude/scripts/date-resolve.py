@@ -11,9 +11,9 @@ Exit 1: missing argument (usage error)
 Supported specs:
   N / Nd / last N days          → last N days (today-(N-1) → today)
   all                           → earliest log file date → today
-  week / last week              → Mon–Sun of last week
+  week / last week              → Mon-Sun of last week
   this week                     → Mon of current week → today
-  month / last month            → 1st–last day of last month
+  month / last month            → 1st-last day of last month
   this month                    → 1st of current month → today
   today                         → today → today
   yesterday                     → yesterday → yesterday
@@ -32,11 +32,13 @@ import glob
 import os
 import sys
 
+from nase_time import local_today
+
 
 def find_earliest_log(workspace_root: str) -> datetime.date:
     pattern = os.path.join(workspace_root, "workspace", "logs", "????-??-??.md")
     files = sorted(glob.glob(pattern))
-    fallback = datetime.date.today() - datetime.timedelta(days=6)
+    fallback = local_today() - datetime.timedelta(days=6)
     if not files:
         return fallback
     name = os.path.basename(files[0]).replace(".md", "")
@@ -60,7 +62,7 @@ def fallback_range(today: datetime.date) -> tuple[datetime.date, datetime.date]:
 
 
 def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
-    today = datetime.date.today()
+    today = local_today()
     s = spec.strip().lower()
 
     # Explicit range: YYYY-MM-DD to YYYY-MM-DD

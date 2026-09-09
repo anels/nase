@@ -18,11 +18,17 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from nase_fs import atomic_write, sha256_bytes
+from nase_gh import (
+    MISSING_BINARY_RETURNCODE,
+    TIMEOUT_RETURNCODE,
+    failure_category,
+)
+from nase_gh import run as gh_run
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 BASIS_VERSION = "effort-rollup-v2"
@@ -138,7 +144,7 @@ def safe_child(root: Path, relative: str) -> Path:
     return resolved
 
 
-def month_bounds(month: str) -> tuple[datetime, datetime, str, str]:
+def month_bounds(month: str) -> tuple[datetime, datetime]:
     if not re.fullmatch(r"[0-9]{4}-(?:0[1-9]|1[0-2])", month):
         raise EvidenceError("month must use YYYY-MM")
     year, number = map(int, month.split("-"))
@@ -147,12 +153,7 @@ def month_bounds(month: str) -> tuple[datetime, datetime, str, str]:
         end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
     else:
         end = datetime(year, number + 1, 1, tzinfo=timezone.utc)
-    return (
-        start,
-        end,
-        start.date().isoformat(),
-        (end.date() - timedelta(days=1)).isoformat(),
-    )
+    return start, end
 
 
 def required_file(root: Path, relative: str) -> Path:
@@ -371,9 +372,9 @@ def effort_files(root: Path) -> list[tuple[Path, str]]:
     efforts = root / "workspace" / "efforts"
     if efforts.is_symlink() or not efforts.is_dir():
         raise EvidenceError("workspace/efforts is missing or symlinked")
-    files: list[tuple[Path, str]] = []
-    for path in sorted(efforts.glob("*.md")):
-        files.append((path, "active"))
+    files: list[tuple[Path, str]] = [
+        (path, "active") for path in sorted(efforts.glob("*.md"))
+    ]
     done = efforts / "done"
     if done.is_dir() and not done.is_symlink():
         files.extend((path, "done") for path in sorted(done.glob("*.md")))
@@ -388,6 +389,16 @@ def effort_files(root: Path) -> list[tuple[Path, str]]:
         ):
             raise EvidenceError(f"unsafe effort path: {path.name}")
     return files
+
+
+def resolves_delivery_bare(
+    value: str, resolved_delivery_numbers: set[int], *, exactly_one: bool = False
+) -> bool:
+    """True when every bare `#N` in `value` names a resolved delivery PR."""
+    numbers = [int(number) for number in EFFORT_STATE.BARE_PR_RE.findall(value)]
+    if not numbers or (exactly_one and len(numbers) != 1):
+        return False
+    return all(number in resolved_delivery_numbers for number in numbers)
 
 
 def parse_efforts(root: Path) -> list[dict[str, Any]]:
@@ -423,12 +434,6 @@ def parse_efforts(root: Path) -> list[dict[str, Any]]:
             int(ref["number"]) for ref in references["delivery"]
         }
 
-        def resolves_delivery_bare(value: str, *, exactly_one: bool = False) -> bool:
-            numbers = [int(number) for number in EFFORT_STATE.BARE_PR_RE.findall(value)]
-            if not numbers or (exactly_one and len(numbers) != 1):
-                return False
-            return all(number in resolved_delivery_numbers for number in numbers)
-
         for key in [
             "pr",
             *sorted(
@@ -443,7 +448,7 @@ def parse_efforts(root: Path) -> list[dict[str, Any]]:
             if not raw:
                 continue
             names_one_pr = len(extract_prs(raw)) == 1 or resolves_delivery_bare(
-                raw, exactly_one=True
+                raw, resolved_delivery_numbers, exactly_one=True
             )
             if raw.lstrip().startswith(("{", "[")) or not names_one_pr:
                 errors.append(f"unresolved-{key}")
@@ -453,9 +458,12 @@ def parse_efforts(root: Path) -> list[dict[str, Any]]:
             and not prs_valid
         ):
             errors.append("invalid-prs")
-        for raw in prs:
-            if not extract_prs(raw) and not resolves_delivery_bare(raw):
-                errors.append("unresolved-prs")
+        errors.extend(
+            "unresolved-prs"
+            for raw in prs
+            if not extract_prs(raw)
+            and not resolves_delivery_bare(raw, resolved_delivery_numbers)
+        )
         blocked_fields = [
             line for line in lines if re.match(r"^blocked-by\s*:", line, re.IGNORECASE)
         ]
@@ -547,55 +555,18 @@ class CommandResult:
     error: str | None
 
 
-def error_category(stderr: str) -> tuple[str, int | None]:
-    lowered = stderr.lower()
-    wait_match = re.search(r"(?:retry[- ]after|wait)\D{0,10}([0-9]{1,4})", lowered)
-    wait = int(wait_match.group(1)) if wait_match else None
-    if any(token in lowered for token in ("rate limit", "secondary rate", "429")):
-        return "rate-limited", wait
-    if any(
-        token in lowered
-        for token in ("auth", "login", "unauthorized", "forbidden", "401", "403")
-    ):
-        return "auth-failed", None
-    if any(
-        token in lowered
-        for token in (
-            "network",
-            "connection",
-            "resolve host",
-            "server error",
-            "500",
-            "502",
-            "503",
-            "504",
-        )
-    ):
-        return "transient-network", None
-    if any(token in lowered for token in ("not found", "404")):
-        return "not-found", None
-    return "command-failed", None
-
-
 def run_json(
     args: list[str], timeout: int = GH_TIMEOUT_SECONDS, attempts: int = GH_ATTEMPTS
 ) -> CommandResult:
     last_category = "command-failed"
     last_raw = b""
     for attempt in range(1, attempts + 1):
-        try:
-            completed = subprocess.run(
-                args, text=True, capture_output=True, timeout=timeout, check=False
-            )
-        except FileNotFoundError:
+        completed = gh_run(args, timeout=timeout)
+        if completed.returncode == MISSING_BINARY_RETURNCODE:
             return CommandResult("failed", None, b"", attempt, "missing-gh")
-        except subprocess.TimeoutExpired as exc:
+        if completed.returncode == TIMEOUT_RETURNCODE:
             last_category = "timeout"
-            last_raw = (
-                exc.stdout.encode()
-                if isinstance(exc.stdout, str)
-                else (exc.stdout or b"")
-            )
+            last_raw = completed.stdout.encode()
             if attempt < attempts:
                 continue
             break
@@ -608,7 +579,7 @@ def run_json(
                 )
             except json.JSONDecodeError:
                 return CommandResult("failed", None, raw, attempt, "invalid-json")
-        last_category, wait = error_category(completed.stderr[:4096])
+        last_category, wait = failure_category(completed.stderr[:4096])
         if last_category == "rate-limited":
             if wait is None or wait > 60:
                 return CommandResult(
@@ -632,8 +603,7 @@ def fetch_concurrently(plan: dict[str, list[str]]) -> dict[str, CommandResult]:
 
     `run_json` owns no shared state - it returns its retries and its error category in
     the result - so the only thing these calls share is the network. Concurrency is
-    bounded to stay clear of GitHub's secondary rate limits; a call that hits one still
-    reports `rate-limited` through its own `CommandResult` exactly as it does serially.
+    bounded to stay clear of GitHub's secondary rate limits.
     """
     if len(plan) < 2:
         return {key: run_json(args) for key, args in plan.items()}
@@ -643,12 +613,9 @@ def fetch_concurrently(plan: dict[str, list[str]]) -> dict[str, CommandResult]:
 
 
 def command_ok(args: list[str]) -> str:
-    try:
-        completed = subprocess.run(
-            args, text=True, capture_output=True, timeout=15, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise EvidenceError(f"required command unavailable: {args[0]}") from exc
+    completed = gh_run(args, timeout=15)
+    if completed.returncode in (MISSING_BINARY_RETURNCODE, TIMEOUT_RETURNCODE):
+        raise EvidenceError(f"required command unavailable: {args[0]}")
     if completed.returncode != 0:
         raise EvidenceError(f"capability check failed: {' '.join(args[:3])}")
     return completed.stdout.strip()
@@ -819,10 +786,8 @@ def collect_pr_views(
                 ],
             )
         )
-    # One `gh pr view` per PR dominates a month's runtime, and the views are independent
-    # reads. Fetch them concurrently, then save in sorted key order: `Collector.save`
-    # numbers capture files off a counter, so the bundle stays byte-identical to a
-    # serial run.
+    # `Collector.save` numbers capture files off a counter, so saving in sorted key
+    # order keeps the bundle byte-identical to a serial run.
     outcomes = fetch_concurrently({key: command for key, _, _, command in planned})
     for key, owner, repo, command in planned:
         source_id = f"github-pr:{key}"
@@ -1013,8 +978,7 @@ def inventory_capture(root: Path, month: str, bundle: Path) -> dict[str, Any]:
         completed = subprocess.run(
             command,
             cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
             check=False,
         )
@@ -1051,7 +1015,6 @@ def inventory_capture(root: Path, month: str, bundle: Path) -> dict[str, Any]:
 
 
 def build_evidence(
-    root: Path,
     month: str,
     run: dict[str, Any],
     captures: list[dict[str, Any]],
@@ -1092,7 +1055,7 @@ def collect(args: argparse.Namespace) -> int:
     if root.is_symlink() or not root.is_dir():
         raise EvidenceError("root must be a real directory")
     root = root.resolve()
-    start, end, start_date, end_date = month_bounds(args.month)
+    start, end = month_bounds(args.month)
     bundle = Path(args.bundle).expanduser()
     if bundle.is_symlink():
         raise EvidenceError("bundle must not be a symlink")
@@ -1220,7 +1183,6 @@ def collect(args: argparse.Namespace) -> int:
         if entry["kind"] != "github-pr" and entry["status"] != "complete"
     ]
     evidence = build_evidence(
-        root,
         args.month,
         run,
         collector.captures,
@@ -1272,11 +1234,11 @@ def capture_data(
             continue
         try:
             value = json.loads(raw)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             if entry["status"] == "complete":
                 raise EvidenceError(
                     f"complete capture is malformed: {entry['source_id']}"
-                )
+                ) from exc
             value = None
         record_count = (
             len(value)
@@ -1425,6 +1387,68 @@ def validate_capture_contract(
             raise EvidenceError(f"missing discovery capture for {alias}")
 
 
+@dataclass
+class SearchPartitionWalk:
+    """Walk one repo's canonical month partition, halving a window that hit the cap.
+
+    GitHub search answers at most 1000 results, so a month that reaches the cap says
+    nothing about what it left out. The walk splits such a window in half and reads
+    each half, and records `search-cap-one-day` when a single day is still capped -
+    the one case the partition cannot resolve.
+    """
+
+    alias: str
+    account: str
+    full_name: str
+    searches: dict[tuple[str, str, str], dict[str, Any]]
+    values: dict[str, Any]
+    visited: set[tuple[str, str, str]]
+    search_keys: set[str]
+    reasons: list[str]
+
+    def visit(self, window_start: date, window_end: date) -> None:
+        query = f"{window_start.isoformat()}..{window_end.isoformat()}"
+        index = (self.alias, self.account, query)
+        entry = self.searches.get(index)
+        if entry is None:
+            raise EvidenceError(f"missing canonical search capture: {self.alias}:{query}")
+        self.visited.add(index)
+        value = self.values.get(entry["source_id"])
+        if entry["status"] != "complete" or not isinstance(value, list):
+            self.reasons.append(entry.get("error_category") or "search-failed")
+            return
+        if not self._collect(value):
+            self.reasons.append("search-schema")
+            return
+        if len(value) < 1000:
+            return
+        if window_start == window_end:
+            self.reasons.append("search-cap-one-day")
+            return
+        midpoint = window_start + timedelta(days=(window_end - window_start).days // 2)
+        self.visit(window_start, midpoint)
+        self.visit(midpoint + timedelta(days=1), window_end)
+
+    def _collect(self, value: list[Any]) -> bool:
+        """Record every well-formed hit; return False when any item failed the schema."""
+        intact = True
+        for item in value:
+            url = str(item.get("url", "")) if isinstance(item, dict) else ""
+            match = FULL_PR_RE.fullmatch(url)
+            author = item.get("author") if isinstance(item, dict) else None
+            if not (
+                match
+                and f"{match.group(1)}/{match.group(2)}".lower() == self.full_name.lower()
+                and int(match.group(3)) == item.get("number")
+                and isinstance(author, dict)
+                and author.get("login") == self.account
+            ):
+                intact = False
+                continue
+            self.search_keys.add(pr_key(url))
+        return intact
+
+
 def reconstruct_discovery(
     entries: list[dict[str, Any]],
     values: dict[str, Any],
@@ -1474,50 +1498,16 @@ def reconstruct_discovery(
         ):
             reasons.append("invalid-rate-schema")
 
-        def visit(window_start: date, window_end: date) -> None:
-            query = f"{window_start.isoformat()}..{window_end.isoformat()}"
-            index = (alias, account, query)
-            entry = searches.get(index)
-            if entry is None:
-                raise EvidenceError(
-                    f"missing canonical search capture: {alias}:{query}"
-                )
-            visited.add(index)
-            value = values.get(entry["source_id"])
-            if entry["status"] != "complete" or not isinstance(value, list):
-                reasons.append(entry.get("error_category") or "search-failed")
-                return
-            schema_error = False
-            for item in value:
-                url = str(item.get("url", "")) if isinstance(item, dict) else ""
-                match = FULL_PR_RE.fullmatch(url)
-                author = item.get("author") if isinstance(item, dict) else None
-                if not (
-                    match
-                    and f"{match.group(1)}/{match.group(2)}".lower()
-                    == repo["full_name"].lower()
-                    and int(match.group(3)) == item.get("number")
-                    and isinstance(author, dict)
-                    and author.get("login") == account
-                ):
-                    schema_error = True
-                    continue
-                search_keys.add(pr_key(url))
-            if schema_error:
-                reasons.append("search-schema")
-                return
-            if len(value) < 1000:
-                return
-            if window_start == window_end:
-                reasons.append("search-cap-one-day")
-                return
-            midpoint = window_start + timedelta(
-                days=(window_end - window_start).days // 2
-            )
-            visit(window_start, midpoint)
-            visit(midpoint + timedelta(days=1), window_end)
-
-        visit(start, end)
+        SearchPartitionWalk(
+            alias=alias,
+            account=account,
+            full_name=repo["full_name"],
+            searches=searches,
+            values=values,
+            visited=visited,
+            search_keys=search_keys,
+            reasons=reasons,
+        ).visit(start, end)
         reasons = sorted(set(reasons))
         sources.append(
             {
@@ -1635,8 +1625,8 @@ class HtmlContractProbe(HTMLParser):
     instead of hiding a finding.
     """
 
-    MUTE_TAGS = {"script", "style", "head", "title"}
-    CELL_TAGS = {"td", "th"}
+    MUTE_TAGS: ClassVar[set[str]] = {"script", "style", "head", "title"}
+    CELL_TAGS: ClassVar[set[str]] = {"td", "th"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -1760,7 +1750,7 @@ def validate(args: argparse.Namespace) -> int:
         and gh.get("auth_status") == "success"
     ):
         raise EvidenceError("invalid GitHub collection metadata")
-    expected_start, expected_end, _, _ = month_bounds(args.month)
+    expected_start, expected_end = month_bounds(args.month)
     expected_window = {
         "start": expected_start.isoformat().replace("+00:00", "Z"),
         "end_exclusive": expected_end.isoformat().replace("+00:00", "Z"),
@@ -1854,7 +1844,6 @@ def validate(args: argparse.Namespace) -> int:
         detail = "missing" if required_views - captured_views else "unexpected"
         raise EvidenceError(f"{detail} canonical PR view capture")
     derived = build_evidence(
-        root,
         args.month,
         run,
         evidence["captures"],

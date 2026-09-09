@@ -17,9 +17,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git  # noqa: E402
-from nase_fs import sha256_bytes  # noqa: E402
-
+import nase_git
+from nase_fs import sha256_bytes
 
 ITEM_LIMIT = 64 * 1024
 CONTEXT_LIMIT = 256 * 1024
@@ -291,7 +290,9 @@ def load_json(path: str | None, default: Any) -> Any:
 
 def normalize_path(value: Any) -> str:
     if not isinstance(value, str):
-        raise ValueError("path must be a string")
+        # ValueError, not TypeError: every rejection this function makes is a
+        # ValueError and its one caller catches exactly that.
+        raise ValueError("path must be a string")  # noqa: TRY004
     path = unicodedata.normalize("NFC", value).replace("\\", "/")
     if "\0" in path or path.startswith("/"):
         raise ValueError("path must be a relative UTF-8 repository path")

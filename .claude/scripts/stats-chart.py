@@ -101,8 +101,8 @@ def render_chart(labels: list[str], counts: list[int]) -> str:
             label_by_row.setdefault(math.ceil(v / max_val * MAX_ROWS), str(v))
 
     # bar column starts after `{y_width} {axis-char} ` (= y_width + 2 chars) plus a
-    # two-space gap, so every row prefix occupies BAR_COL_OFFSET chars before bars
-    BAR_COL_OFFSET = y_width + 2 + 2
+    # two-space gap, so every row prefix occupies bar_col_offset chars before bars
+    bar_col_offset = y_width + 2 + 2
 
     lines: list[str] = []
     for row in range(MAX_ROWS, 0, -1):
@@ -116,11 +116,11 @@ def render_chart(labels: list[str], counts: list[int]) -> str:
     axis_width = n * BAR_WIDTH + (n - 1) * (COL_SPACING - BAR_WIDTH)
     lines.append(f"{0:>{y_width}} ┼{'─' * (2 + axis_width)}")
 
-    label_width = max(max(len(lbl) for lbl in labels), BAR_WIDTH)
-    pad = " " * BAR_COL_OFFSET
+    label_width = max([*(len(lbl) for lbl in labels), BAR_WIDTH])
+    pad = " " * bar_col_offset
     label_cells = [
         f"{(EMPTY if h == 0 else lbl):^{label_width}}"
-        for lbl, h in zip(labels, heights)
+        for lbl, h in zip(labels, heights, strict=True)
     ]
     lines.append(pad + " ".join(label_cells))
     lines.append(pad + " ".join(f"{c:^{label_width}}" for c in counts))

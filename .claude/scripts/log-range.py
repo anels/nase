@@ -35,7 +35,9 @@ def parse_iso(s: str) -> date:
     try:
         return date.fromisoformat(s)
     except ValueError as e:
-        raise SystemExit(f"log-range.py: invalid date '{s}' (expected YYYY-MM-DD): {e}")
+        raise SystemExit(
+            f"log-range.py: invalid date '{s}' (expected YYYY-MM-DD): {e}"
+        ) from e
 
 
 def main() -> int:

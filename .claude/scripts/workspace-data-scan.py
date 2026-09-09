@@ -28,7 +28,9 @@ def parse_iso(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
-        raise SystemExit(f"workspace-data-scan.py: invalid date '{value}': {exc}")
+        raise SystemExit(
+            f"workspace-data-scan.py: invalid date '{value}': {exc}"
+        ) from exc
 
 
 def iter_days(start: date, end: date):

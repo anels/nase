@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -55,10 +56,8 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         os.replace(temp, path)
         fsync_dir(path.parent)
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temp.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -74,7 +73,7 @@ def load_json(path: Path) -> dict[str, Any]:
 def normalize_member(raw: str) -> str:
     if not raw or "\x00" in raw:
         raise RestoreError("archive contains an empty or NUL member path")
-    if raw.startswith(("/", "\\")) or raw.startswith("//"):
+    if raw.startswith(("/", "\\", "//")):
         raise RestoreError(f"archive contains an absolute or UNC path: {raw!r}")
     if re.match(r"^[A-Za-z]:[\\/]", raw):
         raise RestoreError(f"archive contains a Windows drive path: {raw!r}")
@@ -131,8 +130,7 @@ def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
         result = subprocess.run(
             [seven_zip_binary(), "l", "-slt", str(archive)],
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             check=False,
             timeout=SEVEN_ZIP_LIST_TIMEOUT_SECONDS,
         )
@@ -209,9 +207,9 @@ def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
 def validated_members(
     records: list[dict[str, Any]],
 ) -> tuple[str, list[dict[str, Any]]]:
-    normalized: list[tuple[dict[str, Any], str]] = []
-    for record in records:
-        normalized.append((record, normalize_member(str(record["archive_path"]))))
+    normalized: list[tuple[dict[str, Any], str]] = [
+        (record, normalize_member(str(record["archive_path"]))) for record in records
+    ]
     has_wrapped = any(
         path == "workspace" or path.startswith("workspace/") for _, path in normalized
     )
@@ -495,10 +493,8 @@ def copy_verified_archive(
         fsync_dir(root.parent)
         return snapshot
     except Exception:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             snapshot.unlink()
-        except FileNotFoundError:
-            pass
         raise
 
 
@@ -522,8 +518,7 @@ def extract_candidate(
                 result = subprocess.run(
                     [seven_zip_binary(), "x", "-y", f"-o{extraction}", str(archive)],
                     text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     check=False,
                     timeout=SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS,
                 )
@@ -777,10 +772,8 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
                 if rollback_snapshot(root, journal, paths):
                     snapshot_path = paths["snapshot_dir"]
                     if snapshot_path:
-                        try:
+                        with contextlib.suppress(OSError):
                             snapshot_path.rmdir()
-                        except OSError:
-                            pass
                     clear_journal(root)
                     raise RestoreError(
                         f"{exc}; prior workspace restored; candidate retained at {candidate_path}"
@@ -795,10 +788,8 @@ def apply_restore(root: Path, manifest_path: Path) -> dict[str, Any]:
                         shutil.rmtree(candidate_path)
                     snapshot_path = paths["snapshot_dir"]
                     if snapshot_path:
-                        try:
+                        with contextlib.suppress(OSError):
                             snapshot_path.rmdir()
-                        except OSError:
-                            pass
                     clear_journal(root)
                 raise
             return finish_promoted(root, journal)
@@ -825,10 +816,8 @@ def finish_rollback(
 ) -> dict[str, Any]:
     snapshot_dir = paths["snapshot_dir"]
     if snapshot_dir is not None:
-        try:
+        with contextlib.suppress(OSError):
             snapshot_dir.rmdir()
-        except OSError:
-            pass
     clear_journal(root)
     result: dict[str, Any] = {
         "status": "rolled_back",

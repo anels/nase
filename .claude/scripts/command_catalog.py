@@ -210,8 +210,9 @@ def render_readme(commands: list[Command]) -> str:
                 "|---------|---------|",
             ]
         )
-        for row in rows:
-            lines.append(f"| `{row.command}` | {escape_table_cell(row.description)} |")
+        lines.extend(
+            f"| `{row.command}` | {escape_table_cell(row.description)} |" for row in rows
+        )
         lines.append("")
     lines.append("---")
     return "\n".join(lines).rstrip()
@@ -224,10 +225,10 @@ def render_help_compact(
     for category, rows in grouped(commands):
         lines.append(f"### {category}")
         shown = rows if command_limit <= 0 else rows[:command_limit]
-        for row in shown:
-            lines.append(
-                f"- `{row.command}` - {truncate(row.description, purpose_chars)}"
-            )
+        lines.extend(
+            f"- `{row.command}` - {truncate(row.description, purpose_chars)}"
+            for row in shown
+        )
         remaining = len(rows) - len(shown)
         if remaining > 0:
             lines.append(f"- (+{remaining} more; run `/nase:help --verbose`)")

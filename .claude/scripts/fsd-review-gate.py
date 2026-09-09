@@ -76,7 +76,7 @@ INPUT_LIMIT = 512 * 1024
 CONTEXT_REQUEST_LIMIT = 64
 
 
-class InvalidResult(ValueError):
+class InvalidResultError(ValueError):
     pass
 
 
@@ -96,20 +96,20 @@ def digest(data: bytes) -> str:
 def read_json(path: Path) -> Any:
     try:
         if path.stat().st_size > INPUT_LIMIT:
-            raise InvalidResult(f"JSON input exceeds 512 KiB: {path}")
+            raise InvalidResultError(f"JSON input exceeds 512 KiB: {path}")
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise InvalidResult(f"cannot read valid JSON from {path}: {exc}") from exc
+        raise InvalidResultError(f"cannot read valid JSON from {path}: {exc}") from exc
 
 
 def exact_keys(value: Any, keys: set[str], where: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise InvalidResult(f"{where} must be an object")
+        raise InvalidResultError(f"{where} must be an object")
     actual = set(value)
     if actual != keys:
         missing = sorted(keys - actual)
         unknown = sorted(actual - keys)
-        raise InvalidResult(
+        raise InvalidResultError(
             f"{where} keys mismatch: missing={missing}, unknown={unknown}"
         )
     return value
@@ -117,19 +117,19 @@ def exact_keys(value: Any, keys: set[str], where: str) -> dict[str, Any]:
 
 def nonempty_string(value: Any, where: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise InvalidResult(f"{where} must be a non-empty string")
+        raise InvalidResultError(f"{where} must be a non-empty string")
     try:
         value.encode("utf-8", "strict")
     except UnicodeEncodeError as exc:
-        raise InvalidResult(f"{where} must be valid UTF-8") from exc
+        raise InvalidResultError(f"{where} must be valid UTF-8") from exc
     return value
 
 
 def string_list(value: Any, where: str, *, nonempty: bool = False) -> list[str]:
     if not isinstance(value, list):
-        raise InvalidResult(f"{where} must be a list of non-empty strings")
+        raise InvalidResultError(f"{where} must be a list of non-empty strings")
     if nonempty and not value:
-        raise InvalidResult(f"{where} must not be empty")
+        raise InvalidResultError(f"{where} must not be empty")
     for index, item in enumerate(value):
         nonempty_string(item, f"{where}[{index}]")
     return value
@@ -137,19 +137,19 @@ def string_list(value: Any, where: str, *, nonempty: bool = False) -> list[str]:
 
 def enum_string(value: Any, allowed: set[str] | tuple[str, ...], where: str) -> str:
     if not isinstance(value, str) or value not in allowed:
-        raise InvalidResult(f"{where} is invalid")
+        raise InvalidResultError(f"{where} is invalid")
     return value
 
 
 def strict_bool(value: Any, where: str) -> bool:
     if type(value) is not bool:
-        raise InvalidResult(f"{where} must be boolean")
+        raise InvalidResultError(f"{where} must be boolean")
     return value
 
 
 def line_number(value: Any, where: str) -> int:
     if type(value) is not int or value < 0:
-        raise InvalidResult(f"{where} must be a non-negative integer")
+        raise InvalidResultError(f"{where} must be a non-negative integer")
     return value
 
 
@@ -157,30 +157,30 @@ def normalize_path(value: Any, where: str) -> str:
     value = nonempty_string(value, where)
     path = unicodedata.normalize("NFC", value).replace("\\", "/")
     if "\0" in path or path.startswith("/"):
-        raise InvalidResult(f"{where} must be a relative UTF-8 repository path")
+        raise InvalidResultError(f"{where} must be a relative UTF-8 repository path")
     while path.startswith("./"):
         path = path[2:]
     if not path or any(part == ".." for part in path.split("/")):
-        raise InvalidResult(f"{where} must not be empty or traverse parents")
+        raise InvalidResultError(f"{where} must not be empty or traverse parents")
     path = posixpath.normpath(path)
     if path in ("", ".") or path.startswith("../"):
-        raise InvalidResult(f"{where} must name a repository file")
+        raise InvalidResultError(f"{where} must name a repository file")
     return path
 
 
 def validate_inventory(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, list) or not value:
-        raise InvalidResult("inventory must be a non-empty array")
+        raise InvalidResultError("inventory must be a non-empty array")
     result: list[dict[str, str]] = []
     ids: set[str] = set()
-    for index, item in enumerate(value, 1):
-        item = exact_keys(item, {"ref", "id", "summary"}, f"inventory[{index - 1}]")
+    for index, raw_item in enumerate(value, 1):
+        item = exact_keys(raw_item, {"ref", "id", "summary"}, f"inventory[{index - 1}]")
         expected_ref = f"REQ-{index:03d}"
         if item["ref"] != expected_ref:
-            raise InvalidResult(f"inventory ref must be {expected_ref}")
+            raise InvalidResultError(f"inventory ref must be {expected_ref}")
         requirement_id = nonempty_string(item["id"], f"inventory[{index - 1}].id")
         if requirement_id in ids:
-            raise InvalidResult("inventory ids must be unique")
+            raise InvalidResultError("inventory ids must be unique")
         ids.add(requirement_id)
         result.append(
             {
@@ -197,17 +197,17 @@ def validate_inventory(value: Any) -> list[dict[str, str]]:
 def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
     try:
         if path.stat().st_size > INPUT_LIMIT:
-            raise InvalidResult("bundle exceeds the 512 KiB limit")
+            raise InvalidResultError("bundle exceeds the 512 KiB limit")
         data = path.read_bytes()
         first = data.splitlines()[0].decode("utf-8", "strict")
     except (OSError, UnicodeError, IndexError) as exc:
-        raise InvalidResult(f"cannot read bundle metadata: {exc}") from exc
+        raise InvalidResultError(f"cannot read bundle metadata: {exc}") from exc
     if not first.startswith(BUNDLE_PREFIX) or not first.endswith(BUNDLE_SUFFIX):
-        raise InvalidResult("bundle is missing the fsd-artifact metadata header")
+        raise InvalidResultError("bundle is missing the fsd-artifact metadata header")
     try:
         metadata = json.loads(first[len(BUNDLE_PREFIX) : -len(BUNDLE_SUFFIX)])
     except json.JSONDecodeError as exc:
-        raise InvalidResult(f"bundle metadata is malformed: {exc}") from exc
+        raise InvalidResultError(f"bundle metadata is malformed: {exc}") from exc
     metadata = exact_keys(
         metadata,
         {
@@ -229,7 +229,7 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
         "bundle metadata",
     )
     if metadata.get("schema_version") != 1:
-        raise InvalidResult("bundle metadata schema_version is invalid")
+        raise InvalidResultError("bundle metadata schema_version is invalid")
     for key in (
         "base_oid",
         "current_base_oid",
@@ -238,37 +238,37 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
         "current_candidate_tree_oid",
     ):
         if not isinstance(metadata[key], str) or not OID_RE.fullmatch(metadata[key]):
-            raise InvalidResult(f"bundle metadata {key} is invalid")
+            raise InvalidResultError(f"bundle metadata {key} is invalid")
     if not isinstance(
         metadata["contract_inventory_sha256"], str
     ) or not SHA256_RE.fullmatch(metadata["contract_inventory_sha256"]):
-        raise InvalidResult("bundle metadata contract_inventory_sha256 is invalid")
+        raise InvalidResultError("bundle metadata contract_inventory_sha256 is invalid")
     if metadata["evidence_candidate_tree_oid"] != metadata["candidate_tree_oid"]:
-        raise InvalidResult("bundle evidence is not bound to candidate_tree_oid")
+        raise InvalidResultError("bundle evidence is not bound to candidate_tree_oid")
     if (
         type(metadata["changed_path_count"]) is not int
         or metadata["changed_path_count"] < 0
     ):
-        raise InvalidResult("bundle metadata changed_path_count is invalid")
+        raise InvalidResultError("bundle metadata changed_path_count is invalid")
     if not isinstance(metadata["changed_paths_sha256"], str) or not SHA256_RE.fullmatch(
         metadata["changed_paths_sha256"]
     ):
-        raise InvalidResult("bundle metadata changed_paths_sha256 is invalid")
+        raise InvalidResultError("bundle metadata changed_paths_sha256 is invalid")
     evidence = exact_keys(
         metadata["evidence"],
         {"byte_count", "sha256", "encoding", "truncated"},
         "bundle evidence",
     )
     if type(evidence["byte_count"]) is not int or evidence["byte_count"] < 0:
-        raise InvalidResult("bundle evidence byte_count is invalid")
+        raise InvalidResultError("bundle evidence byte_count is invalid")
     if not isinstance(evidence["sha256"], str) or not SHA256_RE.fullmatch(
         evidence["sha256"]
     ):
-        raise InvalidResult("bundle evidence sha256 is invalid")
+        raise InvalidResultError("bundle evidence sha256 is invalid")
     enum_string(evidence["encoding"], {"utf-8", "binary"}, "bundle evidence encoding")
     strict_bool(evidence["truncated"], "bundle evidence truncated")
     if not isinstance(metadata["context_blob_metadata"], list):
-        raise InvalidResult("bundle context_blob_metadata must be an array")
+        raise InvalidResultError("bundle context_blob_metadata must be an array")
     allowed_context_keys = {
         "tree",
         "tree_oid",
@@ -286,9 +286,9 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
         if not isinstance(context, dict) or not {"tree", "tree_oid", "path"}.issubset(
             context
         ):
-            raise InvalidResult(f"bundle context_blob_metadata[{index}] is malformed")
+            raise InvalidResultError(f"bundle context_blob_metadata[{index}] is malformed")
         if set(context) - allowed_context_keys:
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"bundle context_blob_metadata[{index}] has unknown keys"
             )
         enum_string(
@@ -297,23 +297,23 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
         if not isinstance(context["tree_oid"], str) or not OID_RE.fullmatch(
             context["tree_oid"]
         ):
-            raise InvalidResult(f"bundle context[{index}].tree_oid is invalid")
+            raise InvalidResultError(f"bundle context[{index}].tree_oid is invalid")
         expected_context_oid = (
             metadata["base_oid"]
             if context["tree"] == "BASE"
             else metadata["candidate_tree_oid"]
         )
         if context["tree_oid"] != expected_context_oid:
-            raise InvalidResult(f"bundle context[{index}].tree_oid is stale")
+            raise InvalidResultError(f"bundle context[{index}].tree_oid is stale")
         normalize_path(context["path"], f"bundle context[{index}].path")
         for key in ("byte_count",):
             if key in context and (type(context[key]) is not int or context[key] < 0):
-                raise InvalidResult(f"bundle context[{index}].{key} is invalid")
+                raise InvalidResultError(f"bundle context[{index}].{key} is invalid")
         if "sha256" in context and (
             not isinstance(context["sha256"], str)
             or not SHA256_RE.fullmatch(context["sha256"])
         ):
-            raise InvalidResult(f"bundle context[{index}].sha256 is invalid")
+            raise InvalidResultError(f"bundle context[{index}].sha256 is invalid")
         if "truncated" in context:
             strict_bool(context["truncated"], f"bundle context[{index}].truncated")
         if "encoding" in context:
@@ -327,11 +327,11 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
                 context["evidence_gap"], f"bundle context[{index}].evidence_gap"
             )
     if not isinstance(metadata["evidence_gaps"], list):
-        raise InvalidResult("bundle evidence_gaps must be an array")
+        raise InvalidResultError("bundle evidence_gaps must be an array")
     normalized_gaps: list[dict[str, str]] = []
-    for index, gap in enumerate(metadata["evidence_gaps"]):
+    for index, raw_gap in enumerate(metadata["evidence_gaps"]):
         gap = exact_keys(
-            gap, {"tree", "path", "reason"}, f"bundle evidence_gaps[{index}]"
+            raw_gap, {"tree", "path", "reason"}, f"bundle evidence_gaps[{index}]"
         )
         normalized_gaps.append(
             {
@@ -344,10 +344,10 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
         )
     metadata["evidence_gaps"] = normalized_gaps
     if not isinstance(metadata["binary_path_metadata"], list):
-        raise InvalidResult("bundle binary_path_metadata must be an array")
-    for index, item in enumerate(metadata["binary_path_metadata"]):
+        raise InvalidResultError("bundle binary_path_metadata must be an array")
+    for index, raw_item in enumerate(metadata["binary_path_metadata"]):
         item = exact_keys(
-            item, {"path", "base", "candidate"}, f"bundle binary[{index}]"
+            raw_item, {"path", "base", "candidate"}, f"bundle binary[{index}]"
         )
         normalize_path(item["path"], f"bundle binary[{index}].path")
         for side in ("base", "candidate"):
@@ -362,9 +362,9 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
             nonempty_string(entry["mode"], f"bundle binary[{index}].{side}.mode")
             nonempty_string(entry["type"], f"bundle binary[{index}].{side}.type")
             if not isinstance(entry["oid"], str) or not OID_RE.fullmatch(entry["oid"]):
-                raise InvalidResult(f"bundle binary[{index}].{side}.oid is invalid")
+                raise InvalidResultError(f"bundle binary[{index}].{side}.oid is invalid")
             if type(entry["byte_count"]) is not int or entry["byte_count"] < 0:
-                raise InvalidResult(
+                raise InvalidResultError(
                     f"bundle binary[{index}].{side}.byte_count is invalid"
                 )
     return metadata, digest(data)
@@ -376,9 +376,9 @@ def git(
     try:
         result = nase_git.run(*args, repo=repo, env=env)
     except nase_git.GitTimeout as exc:
-        raise InvalidResult(str(exc)) from exc
+        raise InvalidResultError(str(exc)) from exc
     if check and result.returncode != 0:
-        raise InvalidResult(
+        raise InvalidResultError(
             result.stderr.decode("utf-8", "replace").strip() or "git command failed"
         )
     return result.stdout
@@ -405,10 +405,10 @@ def validate_artifact(value: Any) -> dict[str, str]:
     )
     for key in ("base_oid", "candidate_tree_oid"):
         if not isinstance(artifact[key], str) or not OID_RE.fullmatch(artifact[key]):
-            raise InvalidResult(f"artifact.{key} must be a lowercase Git OID")
+            raise InvalidResultError(f"artifact.{key} must be a lowercase Git OID")
     for key in ("bundle_sha256", "contract_inventory_sha256"):
         if not isinstance(artifact[key], str) or not SHA256_RE.fullmatch(artifact[key]):
-            raise InvalidResult(f"artifact.{key} must be a lowercase SHA-256")
+            raise InvalidResultError(f"artifact.{key} must be a lowercase SHA-256")
     return artifact
 
 
@@ -422,22 +422,22 @@ def validate_context_requests(
     scope_refs: set[str],
 ) -> list[dict[str, str]]:
     if not isinstance(value, list):
-        raise InvalidResult("context_requests must be an array")
+        raise InvalidResultError("context_requests must be an array")
     if len(value) > CONTEXT_REQUEST_LIMIT:
-        raise InvalidResult(
+        raise InvalidResultError(
             f"context_requests must contain at most {CONTEXT_REQUEST_LIMIT} items"
         )
     result: list[dict[str, str]] = []
     refs: set[str] = set()
-    for index, request in enumerate(value):
+    for index, raw_request in enumerate(value):
         request = exact_keys(
-            request,
+            raw_request,
             {"ref", "target_type", "target_ref", "tree", "path", "reason"},
             f"context_requests[{index}]",
         )
         ref = nonempty_string(request["ref"], f"context_requests[{index}].ref")
         if ref in refs:
-            raise InvalidResult("context request refs must be unique")
+            raise InvalidResultError("context request refs must be unique")
         refs.add(ref)
         if kind == "quality":
             allowed_targets = {"axis": axes, "finding": finding_refs}
@@ -464,7 +464,7 @@ def validate_context_requests(
             request["target_ref"], f"context_requests[{index}].target_ref"
         )
         if target_ref not in allowed_targets[target_type]:
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"context_requests[{index}] target is not linked to this result"
             )
         tree = enum_string(
@@ -524,11 +524,11 @@ def validate_finding(value: Any, index: int) -> dict[str, Any]:
         )
     if severity in ("P0", "P1"):
         if autofixable == (blocker is not None):
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"findings[{index}] must be autofixable or have one human blocker"
             )
     elif autofixable or blocker is not None:
-        raise InvalidResult(
+        raise InvalidResultError(
             "P2 findings must be deferred without autofix or a human blocker"
         )
     return {
@@ -575,7 +575,7 @@ def validate_quality(value: Any) -> dict[str, Any]:
         or result["schema_version"] != 1
         or result["kind"] != "quality"
     ):
-        raise InvalidResult("quality schema_version or kind is invalid")
+        raise InvalidResultError("quality schema_version or kind is invalid")
     artifact = validate_artifact(result["artifact"])
     axes = exact_keys(result["axes"], set(QUALITY_AXES), "axes")
     normalized_axes: dict[str, dict[str, Any]] = {}
@@ -583,16 +583,16 @@ def validate_quality(value: Any) -> dict[str, Any]:
         item = exact_keys(axes[axis], {"status", "evidence", "reason"}, f"axes.{axis}")
         status = enum_string(item["status"], AXIS_STATUSES, f"axes.{axis}.status")
         if axis in REQUIRED_AXES and status == "NOT_APPLICABLE":
-            raise InvalidResult(f"required axis {axis} cannot be NOT_APPLICABLE")
+            raise InvalidResultError(f"required axis {axis} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"axes.{axis}.evidence")
         if status == "PASS" and not evidence:
-            raise InvalidResult(f"PASS axis {axis} requires evidence")
+            raise InvalidResultError(f"PASS axis {axis} requires evidence")
         if axis == "test_quality" and status == "PASS":
             theater = ("grep", "coverage", "snapshot", "test count")
             if evidence and all(
                 any(term in entry.lower() for term in theater) for entry in evidence
             ):
-                raise InvalidResult(
+                raise InvalidResultError(
                     "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
                 )
         normalized_axes[axis] = {
@@ -601,13 +601,13 @@ def validate_quality(value: Any) -> dict[str, Any]:
             "reason": nonempty_string(item["reason"], f"axes.{axis}.reason"),
         }
     if not isinstance(result["findings"], list):
-        raise InvalidResult("findings must be an array")
+        raise InvalidResultError("findings must be an array")
     findings = [
         validate_finding(item, index) for index, item in enumerate(result["findings"])
     ]
     finding_refs = [item["ref"] for item in findings]
     if len(finding_refs) != len(set(finding_refs)):
-        raise InvalidResult("finding refs must be unique")
+        raise InvalidResultError("finding refs must be unique")
     contexts = validate_context_requests(
         result["context_requests"],
         kind="quality",
@@ -629,16 +629,16 @@ def validate_quality(value: Any) -> dict[str, Any]:
             if finding["axis"] == axis and finding["severity"] in ("P0", "P1")
         ]
         if item["status"] == "FAIL" and not blocking:
-            raise InvalidResult(f"FAIL axis {axis} requires a P0/P1 finding")
+            raise InvalidResultError(f"FAIL axis {axis} requires a P0/P1 finding")
         if item["status"] in ("PASS", "NOT_APPLICABLE") and blocking:
-            raise InvalidResult(f"axis {axis} contradicts its blocking finding")
+            raise InvalidResultError(f"axis {axis} contradicts its blocking finding")
         if item["status"] == "UNVERIFIABLE":
             has_context = axis in context_axes or any(
                 finding["ref"] in context_findings for finding in blocking
             )
             has_blocker = any(finding["human_blocker"] for finding in blocking)
             if not has_context and not has_blocker:
-                raise InvalidResult(
+                raise InvalidResultError(
                     f"UNVERIFIABLE axis {axis} requires linked context or a human blocker"
                 )
     lenses = exact_keys(
@@ -653,23 +653,23 @@ def validate_quality(value: Any) -> dict[str, Any]:
             item["status"], AXIS_STATUSES, f"lens_coverage.{lens}.status"
         )
         if lens != OPTIONAL_QUALITY_LENS and status == "NOT_APPLICABLE":
-            raise InvalidResult(f"quality lens {lens} cannot be NOT_APPLICABLE")
+            raise InvalidResultError(f"quality lens {lens} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"lens_coverage.{lens}.evidence")
         if status == "PASS" and not evidence:
-            raise InvalidResult(f"PASS quality lens {lens} requires evidence")
+            raise InvalidResultError(f"PASS quality lens {lens} requires evidence")
         mapped_findings = [
             finding
             for finding in findings
             if finding["axis"] in mapped_axes and finding["severity"] in ("P0", "P1")
         ]
         if status == "FAIL" and not mapped_findings:
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"FAIL quality lens {lens} requires a mapped P0/P1 finding"
             )
         if status == "UNVERIFIABLE" and not any(
             normalized_axes[axis]["status"] == "UNVERIFIABLE" for axis in mapped_axes
         ):
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"UNVERIFIABLE quality lens {lens} requires a mapped unverifiable axis"
             )
         normalized_lenses[lens] = {
@@ -705,13 +705,13 @@ def validate_inventory_assessment(value: Any) -> dict[str, Any]:
             blocker, HUMAN_BLOCKERS, "inventory_assessment.human_blocker"
         )
     if status == "COMPLETE" and (autofixable or blocker is not None):
-        raise InvalidResult("COMPLETE inventory cannot be autofixable or blocked")
+        raise InvalidResultError("COMPLETE inventory cannot be autofixable or blocked")
     if status == "INCOMPLETE" and autofixable == (blocker is not None):
-        raise InvalidResult(
+        raise InvalidResultError(
             "INCOMPLETE inventory must be autofixable or have one human blocker"
         )
     if status == "UNVERIFIABLE" and autofixable:
-        raise InvalidResult("UNVERIFIABLE inventory cannot be autofixable")
+        raise InvalidResultError("UNVERIFIABLE inventory cannot be autofixable")
     return {
         "status": status,
         "evidence": evidence,
@@ -731,7 +731,7 @@ def validate_requirement(
     )
     for key in ("ref", "id", "summary"):
         if item[key] != inventory_item[key]:
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"requirements[{index}].{key} does not exactly match inventory"
             )
     status = enum_string(
@@ -747,13 +747,13 @@ def validate_requirement(
             blocker, HUMAN_BLOCKERS, f"requirements[{index}].human_blocker"
         )
     if status == "SATISFIED" and (autofixable or blocker is not None):
-        raise InvalidResult("SATISFIED requirements cannot be autofixable or blocked")
+        raise InvalidResultError("SATISFIED requirements cannot be autofixable or blocked")
     if status == "MISSING" and autofixable == (blocker is not None):
-        raise InvalidResult(
+        raise InvalidResultError(
             "MISSING requirements must be autofixable or have one human blocker"
         )
     if status == "UNVERIFIABLE" and autofixable:
-        raise InvalidResult("UNVERIFIABLE requirements cannot be autofixable")
+        raise InvalidResultError("UNVERIFIABLE requirements cannot be autofixable")
     return {
         **item,
         "status": status,
@@ -785,7 +785,7 @@ def validate_scope(value: Any, index: int) -> dict[str, Any]:
             blocker, HUMAN_BLOCKERS, f"scope_creep[{index}].human_blocker"
         )
     if autofixable == (blocker is not None):
-        raise InvalidResult("scope creep must be autofixable or have one human blocker")
+        raise InvalidResultError("scope creep must be autofixable or have one human blocker")
     return {
         **item,
         "ref": nonempty_string(item["ref"], f"scope_creep[{index}].ref"),
@@ -822,25 +822,25 @@ def validate_spec(value: Any, inventory: list[dict[str, str]]) -> dict[str, Any]
         or result["schema_version"] != 1
         or result["kind"] != "spec"
     ):
-        raise InvalidResult("spec schema_version or kind is invalid")
+        raise InvalidResultError("spec schema_version or kind is invalid")
     artifact = validate_artifact(result["artifact"])
     inventory_assessment = validate_inventory_assessment(result["inventory_assessment"])
     if not isinstance(result["requirements"], list) or len(
         result["requirements"]
     ) != len(inventory):
-        raise InvalidResult("requirements must have the exact inventory length")
+        raise InvalidResultError("requirements must have the exact inventory length")
     requirements = [
         validate_requirement(item, inventory[index], index)
         for index, item in enumerate(result["requirements"])
     ]
     if not isinstance(result["scope_creep"], list):
-        raise InvalidResult("scope_creep must be an array")
+        raise InvalidResultError("scope_creep must be an array")
     scope = [
         validate_scope(item, index) for index, item in enumerate(result["scope_creep"])
     ]
     scope_refs = [item["ref"] for item in scope]
     if len(scope_refs) != len(set(scope_refs)):
-        raise InvalidResult("scope creep refs must be unique")
+        raise InvalidResultError("scope creep refs must be unique")
     contexts = validate_context_requests(
         result["context_requests"],
         kind="spec",
@@ -851,17 +851,19 @@ def validate_spec(value: Any, inventory: list[dict[str, str]]) -> dict[str, Any]
     )
     context_targets = {(item["target_type"], item["target_ref"]) for item in contexts}
     for item in requirements:
-        if item["status"] == "UNVERIFIABLE" and item["human_blocker"] is None:
-            if ("requirement", item["ref"]) not in context_targets:
-                raise InvalidResult(
-                    f"UNVERIFIABLE requirement {item['ref']} requires linked context"
-                )
+        if (
+            item["status"] == "UNVERIFIABLE"
+            and item["human_blocker"] is None
+            and ("requirement", item["ref"]) not in context_targets
+        ):
+            raise InvalidResultError(
+                f"UNVERIFIABLE requirement {item['ref']} requires linked context"
+            )
     if (
         inventory_assessment["status"] == "UNVERIFIABLE"
         and inventory_assessment["human_blocker"] is None
-    ):
-        if ("inventory", "INVENTORY") not in context_targets:
-            raise InvalidResult("UNVERIFIABLE inventory requires linked context")
+    ) and ("inventory", "INVENTORY") not in context_targets:
+        raise InvalidResultError("UNVERIFIABLE inventory requires linked context")
     return {
         "artifact": artifact,
         "inventory_assessment": inventory_assessment,
@@ -904,7 +906,7 @@ def validate_blocking_finding(value: Any, index: int) -> dict[str, Any]:
             f"findings[{index}].human_blocker",
         )
     if autofixable == (blocker is not None):
-        raise InvalidResult(
+        raise InvalidResultError(
             f"findings[{index}] must be autofixable or have one human blocker"
         )
     return {
@@ -937,7 +939,7 @@ def validate_deferred(value: Any) -> list[str]:
     """Deferred observations are plain one-line strings. They never gate, so giving
     them structure would only buy schema surface a reviewer can trip over."""
     if not isinstance(value, list):
-        raise InvalidResult("deferred must be an array of strings")
+        raise InvalidResultError("deferred must be an array of strings")
     notes: list[str] = []
     # These never gate, so length is bounded by trimming rather than by failing the
     # whole review over a field that carries no decision. Every item is still
@@ -955,8 +957,9 @@ def validate_deferred(value: Any) -> list[str]:
     # A trimmed tail is reported, not silent: a run that produced 40 nits must not
     # read as one that produced 25.
     dropped = len(notes) - (DEFERRED_LIMIT - 1)
-    return notes[: DEFERRED_LIMIT - 1] + [
-        f"... {dropped} more deferred note(s) trimmed by the gate"
+    return [
+        *notes[: DEFERRED_LIMIT - 1],
+        f"... {dropped} more deferred note(s) trimmed by the gate",
     ]
 
 
@@ -970,7 +973,7 @@ def validate_requirement_exception(
     )
     ref = nonempty_string(item["ref"], f"requirement_exceptions[{index}].ref")
     if ref not in allowed_refs:
-        raise InvalidResult(
+        raise InvalidResultError(
             f"requirement_exceptions[{index}].ref is not in the inventory"
         )
     status = enum_string(
@@ -987,11 +990,11 @@ def validate_requirement_exception(
             blocker, HUMAN_BLOCKERS, f"requirement_exceptions[{index}].human_blocker"
         )
     if status == "MISSING" and autofixable == (blocker is not None):
-        raise InvalidResult(
+        raise InvalidResultError(
             f"MISSING requirement {ref} must be autofixable or have one human blocker"
         )
     if status == "UNVERIFIABLE" and autofixable:
-        raise InvalidResult(f"UNVERIFIABLE requirement {ref} cannot be autofixable")
+        raise InvalidResultError(f"UNVERIFIABLE requirement {ref} cannot be autofixable")
     return {
         "ref": ref,
         "status": status,
@@ -1036,7 +1039,7 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         or result["schema_version"] != 1
         or result["kind"] != "combined"
     ):
-        raise InvalidResult("combined schema_version or kind is invalid")
+        raise InvalidResultError("combined schema_version or kind is invalid")
     artifact = validate_artifact(result["artifact"])
 
     axes = exact_keys(result["axes"], set(QUALITY_AXES), "axes")
@@ -1044,7 +1047,7 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
     for axis in QUALITY_AXES:
         item = axes[axis]
         if not isinstance(item, dict) or "status" not in item:
-            raise InvalidResult(f"axes.{axis} must be an object with a status")
+            raise InvalidResultError(f"axes.{axis} must be an object with a status")
         status = enum_string(item["status"], AXIS_STATUSES, f"axes.{axis}.status")
         needs_reason = status != "PASS" or axis in REQUIRED_AXES
         # A reason is required where the status carries a decision and merely
@@ -1053,18 +1056,18 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         if set(item) - {"status", "evidence", "reason"}:
             item = exact_keys(item, {"status", "evidence", "reason"}, f"axes.{axis}")
         if "evidence" not in item:
-            raise InvalidResult(f"axes.{axis} keys mismatch: missing=['evidence']")
+            raise InvalidResultError(f"axes.{axis} keys mismatch: missing=['evidence']")
         if axis in REQUIRED_AXES and status == "NOT_APPLICABLE":
-            raise InvalidResult(f"required axis {axis} cannot be NOT_APPLICABLE")
+            raise InvalidResultError(f"required axis {axis} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"axes.{axis}.evidence")
         if status == "PASS" and not evidence:
-            raise InvalidResult(f"PASS axis {axis} requires evidence")
+            raise InvalidResultError(f"PASS axis {axis} requires evidence")
         if axis == "test_quality" and status == "PASS":
             theater = ("grep", "coverage", "snapshot", "test count")
             if evidence and all(
                 any(term in entry.lower() for term in theater) for entry in evidence
             ):
-                raise InvalidResult(
+                raise InvalidResultError(
                     "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
                 )
         normalized_axes[axis] = {"status": status, "evidence": evidence}
@@ -1074,26 +1077,26 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
             )
 
     if not isinstance(result["findings"], list):
-        raise InvalidResult("findings must be an array")
+        raise InvalidResultError("findings must be an array")
     findings = [
         validate_blocking_finding(item, index)
         for index, item in enumerate(result["findings"])
     ]
     finding_refs = [item["ref"] for item in findings]
     if len(finding_refs) != len(set(finding_refs)):
-        raise InvalidResult("finding refs must be unique")
+        raise InvalidResultError("finding refs must be unique")
     deferred = validate_deferred(result["deferred"])
 
     inventory_refs = [item["ref"] for item in inventory]
     requirements = result["requirements"]
     if not isinstance(requirements, dict):
-        raise InvalidResult("requirements must be an object keyed by inventory ref")
+        raise InvalidResultError("requirements must be an object keyed by inventory ref")
     # Coverage is the property that matters; key order carries no information, so
     # requiring it would only add a way to fail a complete answer.
     if set(requirements) != set(inventory_refs):
         missing = sorted(set(inventory_refs) - set(requirements))
         unknown = sorted(set(requirements) - set(inventory_refs))
-        raise InvalidResult(
+        raise InvalidResultError(
             f"requirements must cover every inventory ref: missing={missing}, unknown={unknown}"
         )
     normalized_requirements = {
@@ -1101,36 +1104,36 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         for ref in inventory_refs
     }
     if not isinstance(result["requirement_exceptions"], list):
-        raise InvalidResult("requirement_exceptions must be an array")
+        raise InvalidResultError("requirement_exceptions must be an array")
     exceptions = [
         validate_requirement_exception(item, set(inventory_refs), index)
         for index, item in enumerate(result["requirement_exceptions"])
     ]
     exception_refs = [item["ref"] for item in exceptions]
     if len(exception_refs) != len(set(exception_refs)):
-        raise InvalidResult("requirement_exceptions refs must be unique")
+        raise InvalidResultError("requirement_exceptions refs must be unique")
     flagged = {
         ref for ref, status in normalized_requirements.items() if status != "SATISFIED"
     }
     if flagged != set(exception_refs):
-        raise InvalidResult(
+        raise InvalidResultError(
             "every non-SATISFIED requirement needs exactly one matching exception entry"
         )
     for item in exceptions:
         if item["status"] != normalized_requirements[item["ref"]]:
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"requirement_exceptions {item['ref']} status disagrees with requirements"
             )
 
     inventory_assessment = validate_inventory_assessment(result["inventory_assessment"])
     if not isinstance(result["scope_creep"], list):
-        raise InvalidResult("scope_creep must be an array")
+        raise InvalidResultError("scope_creep must be an array")
     scope = [
         validate_scope(item, index) for index, item in enumerate(result["scope_creep"])
     ]
     scope_refs = [item["ref"] for item in scope]
     if len(scope_refs) != len(set(scope_refs)):
-        raise InvalidResult("scope creep refs must be unique")
+        raise InvalidResultError("scope creep refs must be unique")
 
     contexts = validate_context_requests(
         result["context_requests"],
@@ -1151,16 +1154,16 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
     for axis, item in normalized_axes.items():
         blocking = [finding for finding in findings if finding["axis"] == axis]
         if item["status"] == "FAIL" and not blocking:
-            raise InvalidResult(f"FAIL axis {axis} requires a P0/P1 finding")
+            raise InvalidResultError(f"FAIL axis {axis} requires a P0/P1 finding")
         if item["status"] in ("PASS", "NOT_APPLICABLE") and blocking:
-            raise InvalidResult(f"axis {axis} contradicts its blocking finding")
+            raise InvalidResultError(f"axis {axis} contradicts its blocking finding")
         if item["status"] == "UNVERIFIABLE":
             has_context = axis in context_axes or any(
                 finding["ref"] in context_findings for finding in blocking
             )
             has_blocker = any(finding["human_blocker"] for finding in blocking)
             if not has_context and not has_blocker:
-                raise InvalidResult(
+                raise InvalidResultError(
                     f"UNVERIFIABLE axis {axis} requires linked context or a human blocker"
                 )
 
@@ -1170,35 +1173,37 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         item = exact_keys(lenses[lens], {"status", "evidence"}, f"lenses.{lens}")
         status = enum_string(item["status"], AXIS_STATUSES, f"lenses.{lens}.status")
         if lens != OPTIONAL_QUALITY_LENS and status == "NOT_APPLICABLE":
-            raise InvalidResult(f"lens {lens} cannot be NOT_APPLICABLE")
+            raise InvalidResultError(f"lens {lens} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"lenses.{lens}.evidence")
         if status in ("PASS", "FAIL") and not evidence:
-            raise InvalidResult(f"{status} lens {lens} requires evidence")
+            raise InvalidResultError(f"{status} lens {lens} requires evidence")
         mapped_findings = [
             finding for finding in findings if finding["axis"] in mapped_axes
         ]
         if status == "FAIL" and not mapped_findings:
-            raise InvalidResult(f"FAIL lens {lens} requires a mapped P0/P1 finding")
+            raise InvalidResultError(f"FAIL lens {lens} requires a mapped P0/P1 finding")
         if status == "UNVERIFIABLE" and not any(
             normalized_axes[axis]["status"] == "UNVERIFIABLE" for axis in mapped_axes
         ):
-            raise InvalidResult(
+            raise InvalidResultError(
                 f"UNVERIFIABLE lens {lens} requires a mapped unverifiable axis"
             )
         normalized_lenses[lens] = {"status": status, "evidence": evidence}
 
     for item in exceptions:
-        if item["status"] == "UNVERIFIABLE" and item["human_blocker"] is None:
-            if ("requirement", item["ref"]) not in context_targets:
-                raise InvalidResult(
-                    f"UNVERIFIABLE requirement {item['ref']} requires linked context"
-                )
+        if (
+            item["status"] == "UNVERIFIABLE"
+            and item["human_blocker"] is None
+            and ("requirement", item["ref"]) not in context_targets
+        ):
+            raise InvalidResultError(
+                f"UNVERIFIABLE requirement {item['ref']} requires linked context"
+            )
     if (
         inventory_assessment["status"] == "UNVERIFIABLE"
         and inventory_assessment["human_blocker"] is None
-    ):
-        if ("inventory", "INVENTORY") not in context_targets:
-            raise InvalidResult("UNVERIFIABLE inventory requires linked context")
+    ) and ("inventory", "INVENTORY") not in context_targets:
+        raise InvalidResultError("UNVERIFIABLE inventory requires linked context")
 
     return {
         "artifact": artifact,
@@ -1320,25 +1325,25 @@ def load_state(path: Path) -> dict[str, Any]:
         "pending_repairs",
         "history",
     }.issubset(state):
-        raise InvalidResult("QA state is malformed")
+        raise InvalidResultError("QA state is malformed")
     if set(state) - allowed or state["schema_version"] != 1:
-        raise InvalidResult("QA state keys or version are invalid")
+        raise InvalidResultError("QA state keys or version are invalid")
     pending = state["pending_repairs"]
     if (
         not isinstance(pending, dict)
         or not set(pending)
         or not set(pending).issubset(set(KINDS))
     ):
-        raise InvalidResult("QA pending_repairs is malformed")
+        raise InvalidResultError("QA pending_repairs is malformed")
     for kind in pending:
         if not isinstance(pending[kind], list) or any(
             not isinstance(item, str) for item in pending[kind]
         ):
-            raise InvalidResult(f"QA pending_repairs.{kind} is malformed")
+            raise InvalidResultError(f"QA pending_repairs.{kind} is malformed")
     if not isinstance(state["history"], list) or any(
         not isinstance(item, dict) for item in state["history"]
     ):
-        raise InvalidResult("QA history is malformed")
+        raise InvalidResultError("QA history is malformed")
     return state
 
 
@@ -1364,67 +1369,67 @@ def validate_combined_transition(
     mine = [item for item in history if item.get("kind") == "combined"]
     if not mine:
         if round_number != 1:
-            raise InvalidResult("combined QA must start at round 1")
+            raise InvalidResultError("combined QA must start at round 1")
         return
     last = mine[-1]
     if not isinstance(last, dict) or not {"kind", "qa_round", "action"}.issubset(last):
-        raise InvalidResult("QA history entry is malformed")
+        raise InvalidResultError("QA history entry is malformed")
     last_round = last["qa_round"]
     if type(last_round) is not int or last_round not in (1, 2):
-        raise InvalidResult("QA history round is invalid")
+        raise InvalidResultError("QA history round is invalid")
     if last["action"] in ("PROCEED", "AUTOFIX", "NEEDS_HUMAN") or last.get(
         "terminal_status"
     ):
-        raise InvalidResult("combined QA is already resolved")
+        raise InvalidResultError("combined QA is already resolved")
     if last["action"] == "INVALID":
         if sum(1 for item in mine if item["action"] == "INVALID") > 1:
-            raise InvalidResult(
+            raise InvalidResultError(
                 "combined QA already used its one malformed-result retry"
             )
         expected = last_round
     elif last["action"] == "CONTEXT":
         if sum(1 for item in mine if item["action"] == "CONTEXT") > 1:
-            raise InvalidResult("combined QA already used its one context refill")
+            raise InvalidResultError("combined QA already used its one context refill")
         expected = last_round + 1
     elif last["action"] == "STALE":
-        raise InvalidResult(
+        raise InvalidResultError(
             "the candidate moved after the review; rebuild the bundle from Phase 6 with a fresh QA state file"
         )
     else:
-        raise InvalidResult("combined QA has no remaining attempt")
+        raise InvalidResultError("combined QA has no remaining attempt")
     if round_number != expected:
-        raise InvalidResult(f"next combined QA attempt must be round {expected}")
+        raise InvalidResultError(f"next combined QA attempt must be round {expected}")
 
 
 def validate_transition(state: dict[str, Any], kind: str, round_number: int) -> None:
     history = state["history"]
     if kind == "combined" or any(item.get("kind") == "combined" for item in history):
         if kind != "combined":
-            raise InvalidResult("this QA state is single-pass; use --kind combined")
+            raise InvalidResultError("this QA state is single-pass; use --kind combined")
         validate_combined_transition(history, round_number)
         return
     if not history:
         if kind != "quality" or round_number != 1:
-            raise InvalidResult("QA state must start with quality round 1")
+            raise InvalidResultError("QA state must start with quality round 1")
         return
     last = history[-1]
     if not isinstance(last, dict) or not {"kind", "qa_round", "action"}.issubset(last):
-        raise InvalidResult("QA history entry is malformed")
+        raise InvalidResultError("QA history entry is malformed")
     last_round = last["qa_round"]
     if type(last_round) is not int or last_round not in (1, 2, 3):
-        raise InvalidResult("QA history round is invalid")
+        raise InvalidResultError("QA history round is invalid")
     if last.get("terminal_status") or last["action"] == "NEEDS_HUMAN":
-        raise InvalidResult("QA state is already terminal")
+        raise InvalidResultError("QA state is already terminal")
     if last["kind"] == "quality" and last["action"] == "PROCEED":
         expected = ("spec", last_round)
     elif last["kind"] == "spec" and last["action"] == "PROCEED":
-        raise InvalidResult("QA state is already approved")
+        raise InvalidResultError("QA state is already approved")
     elif last["kind"] in ("quality", "spec") and last_round < 3:
         expected = ("quality", last_round + 1)
     else:
-        raise InvalidResult("QA state has no remaining round")
+        raise InvalidResultError("QA state has no remaining round")
     if (kind, round_number) != expected:
-        raise InvalidResult(f"next QA review must be {expected[0]} round {expected[1]}")
+        raise InvalidResultError(f"next QA review must be {expected[0]} round {expected[1]}")
 
 
 def contract(kind: str) -> dict[str, Any]:
@@ -1737,17 +1742,17 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
     try:
         state = load_state(state_path)
         validate_transition(state, args.kind, args.round)
-    except InvalidResult as exc:
+    except InvalidResultError as exc:
         return invalid_decision(args.kind, args.round, str(exc))
     try:
         if not isinstance(args.expected_bundle_sha256, str) or not SHA256_RE.fullmatch(
             args.expected_bundle_sha256
         ):
-            raise InvalidResult("expected bundle SHA-256 is invalid")
+            raise InvalidResultError("expected bundle SHA-256 is invalid")
         if not isinstance(args.expected_base_oid, str) or not OID_RE.fullmatch(
             args.expected_base_oid
         ):
-            raise InvalidResult("expected base OID is invalid")
+            raise InvalidResultError("expected base OID is invalid")
         inventory = validate_inventory(read_json(Path(args.inventory)))
         raw_result = read_json(Path(args.result))
         if args.kind == "combined":
@@ -1757,7 +1762,7 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
         else:
             validated = validate_spec(raw_result, inventory)
         metadata, bundle_sha = parse_bundle(Path(args.bundle))
-    except InvalidResult as exc:
+    except InvalidResultError as exc:
         decision = invalid_decision(args.kind, args.round, str(exc), terminal=True)
         state["history"].append(decision)
         write_state(state_path, state)
@@ -1796,24 +1801,26 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             stale_reasons.append("changed_path_count")
         if digest(canonical_bytes(changed_paths)) != metadata["changed_paths_sha256"]:
             stale_reasons.append("changed_paths_sha256")
-    except (InvalidResult, UnicodeDecodeError) as exc:
+    except (InvalidResultError, UnicodeDecodeError) as exc:
         stale_reasons.append(f"changed_paths_error:{exc}")
     if args.kind == "spec":
-        for key in (
-            "base_oid",
-            "candidate_tree_oid",
-            "bundle_sha256",
-            "contract_inventory_sha256",
-        ):
-            if state.get(key) != expected[key]:
-                stale_reasons.append(f"quality_{key}")
+        stale_reasons.extend(
+            f"quality_{key}"
+            for key in (
+                "base_oid",
+                "candidate_tree_oid",
+                "bundle_sha256",
+                "contract_inventory_sha256",
+            )
+            if state.get(key) != expected[key]
+        )
     try:
         if (
             current_candidate_tree(Path(args.repo).resolve())
             != metadata["candidate_tree_oid"]
         ):
             stale_reasons.append("current_candidate_tree_oid")
-    except InvalidResult as exc:
+    except InvalidResultError as exc:
         stale_reasons.append(f"candidate_tree_error:{exc}")
     if stale_reasons:
         decision = {

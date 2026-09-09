@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 import tempfile
@@ -35,10 +36,8 @@ def write_token(root: Path, content: bytes, timeout_ms: int) -> None:
             finally:
                 os.close(directory_fd)
         except Exception:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary)
-            except FileNotFoundError:
-                pass
             raise
 
 

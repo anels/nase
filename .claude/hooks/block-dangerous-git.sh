@@ -711,7 +711,6 @@ push_option_takes_value() {
 collect_push_positionals() {
   local idx=1 arg saw_remote=0
 
-  PUSH_REMOTE=""
   PUSH_REFSPECS=()
   while [ "$idx" -lt "${#NORM_ARGS[@]}" ]; do
     arg="${NORM_ARGS[$idx]}"
@@ -721,7 +720,6 @@ collect_push_positionals() {
         while [ "$idx" -lt "${#NORM_ARGS[@]}" ]; do
           arg="${NORM_ARGS[$idx]}"
           if [ "$saw_remote" -eq 0 ]; then
-            PUSH_REMOTE="$arg"
             saw_remote=1
           else
             PUSH_REFSPECS+=("$arg")
@@ -744,7 +742,6 @@ collect_push_positionals() {
         ;;
       *)
         if [ "$saw_remote" -eq 0 ]; then
-          PUSH_REMOTE="$arg"
           saw_remote=1
         else
           PUSH_REFSPECS+=("$arg")

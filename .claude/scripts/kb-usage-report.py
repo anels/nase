@@ -233,16 +233,14 @@ def build_report(
 
     lines.append("## Unread Mapped KB Files")
     if unread_mapped:
-        for file_path in unread_mapped:
-            lines.append(f"- `{file_path}`")
+        lines.extend(f"- `{file_path}`" for file_path in unread_mapped)
     else:
         lines.append("- none")
     lines.append("")
 
     lines.append("## Unobserved Mapped KB Files")
     if unobserved_mapped:
-        for file_path in unobserved_mapped:
-            lines.append(f"- `{file_path}`")
+        lines.extend(f"- `{file_path}`" for file_path in unobserved_mapped)
     else:
         lines.append("- none")
     lines.append("")

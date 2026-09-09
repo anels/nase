@@ -467,8 +467,7 @@ class SecretScanTest(unittest.TestCase):
 
     def test_brace_interpolation_is_not_a_credential(self):
         # An f-string / format placeholder is substitution syntax: the value resolves at
-        # run time, so what stands here is a template. The brace twin of `${NAME}`, which
-        # the scanner already absolves; only the sigil differs.
+        # run time, so what stands here is a template.
         field = b"pass" + b"word"
         opener, closer = b"{", b"}"
         for value in (
@@ -523,8 +522,6 @@ class SecretScanTest(unittest.TestCase):
         self.assertEqual(module.secret_kind(source), "credential-assignment")
 
     def test_multiple_placeholders_in_one_value_stay_flagged(self):
-        # The rule is anchored to exactly one placeholder, so a value that is not a single
-        # substitution gets no absolution from it.
         field = b"pass" + b"word"
         source = field + b"={a}{b}"
         self.assertEqual(module.secret_kind(source), "credential-assignment")

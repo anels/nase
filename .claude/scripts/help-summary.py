@@ -103,8 +103,7 @@ def render_workspace_skills(root: Path, limit: int) -> str:
         lines.append("- none")
         return "\n".join(lines)
     shown = names if limit <= 0 else names[:limit]
-    for name in shown:
-        lines.append(f"- `/nase:workspace:{name}`")
+    lines.extend(f"- `/nase:workspace:{name}`" for name in shown)
     remaining = len(names) - len(shown)
     if remaining > 0:
         lines.append(f"- (+{remaining} more; run `/nase:help --verbose`)")

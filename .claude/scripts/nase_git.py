@@ -78,8 +78,7 @@ def run(
             cwd=cwd,
             check=check,
             text=text,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             env=merged_env,
             timeout=timeout,
         )
@@ -113,12 +112,10 @@ def streaming(
             process.stdout.close()
         if process.poll() is None:
             process.kill()
-        try:
+        # Already signalled; a process that will not die after SIGKILL is stuck in the
+        # kernel, and blocking the caller on it forever helps nobody.
+        with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            # Already signalled; a process that will not die after SIGKILL is stuck in
-            # the kernel, and blocking the caller on it forever helps nobody.
-            pass
 
 
 def resolve_root(

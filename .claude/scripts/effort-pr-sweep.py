@@ -41,6 +41,10 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_gh import run as nase_gh_run
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 
@@ -87,22 +91,12 @@ EXCLUSION_HINTS = (
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run a command, reporting a hang or a missing binary as a failed result.
+    """Run a command under the sweep's timeout, reporting failure through `returncode`.
 
-    Every caller already branches on `returncode`, and the sweep's contract is that one bad
-    read is data. Letting `TimeoutExpired` propagate would end the whole run on a single slow
-    `gh` call and lose the audit for every other effort.
+    Every caller branches on `returncode`, because the sweep's contract is that one bad
+    read is data: a single slow `gh` call must not cost the audit for every other effort.
     """
-    try:
-        return subprocess.run(
-            cmd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT
-        )
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(
-            cmd, 124, "", f"timed out after {SUBPROCESS_TIMEOUT}s"
-        )
-    except OSError as exc:
-        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+    return nase_gh_run(cmd, timeout=SUBPROCESS_TIMEOUT)
 
 
 def local_paths() -> dict[str, str]:
@@ -112,10 +106,10 @@ def local_paths() -> dict[str, str]:
     if not path.exists():
         return out
     for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
-        key, _, value = line.partition("=")
+        key, _, value = stripped.partition("=")
         if value.startswith("/"):
             out[key.strip()] = value.strip()
     return out
@@ -397,16 +391,16 @@ def closed_findings(
     findings: list[dict] = []
     for audit in audits:
         structure = audit.get("structure") or {}
-        for defect in structure.get("defects", []):
-            findings.append(
-                {
-                    "effort": audit["effort"],
-                    "path": audit.get("path"),
-                    "defect": defect,
-                    "standing": [],
-                    "reverted": [],
-                }
-            )
+        findings.extend(
+            {
+                "effort": audit["effort"],
+                "path": audit.get("path"),
+                "defect": defect,
+                "standing": [],
+                "reverted": [],
+            }
+            for defect in structure.get("defects", [])
+        )
         if (
             audit.get("status") != "wontfix"
             or structure.get("partial_delivery") is True
@@ -623,8 +617,7 @@ def main() -> int:
     live: dict[str, dict] = {}
     if not args.no_live and all_refs:
         with ThreadPoolExecutor(max_workers=10) as pool:
-            for key, payload in pool.map(read_pr, sorted(all_refs)):
-                live[key] = payload
+            live = dict(pool.map(read_pr, sorted(all_refs)))
 
     # `--closed` implies revert checking: its whole output is "this merged, record it as
     # delivered", and a reverted merge would turn that into a false delivery claim.

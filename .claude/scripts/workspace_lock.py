@@ -11,7 +11,7 @@ import sys
 import time
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,7 +83,7 @@ def _entry_metadata(
     except FileNotFoundError:
         if missing_ok:
             return None
-        raise LockError(f"{label} does not exist: {name}")
+        raise LockError(f"{label} does not exist: {name}") from None
     except OSError as exc:
         raise LockError(f"{label} cannot be inspected: {name}: {exc}") from exc
 
@@ -417,7 +417,7 @@ def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
             except FileExistsError:
                 _quarantine_stale_at(root_fd, locks_fd, locks_metadata)
                 if time.monotonic() >= deadline:
-                    raise LockBusyError("workspace mutation lock is busy")
+                    raise LockBusyError("workspace mutation lock is busy") from None
                 time.sleep(0.05)
                 continue
             except OSError as exc:
@@ -449,10 +449,8 @@ def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
                 ):
                     raise LockError("lock path changed before acquisition completed")
             except (LockError, OSError) as exc:
-                try:
+                with suppress(LockError, OSError):
                     _cleanup_created_lock(locks_fd, lock_fd, lock_metadata)
-                except (LockError, OSError):
-                    pass
                 if isinstance(exc, LockError):
                     raise
                 raise LockError(f"lock owner cannot be created safely: {exc}") from exc

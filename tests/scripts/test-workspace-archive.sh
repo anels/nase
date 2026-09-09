@@ -130,27 +130,25 @@ source.write_text(
 )
 
 
-class InitialClock(datetime):
-    @classmethod
-    def now(cls, tz=None):
-        return cls(2026, 4, 1, tzinfo=tz)
+# `local_now` is the module's clock. Patching the named function rather than the
+# whole `datetime` object keeps the seam to the one call the test means to control.
+def initial_clock():
+    return datetime(2026, 4, 1).astimezone()
 
 
-class RetryClock(datetime):
-    @classmethod
-    def now(cls, tz=None):
-        return cls(2026, 5, 1, tzinfo=tz)
+def retry_clock():
+    return datetime(2026, 5, 1).astimezone()
 
 
 with (
-    mock.patch.object(module, "datetime", InitialClock),
+    mock.patch.object(module, "local_now", initial_clock),
     mock.patch.object(module, "atomic_replace", side_effect=fail_source),
 ):
     try:
         module.rotate_lessons(fixture)
     except OSError:
         pass
-with mock.patch.object(module, "datetime", RetryClock):
+with mock.patch.object(module, "local_now", retry_clock):
     module.rotate_lessons(fixture)
 live = source.read_text(encoding="utf-8")
 archived = (fixture / "workspace/tasks/lessons-archive.md").read_text(encoding="utf-8")

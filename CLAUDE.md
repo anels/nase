@@ -70,7 +70,8 @@ When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
 
 ### CI Pipeline
-- Local gate: `bash tests/check-all.sh` (local `shellcheck` skips if missing; CI still runs it). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
+- Local gate: `bash tests/check-all.sh` (local `ruff` and `shellcheck` skip if missing; CI still runs both). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
+- Python lint config is `.ruff.toml` at the repo root. Every ignore there carries the reason it is ignored; add a rule to that list only with one, and prefer a scoped `# noqa: RULE - why` at the single site that needs it.
 - `tests/check-boundary-terms.sh` enforces `workspace/context.md → Workspace Boundary Policy` over tracked files from the git-ignored `workspace/boundary-terms.txt`. It skips with a notice when that list is absent, and reports `path:line` with the term redacted. Replace a finding with a generic placeholder; never suppress the gate.
 
 ### Runtime Dependencies

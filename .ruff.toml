@@ -1,0 +1,75 @@
+# Ruff is the Python half of the deterministic gate that shellcheck already
+# provides for shell. `python3 -m py_compile` only proves a file parses; it says
+# nothing about an undefined name on a branch that never runs in a test, a `zip`
+# that silently truncates, or an `except` that swallows the cause.
+#
+# `tests/check-all.sh` runs this config and skips with a notice when ruff is not
+# installed locally, the same contract as shellcheck and actionlint. CI installs
+# it, so the gate is never actually optional.
+#
+# Config lives here rather than in `pyproject.toml` because this repo is a Claude
+# Code workspace kit, not an installable Python package; a `pyproject.toml` would
+# invite tooling to treat it as one.
+
+target-version = "py310"
+
+extend-exclude = ["__pycache__", "workspace", "evals/*/fixtures"]
+
+[lint]
+select = [
+  "A",    # builtin shadowing
+  "ARG",  # unused arguments
+  "B",    # bugbear: the real-bug rules py_compile cannot see
+  "C4",   # comprehensions
+  "DTZ",  # naive datetimes - this repo compares local dates against UTC timestamps
+  "E4",
+  "E7",
+  "E9",
+  "EXE",  # shebang/executable-bit agreement
+  "F",
+  "G",    # logging format
+  "I",    # import sorting
+  "LOG",
+  "N",    # naming
+  "PERF",
+  "PIE",
+  "PLE",
+  "PLW",
+  "RET",
+  "RUF",
+  "S",    # bandit
+  "SIM",
+  "TRY",
+  "UP",
+]
+
+ignore = [
+  # Every `subprocess` call in this repo builds a fixed argv list in-repo and
+  # never reaches a shell, which is exactly what S603 asks for; the rule fires on
+  # the call shape regardless.
+  "S603",
+  # `git`, `gh`, and `python3` are resolved off PATH on purpose: the caller's
+  # toolchain is the one that must run, not a path this repo hardcodes.
+  "S607",
+  # Tests and evidence gates assert on invariants. `-O` is never used here.
+  "S101",
+  # These scripts are CLI helpers whose message text is the user interface;
+  # hoisting every message into an exception subclass buys nothing.
+  "TRY003",
+  # A `return` inside `try` is the readable shape for the parse-or-fail helpers
+  # that dominate this repo.
+  "TRY300",
+  # Validate-then-catch is the shape of every gate in this repo: raise the
+  # specific failure where it is detected, catch it once at the boundary. Hoisting
+  # each `raise` into its own function would scatter the check away from the data
+  # it checks.
+  "TRY301",
+  # Python 3.11 made an untaken `except` free; the loop-overhead premise this rule
+  # rests on no longer holds, and per-item error handling is often the only correct
+  # shape for an I/O loop.
+  "PERF203",
+  # Shebangs document the interpreter. Nothing here is invoked directly - every
+  # call site is `python3 <script>.py` - so the executable bit stays off, and
+  # EXE002 covers the reverse mistake.
+  "EXE001",
+]

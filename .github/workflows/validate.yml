@@ -22,6 +22,13 @@ jobs:
           sudo apt-get install -y shellcheck python3 jq ripgrep p7zip-full
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          # Pinned so a new ruff release cannot turn a green PR red on its own.
+          # tests/check-all.sh skips this gate locally when ruff is absent, so CI
+          # is the only place it is guaranteed to run.
+          pipx install ruff==0.16.6
+          # The gate skips silently when ruff is off PATH, so CI would stay green
+          # with the lint never run. Prove the install landed somewhere callable.
+          ruff --version
 
       - name: Full local validation gate
         run: bash tests/check-all.sh
