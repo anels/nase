@@ -99,6 +99,9 @@ CI check: `tests/check-skill-doctrine.sh → D1` (hard fail).
 - Batch related questions into a single `AskUserQuestion` call (`questions` array). Multi-screen prompt sequences for the same decision are a token-burn anti-pattern.
 - Show the **concrete payload** in the question prompt — Jira transition target, Confluence diff, ADO `templateParameters`, PR title+body. Generic "should we proceed?" is not a gate.
 - After the gate fires, ACT immediately on the answer — do not wait for an additional confirmation turn.
+- **Recommendation first.** The first option is the default the skill already applied, with ` (Recommended)` appended and a `description` that gives the evidence or principle behind that choice. Remaining options state their trade-off. Never ask without an opinion: a question with no recommendation hands the user work the skill was supposed to do. The harness adds "Other" as the free-form escape.
+- **Record what the answer changed.** A skill whose answers alter a durable artifact appends a `### Resolved Decisions` block to it — columns `#`, `Question`, `Decision`, `Applied to` — and keeps the table cumulative across runs. Without it a later reader cannot tell an auto-selected default from a human call.
+- Order a large batch by load-bearingness: security, data-loss, irreversibility, and cross-team coordination first.
 
 ---
 
@@ -148,11 +151,30 @@ Describe the shape in the skill's own prose where a reader needs it.
 
 ---
 
-## 9. Output discipline (delegated)
+## 9. Output discipline
 
-Follow `.claude/docs/skill-contract.md` — canonical rules for artifact/chat/verbose handling and `AskUserQuestion` batching live there.
+The runtime rules — artifact/chat/verbose handling and `AskUserQuestion` batching — are canonical in `.claude/docs/skill-contract.md`; a running skill loads that, not this. What follows is the author-side half: the checklist to run against a skill body before shipping it, and the catalog examples to copy the shape from.
 
 ---
+
+### Conformance checklist
+
+- [ ] Final step writes to an explicit, documented file path.
+- [ ] Final step echoes `Saved → {path}` + a bounded summary (≤ 5 lines, ≤ 80 chars each).
+- [ ] No full-table / full-document echo in the default code path.
+- [ ] `--verbose` branch (if present) is the only place an inline dump appears.
+- [ ] Any user-facing decision points use a batched `AskUserQuestion`.
+- [ ] Checkpoints are pushed right — evidence/codebase/KB lookups exhausted before the user is asked; nothing the codebase can answer becomes a checkpoint.
+- [ ] Checkpoints present a decision-ready brief (what + why + link down), never the raw draft.
+- [ ] Every shown command, pasted output, and quoted artifact is redacted before it reaches chat or a draft; loops run against environment variables rather than literal credentials.
+- [ ] Cross-doc pointers into `workspace/...` use code-spans (`` `workspace/kb/general/workflow.md → Section` ``), not markdown links. Lychee CI runs with `--exclude-path workspace`, so md-links from `.claude/`, `CLAUDE.md`, or `README.md` into `workspace/` fail as "Cannot find file". Code-spans are inert for lychee. Pattern surfaced in a prior PR.
+
+### Examples in the catalog
+
+- `/nase:wrap-up` — full journal to `workspace/journals/{YYYY-MM-DD}.md`, chat gets 4-bullet highlights + closing block.
+- `/nase:stats` — heatmap and counts to `workspace/stats/report-{YYYY-MM-DD}.md`, chat gets the top-line numbers.
+- `/nase:skill-usage` — table to `workspace/stats/skill-usage-{YYYY-MM-DD}.md`, chat gets tier counts + top N.
+- `/nase:recap` — recap to `workspace/recaps/{period}.md`, chat gets a one-paragraph wrap.
 
 ## 10. Skill-invocation error handling
 

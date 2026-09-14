@@ -39,25 +39,31 @@ assert_contains "tech-debt-audit mentions actionlint" \
   ".claude/commands/nase/tech-debt-audit.md" \
   "actionlint"
 
-assert_contains "fsd probes security tools" \
-  ".claude/docs/fsd-implementation-loop.md" \
+# cli-tooling.md owns the post-edit probe for both mutating skills; each skill is
+# asserted to route there instead of carrying its own copy of the group list.
+assert_contains "post-edit probe covers security tools" \
+  ".claude/docs/cli-tooling.md" \
   "--group security"
 
-assert_contains "address-comments probes security tools" \
-  ".claude/docs/address-comments-delivery.md" \
-  "--group security"
+assert_contains "post-edit probe covers ci tools" \
+  ".claude/docs/cli-tooling.md" \
+  "--group ci"
 
-assert_contains "fsd probes ci tools" \
+assert_contains "fsd routes to the shared post-edit probe" \
   ".claude/docs/fsd-implementation-loop.md" \
-  "--group ci"
+  "Running the post-edit gates"
 
-assert_contains "address-comments probes ci tools" \
+assert_contains "address-comments routes to the shared post-edit probe" \
   ".claude/docs/address-comments-delivery.md" \
-  "--group ci"
+  "Running the post-edit gates"
 
-assert_contains "discuss-pr uses syntax-aware diff" \
+assert_contains "fsd reuses the preflight tool probe" \
+  ".claude/docs/cli-tooling.md" \
+  "fsd-preflight.json"
+
+assert_contains "discuss-pr routes to the cli-tooling integration map" \
   ".claude/docs/discuss-pr-analysis.md" \
-  "difft --display json"
+  "Skill Integration Map"
 
 assert_contains "discuss-pr probes ci tools" \
   ".claude/docs/discuss-pr-analysis.md" \

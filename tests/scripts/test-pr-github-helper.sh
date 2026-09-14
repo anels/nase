@@ -227,15 +227,50 @@ cat > "$TMPDIR_TEST/bin/gh" <<'SH'
 args="$*"
 case "$args" in
   *"pr view 42"*)
-    cat <<JSON
-{"number":42,"title":"Fix widgets","url":"https://github.com/acme/widgets/pull/42","body":"body text","state":"OPEN","isDraft":true,"headRefOid":"${PR_HEAD_SHA:-missing}","headRefName":"feature/pr","baseRefName":"main","createdAt":"2026-01-01T00:00:00Z","additions":1200,"deletions":400,"changedFiles":3,"files":[{"path":"src/a.ts","additions":800,"deletions":300,"changeType":"MODIFIED"},{"path":"src/c.ts","additions":400,"deletions":100,"changeType":"ADDED"}],"commits":[{"oid":"${PR_HEAD_SHA:-missing}"}],"reviewDecision":"REVIEW_REQUIRED"}
-JSON
+    # Honour --json the way real gh does: emit ONLY the requested keys. A stub that
+    # returns every key regardless hides a caller asking for the wrong field set -
+    # `finding-scope` shipped resolving the head ref to "origin/None" because the
+    # light variant omits headRefName and this stub handed it over anyway.
+    requested=$(printf '%s\n' "$args" | sed -n 's/.*--json \([^ ]*\).*/\1/p')
+    PR_HEAD_SHA="${PR_HEAD_SHA:-missing}" GH_REQUESTED_FIELDS="$requested" python3 -c '
+import json, os
+full = {
+    "number": 42,
+    "title": "Fix widgets",
+    "url": "https://github.com/acme/widgets/pull/42",
+    "body": "body text",
+    "state": "OPEN",
+    "isDraft": True,
+    "headRefOid": os.environ["PR_HEAD_SHA"],
+    "headRefName": "feature/pr",
+    "baseRefName": "main",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "additions": 1200,
+    "deletions": 400,
+    "changedFiles": 3,
+    "files": [
+        {"path": "src/a.ts", "additions": 800, "deletions": 300, "changeType": "MODIFIED"},
+        {"path": "src/c.ts", "additions": 400, "deletions": 100, "changeType": "ADDED"},
+    ],
+    "commits": [{"oid": os.environ["PR_HEAD_SHA"]}],
+    "reviewDecision": "REVIEW_REQUIRED",
+    "headRepository": {"nameWithOwner": "acme/widgets"},
+}
+fields = [f for f in os.environ["GH_REQUESTED_FIELDS"].split(",") if f]
+missing = [f for f in fields if f not in full]
+if missing:
+    raise SystemExit("stub has no fixture for requested field(s): " + ",".join(missing))
+print(json.dumps({k: full[k] for k in fields} if fields else full))
+'
     ;;
   # No `gh pr diff --stat` arm on purpose: that flag was removed from gh, and mocking it
   # is what let the real breakage pass. review-context must derive the stat from metadata.
   *"pr diff 42"*)
     echo "unknown flag" >&2
     exit 1
+    ;;
+  *"api user"*)
+    echo "octo-dev"
     ;;
   *"repos/acme/widgets/pulls/42/comments"*)
     cat <<'JSON'
@@ -290,7 +325,9 @@ assert data["reviewComments"][0]["body"].endswith("...")
 assert data["reviewComments"][0]["path"] == "src/a.ts"
 assert data["reviewComments"][0]["line"] == 2
 assert data["reviewComments"][0]["inReplyToId"] == 500
-assert data["reviews"][0]["author"] == "lead"
+assert [item["id"] for item in data["reviewSubmissions"]] == [601], "empty-body approval carries nothing"
+assert data["reviewSubmissions"][0]["author"] == "lead"
+assert data["viewerLogin"] == "octo-dev"
 assert data["issueComments"][0]["author"] == "sonarcloud[bot]"
 assert data["issueComments"][0]["authorIsBot"] is True
 assert data["kbMentions"] == []
@@ -463,6 +500,232 @@ assert [item["id"] for item in data["reviewSubmissions"]] == [601]
 assert data["issueComments"][0]["body"] == "Quality Gate failed"
 PY
 
+# --- same-repo guards ---------------------------------------------------------
+# /nase:address-comments mutates exactly one repo and used to prove that with a
+# hand-written sed pipeline over `git remote get-url origin`. These assert the
+# field comparison that replaced it, including the shapes the pipeline handled.
+
+assert_cmd "normalize_repo_slug handles every GitHub remote spelling" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+for url in (
+    "https://github.com/Acme/Widgets.git",
+    "https://user@github.com/acme/widgets",
+    "git@github.com:acme/widgets.git",
+    "ssh://git@github.com/acme/widgets/",
+    "https://github.com/acme/widgets\n",
+):
+    assert module.normalize_repo_slug(url) == "acme/widgets", url
+# A different host must not normalize into a bare owner/repo that could match.
+assert module.normalize_repo_slug("https://example.com/acme/widgets") != "acme/widgets"
+PY
+
+guards_repo="$TMPDIR_TEST/guards-repo"
+git init -q "$guards_repo"
+git -C "$guards_repo" remote add origin git@github.com:Acme/Widgets.git
+
+assert_cmd "same_repo_guards passes when origin, head repo, and head ref agree" \
+  "$PYTHON_BIN" - "$SCRIPT" "$guards_repo" <<'PY'
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+repo = Path(sys.argv[2])
+env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e", "GIT_COMMITTER_NAME": "t",
+       "GIT_COMMITTER_EMAIL": "t@e", "PATH": "/usr/bin:/bin:/usr/local/bin"}
+(repo / "f.txt").write_text("x\n", encoding="utf-8")
+subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, env=env)
+subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "chore: init"], check=True, env=env)
+subprocess.run(
+    ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/feature/pr", "HEAD"],
+    check=True, env=env,
+)
+
+pr = module.normalized_pr("acme", "widgets", 42)
+response = {
+    "headRefName": "feature/pr",
+    "headRepository": {"nameWithOwner": "Acme/Widgets"},
+}
+guards = module.same_repo_guards(pr, repo, response)
+# Case-insensitive on both axes: GitHub preserves display case, the slug does not.
+assert guards["originOk"] is True, guards
+assert guards["sameRepoOk"] is True, guards
+assert guards["headRefOk"] is True, guards
+
+fork = module.same_repo_guards(
+    pr, repo, {"headRefName": "feature/pr", "headRepository": {"nameWithOwner": "someone/widgets"}}
+)
+assert fork["sameRepoOk"] is False, "a fork head must not pass the single-repo gate"
+
+missing_ref = module.same_repo_guards(
+    pr, repo, {"headRefName": "no/such/branch", "headRepository": {"nameWithOwner": "acme/widgets"}}
+)
+assert missing_ref["headRefOk"] is False, "an unfetched head ref must not pass"
+
+null_head = module.same_repo_guards(pr, repo, {"headRefName": None, "headRepository": None})
+assert null_head["sameRepoOk"] is False and null_head["headRefOk"] is False
+
+other = module.normalized_pr("other", "repo", 1)
+assert module.same_repo_guards(other, repo, response)["originOk"] is False
+PY
+
+# --- finding-scope ------------------------------------------------------------
+# Step 4a/4b used to run one hand-typed `git show origin/{base}:{path}` per candidate.
+
+scope_candidates="$TMPDIR_TEST/candidates.json"
+cat > "$scope_candidates" <<'JSON'
+[{"id":"c1","path":"src/a.ts","line":2},{"id":"c2","path":"src/new.ts","line":1},{"id":"c3","path":"src/gone.ts","line":1}]
+JSON
+scope_out="$TMPDIR_TEST/finding-scope.json"
+PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" \
+  finding-scope "acme/widgets#42" --local-repo "$repo" --candidates "$scope_candidates" \
+  --context-lines 1 > "$scope_out"
+
+# An unfetched or missing ref makes every `git diff` fail, and diff_for_file returns ""
+# on any non-zero exit - indistinguishable per-candidate from "the PR did not touch this
+# path", which the caller is told to drop silently. refsResolved is the tell.
+scope_norefs="$TMPDIR_TEST/finding-scope-norefs.json"
+norefs_repo="$TMPDIR_TEST/norefs-repo"
+git init -q "$norefs_repo"
+PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" \
+  finding-scope "acme/widgets#42" --local-repo "$norefs_repo" --candidates "$scope_candidates" \
+  > "$scope_norefs"
+assert_cmd "finding-scope reports unresolved refs instead of a silent all-clean verdict" \
+  "$PYTHON_BIN" - "$scope_norefs" <<'PYEOF'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data["refsResolved"] is False, "neither origin ref exists in a bare fresh repo"
+# Without the flag this output is identical to "the PR touched nothing", which is the
+# shape that silently discards a whole review.
+assert all(item["touchedByPr"] is False for item in data["candidates"])
+PYEOF
+
+# PR scope is measured from the merge-base. With two-dot `base..head`, a commit that
+# lands on the base branch after the PR forked reads as a change this PR made - and
+# finding_scope turns that reading into a silent drop-or-keep decision.
+scope_moved_base="$TMPDIR_TEST/finding-scope-moved-base.json"
+(
+  cd "$repo" || exit 1
+  git checkout -q -B base-advance refs/remotes/origin/main
+  printf 'advanced on base after the PR forked\n' > src/base_only.ts
+  git add src/base_only.ts
+  ALLOW_RAW_GIT_COMMIT=1 git commit -q -m "chore: advance base"
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q --detach refs/remotes/origin/feature/pr
+)
+cat > "$TMPDIR_TEST/candidates-base.json" <<'JSON'
+[{"id":"b1","path":"src/base_only.ts","line":1}]
+JSON
+PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" \
+  finding-scope "acme/widgets#42" --local-repo "$repo" --candidates "$TMPDIR_TEST/candidates-base.json" \
+  > "$scope_moved_base"
+assert_cmd "finding-scope does not attribute a post-fork base commit to the PR" \
+  "$PYTHON_BIN" - "$scope_moved_base" <<'PYEOF'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+candidate = data["candidates"][0]
+# The PR never touched this path; only the base branch moved.
+assert candidate["touchedByPr"] is False, candidate
+PYEOF
+
+# A fork PR whose branch name collides with one this origin already has: the name
+# resolves, so refsResolved is true, but it points at the WRONG commit. Preferring
+# refs/pull/{n}/head is what keeps the head honest; crossRepo + headFromPullRef are what
+# tell the caller when the fallback was used.
+git -C "$repo" update-ref "refs/pull/42/head" refs/remotes/origin/feature/pr
+scope_fork="$TMPDIR_TEST/finding-scope-fork.json"
+PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" \
+  finding-scope "acme/widgets#42" --local-repo "$repo" --candidates "$scope_candidates" \
+  > "$scope_fork"
+assert_cmd "finding-scope prefers the pull ref over a collidable branch name" \
+  "$PYTHON_BIN" - "$scope_fork" <<'PYEOF'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data["headFromPullRef"] is True, data
+assert data["headRef"] == "refs/pull/42/head", data["headRef"]
+assert data["refsResolved"] is True
+# Same head commit as the branch name happens to point at here, so the verdicts hold.
+assert {item["id"] for item in data["candidates"]} == {"c1", "c2", "c3"}
+PYEOF
+
+git -C "$repo" update-ref -d "refs/pull/42/head"
+scope_nopull="$TMPDIR_TEST/finding-scope-nopull.json"
+PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" \
+  finding-scope "acme/widgets#42" --local-repo "$repo" --candidates "$scope_candidates" \
+  > "$scope_nopull"
+assert_cmd "finding-scope reports when it fell back to the branch name" \
+  "$PYTHON_BIN" - "$scope_nopull" <<'PYEOF'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data["headFromPullRef"] is False, data
+assert data["headRef"] == "origin/feature/pr", data["headRef"]
+# Same-repo here, so the fallback is sound - but the caller can only know that because
+# crossRepo says so.
+assert data["crossRepo"] is False, data
+PYEOF
+
+# A deleted fork returns headRepository: null. Reading that as same-repo would bless the
+# branch-name fallback exactly when it is least sound, so an unknown head repo counts as
+# cross-repo.
+assert_cmd "unknown head repo counts as cross-repo, not same-repo" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PYEOF'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+pr = module.normalized_pr("acme", "widgets", 42)
+for metadata in ({"headRepository": None}, {}):
+    head_repo = (metadata.get("headRepository") or {}).get("nameWithOwner")
+    cross = head_repo is None or head_repo.lower() != pr["repo_full_name"].lower()
+    assert cross is True, metadata
+PYEOF
+
+assert_cmd "finding-scope answers diff scope per candidate without a per-finding git show" \
+  "$PYTHON_BIN" - "$scope_out" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+by_id = {item["id"]: item for item in data["candidates"]}
+assert data["baseRef"] == "origin/main"
+assert data["headRef"] == "origin/feature/pr"
+
+# Modified by the PR: present in both refs, and the diff is non-empty.
+a = by_id["c1"]
+assert a["inBase"] is True and a["inHead"] is True
+assert a["touchedByPr"] is True
+assert a["headExcerpt"]["available"] is True
+assert a["baseExcerpt"]["available"] is True
+
+# A path that does not exist at either ref cannot support a finding.
+gone = by_id["c3"]
+assert gone["inBase"] is False and gone["inHead"] is False
+assert gone["touchedByPr"] is False
+assert gone["headExcerpt"] == {"available": False}
+PY
+
 assert_cmd "review-context issues its independent reads concurrently" \
   "$PYTHON_BIN" - "$SCRIPT" <<'PY'
 import importlib.util
@@ -474,9 +737,9 @@ spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
-# A barrier asserts the overlap without timing: every one of the four reads must be
+# A barrier asserts the overlap without timing: every one of the five reads must be
 # in flight before any returns, so a serial implementation deadlocks on the timeout.
-barrier = threading.Barrier(4, timeout=10)
+barrier = threading.Barrier(5, timeout=10)
 metadata = {
     "number": 42,
     "title": "t",
@@ -495,15 +758,20 @@ metadata = {
 
 def fake_run_gh(args):
     barrier.wait()
-    return json.dumps(metadata) if args[:2] == ["gh", "pr"] else "[]"
+    if args[:2] == ["gh", "pr"]:
+        return json.dumps(metadata)
+    if args[:3] == ["gh", "api", "user"]:
+        return "octo-dev\n"
+    return "[]"
 
 
 module.run_gh = fake_run_gh
 context = module.review_context(module.normalized_pr("acme", "widgets", 42), 200, 0)
 assert context["metadata"]["number"] == 42
 assert context["reviewComments"] == []
-assert context["reviews"] == []
+assert context["reviewSubmissions"] == []
 assert context["issueComments"] == []
+assert context["viewerLogin"] == "octo-dev"
 PY
 
 assert_cmd "run_gh_all keeps a single read serial" \

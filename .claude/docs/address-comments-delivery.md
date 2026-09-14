@@ -61,7 +61,7 @@ resolving, fix every broken instance in the same commit, and state the sweep's s
 reply (`cross-checked every {pattern} ref in this file, fixed {N}`) so the reviewer can
 spot-check.
 
-**Expected values a reviewer changed:** apply `.claude/docs/pr-review-verification.md` §1.
+**Expected values a reviewer changed:** apply `.claude/docs/pr-review-fix-verification.md` §1.
 If the test fails at the suggested value, keep the structural improvement but restore the
 original expected value and name the runtime constraint in the reply.
 
@@ -104,17 +104,13 @@ On success: proceed to Phase 7.5.
 
 ## Phase 7.25: Optional Post-Edit CLI Gates
 
-Probe optional tools, then run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) against the diff vs `origin/{pr_branch}`:
+Run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) against the diff vs `origin/{pr_branch}`, probing as that document's *Running the post-edit gates* section specifies.
 
-```bash
-python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json
-```
-
-Apply a formatter or scanner fix only when it stays inside the accepted thread's scope. Missing optional tools are warning-only and must not block replies or thread resolution when the code/test evidence is otherwise adequate. Scanner output is not reviewer intent: verify findings against the review thread, diff scope, and source lines before expanding the patch.
+Apply a formatter or scanner fix only when it stays inside the accepted thread's scope. Scanner output is not reviewer intent: check each finding against the review thread as well as the diff before expanding the patch.
 
 ## Phase 7.5: Review-Thread Resolution Gate
 
-Follow `.claude/docs/pr-review-verification.md → Review-Thread Resolution Gate`. The gate is mandatory before commit or outward replies, and it has no availability branch: the verifier is a local fresh-context subagent.
+Follow `.claude/docs/pr-review-fix-verification.md → Review-Thread Resolution Gate`. The gate is mandatory before commit or outward replies, and it has no availability branch: the verifier is a local fresh-context subagent.
 
 ## Phase 8: Commit & Push
 
@@ -173,7 +169,7 @@ If the description already follows the template, skip this phase.
 
 ## Phase 9: Reply & Resolve Comments
 
-Before any `gh` mutation in this phase, run the GitHub auth account guard snippet from `.claude/docs/external-mutation-policy.md → GitHub auth account guard`.
+Every `gh` mutation in this phase goes through `.claude/scripts/external-write-action.py`, which enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`: `prepare` binds the owner-to-account mapping into the hashed action, `execute` re-reads it and verifies the token actor). There is no snippet to run and no `gh auth` call to make - raw `gh auth token`/`login`/`logout`/`refresh`/`switch` are blocked.
 
 After push or no-code skip, handle each thread: **reply first, then resolve**.
 
@@ -215,11 +211,11 @@ Process `accept` and `reply-only` threads using this pattern (reply + resolve). 
 
 After replies + resolves succeed, offer to Slack-ping any human reviewers whose comments were addressed. Bots don't need a ping - they don't read Slack and re-reviews from them re-trigger automatically on the next push.
 
-**Step 9b.1 - Filter to human reviewers.** From the threads addressed in Phase 9 (i.e. `accept` + `reply-only`; excluding declined since those threads stay open intentionally), collect each thread's `firstComment` (the original review comment, not your reply) and drop every one whose `firstComment.authorIsBot` is true. That flag comes from `is_bot_login` in `.claude/scripts/pr-github-helper.py`, which owns the whole rule - the named set, the `[bot]`/`-bot` suffixes, and `NASE_BOT_LOGINS` - so do not re-derive it from the login text. Keep the unique remaining `author` values, and also drop the PR author's own login; use `gh api user --jq .login` once if you don't already know it.
+**Build the ping set.** From the threads addressed in Phase 9 (`accept` + `reply-only`; declined threads stay open intentionally), take each thread's `firstComment` - the original review comment, not your reply - and drop every one whose `firstComment.authorIsBot` is true. That flag comes from `is_bot_login` in `.claude/scripts/pr-github-helper.py`, which owns the whole rule (the named set, the `[bot]`/`-bot` suffixes, `NASE_BOT_LOGINS`), so do not re-derive it from the login text. Drop the PR author's own login. Phase 2's `comment-dossiers` does not carry it - `guards` holds repo identity only - so read it once with `gh api user --jq .login`. Keep each remaining `author` with the count of threads addressed for them.
 
-If the remaining set is empty, skip this phase silently - no message to the user.
+If the set is empty, skip this phase silently - no message to the user.
 
-**Step 9b.2 - Ask whether to draft pings.** For each human reviewer, you have how many threads were addressed (count from Phase 9). Use a single `AskUserQuestion` whose options are the unique human reviewers (up to 3 plus a "skip all" option; if >3, batch into multiple `AskUserQuestion` calls in the same turn):
+**Ask, then hand off.** Use a single `AskUserQuestion` listing the unique human reviewers (up to 3 plus "None - skip all"; batch into multiple calls in the same turn if more):
 
 ```
 question: "Addressed comments from these reviewers. Draft a Slack ping for any so they know to re-review?"
@@ -234,21 +230,9 @@ options:
     description: "Don't ping anyone"
 ```
 
-If the user picks "None - skip all" (or doesn't select any reviewers), skip the rest of this phase.
+On "None - skip all" or an empty selection, skip the rest of this phase.
 
-**Step 9b.3 - Resolve each selected GitHub login to a Slack user.** Get the real name from the repo KB's handle mappings first, then `gh api users/{login} --jq .name`, and search Slack with the query shape `/nase:request-review` Step 4 documents (bare given name for an uncommon one, `"{Given} {Surname}"` for a common one, never the corporate suffix). If a login stays unresolved after both name sources, surface `"Couldn't resolve {login} on Slack - skipping ping"` and move on.
-
-**Step 9b.4 - Draft (do NOT send) one Slack DM per resolved reviewer.** Use `slack_send_message_draft`, per `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm`. The body is one opener line, a blank line, then the bare PR URL on its own line:
-
-```
-{ping_opener}
-
-{pr_url}
-```
-
-This is a re-review ping, not a review request, so the opener names what changed: `"Pushed fixes for your comments on the PR - ready for another look when you get a minute."`, or `"Responded to your comments on the PR - ready for another look when you get a minute."` when `no_commit=true`.
-
-After staging each draft, print: `"Slack DM draft staged for @{login} (Slack: {slack_handle}) - review + send manually."` The user reviews and sends each draft themselves; this skill never sends.
+Otherwise invoke `/nase:request-review {pr_url} --mode re-review-ping` with the selected handles and the current `no_commit` value. That skill owns Slack-user resolution, the draft voice, and the staging report; duplicating any of it here is how the two copies drifted apart. Because the ping is handled, Phase 12 must not offer "Request review" again.
 
 ## Phase 10: Learn
 
@@ -256,10 +240,8 @@ Offer `/nase:kb-update` for confirmed non-obvious architectural constraints. Put
 
 ## Phase 11: Cleanup and Report
 
-For a worktree, follow `.claude/docs/worktree-pattern.md -> Cleanup`. Return `3`
-retains it, including verified-clean quarantines, and return `2` stops. Report
-the returned path plus up to 20 dirty items and any omitted-item count.
-Never run cleanup when the workflow used the primary checkout. Then print:
+For a worktree, follow `.claude/docs/worktree-pattern.md -> Cleanup` and consume the
+return code per its *Return codes* section. Then print:
 
 ```
 PR comments addressed ✓

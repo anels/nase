@@ -7,7 +7,7 @@ category: Design & implementation
 
 Turn a request into a concrete, tracked, junior-implementable design. This command never edits product code.
 
-Follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/effort-model.md`, `.claude/docs/effort-transitions.md`, and `.claude/docs/external-mutation-policy.md`. Use `python3 .claude/scripts/workspace-write-guard.py stage` for effort writes; auto mode may skip the prompt, never staging, preview, or drift checks.
+Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md`. Use `python3 .claude/scripts/workspace-write-guard.py stage` for effort writes; auto mode may skip the prompt, never staging, preview, or drift checks. Read `.claude/docs/effort-transitions.md` only when this run creates or transitions an effort doc - grill and review do neither. Every mode except interactive Step 8 declares external mutation out of scope, so `.claude/docs/external-mutation-policy.md` loads at that step, not here.
 
 ## Core contract
 
@@ -40,8 +40,8 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. Quick fixes may use two one-line options.
 5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
 6. Self-review up to three times against the quality criteria below. Research fixable gaps before asking the user.
-7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
-8. Optional Jira creation uses a fresh payload-bound token and a concrete approval immediately before the write.
+7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Run `citation-validator.py` and `effort-state.py --evaluate-transition` against the staged content first, as `.claude/docs/design-auto-mode.md → 5a` specifies. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
+8. Optional Jira creation: read `.claude/docs/external-mutation-policy.md`, then use a fresh payload-bound token and a concrete approval immediately before the write. Skip this step, and that read, when no Jira issue is being created.
 9. Stop after saving. Chat returns the file path and a short decision summary.
 
 ## Quality criteria

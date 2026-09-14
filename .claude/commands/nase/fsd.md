@@ -36,12 +36,12 @@ tell whether a missing value is a skipped step or a dropped one.
 |---|---|---|
 | 0 | This entrypoint: validate input. | - |
 | 1-3 and 3.7 | Read `.claude/docs/fsd-intake-and-setup.md` when entering Phase 1. | `success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints` |
-| 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `bundle_sha256`, `contract_inventory_sha256` |
-| 6.4 | Read `.claude/docs/fsd-delivery-gates.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
+| 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `total_lines_changed`, `bundle_sha256` |
+| 6.4 | Read `.claude/docs/fsd-candidate-review.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
 | 7 | This entrypoint plus `commit-push-pattern.md`. | - |
-| 8, 8.5, 8c | The already-loaded `fsd-delivery-gates.md`. | `pr_is_draft` |
+| 8, 8.5, 8c | Read `.claude/docs/fsd-pr-delivery.md` at Phase 8; skip it entirely when `open_pr = false`. | `pr_url` |
 | 8b | `effort-transitions.md -> FSD Update`. | - |
-| 9-10 | This entrypoint owns Phase 9 worktree cleanup; the already-loaded `fsd-delivery-gates.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. | `worktree_report` |
+| 9-10 | This entrypoint owns Phase 9 worktree quarantine; `.claude/docs/fsd-closeout.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. | `worktree_report` |
 
 ## Phase 0: Input Guard
 
@@ -57,7 +57,7 @@ Before Phase 3.5, confirm that the applicable state above is populated. If phase
 
 At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its research, preflight, Direct/Team/TDD implementation, initial build/test loop, simplification, post-edit deterministic gates, final size guard, and candidate bundle rules in order.
 
-At Phase 6.4, read `.claude/docs/fsd-delivery-gates.md`. It owns the single fresh independent review covering both code quality and spec conformance, the operator preflight that must pass before the reducer call, the deterministic reducer, and the retry budget. Only reducer-approved human blockers and `blocked-evidence` interrupt the user. A reviewer that cannot return a usable result sets `review_outcome = not-run` and the run continues - see that document's *When the review did not run* section for what Phase 7 binds instead, why `closure_state` cannot be `done`, and where the skip has to be disclosed.
+At Phase 6.4, read `.claude/docs/fsd-candidate-review.md`. It owns the single fresh independent review covering both code quality and spec conformance, the operator preflight that must pass before the reducer call, the deterministic reducer, and the retry budget. Only reducer-approved human blockers and `blocked-evidence` interrupt the user. A reviewer that cannot return a usable result sets `review_outcome = not-run` and the run continues - see that document's *When the review did not run* section for what Phase 7 binds instead, why `closure_state` cannot be `done`, and where the skip has to be disclosed.
 
 ## Phase 7: Commit & Push
 
@@ -85,13 +85,13 @@ Any mismatch invalidates `review_action` and the bound tree. Do not push. Restar
 
 ## Phase 8: Pull Request (if PR = Yes)
 
-Follow `.claude/docs/fsd-delivery-gates.md → Phase 8`. It owns template and gate-profile conformance, the explicit draft-PR confirmation, and the payload-bound GitHub action.
+Follow `.claude/docs/fsd-pr-delivery.md → Phase 8`. It owns template and gate-profile conformance, the explicit draft-PR confirmation, and the payload-bound GitHub action.
 
 ---
 
 ## Phase 8.5: Verification Matrix
 
-Follow `.claude/docs/fsd-delivery-gates.md → Phase 8.5`. It owns local execution, evidence recording, and the separately approved PR-body update.
+Follow `.claude/docs/fsd-pr-delivery.md → Phase 8.5`. It owns local execution, evidence recording, and the separately approved PR-body update.
 
 ---
 
@@ -101,34 +101,33 @@ Follow `.claude/docs/effort-transitions.md → FSD Update`. If $ARGUMENTS contai
 
 ## Phase 8c: KB Update
 
-Follow `.claude/docs/fsd-delivery-gates.md → Phase 8c`. Persist research and
+Follow `.claude/docs/fsd-pr-delivery.md → Phase 8c`. Persist research and
 implementation discoveries before cleanup. Keep any team-mode research artifact
 with a retained worktree; delete it at the start of Phase 10 when no worktree
 was created.
 
-## Phase 9: Cleanup (if worktree = Yes)
+## Phase 9: Worktree Quarantine (if worktree = Yes)
 
 Follow `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote
 ref `refs/heads/{branch_name}`, and the full OID from
 `git -C {worktree_path} rev-parse HEAD`.
 
-- Return `3`: keep the retained worktree and both artifacts, report every
-  returned path plus up to 20 dirty items and any omitted-item count, and continue
-  to the final report as a non-failure cleanup result.
-- Return `2`: keep all artifacts, stop, and report the helper error.
+`worktree-cleanup.py` has no success-and-removed exit: its only outcomes are `3`
+(retained) and `2` (invalid). This phase quarantines and reports; it never removes
+a worktree. Report it that way.
+
+Consume the return code per that document's *Return codes* section. FSD adds only
+this: keep both artifacts on either code, and on `2` stop before Phase 10.
 
 Set `worktree_report` for Phase 10 from the actual outcome:
 
 - no worktree flow: `n/a`
 - return `3`: `retained at {exact returned worktree path}`
 
-Never summarize return `3` as removed or cleaned up.
-For a verified-clean worktree, return `3` is the normal locked-quarantine result.
-
 ---
 
 ## Phase 10: Report and Error Handling
 
-Follow `.claude/docs/fsd-delivery-gates.md -> Phase 10`. It owns no-worktree
+Follow `.claude/docs/fsd-closeout.md -> Phase 10`. It owns no-worktree
 artifact cleanup, the closure ledger, final report, daily log, optional journal,
 and terminal error handling.

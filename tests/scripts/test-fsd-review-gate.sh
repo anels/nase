@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,34 +42,65 @@ def run(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.C
 
 
 class ReviewGateTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
-        self.repo = Path(self.tmp.name) / "repo"
-        self.repo.mkdir()
-        self.artifacts = Path(self.tmp.name) / "artifacts"
-        self.artifacts.mkdir()
-        run("git", "init", "-q", cwd=self.repo)
-        run("git", "config", "user.email", "test@example.com", cwd=self.repo)
-        run("git", "config", "user.name", "Test", cwd=self.repo)
-        (self.repo / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
-        run("git", "add", "app.py", cwd=self.repo)
-        run("git", "commit", "-q", "-m", "init", cwd=self.repo)
-        self.base_oid = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+    # The fixture is a git repo plus a built verification bundle: 6 git subprocesses and
+    # 2 verify-bundle.py invocations, about 1.5s. Building it per test method cost ~115s
+    # across this file - the slowest single file in the whole suite and the thing that
+    # bounded a parallel `check-all` run. Build it once, then hand each test a filesystem
+    # copy: tests still mutate the repo and rebuild the bundle freely, but a copytree of a
+    # four-file repo is milliseconds. Git tree OIDs are content-addressed, so the copy
+    # resolves to the same candidate_tree_oid the bundle metadata was built against.
+    inventory_data = [
+        {"ref": "REQ-001", "id": "REQ-001", "summary": "value returns two"},
+        {"ref": "REQ-002", "id": "REQ-002", "summary": "behavior is regression tested"},
+    ]
 
-        (self.repo / "app.py").write_text("def value():\n    return 2\n", encoding="utf-8")
-        (self.repo / "test_app.py").write_text(
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._template = tempfile.TemporaryDirectory()
+        root = Path(cls._template.name)
+        repo = root / "repo"
+        repo.mkdir()
+        artifacts = root / "artifacts"
+        artifacts.mkdir()
+        run("git", "init", "-q", cwd=repo)
+        run("git", "config", "user.email", "test@example.com", cwd=repo)
+        run("git", "config", "user.name", "Test", cwd=repo)
+        (repo / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+        run("git", "add", "app.py", cwd=repo)
+        run("git", "commit", "-q", "-m", "init", cwd=repo)
+        cls._base_oid = run("git", "rev-parse", "HEAD", cwd=repo).stdout.strip()
+
+        (repo / "app.py").write_text("def value():\n    return 2\n", encoding="utf-8")
+        (repo / "test_app.py").write_text(
             "from app import value\n\ndef test_value():\n    assert value() == 2\n",
             encoding="utf-8",
         )
+        cls.write_json(artifacts / "inventory.json", cls.inventory_data)
+
+        # Build the bundle through a throwaway instance so refresh_bundle stays the single
+        # definition of how a bundle is produced.
+        seed = cls.__new__(cls)
+        seed.repo, seed.artifacts = repo, artifacts
+        seed.base_oid = cls._base_oid
+        seed.inventory = artifacts / "inventory.json"
+        seed.evidence = artifacts / "evidence.json"
+        seed.bundle = artifacts / "bundle.md"
+        seed.refresh_bundle()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._template.cleanup()
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        shutil.copytree(self._template.name, self.tmp.name, dirs_exist_ok=True)
+        self.repo = Path(self.tmp.name) / "repo"
+        self.artifacts = Path(self.tmp.name) / "artifacts"
+        self.base_oid = self._base_oid
         self.inventory = self.artifacts / "inventory.json"
-        self.inventory_data = [
-            {"ref": "REQ-001", "id": "REQ-001", "summary": "value returns two"},
-            {"ref": "REQ-002", "id": "REQ-002", "summary": "behavior is regression tested"},
-        ]
-        self.write_json(self.inventory, self.inventory_data)
         self.evidence = self.artifacts / "evidence.json"
         self.bundle = self.artifacts / "bundle.md"
-        self.refresh_bundle()
+        self.load_bundle_identity()
 
     def refresh_bundle(self, *extra_args: str) -> None:
         candidate = json.loads(
@@ -114,6 +146,9 @@ class ReviewGateTests(unittest.TestCase):
             str(self.bundle),
             *extra_args,
         )
+        self.load_bundle_identity()
+
+    def load_bundle_identity(self) -> None:
         first = self.bundle.read_text(encoding="utf-8").splitlines()[0]
         self.metadata = json.loads(first.removeprefix("<!-- fsd-artifact: ").removesuffix(" -->"))
         self.bundle_sha = hashlib.sha256(self.bundle.read_bytes()).hexdigest()
@@ -150,49 +185,35 @@ class ReviewGateTests(unittest.TestCase):
                 }
         return result
 
-    def quality(self) -> dict[str, object]:
-        return {
-            "schema_version": 1,
-            "kind": "quality",
-            "artifact": self.artifact(),
-            "axes": self.axes(),
-            "lens_coverage": {
-                lens: {
-                    "status": "PASS",
-                    "evidence": ["app.py and test_app.py reviewed together"],
-                    "reason": "The candidate satisfies this review lens.",
-                }
-                for lens in ("problem_fit", "simple_design", "architecture_boundaries", "comment_quality")
-            },
-            "findings": [],
-            "context_requests": [],
-        }
-
-    def spec(self) -> dict[str, object]:
-        return {
-            "schema_version": 1,
-            "kind": "spec",
-            "artifact": self.artifact(),
-            "inventory_assessment": {
-                "status": "COMPLETE",
-                "evidence": ["task criterion value change -> REQ-001; regression test -> REQ-002"],
-                "reason": "Every canonical task criterion is represented exactly once.",
-                "autofixable": False,
-                "human_blocker": None,
-            },
-            "requirements": [
-                {
-                    **item,
-                    "status": "SATISFIED",
-                    "evidence": ["app.py:2"],
-                    "autofixable": False,
-                    "human_blocker": None,
-                }
-                for item in self.inventory_data
-            ],
-            "scope_creep": [],
-            "context_requests": [],
-        }
+    def precheck(
+        self,
+        result: dict[str, object],
+        *,
+        inventory: Path | None = None,
+        expected_bundle_sha: str | None = None,
+        expected_base_oid: str | None = None,
+    ) -> tuple[int, dict[str, object]]:
+        result_path = self.artifacts / f"precheck-{os.urandom(4).hex()}.json"
+        self.write_json(result_path, result)
+        completed = run(
+            "python3",
+            str(GATE),
+            "precheck",
+            "--round",
+            "1",
+            "--inventory",
+            str(inventory or self.inventory),
+            "--bundle",
+            str(self.bundle),
+            "--expected-bundle-sha256",
+            expected_bundle_sha or self.bundle_sha,
+            "--expected-base-oid",
+            expected_base_oid or self.base_oid,
+            "--result",
+            str(result_path),
+            check=False,
+        )
+        return completed.returncode, json.loads(completed.stdout)
 
     def reduce(
         self,
@@ -235,22 +256,6 @@ class ReviewGateTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout)
-
-    def reduce_spec(self, result: dict[str, object]) -> dict[str, object]:
-        state = self.artifacts / f"spec-state-{os.urandom(4).hex()}.json"
-        self.assertEqual(self.reduce("quality", 1, self.quality(), state=state)["action"], "PROCEED")
-        return self.reduce("spec", 1, result, state=state)
-
-    def reduce_quality_round_three(
-        self,
-        final: dict[str, object] | None,
-        *,
-        prior: dict[str, object] | None,
-    ) -> dict[str, object]:
-        state = self.artifacts / f"round-three-state-{os.urandom(4).hex()}.json"
-        self.reduce("quality", 1, prior, state=state)
-        self.reduce("quality", 2, prior, state=state)
-        return self.reduce("quality", 3, final, state=state)
 
     def finding(
         self,
@@ -357,6 +362,11 @@ class ReviewGateTests(unittest.TestCase):
         )
         self.assertIsInstance(contract["result_schema"]["deferred"][0], str)
         self.assertNotIn("QA_REPAIR_EXHAUSTED", contract["human_blockers"])
+        self.assertEqual(
+            tuple(contract["required_axes"] + contract["conditional_axes"]), QUALITY_AXES
+        )
+        self.assertEqual(set(contract["review_lenses"]), set(contract["result_schema"]["lenses"]))
+        self.assertEqual(contract["context_request_limit"], 64)
 
     def test_combined_clean_result_proceeds_in_one_pass(self) -> None:
         decision = self.reduce("combined", 1, self.combined())
@@ -436,12 +446,6 @@ class ReviewGateTests(unittest.TestCase):
         self.assertEqual(decision["action"], "AUTOFIX")
         self.assertTrue(decision["disclose_unreviewed_repair"])
 
-    def test_combined_state_rejects_a_legacy_kind(self) -> None:
-        state = self.artifacts / "combined-kind-lock-state.json"
-        self.assertEqual(self.reduce("combined", 1, self.combined_with_finding(), state=state)["action"], "AUTOFIX")
-        crossed = self.reduce("quality", 2, self.quality(), state=state)
-        self.assertEqual(crossed["action"], "INVALID")
-
     def test_combined_tolerates_an_unrequested_reason_on_a_passing_axis(self) -> None:
         # Failing a reviewer for supplying more than the contract asked for is the
         # exact class of slip this schema exists to stop, so an extra reason is
@@ -474,38 +478,25 @@ class ReviewGateTests(unittest.TestCase):
         broken = self.combined(deferred=[f"app.py:{index} - nit" for index in range(30)] + [""])
         self.assertEqual(self.reduce("combined", 1, broken)["action"], "INVALID")
 
-    def test_contract_exposes_test_quality_lenses_and_exact_axes(self) -> None:
-        completed = run("python3", str(GATE), "contract", "--kind", "quality")
-        contract = json.loads(completed.stdout)
-        self.assertEqual(list(contract["axes"]), list(QUALITY_AXES))
-        self.assertEqual(
-            set(contract["result_schema"]),
-            {
-                "schema_version",
-                "kind",
-                "artifact",
-                "axes",
-                "lens_coverage",
-                "findings",
-                "context_requests",
-            },
-        )
-        self.assertEqual(set(contract["review_lenses"]), set(self.quality()["lens_coverage"]))
-        self.assertEqual(contract["context_request_limit"], 64)
-        lenses = " ".join(contract["test_quality_lenses"])
-        self.assertIn("observable behavioral contract", lenses)
-        self.assertIn("plausible mutation", lenses)
-        self.assertIn("source-text grep", lenses)
-        self.assertIn("coverage", lenses)
+    def test_non_combined_kind_is_rejected_by_the_cli(self) -> None:
+        # The two-pass kinds are gone from the gate, so argparse - not a reducer
+        # decision - is what a caller now hits.
+        for command in ("contract", "reduce"):
+            for kind in ("quality", "spec"):
+                with self.subTest(command=command, kind=kind):
+                    completed = run("python3", str(GATE), command, "--kind", kind, check=False)
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertIn("invalid choice", completed.stderr)
 
-    def test_clean_quality_and_spec_proceed_on_same_artifact(self) -> None:
-        state = self.artifacts / "clean-state.json"
-        quality = self.reduce("quality", 1, self.quality(), state=state)
-        spec = self.reduce("spec", 1, self.spec(), state=state)
-        self.assertEqual(quality["action"], "PROCEED")
-        self.assertEqual(spec["action"], "PROCEED")
-        self.assertEqual(quality["candidate_tree_oid"], spec["candidate_tree_oid"])
-        self.assertEqual(quality["bundle_sha256"], spec["bundle_sha256"])
+    def test_legacy_kind_keyed_state_still_loads(self) -> None:
+        # State written by the retired two-pass flow must read back as a stale but
+        # parseable file rather than crashing the reducer.
+        state = self.artifacts / "legacy-pending-state.json"
+        self.write_json(
+            state,
+            {"schema_version": 1, "pending_repairs": {"quality": [], "spec": []}, "history": []},
+        )
+        self.assertEqual(self.reduce("combined", 1, self.combined(), state=state)["action"], "PROCEED")
 
     def test_bundle_body_tampering_is_stale_against_captured_hash(self) -> None:
         captured_sha = self.bundle_sha
@@ -514,10 +505,10 @@ class ReviewGateTests(unittest.TestCase):
             encoding="utf-8",
         )
         tampered_sha = hashlib.sha256(self.bundle.read_bytes()).hexdigest()
-        result = self.quality()
+        result = self.combined()
         result["artifact"]["bundle_sha256"] = tampered_sha
         decision = self.reduce(
-            "quality", 1, result, expected_bundle_sha=captured_sha
+            "combined", 1, result, expected_bundle_sha=captured_sha
         )
         self.assertEqual(decision["action"], "STALE")
         self.assertIn("expected_bundle_sha256", decision["reason"])
@@ -574,105 +565,65 @@ class ReviewGateTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("exit_code must be zero", completed.stderr)
 
-    def test_fixable_quality_requirement_and_scope_failures_autofix(self) -> None:
-        quality = self.quality()
-        quality["axes"]["security_privacy"] = {
-            "status": "FAIL",
-            "evidence": ["app.py:2"],
-            "reason": "Input validation is missing.",
-        }
-        quality["findings"] = [self.finding(axis="security_privacy")]
-        self.assertEqual(self.reduce("quality", 1, quality)["action"], "AUTOFIX")
+    def test_fixable_finding_inventory_and_scope_failures_autofix(self) -> None:
+        finding = self.combined_with_finding(finding=self.finding(axis="security_privacy"))
+        self.assertEqual(self.reduce("combined", 1, finding)["action"], "AUTOFIX")
 
-        spec = self.spec()
-        spec["requirements"][0].update(status="MISSING", autofixable=True)
-        self.assertEqual(self.reduce_spec(spec)["action"], "AUTOFIX")
-
-        spec = self.spec()
-        spec["inventory_assessment"].update(
+        incomplete = self.combined()
+        incomplete["inventory_assessment"].update(
             status="INCOMPLETE",
             evidence=["Canonical regression-test criterion has no inventory entry."],
             reason="The frozen inventory omitted a task criterion.",
             autofixable=True,
         )
-        self.assertEqual(self.reduce_spec(spec)["action"], "AUTOFIX")
+        self.assertEqual(self.reduce("combined", 1, incomplete)["action"], "AUTOFIX")
 
-        spec = self.spec()
-        spec["scope_creep"] = [
-            {
-                "ref": "SCOPE-001",
-                "path": "app.py",
-                "line": 2,
-                "behavior": "The candidate changes an off-contract return path.",
-                "consequence": "The change expands review scope.",
-                "evidence": ["app.py:2"],
-                "autofixable": True,
-                "human_blocker": None,
-            }
-        ]
-        self.assertEqual(self.reduce_spec(spec)["action"], "AUTOFIX")
-
-    def test_round_three_never_autofixes_and_p2_only_proceeds(self) -> None:
-        result = self.quality()
-        result["axes"]["correctness"] = {
-            "status": "FAIL",
-            "evidence": ["app.py:2"],
-            "reason": "A verified P1 remains.",
-        }
-        result["findings"] = [self.finding()]
-        terminal = self.reduce_quality_round_three(result, prior=result)
-        self.assertEqual(terminal["action"], "NEEDS_HUMAN")
-        self.assertEqual(terminal["human_blocker"], "QA_REPAIR_EXHAUSTED")
-
-        p2 = self.quality()
-        p2["findings"] = [self.finding(severity="P2", autofixable=False)]
-        decision = self.reduce_quality_round_three(p2, prior=result)
-        self.assertEqual(decision["action"], "PROCEED")
-        self.assertEqual(decision["p2_deferred"], 1)
+        creep = self.combined(
+            scope_creep=[
+                {
+                    "ref": "SCOPE-001",
+                    "path": "app.py",
+                    "line": 2,
+                    "behavior": "The candidate changes an off-contract return path.",
+                    "consequence": "The change expands review scope.",
+                    "evidence": ["app.py:2"],
+                    "autofixable": True,
+                    "human_blocker": None,
+                }
+            ]
+        )
+        self.assertEqual(self.reduce("combined", 1, creep)["action"], "AUTOFIX")
 
     def test_explicit_human_blocker_and_invalid_precedence(self) -> None:
-        result = self.quality()
-        result["axes"]["correctness"] = {
-            "status": "FAIL",
-            "evidence": ["app.py:2"],
-            "reason": "The product contract is ambiguous.",
-        }
-        result["findings"] = [
-            self.finding(autofixable=False, blocker="PRODUCT_DECISION")
-        ]
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "NEEDS_HUMAN")
+        result = self.combined_with_finding(
+            finding=self.finding(autofixable=False, blocker="PRODUCT_DECISION")
+        )
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "NEEDS_HUMAN")
 
         result["unexpected"] = True
-        invalid = self.reduce("quality", 1, result)
-        self.assertEqual(invalid["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["axes"]["correctness"] = {
-            "status": "FAIL",
-            "evidence": ["app.py:2"],
-            "reason": "Repository authorization is required.",
-        }
-        result["findings"] = [
-            self.finding(autofixable=False, blocker="CREDENTIAL_OR_PERMISSION")
-        ]
+        credential = self.combined_with_finding(
+            finding=self.finding(autofixable=False, blocker="CREDENTIAL_OR_PERMISSION")
+        )
         self.assertEqual(
-            self.reduce("quality", 1, result)["human_blocker"],
+            self.reduce("combined", 1, credential)["human_blocker"],
             "CREDENTIAL_OR_PERMISSION",
         )
 
     def test_human_then_context_then_code_precedence(self) -> None:
-        result = self.quality()
-        result["axes"]["correctness"] = {
+        axes = self.combined_axes()
+        axes["correctness"] = {
             "status": "FAIL",
             "evidence": ["app.py:2"],
             "reason": "A verified P1 remains.",
         }
-        result["axes"]["verification_evidence"] = {
+        axes["verification_evidence"] = {
             "status": "UNVERIFIABLE",
             "evidence": [],
             "reason": "More bound context is required.",
         }
-        result["findings"] = [
+        findings = [
             self.finding(ref="FIX", autofixable=True),
             self.finding(
                 ref="HUMAN",
@@ -682,185 +633,188 @@ class ReviewGateTests(unittest.TestCase):
                 blocker="TEST_ORACLE_AMBIGUITY",
             ),
         ]
-        result["context_requests"] = [
-            {
-                "ref": "CTX",
-                "target_type": "axis",
-                "target_ref": "verification_evidence",
-                "tree": "CANDIDATE",
-                "path": "app.py",
-                "reason": "Need the exact candidate source.",
-            }
-        ]
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "NEEDS_HUMAN")
+        result = self.combined(
+            axes=axes,
+            findings=findings,
+            context_requests=[
+                {
+                    "ref": "CTX",
+                    "target_type": "axis",
+                    "target_ref": "verification_evidence",
+                    "tree": "CANDIDATE",
+                    "path": "app.py",
+                    "reason": "Need the exact candidate source.",
+                }
+            ],
+        )
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "NEEDS_HUMAN")
 
-        result["findings"] = [result["findings"][0]]
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "CONTEXT")
+        result["findings"] = [findings[0]]
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "CONTEXT")
 
     def test_malformed_unknown_enum_and_axis_inconsistency_are_invalid(self) -> None:
-        self.assertEqual(self.reduce("quality", 1, None)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, None)["action"], "INVALID")
 
-        result = self.quality()
+        result = self.combined()
         result["axes"]["correctness"]["status"] = "MAYBE"
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
+        result = self.combined()
         result["axes"]["correctness"]["status"] = "FAIL"
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
+        result = self.combined()
         result["axes"]["test_quality"] = {
             "status": "PASS",
             "evidence": ["grep -q guard app.py", "100 percent line coverage"],
             "reason": "The grep assertion rejects a missing guard and therefore proves behavior.",
         }
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
+        result = self.combined()
         result["axes"]["correctness"]["status"] = []
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["axes"]["correctness"]["status"] = "FAIL"
-        result["findings"] = [self.finding()]
+        result = self.combined_with_finding()
         result["findings"][0]["severity"] = {}
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["axes"]["correctness"]["status"] = "FAIL"
-        result["findings"] = [self.finding(autofixable=False)]
+        result = self.combined_with_finding(finding=self.finding(autofixable=False))
         result["findings"][0]["human_blocker"] = []
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["axes"]["correctness"] = {
+        axes = self.combined_axes()
+        axes["correctness"] = {
             "status": "UNVERIFIABLE",
             "evidence": [],
             "reason": "More bound context is required.",
         }
-        result["context_requests"] = [
-            {
-                "ref": "CTX",
-                "target_type": [],
-                "target_ref": "correctness",
-                "tree": "CANDIDATE",
-                "path": "app.py",
-                "reason": "Need the exact candidate source.",
-            }
-        ]
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        result = self.combined(
+            axes=axes,
+            context_requests=[
+                {
+                    "ref": "CTX",
+                    "target_type": [],
+                    "target_ref": "correctness",
+                    "tree": "CANDIDATE",
+                    "path": "app.py",
+                    "reason": "Need the exact candidate source.",
+                }
+            ],
+        )
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["axes"]["correctness"]["status"] = "FAIL"
-        result["findings"] = [self.finding(path="\ud800.py")]
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        result = self.combined_with_finding(finding=self.finding(path="\ud800.py"))
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["lens_coverage"].pop("simple_design")
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        result = self.combined()
+        result["lenses"].pop("simple_design")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        result = self.quality()
-        result["lens_coverage"]["architecture_boundaries"]["status"] = "FAIL"
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        result = self.combined()
+        result["lenses"]["architecture_boundaries"]["status"] = "FAIL"
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-        spec = self.spec()
-        spec["inventory_assessment"]["evidence"] = []
-        self.assertEqual(self.reduce_spec(spec)["action"], "INVALID")
+        result = self.combined()
+        result["inventory_assessment"]["evidence"] = []
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
         empty_inventory = self.artifacts / "empty-inventory.json"
         self.write_json(empty_inventory, [])
         self.assertEqual(
-            self.reduce("quality", 1, self.quality(), inventory=empty_inventory)["action"],
+            self.reduce("combined", 1, self.combined(), inventory=empty_inventory)["action"],
             "INVALID",
         )
 
-    def test_stale_artifact_and_inventory_mismatches_fail_closed(self) -> None:
+    def test_stale_artifact_mismatches_fail_closed(self) -> None:
         for key, value in (
             ("base_oid", "0" * 40),
             ("candidate_tree_oid", "0" * 40),
             ("bundle_sha256", "0" * 64),
         ):
             with self.subTest(key=key):
-                result = self.quality()
+                result = self.combined()
                 result["artifact"][key] = value
-                self.assertEqual(self.reduce("quality", 1, result)["action"], "STALE")
+                self.assertEqual(self.reduce("combined", 1, result)["action"], "STALE")
 
         wrong_base = self.reduce(
-            "quality", 1, self.quality(), expected_base_oid="0" * 40
+            "combined", 1, self.combined(), expected_base_oid="0" * 40
         )
         self.assertEqual(wrong_base["action"], "STALE")
         self.assertIn("expected_base_oid", wrong_base["reason"])
 
-        for mutation in ("omission", "duplicate", "rewrite", "reorder", "addition"):
-            with self.subTest(mutation=mutation):
-                result = self.spec()
-                if mutation == "omission":
-                    result["requirements"].pop()
-                elif mutation == "duplicate":
-                    result["requirements"][1] = copy.deepcopy(result["requirements"][0])
-                elif mutation == "rewrite":
-                    result["requirements"][0]["summary"] = "rewritten"
-                elif mutation == "reorder":
-                    result["requirements"].reverse()
-                else:
-                    result["requirements"].append(copy.deepcopy(result["requirements"][0]))
-                self.assertEqual(self.reduce_spec(result)["action"], "INVALID")
+    def test_combined_qa_must_start_at_round_one(self) -> None:
+        # The round-order half of the retired test_shared_round_order_and_reducer_owned
+        # _exhaustion. Its "already resolved" half survives in the autofix test above and
+        # its exhaustion half in test_qa_repair_exhausted_stays_reducer_owned, but nothing
+        # was left asserting the entry condition at fsd-review-gate.py's
+        # validate_combined_transition: an empty history may only be entered at round 1.
+        fresh = self.artifacts / "round-entry-state.json"
+        decision = self.reduce("combined", 2, self.combined(), state=fresh)
+        self.assertEqual(decision["action"], "INVALID", decision)
+        self.assertIn("round 1", decision["reason"])
+        self.assertEqual(
+            self.reduce("combined", 1, self.combined(), state=fresh)["action"], "PROCEED"
+        )
+
+    def test_requirements_must_cover_the_inventory_exactly(self) -> None:
+        # The predecessor of test_stale_artifact_mismatches_fail_closed also mutated the
+        # requirements block five ways and expected rejection. Three of those shapes
+        # (duplicate/reorder/rewrite) stopped being expressible when `requirements` became
+        # a ref->status object, but omission and addition still are, and
+        # fsd-review-gate.py rejects both - so keep asserting it.
+        missing = self.combined()
+        dropped = self.inventory_data[-1]["ref"]
+        del missing["requirements"][dropped]
+        code, out = self.precheck(missing)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(any(dropped in item for item in out["problems"]), out)
+
+        unknown = self.combined()
+        unknown["requirements"]["REQ-404"] = "SATISFIED"
+        code, out = self.precheck(unknown)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(any("REQ-404" in item for item in out["problems"]), out)
 
     def test_worktree_change_after_bundle_is_stale(self) -> None:
         (self.repo / "app.py").write_text(
             "def value():\n    return 3\n",
             encoding="utf-8",
         )
-        decision = self.reduce("quality", 1, self.quality())
+        decision = self.reduce("combined", 1, self.combined())
         self.assertEqual(decision["action"], "STALE")
         self.assertIn("current_candidate_tree_oid", decision["reason"])
 
-    def test_no_progress_signature_ignores_reviewer_wording_and_ref(self) -> None:
-        state = self.artifacts / "qa-state.json"
-        first = self.quality()
-        first["axes"]["correctness"] = {
-            "status": "FAIL",
-            "evidence": ["app.py:2"],
-            "reason": "A verified P1 remains.",
-        }
-        first["findings"] = [self.finding(ref="OLD", behavior="old wording")]
-        initial = self.reduce("quality", 1, first, state=state)
-        self.assertEqual(initial["action"], "AUTOFIX")
-
-        second = copy.deepcopy(first)
-        second["findings"][0]["ref"] = "NEW"
-        second["findings"][0]["behavior"] = "different wording"
-        repeated = self.reduce("quality", 2, second, state=state)
-        self.assertEqual(len(repeated["no_progress"]), 1)
-        self.assertEqual(initial["repair_signatures"], repeated["repair_signatures"])
+    def test_repair_signature_ignores_reviewer_wording_and_ref(self) -> None:
+        # The signature is what a follow-up run compares against, so it must survive
+        # the reviewer rewording the same defect or renumbering its ref.
+        first = self.reduce(
+            "combined", 1, self.combined_with_finding(finding=self.finding(ref="OLD", behavior="old wording"))
+        )
+        second = self.reduce(
+            "combined",
+            1,
+            self.combined_with_finding(finding=self.finding(ref="NEW", behavior="different wording")),
+        )
+        self.assertEqual(first["action"], "AUTOFIX")
+        self.assertEqual(len(first["repair_signatures"]), 1)
+        self.assertEqual(first["repair_signatures"], second["repair_signatures"])
 
     def test_path_normalization_and_rejection(self) -> None:
         signatures = []
-        for path in ("./café.py", "café.py", ".\\café.py"):
-            result = self.quality()
-            result["axes"]["correctness"] = {
-                "status": "FAIL",
-                "evidence": ["app.py:2"],
-                "reason": "A verified P1 remains.",
-            }
-            result["findings"] = [self.finding(path=path)]
-            signatures.append(self.reduce("quality", 1, result)["repair_signatures"][0])
+        for path in ("./café.py", "café.py", ".\\café.py"):
+            result = self.combined_with_finding(finding=self.finding(path=path))
+            signatures.append(self.reduce("combined", 1, result)["repair_signatures"][0])
         self.assertEqual(len(set(signatures)), 1)
 
         for path in ("../app.py", "/tmp/app.py", ".", "bad\x00path"):
             with self.subTest(path=path):
-                result = self.quality()
-                result["axes"]["correctness"] = {
-                    "status": "FAIL",
-                    "evidence": ["app.py:2"],
-                    "reason": "A verified P1 remains.",
-                }
-                result["findings"] = [self.finding(path=path)]
-                self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+                result = self.combined_with_finding(finding=self.finding(path=path))
+                self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
-    def test_context_is_deduplicated_and_round_three_missing_blob_is_evidence_blocker(self) -> None:
-        result = self.quality()
-        result["axes"]["correctness"] = {
+    def test_context_is_deduplicated_and_round_two_missing_blob_is_evidence_blocker(self) -> None:
+        axes = self.combined_axes()
+        axes["correctness"] = {
             "status": "UNVERIFIABLE",
             "evidence": [],
             "reason": "A bound blob is required.",
@@ -873,8 +827,11 @@ class ReviewGateTests(unittest.TestCase):
             "path": "missing.py",
             "reason": "Need the exact candidate blob.",
         }
-        result["context_requests"] = [request, {**request, "ref": "CTX-002"}]
-        context = self.reduce("quality", 1, result)
+        result = self.combined(
+            axes=axes, context_requests=[request, {**request, "ref": "CTX-002"}]
+        )
+        state = self.artifacts / "context-state.json"
+        context = self.reduce("combined", 1, result, state=state)
         self.assertEqual(context["action"], "CONTEXT")
         self.assertEqual(len(context["context_requests"]), 1)
 
@@ -883,18 +840,20 @@ class ReviewGateTests(unittest.TestCase):
             {**request, "ref": f"CTX-{index:03d}", "path": f"missing-{index}.py"}
             for index in range(65)
         ]
-        self.assertEqual(self.reduce("quality", 1, oversized)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, oversized)["action"], "INVALID")
 
-        terminal = self.reduce_quality_round_three(result, prior=None)
+        # The single context refill is spent; a second miss ends the pass.
+        terminal = self.reduce("combined", 2, result, state=state)
         self.assertEqual(terminal["terminal_status"], "blocked-evidence")
 
     def test_declared_candidate_gap_blocks_without_reviewer_request(self) -> None:
         os.symlink("app.py", self.repo / "link.py")
         self.refresh_bundle()
-        first = self.reduce("quality", 1, self.quality())
+        state = self.artifacts / "gap-state.json"
+        first = self.reduce("combined", 1, self.combined(), state=state)
         self.assertEqual(first["action"], "CONTEXT")
         self.assertEqual(first["context_evidence_gaps"][0]["reason"], "symlink")
-        terminal = self.reduce_quality_round_three(self.quality(), prior=self.quality())
+        terminal = self.reduce("combined", 2, self.combined(), state=state)
         self.assertEqual(terminal["terminal_status"], "blocked-evidence")
 
     def test_large_diff_credential_omission_blocks_proceed(self) -> None:
@@ -919,7 +878,7 @@ class ReviewGateTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("large_diff_canary_17a2", self.bundle.read_text(encoding="utf-8"))
-        self.assertEqual(self.reduce("quality", 1, self.quality())["action"], "CONTEXT")
+        self.assertEqual(self.reduce("combined", 1, self.combined())["action"], "CONTEXT")
 
     def test_deleted_credential_bearing_path_is_redacted_and_blocks_proceed(self) -> None:
         sensitive_name = "ADMIN_" + "PASS" + "WORD=deleted_path_canary_17a2.txt"
@@ -937,16 +896,16 @@ class ReviewGateTests(unittest.TestCase):
             self.metadata["evidence_gaps"][0]["reason"],
             "credential_like_path_redacted",
         )
-        self.assertEqual(self.reduce("quality", 1, self.quality())["action"], "CONTEXT")
+        self.assertEqual(self.reduce("combined", 1, self.combined())["action"], "CONTEXT")
 
     def test_inventory_unverifiable_context_and_human_blocker(self) -> None:
-        spec = self.spec()
-        spec["inventory_assessment"].update(
+        result = self.combined()
+        result["inventory_assessment"].update(
             status="UNVERIFIABLE",
             evidence=["The invocation refers to a design artifact not present in the bundle."],
             reason="Need the bound design source.",
         )
-        spec["context_requests"] = [
+        result["context_requests"] = [
             {
                 "ref": "CTX-INVENTORY",
                 "target_type": "inventory",
@@ -956,44 +915,39 @@ class ReviewGateTests(unittest.TestCase):
                 "reason": "Need the bound design source used to derive the inventory.",
             }
         ]
-        self.assertEqual(self.reduce_spec(spec)["action"], "CONTEXT")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "CONTEXT")
 
-        spec = self.spec()
-        spec["inventory_assessment"].update(
+        blocked = self.combined()
+        blocked["inventory_assessment"].update(
             status="UNVERIFIABLE",
             evidence=["Two product criteria conflict."],
             reason="A product decision is required.",
             human_blocker="CONTRACT_CONFLICT",
         )
-        self.assertEqual(self.reduce_spec(spec)["human_blocker"], "CONTRACT_CONFLICT")
+        self.assertEqual(self.reduce("combined", 1, blocked)["human_blocker"], "CONTRACT_CONFLICT")
 
-    def test_round_three_provider_failure_is_infrastructure_blocker(self) -> None:
-        terminal = self.reduce_quality_round_three(None, prior=None)
-        self.assertEqual(terminal["terminal_status"], "blocked-infrastructure")
-
-    def test_shared_round_order_and_reducer_owned_exhaustion(self) -> None:
-        fresh_state = self.artifacts / "transition-state.json"
-        self.assertEqual(self.reduce("spec", 1, self.spec(), state=fresh_state)["action"], "INVALID")
-        self.assertEqual(self.reduce("quality", 1, self.quality(), state=fresh_state)["action"], "PROCEED")
-        self.assertEqual(self.reduce("quality", 2, self.quality(), state=fresh_state)["action"], "INVALID")
-        self.assertEqual(self.reduce("spec", 1, self.spec(), state=fresh_state)["action"], "PROCEED")
-        self.assertEqual(self.reduce("quality", 2, self.quality(), state=fresh_state)["action"], "INVALID")
-
-        result = self.quality()
-        result["axes"]["correctness"] = {
-            "status": "FAIL",
-            "evidence": ["app.py:2"],
-            "reason": "A verified P1 remains.",
-        }
-        result["findings"] = [
-            self.finding(autofixable=False, blocker="QA_REPAIR_EXHAUSTED")
+    def test_qa_repair_exhausted_stays_reducer_owned(self) -> None:
+        # A reviewer cannot declare the repair budget spent. The combined finding
+        # schema drops the blocker outright, so the reachable claim is through a
+        # requirement exception, and the reducer rejects it there.
+        ref = self.inventory_data[0]["ref"]
+        result = self.combined()
+        result["requirements"][ref] = "MISSING"
+        result["requirement_exceptions"] = [
+            {
+                "ref": ref,
+                "status": "MISSING",
+                "evidence": ["app.py:2 has no regression assertion"],
+                "autofixable": False,
+                "human_blocker": "QA_REPAIR_EXHAUSTED",
+            }
         ]
-        self.assertEqual(self.reduce("quality", 1, result)["action"], "INVALID")
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
     def test_corrupt_state_fails_closed(self) -> None:
         state = self.artifacts / "corrupt-state.json"
         self.write_json(state, {"schema_version": 1, "unexpected": True})
-        decision = self.reduce("quality", 1, self.quality(), state=state)
+        decision = self.reduce("combined", 1, self.combined(), state=state)
         self.assertEqual(decision["action"], "INVALID")
 
         state = self.artifacts / "corrupt-history.json"
@@ -1001,15 +955,124 @@ class ReviewGateTests(unittest.TestCase):
             state,
             {
                 "schema_version": 1,
-                "pending_repairs": {"quality": [], "spec": []},
+                "pending_repairs": {"combined": []},
                 "history": [
                     42,
-                    {"kind": "quality", "qa_round": 1, "action": "AUTOFIX"},
+                    {"kind": "combined", "qa_round": 1, "action": "AUTOFIX"},
                 ],
             },
         )
-        decision = self.reduce("quality", 2, self.quality(), state=state)
+        decision = self.reduce("combined", 2, self.combined(), state=state)
         self.assertEqual(decision["action"], "INVALID")
+
+    # --- precheck ------------------------------------------------------------
+    # `reduce` writes an INVALID decision into state and spends the round's single
+    # retry, so a malformed reviewer reply must be caught before it gets there.
+
+    def test_precheck_accepts_a_well_formed_result(self) -> None:
+        code, out = self.precheck(self.combined())
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["problems"], [])
+
+    def test_precheck_rejects_a_malformed_result_without_writing_state(self) -> None:
+        broken = self.combined()
+        del broken["artifact"]
+        code, out = self.precheck(broken)
+        self.assertEqual(code, 1)
+        self.assertEqual(out["status"], "invalid")
+        self.assertTrue(any("result:" in item for item in out["problems"]), out)
+        # The point is that the round keeps its budget, and the only way to observe that
+        # is through reduce: if precheck had recorded anything, the state file would carry
+        # history and validate_combined_transition would reject this as a re-entry at
+        # round 1 instead of letting a good result through.
+        state = self.artifacts / "after-precheck-state.json"
+        self.assertFalse(state.exists())
+        self.assertEqual(
+            self.reduce("combined", 1, self.combined(), state=state)["action"], "PROCEED"
+        )
+
+    def test_precheck_catches_a_bundle_sha_mismatch(self) -> None:
+        code, out = self.precheck(self.combined(), expected_bundle_sha="0" * 64)
+        self.assertEqual(code, 1)
+        self.assertTrue(
+            any("expected-bundle-sha256" in item for item in out["problems"]), out
+        )
+
+    def test_precheck_catches_a_base_oid_mismatch(self) -> None:
+        code, out = self.precheck(self.combined(), expected_base_oid="0" * 40)
+        self.assertEqual(code, 1)
+        self.assertTrue(
+            any("expected-base-oid" in item for item in out["problems"]), out
+        )
+
+    def test_precheck_catches_an_inventory_not_bound_to_the_bundle(self) -> None:
+        other = self.artifacts / "other-inventory.json"
+        self.write_json(
+            other,
+            [{"ref": "REQ-001", "id": "other", "summary": "a different requirement"}],
+        )
+        code, out = self.precheck(self.combined(), inventory=other)
+        self.assertEqual(code, 1)
+        self.assertTrue(
+            any("contract_inventory_sha256" in item for item in out["problems"]), out
+        )
+
+    def test_precheck_rejects_a_reducer_owned_blocker(self) -> None:
+        # reduce() rejects QA_REPAIR_EXHAUSTED before round 3 and writes the INVALID
+        # to state, spending the round's one retry. precheck must catch it first.
+        ref = self.inventory_data[0]["ref"]
+        result = self.combined()
+        result["requirements"][ref] = "MISSING"
+        result["requirement_exceptions"] = [
+            {
+                "ref": ref,
+                "status": "MISSING",
+                "evidence": ["app.py:2 has no regression assertion"],
+                "autofixable": False,
+                "human_blocker": "QA_REPAIR_EXHAUSTED",
+            }
+        ]
+        # The same payload reduce() rejects at test_qa_repair_exhausted_stays_reducer_owned,
+        # caught one step earlier so the round keeps its retry.
+        code, out = self.precheck(result)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(
+            any("QA_REPAIR_EXHAUSTED" in item for item in out["problems"]), out
+        )
+        # The token is reducer-owned in every reachable round, so there is no round in
+        # which precheck should let it through. Round 3 is not reachable and is no longer
+        # an accepted --round value, which is what removed the old fail-open.
+        rejected = run(
+            "python3", str(GATE), "precheck", "--round", "3",
+            "--inventory", str(self.inventory), "--bundle", str(self.bundle),
+            "--expected-bundle-sha256", self.bundle_sha,
+            "--expected-base-oid", self.base_oid,
+            "--result", str(self.artifacts / "unused.json"),
+            check=False,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("invalid choice", rejected.stderr)
+
+    def test_precheck_reports_every_problem_in_one_pass(self) -> None:
+        # The point of precheck is that one run tells the operator everything to fix.
+        # Both expectation checks once shared a `try`, so the first bad value hid the
+        # second and a two-problem result took two rounds to diagnose.
+        # Malformed, not merely mismatched: all-zero hex is a VALID sha256/OID shape and
+        # would only trip the separate binding checks those two other tests cover.
+        code, out = self.precheck(
+            self.combined(), expected_bundle_sha="not-a-sha", expected_base_oid="not-an-oid"
+        )
+        self.assertEqual(code, 1, out)
+        self.assertTrue(any("SHA-256" in item for item in out["problems"]), out)
+        self.assertTrue(any("base OID" in item for item in out["problems"]), out)
+
+    def test_precheck_reports_a_bad_inventory_shape(self) -> None:
+        bad = self.artifacts / "bad-inventory.json"
+        self.write_json(bad, [{"ref": "REQ-009", "id": "x", "summary": "out of order"}])
+        code, out = self.precheck(self.combined(), inventory=bad)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("inventory:" in item for item in out["problems"]), out)
 
 
 if __name__ == "__main__":

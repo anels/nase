@@ -17,6 +17,8 @@ for filenames under `workspace/tmp/`.
 Analyze task + KB context from Phase 1. Attempt to decompose into code-layer sub-phases. If the natural decomposition yields only 1 phase → skip isolation entirely, fall back to Direct mode, notify user: "Task is simple enough for direct implementation - phase isolation skipped." Proceed to Phase 4 as Direct.
 
 **Step 2 - Decompose (if ≥2 phases):**
+When Phase 1 captured `design_impl_plan`, seed the decomposition from its steps and dependency graph rather than re-deriving them - the design already marked which steps are parallel and which are sequential. Re-derive only when it is absent, and say so when you depart from it.
+
 Decompose into 2–5 sequential sub-phases. Boundary rule: **code layer** (data model / API / test coverage / UI) - not file count or time estimate. Dependencies determine ordering (Phase B needs Phase A's output).
 
 Sizing sanity check (per `workspace/kb/general/engineering-heuristics.md → Planning`): the code-layer split is the primary axis, but a sub-phase that still touches many subsystems or ~8+ files is under-decomposed - split it further along the next natural seam. Order risk-first within the dependency constraints: schedule the most uncertain sub-phase as early as its blockers allow so it fails fast.

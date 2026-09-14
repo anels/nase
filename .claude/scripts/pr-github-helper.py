@@ -64,6 +64,7 @@ FULL_FIELDS = (
     "state",
     "reviewDecision",
     "isDraft",
+    "headRepository",
 )
 
 THREADS_QUERY = """
@@ -219,6 +220,17 @@ def gh_issue_comments_args(pr: dict[str, Any]) -> list[str]:
         f"repos/{pr['repo_full_name']}/issues/{pr['number']}/comments",
         "--paginate",
     ]
+
+
+def gh_viewer_args() -> list[str]:
+    """The authenticated login, for the caller's own-PR check.
+
+    Both `/nase:discuss-pr` (review-state eligibility: GitHub forbids approving your
+    own PR) and `/nase:address-comments` (drop the PR author from reviewer pings)
+    needed this and each made a serial `gh api user` call at the write boundary.
+    It rides along in the batch that is already fanning out.
+    """
+    return ["gh", "api", "user", "--jq", ".login"]
 
 
 def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> list[str]:
@@ -586,8 +598,14 @@ def file_at_ref(repo: Path, ref: str, path: str) -> tuple[bool, str]:
 
 
 def diff_for_file(repo: Path, base_ref: str, head_ref: str, path: str) -> str:
+    """What the PR changed in one path - merge-base to head, not base tip to head.
+
+    Three dots, not two. `base..head` diffs the two tips, so every commit that landed on
+    the base branch after this PR forked reads as a change this PR made (inverted). PR
+    scope is measured from the merge-base, which is what `...` selects.
+    """
     result = run_git(
-        repo, "diff", "--no-ext-diff", f"{base_ref}..{head_ref}", "--", path
+        repo, "diff", "--no-ext-diff", f"{base_ref}...{head_ref}", "--", path
     )
     return result.stdout if result.returncode == 0 else ""
 
@@ -664,6 +682,7 @@ def review_context(
             "comments": gh_review_comments_args(pr),
             "reviews": gh_reviews_args(pr),
             "issue_comments": gh_issue_comments_args(pr),
+            "viewer": gh_viewer_args(),
         }
     )
     metadata = json.loads(raw["metadata"])
@@ -675,8 +694,10 @@ def review_context(
     )
     comments = flatten_json_items(raw["comments"])
     reviews = flatten_json_items(raw["reviews"])
+    submissions = [summarize_review(item, max_body_chars) for item in reviews]
     return {
         "pr": pr,
+        "viewerLogin": raw["viewer"].strip(),
         "metadata": metadata,
         "sizeGate": size_gate(metadata, 1500, 1500),
         "changedFiles": paths,
@@ -685,12 +706,157 @@ def review_context(
         "reviewComments": [
             summarize_comment(item, max_body_chars) for item in comments
         ],
-        "reviews": [summarize_review(item, max_body_chars) for item in reviews],
+        # Same empty-body filter the other two callers get from
+        # other_feedback_surfaces: a body-less APPROVED carries nothing a thread
+        # does not already hold, and reading it as feedback inflates the count.
+        "reviewSubmissions": [item for item in submissions if item["body"]],
         "issueComments": [
             summarize_comment(item, max_body_chars)
             for item in flatten_json_items(raw["issue_comments"])
         ],
         "kbMentions": kb_mentions_for_paths(paths, max_kb_paths),
+    }
+
+
+def normalize_repo_slug(url: str) -> str:
+    """`owner/repo`, lowercased, from any GitHub remote spelling."""
+    slug = url.strip()
+    for prefix in ("ssh://git@github.com/", "git@github.com:", "git://github.com/"):
+        if slug.startswith(prefix):
+            slug = slug[len(prefix) :]
+            break
+    else:
+        match = re.match(r"^https?://(?:[^/@]+@)?github\.com/", slug)
+        if match:
+            slug = slug[match.end() :]
+    slug = slug.rstrip("/")
+    if slug.endswith(".git"):
+        slug = slug[: -len(".git")]
+    return slug.lower()
+
+
+def same_repo_guards(
+    pr: dict[str, Any], local_repo: Path, response: dict[str, Any]
+) -> dict[str, Any]:
+    """Whether this PR is safe for a single-repo write flow.
+
+    /nase:address-comments mutates exactly one repo, so three things have to agree:
+    the local `origin`, the PR head repo, and the PR reference itself. Returning them
+    as booleans keeps the check a field comparison the caller can re-assert on a
+    re-read, instead of prose it may skip.
+    """
+    expected = pr["repo_full_name"].lower()
+    origin = run_git(local_repo, "remote", "get-url", "origin")
+    origin_slug = (
+        normalize_repo_slug(origin.stdout) if origin.returncode == 0 else None
+    )
+    head_repo = (response.get("headRepository") or {}).get("nameWithOwner")
+    head_ref = response.get("headRefName")
+    ref_ok = False
+    if head_ref:
+        ref_ok = (
+            run_git(local_repo, "rev-parse", "--verify", f"origin/{head_ref}").returncode
+            == 0
+        )
+    return {
+        "expectedRepo": expected,
+        "originRepo": origin_slug,
+        "originOk": origin_slug == expected,
+        "sameRepoOk": bool(head_repo) and head_repo.lower() == expected,
+        "headRefOk": ref_ok,
+    }
+
+
+def finding_scope(
+    pr: dict[str, Any],
+    local_repo: Path,
+    candidates: list[dict[str, Any]],
+    context_lines: int,
+) -> dict[str, Any]:
+    """Base/head evidence for the reviewer's OWN candidate findings.
+
+    `thread_dossier` already assembles exactly this shape, but only for threads that
+    already exist on the PR. A review that produced its own candidates had no way in,
+    so the diff-scope and file-vs-description checks ran as one hand-typed
+    `git show origin/{base}:{path}` per candidate. Same primitives, keyed by the
+    candidate's own `path`/`line`.
+    """
+    # "full", not "light": LIGHT_FIELDS carries baseRefName but not headRefName, and
+    # `gh pr view --json` returns only the keys it was asked for, so the light variant
+    # resolves the head to the literal "origin/None" and every candidate reads as
+    # untouched by the PR.
+    metadata = json.loads(run_gh(gh_metadata_args(pr, "full")))
+    base_ref = f"origin/{metadata['baseRefName']}"
+    # `refs/pull/{n}/head` is the PR's head whoever owns the branch; `origin/{headRefName}`
+    # is only the same commit when the PR is same-repo. For a fork PR whose branch name
+    # collides with one this origin already has - `main` and `develop` collide constantly -
+    # the name resolves fine and silently names the WRONG commit. Base and head then land
+    # on the same tree, every candidate reads `touchedByPr: false`, and the whole review
+    # empties with nothing to show it happened. Checking "both refs resolve" does not catch
+    # that, so prefer the pull ref and say which one was used.
+    pull_ref = f"refs/pull/{pr['number']}/head"
+    pull_ref_ok = (
+        run_git(local_repo, "rev-parse", "--verify", f"{pull_ref}^{{commit}}").returncode
+        == 0
+    )
+    head_ref = pull_ref if pull_ref_ok else f"origin/{metadata['headRefName']}"
+    # `diff_for_file` returns "" on ANY non-zero git exit, so an unfetched or missing
+    # ref is indistinguishable from "the PR did not touch this path" at the per-candidate
+    # level - and the caller's rule is to drop untouched candidates silently. Resolve both
+    # refs once and say so explicitly; a false here invalidates every verdict below.
+    refs_resolved = all(
+        run_git(local_repo, "rev-parse", "--verify", f"{ref}^{{commit}}").returncode == 0
+        for ref in (base_ref, head_ref)
+    )
+    head_repo = (metadata.get("headRepository") or {}).get("nameWithOwner")
+    # None means a deleted fork, not a same-repo PR. Reporting that as same-repo would
+    # tell the caller the `origin/{headRefName}` fallback is sound at exactly the moment
+    # it is least sound, so an unknown head repo counts as cross-repo.
+    cross_repo = head_repo is None or head_repo.lower() != pr["repo_full_name"].lower()
+    scoped = []
+    for index, candidate in enumerate(candidates):
+        path = str(candidate.get("path") or "")
+        raw_line = candidate.get("line")
+        try:
+            line_int = int(raw_line) if raw_line else None
+        except (TypeError, ValueError):
+            line_int = None
+        head_ok, head_text = file_at_ref(local_repo, head_ref, path) if path else (False, "")
+        base_ok, base_text = file_at_ref(local_repo, base_ref, path) if path else (False, "")
+        diff = diff_for_file(local_repo, base_ref, head_ref, path) if path else ""
+        touched = bool(diff.strip())
+        scoped.append(
+            {
+                "index": index,
+                "id": candidate.get("id"),
+                "path": path,
+                "line": line_int,
+                # inBase is the diff-scope answer: a path absent from base is new in
+                # this PR, and a path present in base with an empty diff was not
+                # touched by it at all.
+                "inBase": base_ok,
+                "inHead": head_ok,
+                "diffAvailable": touched,
+                "touchedByPr": touched,
+                "headExcerpt": line_excerpt(head_text, line_int, context_lines)
+                if head_ok
+                else {"available": False},
+                "baseExcerpt": line_excerpt(base_text, line_int, context_lines)
+                if base_ok
+                else {"available": False},
+            }
+        )
+    return {
+        "pr": pr,
+        "baseRef": base_ref,
+        "headRef": head_ref,
+        "refsResolved": refs_resolved,
+        "headFromPullRef": pull_ref_ok,
+        "crossRepo": cross_repo,
+        "candidates": scoped,
+        "kbMentions": kb_mentions_for_paths(
+            sorted({item["path"] for item in scoped if item["path"]}), 10
+        ),
     }
 
 
@@ -711,6 +877,7 @@ def comment_dossiers(
         "baseRefName": response["baseRefName"],
         "headRefName": response["headRefName"],
         "headRepository": response["headRepository"],
+        "guards": same_repo_guards(pr, local_repo, response),
         "threads": [
             thread_dossier(
                 local_repo, base_ref, head_ref, thread, context_lines, max_body_chars
@@ -1057,6 +1224,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     dossiers.add_argument("--context-lines", type=int, default=4)
     dossiers.add_argument("--max-body-chars", type=int, default=400)
 
+    scope = sub.add_parser(
+        "finding-scope",
+        help="Base/head excerpts and diff-scope verdicts for your own candidate findings",
+    )
+    scope.add_argument("ref")
+    scope.add_argument("--repo", help="owner/repo, required for number-only refs")
+    scope.add_argument("--local-repo", required=True)
+    scope.add_argument(
+        "--candidates",
+        required=True,
+        help='JSON file: [{"id": "...", "path": "src/a.ts", "line": 42}, ...]',
+    )
+    scope.add_argument("--context-lines", type=int, default=4)
+
     prep = sub.add_parser("prep-state", help="Fetch compact state for prep-merge")
     prep.add_argument("ref")
     prep.add_argument("--repo", help="owner/repo, required for number-only refs")
@@ -1093,6 +1274,18 @@ def main(argv: list[str]) -> int:
                     args.unresolved_only,
                     args.context_lines,
                     args.max_body_chars,
+                )
+            )
+        elif args.command == "finding-scope":
+            candidates = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
+            if not isinstance(candidates, list):
+                raise UsageError("--candidates must contain a JSON array")
+            emit_json(
+                finding_scope(
+                    pr,
+                    Path(args.local_repo).resolve(),
+                    candidates,
+                    args.context_lines,
                 )
             )
         elif args.command == "prep-state":

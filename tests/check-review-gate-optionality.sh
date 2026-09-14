@@ -31,11 +31,13 @@ cd "$ROOT"
 
 failures=0
 
-GATES=.claude/docs/fsd-delivery-gates.md
+GATES=.claude/docs/fsd-candidate-review.md
+CLOSEOUT=.claude/docs/fsd-closeout.md
+PR_DELIVERY=.claude/docs/fsd-pr-delivery.md
 FSD=.claude/commands/nase/fsd.md
 ROLES=.claude/roles.yaml
 
-for f in "$GATES" "$FSD" "$ROLES"; do
+for f in "$GATES" "$CLOSEOUT" "$PR_DELIVERY" "$FSD" "$ROLES"; do
   if [ ! -f "$f" ]; then
     fail "missing required file: $f"
     printf '\n%d failure(s)\n' "$failures" >&2
@@ -111,14 +113,14 @@ assert_section_contains "gates doc names the Phase 7 fallback binding" \
 # --- 4. A skipped review cannot be reported as done --------------------------
 
 assert_section_contains "closure_state derivation excludes a skipped review" \
-  "$GATES" '## Phase 10: Report' 'review_outcome = not-run'
+  "$CLOSEOUT" '## Phase 10: Report' 'review_outcome = not-run'
 
 # --- 5. The skip is disclosed on both surfaces a reader arrives from ---------
 # The PR body is the only one its reviewer can see; the Phase 10 report is the
 # only one the operator sees. Losing either makes the skip invisible to someone.
 
 assert_section_contains "Phase 8 discloses a skipped review in the PR body" \
-  "$GATES" '## Phase 8: Pull Request (if PR = Yes)' 'review_outcome = not-run'
+  "$PR_DELIVERY" '## Phase 8: Pull Request (if PR = Yes)' 'review_outcome = not-run'
 
 # --- 6. The reviewer role is named, and is still read-only -------------------
 

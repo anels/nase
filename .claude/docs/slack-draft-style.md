@@ -5,7 +5,7 @@ description: Style rules for Slack messages drafted on behalf of the EM. Read be
 
 Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` or `surface=slack-channel`. Read `workspace/communication-style.md` when the routing capsule says the full profile is needed or the message is high-stakes. (Arriving here *from* that routing table? You are in the right place - read Formatting Mechanics and the Quick Checklist below and do not bounce back.)
 
-After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 4e batches pending deltas into approved style-doc edits.
+After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 9 batches pending deltas into approved style-doc edits.
 
 `.claude/hooks/prose-lint-guard.sh` enforces three Formatting Mechanics rules below (`- item` bullets, no `<url|label>` embed, no bare URL ending a line whose next line is non-empty) on every `slack_send_message_draft` call. **This doc stays their source of truth**: if `prose-lint.py` and Formatting Mechanics ever disagree, fix the linter.
 

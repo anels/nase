@@ -1,7 +1,7 @@
 ---
 name: nase:request-review
 description: "Find appropriate PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, request approval, notify reviewers, or ping code owners."
-argument-hint: "<pr-url> [reviewers]"
+argument-hint: "<pr-url> [reviewers] [--mode re-review-ping]"
 category: Git workflow
 ---
 
@@ -17,15 +17,17 @@ Follows `.claude/docs/external-mutation-policy.md` — all Slack messages go thr
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and AskUserQuestion prompts; use `output:` for Slack drafts and any GitHub-facing text.
 
+## Mode: re-review-ping
+
+`/nase:address-comments` Phase 9b hands off here with the handles already filtered (bots, PR author, declined) and already chosen. Run Steps 1, 4, 7, 9. Skip 2, 3, 5, 6, and Step 8's Question 1 - it re-asks what the caller answered, and its confirmed list is the caller's handles. Step 8's Question 2 still runs: preview-and-stage is the only gate before a draft is written. Still apply Step 3c's alumni exclusion.
+
+Load what the skipped steps carried: the repo KB via `.claude/docs/repo-resolution.md` (Step 3's preamble - alumni exclusion and handle mappings both need it), `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` (Step 6), and Step 4's second name source, `gh api users/{login} --jq .name`. Handle-guessing is the last resort.
+
+Step 7's ask becomes a re-review opener - `Pushed fixes for your comments on the PR - ready for another look when you get a minute.`, or `Responded to ...` when `no_commit=true`. Report each as `Slack DM draft staged for @{login} (Slack: {slack_handle}) - review + send manually.`
+
 ## Step 1 — Parse inputs
 
-Parse each PR reference with the shared helper:
-
-```bash
-python3 .claude/scripts/pr-github-helper.py parse "$PR_URL"
-```
-
-Use the helper's normalized `owner`, `repo`, and `number` fields. Group PRs by repo. If any input cannot be parsed as a single GitHub PR, ask for a corrected URL before fetching metadata.
+Parse each reference with `python3 .claude/scripts/pr-github-helper.py parse "$PR_URL"` and group by repo from its normalized `owner`/`repo`/`number`. If any input is not a single GitHub PR, ask for a corrected URL before fetching metadata.
 
 ## Step 2 — Fetch PR metadata (parallel per PR)
 
@@ -162,12 +164,7 @@ Use two `AskUserQuestion` calls:
 
 **Question 1 — select recipients** (`multiSelect: true`):
 
-Present each resolved person as a selectable option (pre-selected = recommended). Include a brief reason for each (e.g., "14 commits to TraceviewController"). The "Other" free-text option lets the user add someone not on the list.
-
-Example options:
-- `Alice Smith` — "14 commits to changed files"
-- `Bob Lee` — "2 commits to changed files"
-- *(any unresolved handles listed in the question text, not as options)*
+Present each resolved person as a selectable option, pre-selected, labelled with their real name and a brief reason (`Alice Smith` — "14 commits to changed files"). List unresolved handles in the question text, not as options. The "Other" free-text option lets the user add someone not on the list.
 
 **Question 2 — message preview** (single-select, only if question 1 returned selections):
 

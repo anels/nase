@@ -30,7 +30,6 @@ CONDITIONAL_AXES = (
 )
 QUALITY_AXES = REQUIRED_AXES + CONDITIONAL_AXES
 AXIS_STATUSES = {"PASS", "FAIL", "UNVERIFIABLE", "NOT_APPLICABLE"}
-SEVERITIES = {"P0", "P1", "P2"}
 REQUIREMENT_STATUSES = {"SATISFIED", "MISSING", "UNVERIFIABLE"}
 INVENTORY_STATUSES = {"COMPLETE", "INCOMPLETE", "UNVERIFIABLE"}
 QUALITY_REVIEW_LENSES = {
@@ -54,7 +53,11 @@ OPTIONAL_QUALITY_LENS = "comment_quality"
 BLOCKING_SEVERITIES = ("P0", "P1")
 DEFERRED_LIMIT = 25
 DEFERRED_MAX_CHARS = 240
-KINDS = ("quality", "spec", "combined")
+KINDS = ("combined",)
+# State files written by the retired two-pass flow are keyed by its kinds. They
+# are still accepted on read so a stale file reports its own staleness through
+# the transition check instead of crashing the reducer.
+LEGACY_STATE_KINDS = ("quality", "spec")
 # There is no repair round to exhaust in a single pass, so the reducer never emits
 # this blocker for the combined kind and a reviewer must not claim it either.
 COMBINED_EXCLUDED_BLOCKER = "QA_REPAIR_EXHAUSTED"
@@ -219,6 +222,7 @@ def parse_bundle(path: Path) -> tuple[dict[str, Any], str]:
             "contract_inventory_sha256",
             "current_candidate_tree_oid",
             "changed_path_count",
+            "total_lines_changed",
             "changed_paths_sha256",
             "evidence_candidate_tree_oid",
             "evidence",
@@ -415,7 +419,6 @@ def validate_artifact(value: Any) -> dict[str, str]:
 def validate_context_requests(
     value: Any,
     *,
-    kind: str,
     axes: set[str],
     finding_refs: set[str],
     requirement_refs: set[str],
@@ -427,6 +430,13 @@ def validate_context_requests(
         raise InvalidResultError(
             f"context_requests must contain at most {CONTEXT_REQUEST_LIMIT} items"
         )
+    allowed_targets = {
+        "axis": axes,
+        "finding": finding_refs,
+        "inventory": {"INVENTORY"},
+        "requirement": requirement_refs,
+        "scope_creep": scope_refs,
+    }
     result: list[dict[str, str]] = []
     refs: set[str] = set()
     for index, raw_request in enumerate(value):
@@ -439,22 +449,6 @@ def validate_context_requests(
         if ref in refs:
             raise InvalidResultError("context request refs must be unique")
         refs.add(ref)
-        if kind == "quality":
-            allowed_targets = {"axis": axes, "finding": finding_refs}
-        elif kind == "spec":
-            allowed_targets = {
-                "inventory": {"INVENTORY"},
-                "requirement": requirement_refs,
-                "scope_creep": scope_refs,
-            }
-        else:
-            allowed_targets = {
-                "axis": axes,
-                "finding": finding_refs,
-                "inventory": {"INVENTORY"},
-                "requirement": requirement_refs,
-                "scope_creep": scope_refs,
-            }
         target_type = enum_string(
             request["target_type"],
             set(allowed_targets),
@@ -487,205 +481,6 @@ def validate_context_requests(
     return result
 
 
-def validate_finding(value: Any, index: int) -> dict[str, Any]:
-    finding = exact_keys(
-        value,
-        {
-            "ref",
-            "axis",
-            "severity",
-            "path",
-            "line",
-            "behavior",
-            "consequence",
-            "evidence",
-            "smallest_fix",
-            "verification",
-            "autofixable",
-            "human_blocker",
-        },
-        f"findings[{index}]",
-    )
-    ref = nonempty_string(finding["ref"], f"findings[{index}].ref")
-    axis = enum_string(finding["axis"], QUALITY_AXES, f"findings[{index}].axis")
-    severity = enum_string(
-        finding["severity"], SEVERITIES, f"findings[{index}].severity"
-    )
-    path = (
-        None
-        if finding["path"] is None
-        else normalize_path(finding["path"], f"findings[{index}].path")
-    )
-    autofixable = strict_bool(finding["autofixable"], f"findings[{index}].autofixable")
-    blocker = finding["human_blocker"]
-    if blocker is not None:
-        blocker = enum_string(
-            blocker, HUMAN_BLOCKERS, f"findings[{index}].human_blocker"
-        )
-    if severity in ("P0", "P1"):
-        if autofixable == (blocker is not None):
-            raise InvalidResultError(
-                f"findings[{index}] must be autofixable or have one human blocker"
-            )
-    elif autofixable or blocker is not None:
-        raise InvalidResultError(
-            "P2 findings must be deferred without autofix or a human blocker"
-        )
-    return {
-        **finding,
-        "ref": ref,
-        "axis": axis,
-        "severity": severity,
-        "path": path,
-        "line": line_number(finding["line"], f"findings[{index}].line"),
-        "behavior": nonempty_string(finding["behavior"], f"findings[{index}].behavior"),
-        "consequence": nonempty_string(
-            finding["consequence"], f"findings[{index}].consequence"
-        ),
-        "evidence": string_list(
-            finding["evidence"], f"findings[{index}].evidence", nonempty=True
-        ),
-        "smallest_fix": nonempty_string(
-            finding["smallest_fix"], f"findings[{index}].smallest_fix"
-        ),
-        "verification": nonempty_string(
-            finding["verification"], f"findings[{index}].verification"
-        ),
-        "autofixable": autofixable,
-        "human_blocker": blocker,
-    }
-
-
-def validate_quality(value: Any) -> dict[str, Any]:
-    result = exact_keys(
-        value,
-        {
-            "schema_version",
-            "kind",
-            "artifact",
-            "axes",
-            "lens_coverage",
-            "findings",
-            "context_requests",
-        },
-        "quality result",
-    )
-    if (
-        type(result["schema_version"]) is not int
-        or result["schema_version"] != 1
-        or result["kind"] != "quality"
-    ):
-        raise InvalidResultError("quality schema_version or kind is invalid")
-    artifact = validate_artifact(result["artifact"])
-    axes = exact_keys(result["axes"], set(QUALITY_AXES), "axes")
-    normalized_axes: dict[str, dict[str, Any]] = {}
-    for axis in QUALITY_AXES:
-        item = exact_keys(axes[axis], {"status", "evidence", "reason"}, f"axes.{axis}")
-        status = enum_string(item["status"], AXIS_STATUSES, f"axes.{axis}.status")
-        if axis in REQUIRED_AXES and status == "NOT_APPLICABLE":
-            raise InvalidResultError(f"required axis {axis} cannot be NOT_APPLICABLE")
-        evidence = string_list(item["evidence"], f"axes.{axis}.evidence")
-        if status == "PASS" and not evidence:
-            raise InvalidResultError(f"PASS axis {axis} requires evidence")
-        if axis == "test_quality" and status == "PASS":
-            theater = ("grep", "coverage", "snapshot", "test count")
-            if evidence and all(
-                any(term in entry.lower() for term in theater) for entry in evidence
-            ):
-                raise InvalidResultError(
-                    "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
-                )
-        normalized_axes[axis] = {
-            "status": status,
-            "evidence": evidence,
-            "reason": nonempty_string(item["reason"], f"axes.{axis}.reason"),
-        }
-    if not isinstance(result["findings"], list):
-        raise InvalidResultError("findings must be an array")
-    findings = [
-        validate_finding(item, index) for index, item in enumerate(result["findings"])
-    ]
-    finding_refs = [item["ref"] for item in findings]
-    if len(finding_refs) != len(set(finding_refs)):
-        raise InvalidResultError("finding refs must be unique")
-    contexts = validate_context_requests(
-        result["context_requests"],
-        kind="quality",
-        axes=set(QUALITY_AXES),
-        finding_refs=set(finding_refs),
-        requirement_refs=set(),
-        scope_refs=set(),
-    )
-    context_axes = {
-        item["target_ref"] for item in contexts if item["target_type"] == "axis"
-    }
-    context_findings = {
-        item["target_ref"] for item in contexts if item["target_type"] == "finding"
-    }
-    for axis, item in normalized_axes.items():
-        blocking = [
-            finding
-            for finding in findings
-            if finding["axis"] == axis and finding["severity"] in ("P0", "P1")
-        ]
-        if item["status"] == "FAIL" and not blocking:
-            raise InvalidResultError(f"FAIL axis {axis} requires a P0/P1 finding")
-        if item["status"] in ("PASS", "NOT_APPLICABLE") and blocking:
-            raise InvalidResultError(f"axis {axis} contradicts its blocking finding")
-        if item["status"] == "UNVERIFIABLE":
-            has_context = axis in context_axes or any(
-                finding["ref"] in context_findings for finding in blocking
-            )
-            has_blocker = any(finding["human_blocker"] for finding in blocking)
-            if not has_context and not has_blocker:
-                raise InvalidResultError(
-                    f"UNVERIFIABLE axis {axis} requires linked context or a human blocker"
-                )
-    lenses = exact_keys(
-        result["lens_coverage"], set(QUALITY_REVIEW_LENSES), "lens_coverage"
-    )
-    normalized_lenses: dict[str, dict[str, Any]] = {}
-    for lens, mapped_axes in QUALITY_REVIEW_LENSES.items():
-        item = exact_keys(
-            lenses[lens], {"status", "evidence", "reason"}, f"lens_coverage.{lens}"
-        )
-        status = enum_string(
-            item["status"], AXIS_STATUSES, f"lens_coverage.{lens}.status"
-        )
-        if lens != OPTIONAL_QUALITY_LENS and status == "NOT_APPLICABLE":
-            raise InvalidResultError(f"quality lens {lens} cannot be NOT_APPLICABLE")
-        evidence = string_list(item["evidence"], f"lens_coverage.{lens}.evidence")
-        if status == "PASS" and not evidence:
-            raise InvalidResultError(f"PASS quality lens {lens} requires evidence")
-        mapped_findings = [
-            finding
-            for finding in findings
-            if finding["axis"] in mapped_axes and finding["severity"] in ("P0", "P1")
-        ]
-        if status == "FAIL" and not mapped_findings:
-            raise InvalidResultError(
-                f"FAIL quality lens {lens} requires a mapped P0/P1 finding"
-            )
-        if status == "UNVERIFIABLE" and not any(
-            normalized_axes[axis]["status"] == "UNVERIFIABLE" for axis in mapped_axes
-        ):
-            raise InvalidResultError(
-                f"UNVERIFIABLE quality lens {lens} requires a mapped unverifiable axis"
-            )
-        normalized_lenses[lens] = {
-            "status": status,
-            "evidence": evidence,
-            "reason": nonempty_string(item["reason"], f"lens_coverage.{lens}.reason"),
-        }
-    return {
-        "artifact": artifact,
-        "axes": normalized_axes,
-        "lens_coverage": normalized_lenses,
-        "findings": findings,
-        "context_requests": contexts,
-    }
-
-
 def validate_inventory_assessment(value: Any) -> dict[str, Any]:
     item = exact_keys(
         value,
@@ -716,48 +511,6 @@ def validate_inventory_assessment(value: Any) -> dict[str, Any]:
         "status": status,
         "evidence": evidence,
         "reason": nonempty_string(item["reason"], "inventory_assessment.reason"),
-        "autofixable": autofixable,
-        "human_blocker": blocker,
-    }
-
-
-def validate_requirement(
-    value: Any, inventory_item: dict[str, str], index: int
-) -> dict[str, Any]:
-    item = exact_keys(
-        value,
-        {"ref", "id", "summary", "status", "evidence", "autofixable", "human_blocker"},
-        f"requirements[{index}]",
-    )
-    for key in ("ref", "id", "summary"):
-        if item[key] != inventory_item[key]:
-            raise InvalidResultError(
-                f"requirements[{index}].{key} does not exactly match inventory"
-            )
-    status = enum_string(
-        item["status"], REQUIREMENT_STATUSES, f"requirements[{index}].status"
-    )
-    evidence = string_list(
-        item["evidence"], f"requirements[{index}].evidence", nonempty=True
-    )
-    autofixable = strict_bool(item["autofixable"], f"requirements[{index}].autofixable")
-    blocker = item["human_blocker"]
-    if blocker is not None:
-        blocker = enum_string(
-            blocker, HUMAN_BLOCKERS, f"requirements[{index}].human_blocker"
-        )
-    if status == "SATISFIED" and (autofixable or blocker is not None):
-        raise InvalidResultError("SATISFIED requirements cannot be autofixable or blocked")
-    if status == "MISSING" and autofixable == (blocker is not None):
-        raise InvalidResultError(
-            "MISSING requirements must be autofixable or have one human blocker"
-        )
-    if status == "UNVERIFIABLE" and autofixable:
-        raise InvalidResultError("UNVERIFIABLE requirements cannot be autofixable")
-    return {
-        **item,
-        "status": status,
-        "evidence": evidence,
         "autofixable": autofixable,
         "human_blocker": blocker,
     }
@@ -800,76 +553,6 @@ def validate_scope(value: Any, index: int) -> dict[str, Any]:
         ),
         "autofixable": autofixable,
         "human_blocker": blocker,
-    }
-
-
-def validate_spec(value: Any, inventory: list[dict[str, str]]) -> dict[str, Any]:
-    result = exact_keys(
-        value,
-        {
-            "schema_version",
-            "kind",
-            "artifact",
-            "inventory_assessment",
-            "requirements",
-            "scope_creep",
-            "context_requests",
-        },
-        "spec result",
-    )
-    if (
-        type(result["schema_version"]) is not int
-        or result["schema_version"] != 1
-        or result["kind"] != "spec"
-    ):
-        raise InvalidResultError("spec schema_version or kind is invalid")
-    artifact = validate_artifact(result["artifact"])
-    inventory_assessment = validate_inventory_assessment(result["inventory_assessment"])
-    if not isinstance(result["requirements"], list) or len(
-        result["requirements"]
-    ) != len(inventory):
-        raise InvalidResultError("requirements must have the exact inventory length")
-    requirements = [
-        validate_requirement(item, inventory[index], index)
-        for index, item in enumerate(result["requirements"])
-    ]
-    if not isinstance(result["scope_creep"], list):
-        raise InvalidResultError("scope_creep must be an array")
-    scope = [
-        validate_scope(item, index) for index, item in enumerate(result["scope_creep"])
-    ]
-    scope_refs = [item["ref"] for item in scope]
-    if len(scope_refs) != len(set(scope_refs)):
-        raise InvalidResultError("scope creep refs must be unique")
-    contexts = validate_context_requests(
-        result["context_requests"],
-        kind="spec",
-        axes=set(),
-        finding_refs=set(),
-        requirement_refs={item["ref"] for item in requirements},
-        scope_refs=set(scope_refs),
-    )
-    context_targets = {(item["target_type"], item["target_ref"]) for item in contexts}
-    for item in requirements:
-        if (
-            item["status"] == "UNVERIFIABLE"
-            and item["human_blocker"] is None
-            and ("requirement", item["ref"]) not in context_targets
-        ):
-            raise InvalidResultError(
-                f"UNVERIFIABLE requirement {item['ref']} requires linked context"
-            )
-    if (
-        inventory_assessment["status"] == "UNVERIFIABLE"
-        and inventory_assessment["human_blocker"] is None
-    ) and ("inventory", "INVENTORY") not in context_targets:
-        raise InvalidResultError("UNVERIFIABLE inventory requires linked context")
-    return {
-        "artifact": artifact,
-        "inventory_assessment": inventory_assessment,
-        "requirements": requirements,
-        "scope_creep": scope,
-        "context_requests": contexts,
     }
 
 
@@ -1137,7 +820,6 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
 
     contexts = validate_context_requests(
         result["context_requests"],
-        kind="combined",
         axes=set(QUALITY_AXES),
         finding_refs=set(finding_refs),
         requirement_refs=set(inventory_refs),
@@ -1332,7 +1014,7 @@ def load_state(path: Path) -> dict[str, Any]:
     if (
         not isinstance(pending, dict)
         or not set(pending)
-        or not set(pending).issubset(set(KINDS))
+        or not set(pending).issubset(set(KINDS) | set(LEGACY_STATE_KINDS))
     ):
         raise InvalidResultError("QA pending_repairs is malformed")
     for kind in pending:
@@ -1401,304 +1083,114 @@ def validate_combined_transition(
         raise InvalidResultError(f"next combined QA attempt must be round {expected}")
 
 
-def validate_transition(state: dict[str, Any], kind: str, round_number: int) -> None:
-    history = state["history"]
-    if kind == "combined" or any(item.get("kind") == "combined" for item in history):
-        if kind != "combined":
-            raise InvalidResultError("this QA state is single-pass; use --kind combined")
-        validate_combined_transition(history, round_number)
-        return
-    if not history:
-        if kind != "quality" or round_number != 1:
-            raise InvalidResultError("QA state must start with quality round 1")
-        return
-    last = history[-1]
-    if not isinstance(last, dict) or not {"kind", "qa_round", "action"}.issubset(last):
-        raise InvalidResultError("QA history entry is malformed")
-    last_round = last["qa_round"]
-    if type(last_round) is not int or last_round not in (1, 2, 3):
-        raise InvalidResultError("QA history round is invalid")
-    if last.get("terminal_status") or last["action"] == "NEEDS_HUMAN":
-        raise InvalidResultError("QA state is already terminal")
-    if last["kind"] == "quality" and last["action"] == "PROCEED":
-        expected = ("spec", last_round)
-    elif last["kind"] == "spec" and last["action"] == "PROCEED":
-        raise InvalidResultError("QA state is already approved")
-    elif last["kind"] in ("quality", "spec") and last_round < 3:
-        expected = ("quality", last_round + 1)
-    else:
-        raise InvalidResultError("QA state has no remaining round")
-    if (kind, round_number) != expected:
-        raise InvalidResultError(f"next QA review must be {expected[0]} round {expected[1]}")
-
-
-def contract(kind: str) -> dict[str, Any]:
+def contract() -> dict[str, Any]:
     artifact = {
         "base_oid": "copy exactly from the trusted artifact identity",
         "candidate_tree_oid": "copy exactly from the trusted artifact identity",
         "bundle_sha256": "copy exactly from the trusted artifact identity",
         "contract_inventory_sha256": "copy exactly from the trusted artifact identity",
     }
-    if kind == "combined":
-        return {
-            "schema_version": 1,
-            "kind": "combined",
-            "context_request_limit": CONTEXT_REQUEST_LIMIT,
-            "deferred_limit": DEFERRED_LIMIT,
-            "artifact": artifact,
-            "required_axes": list(REQUIRED_AXES),
-            "conditional_axes": list(CONDITIONAL_AXES),
-            "review_lenses": {
-                lens: {
-                    "mapped_axes": list(mapped),
-                    "required": lens != OPTIONAL_QUALITY_LENS,
-                }
-                for lens, mapped in QUALITY_REVIEW_LENSES.items()
-            },
-            "axis_statuses": sorted(AXIS_STATUSES),
-            "requirement_statuses": sorted(REQUIREMENT_STATUSES),
-            "finding_severities": list(BLOCKING_SEVERITIES),
-            "human_blockers": sorted(HUMAN_BLOCKERS - {COMBINED_EXCLUDED_BLOCKER}),
-            "validation_rules": [
-                "Return exactly the result_schema keys and no Markdown fences.",
-                "Every axis in required_axes plus conditional_axes appears in `axes`. A PASS conditional axis carries only status and one short evidence string - omit `reason` there. Required axes and any non-PASS status carry status, evidence, and reason.",
-                "Required axes cannot be NOT_APPLICABLE, and any PASS axis needs evidence.",
-                "test_quality cannot PASS on grep, coverage, snapshots, or test count alone.",
-                "`findings` holds only P0 and P1 - things that must change before this ships. Each is autofixable or carries exactly one human blocker.",
-                "Anything worth mentioning but not worth blocking goes in `deferred` as a one-line string including path:line. These never gate and are never repaired, so keep them short.",
-                "`requirements` is an object mapping every inventory ref, in inventory order, to SATISFIED, MISSING, or UNVERIFIABLE. Do not echo the summaries back.",
-                "Every non-SATISFIED requirement needs exactly one matching entry in `requirement_exceptions` carrying the evidence.",
-                "FAIL needs a linked P0/P1 finding; UNVERIFIABLE needs a linked context request or a human blocker.",
-            ],
-            "result_schema": {
-                "schema_version": 1,
-                "kind": "combined",
-                "artifact": artifact,
-                "axes": {
-                    "<required axis>": {
-                        "status": "PASS | FAIL | UNVERIFIABLE",
-                        "evidence": ["file:line or command result"],
-                        "reason": "required explanation",
-                    },
-                    "<conditional axis, PASS>": {
-                        "status": "PASS",
-                        "evidence": ["one short file:line or command result"],
-                    },
-                    "<conditional axis, not PASS>": {
-                        "status": "FAIL | UNVERIFIABLE | NOT_APPLICABLE",
-                        "evidence": ["file:line or command result"],
-                        "reason": "required explanation",
-                    },
-                },
-                "lenses": {
-                    lens: {
-                        "status": "PASS | FAIL | UNVERIFIABLE"
-                        + (
-                            " | NOT_APPLICABLE" if lens == OPTIONAL_QUALITY_LENS else ""
-                        ),
-                        "evidence": ["file:line or review observation"],
-                    }
-                    for lens in QUALITY_REVIEW_LENSES
-                },
-                "findings": [
-                    {
-                        "ref": "artifact-local reference",
-                        "axis": "one quality axis",
-                        "severity": "P0 | P1",
-                        "path": "repo-relative path or null",
-                        "line": 0,
-                        "behavior": "observable defect",
-                        "consequence": "escaped regression or operational impact",
-                        "evidence": ["file:line, test, or command"],
-                        "smallest_fix": "bounded repair",
-                        "verification": "exact focused check",
-                        "autofixable": True,
-                        "human_blocker": None,
-                    }
-                ],
-                "deferred": [
-                    "path/to/file.ext:12 - one-line observation that does not gate"
-                ],
-                "requirements": {"REQ-001": "SATISFIED", "REQ-002": "MISSING"},
-                "requirement_exceptions": [
-                    {
-                        "ref": "REQ-002",
-                        "status": "MISSING | UNVERIFIABLE",
-                        "evidence": ["file:line, test, or command"],
-                        "autofixable": True,
-                        "human_blocker": None,
-                    }
-                ],
-                "inventory_assessment": {
-                    "status": "COMPLETE | INCOMPLETE | UNVERIFIABLE",
-                    "evidence": ["canonical task or design criterion reference"],
-                    "reason": "required explanation",
-                    "autofixable": False,
-                    "human_blocker": None,
-                },
-                "scope_creep": [
-                    {
-                        "ref": "SCOPE-001",
-                        "path": "repo-relative path",
-                        "line": 0,
-                        "behavior": "change not traceable to any requirement",
-                        "consequence": "review or rollback impact",
-                        "evidence": ["file:line"],
-                        "autofixable": True,
-                        "human_blocker": None,
-                    }
-                ],
-                "context_requests": [
-                    {
-                        "ref": "CTX-001",
-                        "target_type": "axis | finding | inventory | requirement | scope_creep",
-                        "target_ref": "linked ref, or INVENTORY",
-                        "tree": "BASE | CANDIDATE",
-                        "path": "repo-relative path",
-                        "reason": "exact missing evidence",
-                    }
-                ],
-            },
-        }
-    if kind == "quality":
-        axis_template = {
-            axis: {
-                "status": "PASS | FAIL | UNVERIFIABLE | NOT_APPLICABLE",
-                "evidence": ["file:line or command result"],
-                "reason": "required explanation",
-            }
-            for axis in QUALITY_AXES
-        }
-        return {
-            "schema_version": 1,
-            "kind": "quality",
-            "context_request_limit": CONTEXT_REQUEST_LIMIT,
-            "artifact": artifact,
-            "axes": {
-                axis: {"required": axis in REQUIRED_AXES} for axis in QUALITY_AXES
-            },
-            "review_lenses": {
-                lens: {
-                    "mapped_axes": list(mapped_axes),
-                    "required": lens != OPTIONAL_QUALITY_LENS,
-                }
-                for lens, mapped_axes in QUALITY_REVIEW_LENSES.items()
-            },
-            "axis_statuses": sorted(AXIS_STATUSES),
-            "finding_severities": sorted(SEVERITIES),
-            "validation_rules": [
-                "Return exactly the result_schema keys and no Markdown fences.",
-                "Required axes cannot be NOT_APPLICABLE; PASS needs evidence.",
-                "Assess every review lens explicitly; only comment_quality may be NOT_APPLICABLE.",
-                "test_quality cannot PASS on grep, coverage, snapshots, or test count alone.",
-                "FAIL needs a linked P0/P1 finding; UNVERIFIABLE needs linked context or a human blocker.",
-                "P0/P1 is either autofixable with no blocker or non-autofixable with one allowed blocker.",
-                "P2 is non-autofixable, has no blocker, and is deferred.",
-            ],
-            "result_schema": {
-                "schema_version": 1,
-                "kind": "quality",
-                "artifact": artifact,
-                "axes": axis_template,
-                "lens_coverage": {
-                    lens: {
-                        "status": "PASS | FAIL | UNVERIFIABLE | NOT_APPLICABLE",
-                        "evidence": ["file:line or review observation"],
-                        "reason": "required explanation",
-                    }
-                    for lens in QUALITY_REVIEW_LENSES
-                },
-                "findings": [
-                    {
-                        "ref": "artifact-local reference",
-                        "axis": "one quality axis",
-                        "severity": "P0 | P1 | P2",
-                        "path": "repo-relative path or null",
-                        "line": 0,
-                        "behavior": "observable defect",
-                        "consequence": "escaped regression or operational impact",
-                        "evidence": ["file:line, test, or command"],
-                        "smallest_fix": "bounded repair",
-                        "verification": "exact focused check",
-                        "autofixable": True,
-                        "human_blocker": None,
-                    }
-                ],
-                "context_requests": [
-                    {
-                        "ref": "CTX-001",
-                        "target_type": "axis | finding",
-                        "target_ref": "linked axis or finding ref",
-                        "tree": "BASE | CANDIDATE",
-                        "path": "repo-relative path",
-                        "reason": "exact missing evidence",
-                    }
-                ],
-            },
-            "test_quality_lenses": [
-                "Assert an observable behavioral contract through the real public boundary.",
-                "Name plausible mutation or failure power when fresh RED evidence is unavailable.",
-                "Cover positive, negative, boundary, and error paths in proportion to risk.",
-                "Preserve regression fidelity for the reported bug or changed user path.",
-                "Assert values, state, side effects, and required absence conditions concretely.",
-                "Isolate clock, random, network, filesystem, environment, and shared state.",
-                "Mocks must not bypass the contract the test claims to verify.",
-                "Check retry, ordering, concurrency, locale, and timezone determinism when relevant.",
-                "Parameterized cases must add distinct behavioral evidence.",
-                "source-text grep, incidental snapshots, and line coverage cannot alone prove behavior.",
-            ],
-            "human_blockers": sorted(HUMAN_BLOCKERS),
-        }
     return {
         "schema_version": 1,
-        "kind": "spec",
+        "kind": "combined",
         "context_request_limit": CONTEXT_REQUEST_LIMIT,
+        "deferred_limit": DEFERRED_LIMIT,
         "artifact": artifact,
+        "required_axes": list(REQUIRED_AXES),
+        "conditional_axes": list(CONDITIONAL_AXES),
+        "review_lenses": {
+            lens: {
+                "mapped_axes": list(mapped),
+                "required": lens != OPTIONAL_QUALITY_LENS,
+            }
+            for lens, mapped in QUALITY_REVIEW_LENSES.items()
+        },
+        "axis_statuses": sorted(AXIS_STATUSES),
         "requirement_statuses": sorted(REQUIREMENT_STATUSES),
-        "inventory_rule": (
-            "Audit the canonical task and Phase 2/design success criteria against the supplied inventory, "
-            "report any omitted criterion through inventory_assessment, then preserve requirement count, "
-            "order, ref, id, and summary exactly"
-        ),
+        "finding_severities": list(BLOCKING_SEVERITIES),
+        "human_blockers": sorted(HUMAN_BLOCKERS - {COMBINED_EXCLUDED_BLOCKER}),
         "validation_rules": [
             "Return exactly the result_schema keys and no Markdown fences.",
-            "Inventory COMPLETE needs concrete task-to-requirement mapping evidence; omissions are INCOMPLETE.",
-            "SATISFIED needs evidence and cannot be autofixable or blocked.",
-            "MISSING is autofixable or carries one allowed human blocker.",
-            "UNVERIFIABLE has exact evidence linkage through context or one allowed human blocker.",
-            "Every scope item is autofixable or carries one allowed human blocker.",
+            "Every axis in required_axes plus conditional_axes appears in `axes`. A PASS conditional axis carries only status and one short evidence string - omit `reason` there. Required axes and any non-PASS status carry status, evidence, and reason.",
+            "Required axes cannot be NOT_APPLICABLE, and any PASS axis needs evidence.",
+            "test_quality cannot PASS on grep, coverage, snapshots, or test count alone.",
+            "`findings` holds only P0 and P1 - things that must change before this ships. Each is autofixable or carries exactly one human blocker.",
+            "Anything worth mentioning but not worth blocking goes in `deferred` as a one-line string including path:line. These never gate and are never repaired, so keep them short.",
+            "`requirements` is an object mapping every inventory ref, in inventory order, to SATISFIED, MISSING, or UNVERIFIABLE. Do not echo the summaries back.",
+            "Every non-SATISFIED requirement needs exactly one matching entry in `requirement_exceptions` carrying the evidence.",
+            "FAIL needs a linked P0/P1 finding; UNVERIFIABLE needs a linked context request or a human blocker.",
         ],
         "result_schema": {
             "schema_version": 1,
-            "kind": "spec",
+            "kind": "combined",
             "artifact": artifact,
+            "axes": {
+                "<required axis>": {
+                    "status": "PASS | FAIL | UNVERIFIABLE",
+                    "evidence": ["file:line or command result"],
+                    "reason": "required explanation",
+                },
+                "<conditional axis, PASS>": {
+                    "status": "PASS",
+                    "evidence": ["one short file:line or command result"],
+                },
+                "<conditional axis, not PASS>": {
+                    "status": "FAIL | UNVERIFIABLE | NOT_APPLICABLE",
+                    "evidence": ["file:line or command result"],
+                    "reason": "required explanation",
+                },
+            },
+            "lenses": {
+                lens: {
+                    "status": "PASS | FAIL | UNVERIFIABLE"
+                    + (" | NOT_APPLICABLE" if lens == OPTIONAL_QUALITY_LENS else ""),
+                    "evidence": ["file:line or review observation"],
+                }
+                for lens in QUALITY_REVIEW_LENSES
+            },
+            "findings": [
+                {
+                    "ref": "artifact-local reference",
+                    "axis": "one quality axis",
+                    "severity": "P0 | P1",
+                    "path": "repo-relative path or null",
+                    "line": 0,
+                    "behavior": "observable defect",
+                    "consequence": "escaped regression or operational impact",
+                    "evidence": ["file:line, test, or command"],
+                    "smallest_fix": "bounded repair",
+                    "verification": "exact focused check",
+                    "autofixable": True,
+                    "human_blocker": None,
+                }
+            ],
+            "deferred": [
+                "path/to/file.ext:12 - one-line observation that does not gate"
+            ],
+            "requirements": {"REQ-001": "SATISFIED", "REQ-002": "MISSING"},
+            "requirement_exceptions": [
+                {
+                    "ref": "REQ-002",
+                    "status": "MISSING | UNVERIFIABLE",
+                    "evidence": ["file:line, test, or command"],
+                    "autofixable": True,
+                    "human_blocker": None,
+                }
+            ],
             "inventory_assessment": {
                 "status": "COMPLETE | INCOMPLETE | UNVERIFIABLE",
-                "evidence": [
-                    "canonical task/design criterion mapped to REQ, or exact omission"
-                ],
+                "evidence": ["canonical task or design criterion reference"],
                 "reason": "required explanation",
                 "autofixable": False,
                 "human_blocker": None,
             },
-            "requirements": [
-                {
-                    "ref": "exact inventory ref",
-                    "id": "exact inventory id",
-                    "summary": "exact inventory summary",
-                    "status": "SATISFIED | MISSING | UNVERIFIABLE",
-                    "evidence": ["file:line, test, or command"],
-                    "autofixable": False,
-                    "human_blocker": None,
-                }
-            ],
             "scope_creep": [
                 {
                     "ref": "SCOPE-001",
                     "path": "repo-relative path",
                     "line": 0,
-                    "behavior": "off-contract change",
-                    "consequence": "review or maintenance risk",
+                    "behavior": "change not traceable to any requirement",
+                    "consequence": "review or rollback impact",
                     "evidence": ["file:line"],
                     "autofixable": True,
                     "human_blocker": None,
@@ -1707,21 +1199,34 @@ def contract(kind: str) -> dict[str, Any]:
             "context_requests": [
                 {
                     "ref": "CTX-001",
-                    "target_type": "inventory | requirement | scope_creep",
-                    "target_ref": "INVENTORY or linked requirement/scope ref",
+                    "target_type": "axis | finding | inventory | requirement | scope_creep",
+                    "target_ref": "linked ref, or INVENTORY",
                     "tree": "BASE | CANDIDATE",
                     "path": "repo-relative path",
                     "reason": "exact missing evidence",
                 }
             ],
         },
-        "human_blockers": sorted(HUMAN_BLOCKERS),
     }
 
 
-def invalid_decision(
-    kind: str, round_number: int, message: str, *, terminal: bool = False
-) -> dict[str, Any]:
+def human_blockers(validated: dict[str, Any]) -> list[str]:
+    """Every blocker a reviewer set, from all four places one may appear, deduped."""
+    return sorted(
+        {
+            item["human_blocker"]
+            for item in (
+                validated["findings"]
+                + validated["requirement_exceptions"]
+                + validated["scope_creep"]
+                + [validated["inventory_assessment"]]
+            )
+            if item["human_blocker"]
+        }
+    )
+
+
+def invalid_decision(kind: str, round_number: int, message: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "action": "INVALID",
         "kind": kind,
@@ -1732,16 +1237,76 @@ def invalid_decision(
         "context_requests": [],
         "p2_deferred": 0,
     }
-    if terminal and round_number == 3:
-        result["terminal_status"] = "blocked-infrastructure"
     return result
+
+
+def precheck(args: argparse.Namespace) -> dict[str, Any]:
+    """Run the reducer's input validators WITHOUT touching the state file.
+
+    `reduce` records an `InvalidResultError` in `state["history"]`, which spends the
+    single INVALID retry the round has. A malformed reviewer reply is not a QA attempt,
+    so fsd-candidate-review.md used to make the operator re-check inventory shape,
+    result shape, and bundle binding by hand before every call. Same validators, no
+    state write: the operator re-requests from the reviewer until this exits 0.
+
+    Exit 0 with `{"status": "ok"}` means `reduce` will not reject these inputs on
+    shape. It is not a verdict - the reviewer's findings still decide the action.
+    """
+    problems: list[str] = []
+    inventory: list[dict[str, str]] | None = None
+    # Checked independently, like every other check here: sharing one `try` meant the
+    # first bad value hid the second, and reporting one problem per run is what precheck
+    # exists to avoid.
+    if not isinstance(args.expected_bundle_sha256, str) or not SHA256_RE.fullmatch(
+        args.expected_bundle_sha256
+    ):
+        problems.append("expected bundle SHA-256 is invalid")
+    if not isinstance(args.expected_base_oid, str) or not OID_RE.fullmatch(
+        args.expected_base_oid
+    ):
+        problems.append("expected base OID is invalid")
+    try:
+        inventory = validate_inventory(read_json(Path(args.inventory)))
+    except InvalidResultError as exc:
+        problems.append(f"inventory: {exc}")
+    validated: dict[str, Any] | None = None
+    if inventory is not None:
+        try:
+            validated = validate_combined(read_json(Path(args.result)), inventory)
+        except InvalidResultError as exc:
+            problems.append(f"result: {exc}")
+    try:
+        metadata, bundle_sha = parse_bundle(Path(args.bundle))
+    except InvalidResultError as exc:
+        problems.append(f"bundle: {exc}")
+        metadata, bundle_sha = None, None
+    # `reduce` rejects this and spends the round's one retry doing it, which is exactly
+    # the class precheck exists to catch. validate_combined accepts the token on
+    # requirement_exceptions and inventory_assessment, so shape validation alone lets it
+    # through.
+    if validated is not None and "QA_REPAIR_EXHAUSTED" in human_blockers(validated):
+        problems.append(
+            "result: QA_REPAIR_EXHAUSTED is reducer-owned; a reviewer may not set it"
+        )
+    if metadata is not None:
+        if bundle_sha != args.expected_bundle_sha256:
+            problems.append("bundle: sha256 does not match --expected-bundle-sha256")
+        if metadata["base_oid"] != args.expected_base_oid:
+            problems.append("bundle: base_oid does not match --expected-base-oid")
+        if inventory is not None:
+            inventory_sha = digest(canonical_bytes(inventory))
+            if metadata["contract_inventory_sha256"] != inventory_sha:
+                problems.append(
+                    "bundle: contract_inventory_sha256 does not match --inventory"
+                )
+    return {"status": "invalid" if problems else "ok", "problems": problems}
 
 
 def reduce(args: argparse.Namespace) -> dict[str, Any]:
     state_path = Path(args.state)
     try:
         state = load_state(state_path)
-        validate_transition(state, args.kind, args.round)
+        validate_combined_transition(state["history"], args.round)
     except InvalidResultError as exc:
         return invalid_decision(args.kind, args.round, str(exc))
     try:
@@ -1755,15 +1320,10 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             raise InvalidResultError("expected base OID is invalid")
         inventory = validate_inventory(read_json(Path(args.inventory)))
         raw_result = read_json(Path(args.result))
-        if args.kind == "combined":
-            validated = validate_combined(raw_result, inventory)
-        elif args.kind == "quality":
-            validated = validate_quality(raw_result)
-        else:
-            validated = validate_spec(raw_result, inventory)
+        validated = validate_combined(raw_result, inventory)
         metadata, bundle_sha = parse_bundle(Path(args.bundle))
     except InvalidResultError as exc:
-        decision = invalid_decision(args.kind, args.round, str(exc), terminal=True)
+        decision = invalid_decision(args.kind, args.round, str(exc))
         state["history"].append(decision)
         write_state(state_path, state)
         return decision
@@ -1803,17 +1363,6 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             stale_reasons.append("changed_paths_sha256")
     except (InvalidResultError, UnicodeDecodeError) as exc:
         stale_reasons.append(f"changed_paths_error:{exc}")
-    if args.kind == "spec":
-        stale_reasons.extend(
-            f"quality_{key}"
-            for key in (
-                "base_oid",
-                "candidate_tree_oid",
-                "bundle_sha256",
-                "contract_inventory_sha256",
-            )
-            if state.get(key) != expected[key]
-        )
     try:
         if (
             current_candidate_tree(Path(args.repo).resolve())
@@ -1836,67 +1385,30 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             "context_requests": [],
             "p2_deferred": 0,
         }
-        if args.round == 3:
-            decision["terminal_status"] = "blocked-infrastructure"
         state["history"].append(decision)
         write_state(state_path, state)
         return decision
 
-    if args.kind == "combined":
-        exceptions = validated["requirement_exceptions"]
-        missing = [item for item in exceptions if item["status"] == "MISSING"]
-        scope = validated["scope_creep"]
-        blockers = validated["findings"] + missing + scope
-        signatures = (
-            [quality_signature(item) for item in validated["findings"]]
-            + [spec_signature(item) for item in missing]
-            + [scope_signature(item) for item in scope]
-        )
-        if validated["inventory_assessment"]["status"] == "INCOMPLETE":
-            blockers.append(validated["inventory_assessment"])
-            signatures.append(inventory_signature())
-        p2_deferred = len(validated["deferred"])
-    elif args.kind == "quality":
-        blockers = [
-            item for item in validated["findings"] if item["severity"] in ("P0", "P1")
-        ]
-        signatures = [quality_signature(item) for item in blockers]
-        p2_deferred = sum(item["severity"] == "P2" for item in validated["findings"])
-    else:
-        missing = [
-            item for item in validated["requirements"] if item["status"] == "MISSING"
-        ]
-        scope = validated["scope_creep"]
-        blockers = missing + scope
-        signatures = [spec_signature(item) for item in missing] + [
-            scope_signature(item) for item in scope
-        ]
-        if validated["inventory_assessment"]["status"] == "INCOMPLETE":
-            blockers.append(validated["inventory_assessment"])
-            signatures.append(inventory_signature())
-        p2_deferred = 0
-    human_sources = blockers
-    if args.kind == "spec":
-        human_sources = (
-            validated["requirements"]
-            + validated["scope_creep"]
-            + [validated["inventory_assessment"]]
-        )
-    elif args.kind == "combined":
-        human_sources = (
-            validated["findings"]
-            + validated["requirement_exceptions"]
-            + validated["scope_creep"]
-            + [validated["inventory_assessment"]]
-        )
-    human = sorted(
-        {item["human_blocker"] for item in human_sources if item["human_blocker"]}
+    missing = [
+        item
+        for item in validated["requirement_exceptions"]
+        if item["status"] == "MISSING"
+    ]
+    scope = validated["scope_creep"]
+    signatures = (
+        [quality_signature(item) for item in validated["findings"]]
+        + [spec_signature(item) for item in missing]
+        + [scope_signature(item) for item in scope]
     )
-    if "QA_REPAIR_EXHAUSTED" in human and args.round < 3:
+    if validated["inventory_assessment"]["status"] == "INCOMPLETE":
+        signatures.append(inventory_signature())
+    p2_deferred = len(validated["deferred"])
+    human = human_blockers(validated)
+    if "QA_REPAIR_EXHAUSTED" in human:
         decision = invalid_decision(
             args.kind,
             args.round,
-            "QA_REPAIR_EXHAUSTED is reducer-owned before round 3",
+            "QA_REPAIR_EXHAUSTED is reducer-owned",
         )
         state["history"].append(decision)
         write_state(state_path, state)
@@ -1921,40 +1433,19 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
     )
     no_change = bool(previous and previous_tree == metadata["candidate_tree_oid"])
 
-    if args.kind == "combined":
-        # One pass: the reviewer's verdict is applied, not re-litigated. AUTOFIX is
-        # therefore terminal for the pass - repairs land and the deterministic gates
-        # re-run, but no reviewer sees the repaired tree, which is why the decision
-        # carries the flag that forces Phase 10 to say so out loud.
-        if human:
-            action, human_blocker, terminal_status = "NEEDS_HUMAN", human[0], None
-        elif contexts or gaps:
-            action, human_blocker = "CONTEXT", None
-            terminal_status = "blocked-evidence" if args.round >= 2 else None
-        elif signatures:
-            action, human_blocker, terminal_status = "AUTOFIX", None, None
-        else:
-            action, human_blocker, terminal_status = "PROCEED", None, None
-    elif human:
-        action = "NEEDS_HUMAN"
-        human_blocker = human[0]
-        terminal_status = None
+    # One pass: the reviewer's verdict is applied, not re-litigated. AUTOFIX is
+    # therefore terminal for the pass - repairs land and the deterministic gates
+    # re-run, but no reviewer sees the repaired tree, which is why the decision
+    # carries the flag that forces Phase 10 to say so out loud.
+    if human:
+        action, human_blocker, terminal_status = "NEEDS_HUMAN", human[0], None
     elif contexts or gaps:
-        action = "CONTEXT"
-        human_blocker = None
-        terminal_status = "blocked-evidence" if args.round == 3 else None
-    elif signatures and args.round < 3:
-        action = "AUTOFIX"
-        human_blocker = None
-        terminal_status = None
+        action, human_blocker = "CONTEXT", None
+        terminal_status = "blocked-evidence" if args.round >= 2 else None
     elif signatures:
-        action = "NEEDS_HUMAN"
-        human_blocker = "QA_REPAIR_EXHAUSTED"
-        terminal_status = None
+        action, human_blocker, terminal_status = "AUTOFIX", None, None
     else:
-        action = "PROCEED"
-        human_blocker = None
-        terminal_status = None
+        action, human_blocker, terminal_status = "PROCEED", None, None
 
     decision = {
         "action": action,
@@ -1974,12 +1465,11 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
     }
     if terminal_status:
         decision["terminal_status"] = terminal_status
-    if args.kind == "combined":
-        decision["reviewed_candidate_tree_oid"] = metadata["candidate_tree_oid"]
-        decision["deferred"] = validated["deferred"]
-        # Set only when repairs will land after the single review, so the tree that
-        # ships is not the tree that was reviewed. Phase 10 must disclose this.
-        decision["disclose_unreviewed_repair"] = action == "AUTOFIX"
+    decision["reviewed_candidate_tree_oid"] = metadata["candidate_tree_oid"]
+    decision["deferred"] = validated["deferred"]
+    # Set only when repairs will land after the single review, so the tree that
+    # ships is not the tree that was reviewed. Phase 10 must disclose this.
+    decision["disclose_unreviewed_repair"] = action == "AUTOFIX"
     state["qa_round"] = args.round
     state["base_oid"] = metadata["base_oid"]
     state["candidate_tree_oid"] = metadata["candidate_tree_oid"]
@@ -1999,9 +1489,19 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     contract_parser = subparsers.add_parser("contract")
     contract_parser.add_argument("--kind", choices=KINDS, required=True)
+    precheck_parser = subparsers.add_parser(
+        "precheck",
+        help="validate reducer inputs without writing state or spending a retry",
+    )
+    precheck_parser.add_argument("--round", type=int, choices=(1, 2), required=True)
+    precheck_parser.add_argument("--inventory", required=True)
+    precheck_parser.add_argument("--bundle", required=True)
+    precheck_parser.add_argument("--expected-bundle-sha256", required=True)
+    precheck_parser.add_argument("--expected-base-oid", required=True)
+    precheck_parser.add_argument("--result", required=True)
     reduce_parser = subparsers.add_parser("reduce")
     reduce_parser.add_argument("--kind", choices=KINDS, required=True)
-    reduce_parser.add_argument("--round", type=int, choices=(1, 2, 3), required=True)
+    reduce_parser.add_argument("--round", type=int, choices=(1, 2), required=True)
     reduce_parser.add_argument("--repo", required=True)
     reduce_parser.add_argument("--inventory", required=True)
     reduce_parser.add_argument("--bundle", required=True)
@@ -2015,9 +1515,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     if args.command == "contract":
-        print(json.dumps(contract(args.kind), ensure_ascii=False, indent=2))
-    else:
-        print(json.dumps(reduce(args), ensure_ascii=False, sort_keys=True))
+        print(json.dumps(contract(), ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "precheck":
+        result = precheck(args)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0 if result["status"] == "ok" else 1
+    print(json.dumps(reduce(args), ensure_ascii=False, sort_keys=True))
     return 0
 
 

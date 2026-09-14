@@ -6,10 +6,10 @@
 - Daily Log Line Format
 - Inline vs Batch Decision
 - Section Mapping
-- Wrap-up Consolidation (Step 4e)
+- Wrap-up Consolidation (Step 9)
 - Anti-pollution Guards
 
-Self-triggered learning loop. When the user corrects wording on a draft you produced, log the correction as a pending `[STYLE-DELTA]` line in the daily log. `/nase:wrap-up` Step 4e batches pending deltas into proposed edits to `workspace/communication-style.md` under a Tier B approval gate.
+Self-triggered learning loop. When the user corrects wording on a draft you produced, log the correction as a pending `[STYLE-DELTA]` line in the daily log. `/nase:wrap-up` Step 9 batches pending deltas into proposed edits to `workspace/communication-style.md` under a Tier B approval gate.
 
 ## When to capture
 
@@ -83,9 +83,9 @@ Map each voice `rule` to the right section of `workspace/communication-style.md`
 
 If the target surface does not exist in the scene table, add a new row with the surface name, register, and one canonical example.
 
-## Wrap-up Consolidation (Step 4e)
+## Wrap-up Consolidation (Step 9)
 
-`/nase:wrap-up` Step 4e:
+`/nase:wrap-up` Step 9:
 
 1. Grep today's log for pending `\[STYLE-DELTA\]` lines only. Ignore `[STYLE-DELTA-APPLIED]` and `[STYLE-DELTA-DISCARDED]` terminal markers.
 2. If none, set `style-delta=skipped-no-deltas`. Stop.

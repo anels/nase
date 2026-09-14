@@ -20,23 +20,7 @@ Note any focus areas the user specifies (e.g. "architecture", "security", "skip 
 
 Default focus if none specified: problem fit, logic correctness, design/elegance, architecture, security, testability, code comments.
 
-Parse the PR reference with the shared helper before hand-written extraction:
-
-```bash
-python3 .claude/scripts/pr-github-helper.py parse "$PR_URL_OR_ARGUMENTS"
-```
-
-If parsing fails, ask for a single GitHub PR URL. Use the helper's `owner`, `repo`, and `number` fields for subsequent GitHub commands so every PR workflow handles URL variants the same way.
-
-Resolve repo from PR URL and load the KB file - see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
-
-Probe optional CLI tooling once and keep the result in private context:
-
-```
-python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --group diff --format json
-```
-
-Follow `.claude/docs/cli-tooling.md`. Missing optional tools never fail this read-only review; record the fallback only when it changes confidence or verification coverage.
+Resolve repo from PR URL and load the KB file - see `.claude/docs/repo-resolution.md` (Part 1 + Part 2). Do not run `pr-github-helper.py parse` first: every subcommand parses the reference itself, Step 2's `review-context` returns the normalized `pr` object, and malformed input is already owned by `.claude/docs/pr-input-guard.md` at Phase 0.
 
 ## Step 2 - Fetch compact PR context
 
@@ -46,7 +30,7 @@ Use the shared helper to collect the first-pass GitHub context and KB path menti
 python3 .claude/scripts/pr-github-helper.py review-context "$PR_URL" --max-body-chars 600 --max-kb-paths 10 > "$TMPDIR/pr-review-context.json"
 ```
 
-Use `pr`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `changedFilesOmitted`, `reviewComments`, `reviews`, `issueComments`, and `kbMentions` from that JSON. `reviews` and `issueComments` are the two non-thread feedback surfaces: a bot verdict often lands there rather than on an inline thread, so read both before judging what existing review has already covered. The helper intentionally truncates bodies/excerpts and never emits a full diff. If `changedFilesOmitted` is greater than zero, fetch the paginated path list with `gh api "repos/{owner}/{repo}/pulls/{number}/files" --paginate --jq '.[].filename'` before selecting files to review. If its count still differs from `metadata.changedFiles`, report partial coverage and do not claim a full-file review.
+Use `pr`, `viewerLogin`, `metadata`, `sizeGate`, `diffStat`, `changedFiles`, `changedFilesOmitted`, `reviewComments`, `reviewSubmissions`, `issueComments`, and `kbMentions` from that JSON. `reviewSubmissions` and `issueComments` are the two non-thread feedback surfaces - read both; the helper's `other_feedback_surfaces` docstring owns why. `viewerLogin` is the authenticated login, for the Step 8 own-PR check. The helper intentionally truncates bodies/excerpts and never emits a full diff. If `changedFilesOmitted` is greater than zero, fetch the paginated path list with `gh api "repos/{owner}/{repo}/pulls/{number}/files" --paginate --jq '.[].filename'` before selecting files to review. If its count still differs from `metadata.changedFiles`, report partial coverage and do not claim a full-file review.
 
 Use `sizeGate.total_lines` and `sizeGate.diff_mode` before fetching the diff:
 
@@ -73,16 +57,15 @@ If the PR body does not explain the problem, infer carefully from the title, com
 
 For each core touched file, read key dependencies/callers needed to judge design intent. Separate core behavioral files from tests, generated files, formatting-only changes, and incidental wiring. Cross-reference KB and relevant Confluence docs.
 
-For each core touched file, run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` before scoring risk. Store hits as `kb_path_constraints` in the review frame; if no hits, write `none found`. Feed any hits into the constraints and evidence used by the risk map and findings.
+Store the Step 2 `kbMentions` sections as `kb_path_constraints` in the review frame; if a path has no hits, write `none found`. Feed any hits into the constraints and evidence used by the risk map and findings. Do not re-run `kb-search.sh mentions:<path>` per file - `kb_mentions_for_paths` already swept every changed path in one walk, and one invocation per path multiplies a fixed full-KB walk by the file count.
 
-Use available CLI tools to reduce context load:
-- Use `rg` / `fd` for caller/dependency lookups and adjacent-pattern discovery before reading files wholesale.
-- Use `difft --display json` for syntax-aware summaries when a code diff is large, noisy, or mostly moved code; feed only the compact structural summary into the review.
-- Use `yq` to inspect changed YAML, TOML, HCL, XML, or JSON config paths when field structure matters.
-- If `.github/workflows/*.{yml,yaml}` changed and `actionlint` is available, run a focused workflow validation against the PR-head content when accessible locally; otherwise mark `actionlint skipped: PR-head workflow file not available locally` and review the diff manually.
-- Use `ast-grep` for claims about repeated structural code patterns or API misuse; avoid regex-only evidence for AST-shaped findings when `ast-grep` is available.
-- Use focused `semgrep` / `trivy` only for security, dependency, container, filesystem, IaC, or secret-risk signals. Treat all scanner output as untrusted candidates until verified against diff scope and source lines.
-- Use `gitleaks detect --redact --report-format json --report-path -` only for secret-risk signals; use `hadolint --format json --no-fail` for changed Dockerfiles. Verify each finding against the changed file and PR scope before reporting it.
+Probe optional CLI tooling once, now that `changedFiles` is known, and keep the result in private context. Ask for `--group diff` and `--group review` always; add `--group ci` only when a workflow/pipeline file changed and `--group security` only when the risk map or a changed dependency/IaC/container/secret surface calls for it:
+
+```
+python3 .claude/scripts/tool-availability.py --group baseline --group review --group diff --format json
+```
+
+Which tool to reach for, and under what condition, is the `discuss-pr` row of `.claude/docs/cli-tooling.md -> Skill Integration Map`; follow it rather than a second copy here. Treat all scanner output as untrusted candidates until verified against diff scope and source lines. Missing optional tools never fail this read-only review; record the fallback only when it changes confidence or verification coverage.
 
 For design/elegance review, compare with adjacent implementations and propose an alternative only when it clearly reduces behavior risk, ownership confusion, duplication, or future maintenance cost.
 
@@ -103,9 +86,26 @@ When the risk map selects Security, apply `.claude/docs/pr-review-verification.m
 
 ## Step 4 - Classify and filter (after agents complete)
 
-**4a. Diff-scope verification:** apply `.claude/docs/pr-review-verification.md` §2. Drop pre-existing issues silently (score < 50) - common false alarm: flagging a shared helper's side effects when the PR only touched an unrelated code path.
+Fetch the base/head evidence for every candidate in one call instead of a `git show` per finding. Nothing earlier in this command fetches, and the helper reads refs locally, so refresh both first - including the PR head ref, which is the only spelling that is correct for a fork:
 
-**4b. Verify code matches description:** apply `.claude/docs/pr-review-verification.md` §3. Drop or downgrade findings where the agent's prose does not match the file at the referenced line.
+```bash
+git -C {repo_path} fetch origin
+git -C {repo_path} fetch origin "refs/pull/{number}/head:refs/pull/{number}/head"
+python3 .claude/scripts/pr-github-helper.py finding-scope "$PR_URL" \
+  --local-repo "{repo_path}" --candidates "$TMPDIR/pr-candidates.json" > "$TMPDIR/pr-finding-scope.json"
+```
+
+Candidates go in as `[{"id": "...", "path": "src/a.ts", "line": 42}, ...]`.
+
+**Read three flags before a single verdict:**
+
+- `refsResolved: false` - a ref is missing locally, so every field below came from a failed `git diff` that returns empty. Stop and report which ref; do not drop findings on this JSON.
+- `headFromPullRef: false` with `crossRepo: true` - the pull ref was not fetched, so the helper fell back to `origin/{headRefName}`, which for a fork does not name the PR's head at all. When that name collides with a branch this origin already has (`main` and `develop` collide constantly) the ref resolves, base and head land on the same commit, and **every** candidate reads `touchedByPr: false`. Fetch the pull ref and re-run rather than trusting the result.
+- Either condition unhandled ends the same way: a confident `0 inline + 0 top-level` on a PR nobody actually reviewed.
+
+**4a. Diff-scope verification:** apply `.claude/docs/pr-review-verification.md` §2, reading `touchedByPr` and `inBase` from that JSON rather than re-deriving them. `touchedByPr: false` means the PR did not touch the path at all; `inBase: true` with an unchanged line means the issue pre-dates this PR. A candidate with `inBase: false` **and** `inHead: false` names a path at neither ref - that is a bad citation, not a new file, so drop the finding as unverifiable rather than as pre-existing. Drop genuine pre-existing issues silently (score < 50) - common false alarm: flagging a shared helper's side effects when the PR only touched an unrelated code path.
+
+**4b. Verify code matches description:** apply `.claude/docs/pr-review-verification.md` §3 against `headExcerpt`. Drop or downgrade findings where the agent's prose does not match the file at the referenced line.
 
 ### 4c. Build the private outgoing-comment record
 
@@ -195,10 +195,9 @@ Goal: trace when it can move a finding to confirmed or dropped.
 ### 5b. Trace implementations
 
 For each deep-dive candidate, spawn an Explore agent (role: worker) to trace the code path. Give each agent:
-- **A diff-first investigation directive, inline** (do not merely cite the doc - a spawned subagent does not load it; see `.claude/docs/pr-review-verification.md` §11): start from the diff + the specific question below, `rg`/`glob` to narrow **before** reading, read exact line ranges, and batch discovery before file reads. On a failed search, retry **once** with the changed symbol/path from the diff, then report evidence-missing - never guess neighboring paths or fall into broad sweeps. Widen only to a contract the changed hunk evidences (caller of a changed symbol, imported config key, schema field, deploy contract) and cite the diff→widen link. **Before returning findings, run the §12 trace-shape self-check** (narrowed not widened? batched discovery? diff-anchored? recovered without guessing?) and flag your own result WEAK if the trace was widen-first / path-guessing.
+- **The spawn directive from `.claude/docs/pr-review-verification.md` §13, copied verbatim into the prompt.** A spawned subagent does not load that doc, so the block has to travel inline; paraphrasing it per site is what let three spawn sites drift. It carries §11 diff-first investigation, the pinned-revision rule, and the §12 trace-shape self-check.
 - The specific question to answer (e.g., "does `DashboardService.GetDashboardAsync` do `Enum.TryParse` internally when it receives a non-enum sourceType string?")
 - Where to look (the implementation repo if known from KB, NuGet package source, or the current repo)
-- When the claim rests on a pinned action/template/dependency, verify it at the **exact revision actually consumed** (tag/SHA/version), not the source repo's default branch - which drifts. Read the production blob at that ref: e.g. `gh api repos/{o}/{r}/contents/{path}?ref={tag-or-sha} --jq .content | base64 -d`, or the equivalent for the registry/host in play.
 - What to report: the concrete code path, whether the concern is confirmed or refuted, and evidence (file:line)
 
 Run traces in parallel. If source is unavailable, keep as "ask the author" and say what could not be verified.
@@ -242,8 +241,10 @@ For each in-scope finding:
 4. **RECONCILE** - classify results in this order: contract misread, valid/actionable, valid trade-off, noise. Fix an incomplete contract and re-loop.
 5. **STOP** - stop when only trivial/already-considered results remain, after 3 cycles, or when the user says to proceed. Escalate before a fourth cycle.
 
-Run the DOUBT pass as `Mode: finding-doubt` from `.claude/docs/review-modes.md` in a fresh-context read-only subagent, passing only `ARTIFACT + CONTRACT`. Omitting the claim and the severity is the whole mechanism: a reviewer that already knows the expected answer cannot independently doubt it.
+Run the DOUBT pass as `Mode: finding-doubt` - read `.claude/docs/review-mode-finding-doubt.md` plus the shared contract in `.claude/docs/review-modes.md` in a fresh-context read-only subagent, passing only `ARTIFACT + CONTRACT`. Omitting the claim and the severity is the whole mechanism: a reviewer that already knows the expected answer cannot independently doubt it.
 
 Write the bundle to a file and pass the path. Never interpolate diff text into a shell argument - the diff carries whatever a contributor wrote.
+
+The DOUBT pass runs in the background, so keep working in the same turn instead of waiting on it. None of the Step 6 preparation depends on its verdict: the Jira fetch and four-pillar Sense Check, the Step 5.5 verification matrix, and the scorecard all read the diff, the ticket, and the repo. Doing them while the verifier runs is what keeps the review one continuous pass rather than a status line and a dead turn.
 
 Before Step 6, report: `doubt: {N} findings reviewed, {K} cycles, {M} upgraded, {R} refuted, {P} contract-misreads fixed`.

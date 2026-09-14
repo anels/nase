@@ -120,10 +120,14 @@ prove that another process will not write immediately before deletion. Inspect
 the claimed path manually only after confirming no process can still write to
 it, then explicitly unlock and remove it.
 
-Return codes:
+Return codes - there is no `0`. The helper never removes a worktree, so "cleanup"
+here means quarantine-and-report:
 
-- `3`: safely retained; report every returned path as a non-failure outcome.
+- `3`: safely retained. Report the returned path as a non-failure outcome, plus up
+  to 20 dirty items and the count of any items omitted past that cap. Never
+  summarize `3` as removed or cleaned up; for a verified-clean worktree it is the
+  normal locked-quarantine result.
 - `2`: invalid input or unparseable Git state; stop the workflow and report the error.
 
 Automated consumers must keep cleanup-only state and research artifacts on
-return `3`.
+return `3`. Never run cleanup at all when the workflow used the primary checkout.

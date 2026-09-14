@@ -90,6 +90,7 @@ Invoke `/team` with the task, `task_type`, and `principle_order`. **Each agent p
 - Phase 3.6 `reuse_findings` and `pre_impl_grep_findings`; reuse patterns and preserve surfaced invariants.
 - `design_constraints` from Phase 1 (if present); each constraint is binding - report back instead of diverging.
 - `design_pr_plan` from Phase 1 (if present); implement toward the target PR count and report before expanding into extra branches/PRs.
+- `kb_path_constraints` from Phase 1 (if present); the KB already recorded a constraint on these paths - honor it or report back, do not rediscover it.
 
 If Phase 3.5 wrote `workspace/tmp/fsd-research-{branch_slug}.md`, each Team prompt must tell agents to read it before coding.
 
@@ -157,11 +158,7 @@ Run these steps in order. Any candidate write restarts Phase 6. A read-only fail
 
 ### 1. CLI and formatter gates
 
-Probe optional tools, then run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) plus any repo-specific gate named by `gate_profile.lint_gates`:
-
-```bash
-python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json
-```
+Run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row), probing as that document's *Running the post-edit gates* section specifies - for FSD that means reading `toolAvailability` out of `$TMPDIR/fsd-preflight.json` rather than probing again. Then run any repo-specific gate named by `gate_profile.lint_gates`.
 
 For edited YAML, TOML, XML, HCL, or JSON, parse the exact depended-on fields rather than only linting the file. Missing optional tools are warning-only unless the task explicitly depends on their evidence.
 
@@ -175,6 +172,7 @@ candidate_metadata=$(python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" --base "$BASE" --candidate-tree-only)
 tested_candidate_tree_oid=$(printf '%s\n' "$candidate_metadata" | jq -er '.candidate_tree_oid')
 changed_path_count=$(printf '%s\n' "$candidate_metadata" | jq -er '.changed_path_count')
+total_lines_changed=$(printf '%s\n' "$candidate_metadata" | jq -er '.total_lines_changed')
 ```
 
 This uses the same temporary-index algorithm as the final bundle and performs the redacted candidate secret preflight. An unresolved secret match stops before any reviewer payload is written.
@@ -191,14 +189,7 @@ Rerun the complete build, lint, typecheck, and test command set after the last e
 
 ### 5. Final diff-size guard
 
-Use the commit base frozen in Step 2 and measure the complete candidate, including untracked text:
-
-```bash
-git -C {worktree_or_repo} diff --stat "$BASE" | tail -1
-git -C {worktree_or_repo} ls-files --others --exclude-standard
-```
-
-`total_lines_changed` is tracked insertions plus deletions plus lines in untracked text. List binary untracked files without counting their lines.
+Use `total_lines_changed` from Step 2. It is the helper's own measurement - `base_oid` against the candidate tree, so untracked text is already counted and binary paths count zero - and it is the number the bundle reports. Do not re-derive it from `git diff --stat` plus `ls-files --others`: that pair compares the base against tracked worktree changes only, so it is a different number than the one the gate below is specified against.
 
 | Bucket | Action |
 |---|---|
@@ -212,7 +203,7 @@ git -C {worktree_or_repo} ls-files --others --exclude-standard
 
 Build `canonical_task_spec` from the original task plus every Phase 2/design success criterion and constraint. Derive a non-empty fixed inventory from that complete source as canonical JSON with `ref`, `id`, and exact `summary` for every requirement. Write command evidence with exact keys `candidate_tree_oid` and `commands`; every command record has `command`, zero `exit_code`, and bounded `summary`. Bind it to `tested_candidate_tree_oid`.
 
-Resolve the candidate tree again and require exact equality with `tested_candidate_tree_oid`. A test, build, formatter, or tool that changed candidate content invalidates its own evidence; restart Phase 6. Keep inventory, evidence, result, state, and bundle under `workspace/tmp/`, outside the target repository.
+Bind the evidence to `tested_candidate_tree_oid`. `verify-bundle.py` re-resolves the candidate tree itself and exits non-zero with `evidence candidate_tree_oid does not match the bundled candidate tree` when a test, build, formatter, or tool changed candidate content after Step 2 - so do not hand-compare the two OIDs; on that error, restart Phase 6. Keep inventory, evidence, result, state, and bundle under `workspace/tmp/`, outside the target repository.
 
 ```bash
 python3 .claude/scripts/verify-bundle.py \
@@ -238,6 +229,6 @@ Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects s
 | "Failing CI test is flaky / unrelated - I'll re-run it." | The **Engineering Excellence Bar** above already answers this: attribute, then fix either way. Re-running until green is not a fix. |
 | "This comment / TODO is obvious - Phase 6 doesn't need to touch it." | `.claude/docs/code-comment-policy.md -> Existing comments` owns this: editing code under a comment makes that comment yours. |
 | "Simplifier didn't find anything - diff is already clean." | Verify by reading the simplifier's output, not by inferring from silence. If the run produced no diff, log `simplify: no changes` once and proceed. Skipping the invocation is not equivalent. |
-| "I'm confident the change is small enough to skip final QA." | Follow `.claude/docs/fsd-delivery-gates.md`; the candidate review is mandatory and binds to the candidate tree. |
+| "I'm confident the change is small enough to skip final QA." | Follow `.claude/docs/fsd-candidate-review.md`; the candidate review is mandatory and binds to the candidate tree. |
 
 ---
