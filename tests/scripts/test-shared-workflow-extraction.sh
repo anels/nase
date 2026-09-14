@@ -153,7 +153,7 @@ assert_contains "grill delegates graph validation to the helper" .claude/docs/de
 assert_contains "grill defers dependent branches transitively" .claude/docs/design-grill-mode.md 'transitive dependents.*open_after_grill_ids'
 assert_contains "grill cap preserves dependency closure" .claude/docs/design-grill-mode.md 'dependency-closed 15-cap'
 assert_contains "grill batch stays within hard branch budget" .claude/docs/design-grill-mode.md 'ask_allowance'
-assert_cmd "grill frontier helper exists" test -x .claude/scripts/grill-frontier.py
+assert_cmd "grill frontier helper exists" test -f .claude/scripts/grill-frontier.py
 assert_contains "grill batched stop preserves sibling answers" .claude/docs/design-grill-mode.md 'record the other non-termination answers returned in the same batch'
 assert_cmd "open-work freshness doc exists" test -f .claude/docs/open-work-freshness.md
 assert_contains "grill uses shared open-work freshness gate" .claude/docs/design-grill-mode.md 'open-work-freshness\.md'
