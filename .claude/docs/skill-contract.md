@@ -47,31 +47,16 @@ Applies to **every** skill, not only artifact-producing ones: any command you sh
 
 Attribution: redact-first from mattpocock/skills `diagnosing-bugs` — see `workspace/kb/general/workflow.md → §2026-08-06`.
 
-## Rationale
+## Why
 
-- Output tokens are the most expensive surface in a long session.
-- A 200-line report in chat costs ~10× a 5-line summary + file write, with no review benefit.
-- Files are searchable, diff-able, and survive context compaction; chat scrollback does not.
+Output tokens are the most expensive surface in a long session: a 200-line report in
+chat costs roughly ten times a 5-line summary plus a file write, with no review
+benefit, and the file is searchable, diff-able, and survives compaction where chat
+scrollback does not.
 
-## Inheritance
+New skills inherit this contract automatically and do not restate it. A skill that
+needs to deviate says so in its own `## Notes`, with a one-line reason.
 
-New skills inherit this contract automatically — they do not need to restate it in their own body. A skill that needs to deviate must say so explicitly in its own `## Notes` section, with a one-line reason.
-
-## Conformance checklist for skill authors
-
-- [ ] Final step writes to an explicit, documented file path.
-- [ ] Final step echoes `Saved → {path}` + a bounded summary (≤ 5 lines, ≤ 80 chars each).
-- [ ] No full-table / full-document echo in the default code path.
-- [ ] `--verbose` branch (if present) is the only place an inline dump appears.
-- [ ] Any user-facing decision points use a batched `AskUserQuestion`.
-- [ ] Checkpoints are pushed right — evidence/codebase/KB lookups exhausted before the user is asked; nothing the codebase can answer becomes a checkpoint.
-- [ ] Checkpoints present a decision-ready brief (what + why + link down), never the raw draft.
-- [ ] Every shown command, pasted output, and quoted artifact is redacted before it reaches chat or a draft; loops run against environment variables rather than literal credentials.
-- [ ] Cross-doc pointers into `workspace/...` use code-spans (`` `workspace/kb/general/workflow.md → Section` ``), not markdown links. Lychee CI runs with `--exclude-path workspace`, so md-links from `.claude/`, `CLAUDE.md`, or `README.md` into `workspace/` fail as "Cannot find file". Code-spans are inert for lychee. Pattern surfaced in a prior PR.
-
-## Examples in the catalog
-
-- `/nase:wrap-up` — full journal to `workspace/journals/{YYYY-MM-DD}.md`, chat gets 4-bullet highlights + closing block.
-- `/nase:stats` — heatmap and counts to `workspace/stats/report-{YYYY-MM-DD}.md`, chat gets the top-line numbers.
-- `/nase:skill-usage` — table to `workspace/stats/skill-usage-{YYYY-MM-DD}.md`, chat gets tier counts + top N.
-- `/nase:recap` — recap to `workspace/recaps/{period}.md`, chat gets a one-paragraph wrap.
+The author-side checklist, and the worked examples of skills that already conform,
+live in `.claude/docs/skill-authoring-contract.md → 9. Output discipline`. They are
+for writing a skill, not running one, so they are not loaded at runtime.

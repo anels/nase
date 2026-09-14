@@ -33,15 +33,15 @@ Pick the closest match. Do not invent new categories — extend this list instea
 **Do:** {concrete action or rule}
 ```
 
-`calibration` entries use a different body — see `/nase:wrap-up` Step 4b.
+`calibration` entries use a different body — see `/nase:wrap-up` Step 6.
 
 ## Writers
 
 | Skill | Category | Trigger |
 |-------|----------|---------|
 | `/nase:reflect` | any | After a task, on surprise / mistake / discovery |
-| `/nase:wrap-up` Step 4b | `calibration` | When ETA divergence ≥ 30% |
-| `/nase:wrap-up` Step 4e | `style` | When approved style deltas update `workspace/communication-style.md` |
+| `/nase:wrap-up` Step 6 | `calibration` | When ETA divergence ≥ 30% |
+| `/nase:wrap-up` Step 9 | `style` | When approved style deltas update `workspace/communication-style.md` |
 | `/nase:address-comments` Phase 10 | `code` | When a reviewer surfaced a non-obvious coding rule |
 | `/nase:extract-skills` | any | When a hard-won lesson surfaces during skill extraction |
 | `/nase:fsd` Phase 9 | any | Only if the run produced a surprise or near-miss (see § Signal-to-noise) |

@@ -2,28 +2,27 @@
 
 ## Contents
 
-- 1. AI-reviewer assertion-value guard
 - 2. Diff-scope verification
 - 3. File-vs-description verification
 - 3.5. Taint-to-new-sink verification
 - 4. Resolved-thread HEAD verification
-- 5. Prior-round fix verification
-- 6. Suggestion-block re-derivation
 - 7. AI-reviewer citation + triage verification
-- 8. Comment dossier contract
-- 9. Review-Thread Resolution Gate
 - 10. Review Frame and Specialist Selection
 - 10.5. Security Specialist Contract
 - 11. Diff-First Investigation
 - 12. Trace-Shape Self-Check
+- 13. Spawn Directive (copy verbatim)
 
-Checks to run before trusting a claim during PR review. Used by `/nase:discuss-pr` (read-only review) and `/nase:address-comments` (write fixes).
+Checks to run before trusting a claim during PR review. Used by `/nase:discuss-pr`
+(read-only review) and `/nase:address-comments` (write fixes).
 
-Principle: **prose claims are hypotheses, not evidence**. Always diff-confirm against the file at HEAD before acting (resolve a thread, drop a finding, mark something fixed).
+Principle: **prose claims are hypotheses, not evidence**. Always diff-confirm against the
+file at HEAD before acting (resolve a thread, drop a finding, mark something fixed).
 
-## 1. AI-reviewer assertion-value guard
-
-When an AI reviewer (Copilot, claude bot, codex bot) changes the *expected value* in a test assertion (e.g. `BeEmpty()` → `BeNull()`, `Be(0)` → `Be(null)`, expected status code, expected serialized form), run the test at the suggested form **before** committing. AI reviewers cannot observe runtime values. A serialization or round-trip detail (e.g. `null` re-serializing as `""`) can invalidate the proposed expected value while leaving the structural critique valid.
+Checks that only fire once a fix is being applied - assertion values a reviewer changed,
+prior-round fix verification, suggestion-block re-derivation, the dossier contract, and the
+Review-Thread Resolution Gate - live in `.claude/docs/pr-review-fix-verification.md`. They
+kept their original section numbers there.
 
 ## 2. Diff-scope verification
 
@@ -41,14 +40,6 @@ When the diff introduces a **new sink** — a REST path, file read/open, query, 
 
 Resolved threads (closed by author or `isResolved: true`) are a hypothesis, not evidence. For each resolved thread that touches code-correctness (not pure style/nit), pull the file at HEAD and grep/read the exact filter, branch, condition, or symbol the thread referenced. If the claimed fix is NOT in HEAD, surface as a new 🔧 needs-fix with note `claimed fixed but not in HEAD`.
 
-## 5. Prior-round fix verification
-
-For any 🔧 needs-fix items that originate from an EARLIER review round (comments that predate the most recent commit), do not auto-classify as ✅ can-resolve based on the author's "addressed" reply alone. Run `git show <sha>` for the commit claimed to address the issue and confirm the fix appears in the diff. If the commit doesn't contain the fix, keep the item as 🔧 needs-fix.
-
-## 6. Suggestion-block re-derivation
-
-A reviewer's ```suggestion fenced code block captures *intent*, not a literal patch — especially when it proposes a different data structure for an existing field. Snippets routinely drop critical wrapping that the original declaration carried: generic args, nullability, equality comparers, modifiers (`readonly`, `init`), `AsReadOnly()` wrappers, type aliases. Read the original declaration's full signature before applying. If the suggestion changes the container type (e.g. `ConcurrentDictionary<string, T?>` with `StringComparer.OrdinalIgnoreCase` → `Dictionary<string, T>.AsReadOnly()`), enumerate: (a) is the comparer still needed? (b) keep nullable value type? (c) widen receiver to `ReadOnlyDictionary<TKey,TValue>`? Restore the dropped wrapping in the final implementation — do not copy-paste the snippet verbatim. Pattern surfaced in a prior dashboarding PR review.
-
 ## 7. AI-reviewer citation + triage verification
 
 Before echoing or accepting any bot-flagged finding — lint citation, SDK behavior claim, "unused import", cross-pattern asymmetry — run three checks against the file at HEAD. The gate decides whether to echo, accept, or decline. Record the verification command + result in the inline reply so the reviewer can audit.
@@ -64,69 +55,6 @@ Examples of (b) — installed source vs. cited rule:
 - **Unused-using / CS8019** — enumerate types declared in the suspect namespace via `grep -hE "^(public|internal|abstract|sealed)( +(abstract|sealed|partial|static))*( +(class|interface|enum|struct|record))" -- 'path/to/ns-dir/*.cs'`, then `grep -nFwf type-list.txt {flagged-file}`. Any match → the using is needed; decline. Bonus signal: if `build-test` at PR head is already green, CS8019 cannot be triggering on that line; the bot is wrong by construction. Sanitized pattern: bot flagged a transformer's `using …Models` as unused; the file referenced `MetricResponseEntryDto` (defined in that namespace) at multiple lines. Accepting would have broken every call site.
 
 Common failure mode: the bot's *structural* concern is sometimes valid (lint cleanup needed, timeout handling needed) even when the *specific* citation is wrong. Treat citation verification as separate from the underlying concern.
-
-## 8. Comment dossier contract
-
-Before `/nase:address-comments` classifies any unresolved review thread, build the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`.
-
-That shared contract owns the required fields and explicit-only AI provenance rule. `/nase:address-comments` owns the concrete collection commands for comment chain, PR head/base/diff, KB/repo constraints, caller impact, and test/scanner evidence.
-
-Classification is blocked until the dossier exists. If evidence is missing and cannot be collected locally, classify as `ask-user` or draft a reply that names the missing business/intent context. Do not silently downgrade uncertain correctness/security comments to style or out-of-scope.
-
-## 9. Review-Thread Resolution Gate
-
-This gate is unconditional: replying to and resolving someone's review threads is
-an outward-facing, hard-to-undo action. The verifier is a local subagent, so there
-is no availability branch to skip through.
-
-Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`,
-tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
-- the unresolved review threads from Phase 2 (full comment chains)
-- the final post-Phase-4 dossier/action map and drafted replies from Phase 6
-- the implementation diff:
-  - If code changed: `git -C {worktree_path} diff origin/{pr_branch}` (working tree diff before commit)
-  - Also include `git -C {worktree_path} ls-files --others --exclude-standard` and the full content of any task-created untracked files
-  - If no code changed: say `No code diff; reply-only / decline verification only`
-  - For diffs >2000 lines: use `git diff --stat` plus the 5 most-changed files in full
-
-Ask it to judge independently, per thread:
-- does the diff/reply actually address what the reviewer asked?
-- is any decline reply factually wrong?
-- does any reply contradict the dossier evidence or omit a required verification note?
-- does the diff add a code comment that `.claude/docs/code-comment-policy.md` would not earn - restating the code, narrating the change, or an unanchored *why*? Report it; a comment that contradicts the line below it is a FAIL, an unearned one is not.
-
-Do NOT include your own classification reasoning or expected verdict — an independent
-read is the only thing this gate buys, and naming your expected answer spends it.
-Use the `comment-resolution` mode contract from `.claude/docs/review-modes.md` as the
-subagent's instructions verbatim. Log `thread-resolution verify: {VERDICT}`; overrides
-use tag `verify-override`.
-
-Expected shape:
-```
-VERDICT: PASS | FAIL | NEEDS-HUMAN
-THREADS NOT ADDRESSED: ...
-REPLY / RESOLVE RISKS: ...
-SCOPE CREEP: ...
-REASONING: ...
-```
-
-Decision tree:
-
-- **PASS** → log one line (`thread-resolution verify: PASS`) and proceed to Phase 8. No user prompt. If SCOPE CREEP came back non-empty, print those items first: a PASS verdict does not mean they are absent, and this is the only place they ever surface. Delete an unearned comment it names before committing - a comment-only deletion needs no further gate round.
-- **NEEDS-HUMAN** → present the full verifier output and ask via `AskUserQuestion`:
-  - Q: "The verifier flagged ambiguity in the review-thread resolution. What now?"
-  - Options: `Revise first` / `Proceed — push anyway` / `Show me the diff + replies`
-  - Honor the user's choice.
-- **FAIL** → do NOT commit or push. Present the full verifier output and ask via `AskUserQuestion`:
-  - Q: "The verifier says at least one review thread isn't safely addressed. What now?"
-  - Options: `Fix it` / `Override — the verifier is wrong` / `Cancel`
-  - On "Fix it": re-enter Phase 6 with the failing thread(s) as requirements, then rerun build/test and this gate.
-  - On "Override": log the override to the daily log (tag: `verify-override`) before proceeding.
-
-Malformed output (no `VERDICT:` line) → treat as `NEEDS-HUMAN`, present raw `content`, and ask the user.
-
-This gate checks reviewer intent, not just tests.
-
 
 ## 10. Review Frame and Specialist Selection
 
@@ -239,13 +167,13 @@ Classification rules:
 
 Ask "Does this look right? Any to change?" Research each 🔍 item before final classification.
 
-Apply §4 and §5 on every classification pass.
+Apply §4 on every classification pass, and `.claude/docs/pr-review-fix-verification.md` §5 whenever a thread carries a fix claimed in an earlier round - that section moved out of this file, so the bare number no longer resolves here.
 
-**Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only; do not react, reply, resolve, or post a review.
+**Bot-comment batch-verify (read-only):** when the PR has ≥10 prior bot inline comments with concrete file:line claims, spawn one investigator agent (role `verifier` per `.claude/roles.yaml` - read-only, and the judgment is per-claim rather than architectural) for a single-pass table: `file:line | claim text | state`, where state is `CONFIRMED` / `FIXED` / `WRONG` / `INCONCLUSIVE` for the PR's current head. Cite the table for context; do not echo confirmed claims as net-new findings. This gate stays read-only; do not react, reply, resolve, or post a review.
 
 **Duplicate-of-N reframe check:** when a candidate finding would be dismissed as "duplicate of PR #N" or "superseded by #N", open #N's body + commits first. If #N explicitly defers the surface now being changed (`This PR does NOT change X`, unchecked `[ ]` items, "follow-up planned"), the PRs are complementary, not duplicate — the finding stands.
 
-Collect the final classifications. This skill never posts reactions, replies, resolves, or reviews.
+Collect the final classifications. This step is read-only - nothing is posted here. The classifications are the batch `/nase:discuss-pr` Step 8 draws from: any reaction, reply, or resolve the user approved lands there, each through its own `external-write-action.py` manifest, after the review submits.
 
 ## 10.5. Security Specialist Contract
 
@@ -313,3 +241,32 @@ Before returning findings, confirm:
 - **Recovered without guessing** — any failed search was retried once with the changed symbol/path, then abandoned to evidence-missing — no neighboring-path guessing.
 
 A "widen-first / path-guessing" trace is a **WEAK** signal even when the final finding looked right: it means the finding survived a noisy process and the next one may not.
+
+## 13. Spawn Directive (copy verbatim)
+
+A spawned subagent does not load this doc, so §11 and §12 have to travel inside the spawn prompt. Paraphrasing them at each spawn site is what let three call sites drift apart. Copy this block verbatim into every `Explore` / investigator prompt spawned for PR code investigation, then append the agent's specific question:
+
+```text
+Investigate diff-first. Start from the diff and the specific question below. Use rg/glob
+to narrow BEFORE reading; batch the discovery searches, then read only the exact line
+ranges they point at. Do not read whole files or scan neighboring directories to orient.
+
+Widen beyond the diff only to a contract the changed hunk itself evidences - a caller of
+a changed public symbol, an imported config key, a schema field, a deployment contract -
+and cite the diff-to-widen link. Absent that signal, stay in the diff.
+
+If a search returns nothing or errors, retry ONCE with the changed symbol or path from
+the diff. If that also finds nothing, report evidence-missing. Never guess neighboring
+paths and never fall back to broad sweeps.
+
+When the claim rests on a pinned action, template, or dependency, verify it at the exact
+revision actually consumed (tag/SHA/version), not the source repo's default branch.
+
+Before returning findings, self-check your own trace and say which of these hold:
+narrowed not widened; batched discovery before file reads; every read traces back to the
+diff or a hunk-evidenced contract; any failed search recovered without path-guessing.
+Flag your own result WEAK if the trace was widen-first or path-guessing.
+
+Report: the concrete code path, whether the concern is confirmed or refuted, and
+evidence as file:line.
+```

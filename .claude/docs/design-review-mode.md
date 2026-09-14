@@ -37,21 +37,9 @@ Before scoring against quality criteria, look for a `## Human Input Required` se
 
 If the section exists and has at least one row, put every row to the user via `AskUserQuestion`, batched per `.claude/docs/skill-authoring-contract.md` → §5: up to 4 rows per call, each row its own single-decision question. Batching is not just a token economy — a user who sees the whole set at once can spot that two rows are really one decision, which they cannot do when the questions arrive one screen at a time.
 
-For each H-row, build one entry in the `questions` array from the row data:
+Build each `questions` entry from the row: `question` is the `Question` cell verbatim prefixed with the row id ("H1 — Should PR-D1 also add ..."), `header` is a ≤12-char tag from the row id plus topic, the recommended first option is the `Default assumption used` cell with the grill's reasoning as its `description`, and `multiSelect: false` because H-rows are decisions.
 
-- **`question`** — copy the `Question` cell verbatim, prefixed with the row id (e.g. "H1 — Should PR-D1 also add ...").
-- **`header`** — short label (≤12 chars) derived from the row id + topic (e.g. "H1 LANG CI", "H2 Sequencing").
-- **`options`** — 2–4 mutually exclusive choices.
-  - **First option** = the `Default assumption used` cell, appended with " (Recommended)". `description` explains *why* the default is recommended — quote the reasoning the design doc captured during the grill pass.
-  - **Subsequent options** = the explicit alternative(s) implied by the question. If the question is binary (the most common case), there are two options. If the question lists 3+ branches, surface up to 4 (`AskUserQuestion` max).
-  - For each non-default option, `description` states the trade-off so the user can choose against the recommendation with full information.
-- **`multiSelect: false`** — H-rows are decisions, not multi-choice.
-
-After each batch returns:
-
-1. Apply the decision to the relevant design sections (Scope, Design, Decomposition, Risks, Success Criteria — use the `Affects` cell as the routing hint).
-2. Remove the H-row from `## Human Input Required`.
-3. Append a row to a new `### Resolved Decisions` block immediately above (or below) the now-empty `## Human Input Required` section, with columns: `#`, `Question` (one-line summary), `Decision`, `Applied to`. Keep the table cumulative — past resolutions stay visible as decision audit trail.
+After each batch returns, apply the decision to the sections the `Affects` cell routes to, remove the H-row, and record it in `### Resolved Decisions` placed next to the `## Human Input Required` section.
 
 When every H-row is resolved:
 
@@ -67,7 +55,7 @@ Read the effort doc's frontmatter `repo:` field and resolve it through `.claude/
 
 ## Step 2: Gather Current State
 
-First follow `.claude/docs/open-work-freshness.md`. It resolves and fetches `default_branch`, reads implementation and tests at the verified remote ref, repairs `already_done` scope through the workspace write guard, and returns `freshness_outcome`. On `blocked`, skip scoring and continue to **Needs Revision**. On `already_shipped`, skip scoring and continue to **ALREADY SHIPPED**. On `continue`, score the repaired effort doc.
+First follow `.claude/docs/open-work-freshness.md`. It resolves and fetches `default_branch`, reads implementation and tests at the verified remote ref, repairs `already_done` scope through the workspace write guard, and returns `freshness_outcome`. Consume `freshness_outcome` per that document's `Design review` row; its verdicts map to **Needs Revision**, **ALREADY SHIPPED**, and scoring the repaired doc.
 
 Run in parallel:
 
@@ -107,18 +95,9 @@ Skip this step only when all three sources are empty.
 
 ## Step 3: Evaluate Against Quality Criteria
 
-Score every criterion from the Quality Criteria table (in `/nase:design`):
+Score **every** criterion in `.claude/commands/nase/design.md → Quality criteria` - all ten, one row each. Do not re-list them here and do not silently score a subset: a criterion this step omits can never fail a review, because the APPROVED bar below counts only the rows that were scored.
 
-| Criterion | PASS / WEAK / FAIL |
-|-----------|-------------------|
-| Specificity | |
-| Testability | |
-| Grounding | |
-| Scope clarity | |
-| Risk coverage | |
-| KB alignment | |
-| Elegance | |
-| Reviewability | |
+Use `PASS` / `WEAK` / `FAIL`, plus `N/A` for the two criteria that are conditional by construction - `Root cause` on work that is not a bug, and `Risk` where the design carries none of the listed surfaces. `N/A` needs the one-line reason it does not apply, and does not count toward the APPROVED bar either way. Reach for it only on those two; anywhere else, a criterion you cannot score is a `WEAK`.
 
 Also check for **unresolved staleness**: after the Step 2 repair, does the codebase or KB still invalidate an assumption in the design? A repaired already-shipped item remains in the audit evidence but is not reopened.
 
@@ -150,7 +129,7 @@ Report the pinned default-branch OID, shipping commit, merged PR, and path-level
 
 ### APPROVED
 
-All criteria PASS or at most 1 WEAK, and no unresolved staleness or freshness blocker remains. The design holds.
+Every scored criterion PASS, or at most 1 WEAK, and no unresolved staleness or freshness blocker remains. An `N/A` row is not a criterion that failed to pass - it is outside the count, which is why only `Root cause` and `Risk` may take it. The design holds.
 
 Present the scorecard to the user, then ask via `AskUserQuestion`:
 
@@ -180,13 +159,15 @@ An issue that is itself a user decision — an ownership boundary, a scope call,
 
 ### Superseded
 
-Requirements changed enough to warrant a fresh design (e.g., the target repo was replaced, the feature scope is fundamentally different). Archive the old doc:
+Requirements changed enough to warrant a fresh design (e.g., the target repo was replaced, the feature scope is fundamentally different). Archive the old doc to the canonical terminal destination in `.claude/docs/effort-model.md → Terminal Destination` - `workspace/efforts/archive/{YYYY}/{slug}.md`. A renamed file left in `workspace/efforts/` is still an active effort to `/nase:efforts`, `/nase:today`, and the effort sweep.
 
-```bash
-mv workspace/efforts/{slug}.md workspace/efforts/{slug}-v1.md
-```
+The year is the current one. Do not reach for `effort-state.py` here: its terminal classifier only routes a `tracking_only` effort to the archive and sends everything else to `workspace/efforts/done/`, which is the record of what this workspace delivered - a superseded design delivered nothing.
 
-Tell the user the doc is archived and suggest running `/nase:design {new-idea}` to start fresh.
+Move the file with the guard's **`apply-move`**, not `apply`: `apply` writes staged content to `--target` and never touches the source, so it would leave the original in `workspace/efforts/` beside the new archive copy - the duplicate this section exists to prevent. `.claude/docs/effort-drift.md` states the rule under *Drift Auto-Sync*: for terminal transitions use `apply-move`, never `apply` followed by `mv`. It also notes `apply-move` creates the destination parent, so a first-of-year archive folder needs no separate `mkdir`. Stage, show the diff, then `apply-move` with `--target workspace/efforts/{slug}.md` (the source it removes) and `--destination workspace/efforts/archive/{YYYY}/{slug}.md`, plus the recorded mtime/hash/staged hash. `--target` is the doc being moved, not where it lands.
+
+Then remove the effort's row from `workspace/tasks/todo.md` in a **second** guarded write - each guard invocation takes exactly one `--target`, so the effort doc and `todo.md` cannot move in the same one. A superseded doc that stays listed under `## Pending` points at a path that no longer exists there, and `bash tests/check-effort-pointer-integrity.sh` fails on it.
+
+Tell the user the doc is archived, name the archive path, and suggest running `/nase:design {new-idea}` to start fresh.
 
 ## Step 5: Daily Log
 

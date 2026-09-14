@@ -21,23 +21,9 @@ If parsing fails, ask for a single GitHub PR URL. Use the helper's normalized `o
 
 Resolve the single local repo from the PR URL and load its KB file - see `.claude/docs/repo-resolution.md` (Part 1 + Part 2).
 
-Mutates one repo only. PR URL, KB path, local `origin`, and PR head repo must all match `{owner}/{repo}`; otherwise stop and ask.
+Mutates one repo only. PR URL, KB path, local `origin`, and PR head repo must all match `{owner}/{repo}`; otherwise stop and ask. The Phase 2 helper call returns that verdict as the `guards` object - do not hand-roll the origin-URL comparison.
 
-Verify local `origin` before any fetch or comment read:
-
-```bash
-REMOTE_URL=$(git -C {repo_path} remote get-url origin)
-REMOTE_REPO=$(printf '%s\n' "$REMOTE_URL" \
-  | sed -E 's#^https://([^/@]+@)?github.com/##; s#^git@github.com:##; s#^ssh://git@github.com/##; s#/*$##; s#\.git$##')
-REMOTE_REPO_LC=$(printf '%s\n' "$REMOTE_REPO" | tr '[:upper:]' '[:lower:]')
-EXPECTED_REPO_LC=$(printf '%s\n' "{owner}/{repo}" | tr '[:upper:]' '[:lower:]')
-if [ "$REMOTE_REPO_LC" != "$EXPECTED_REPO_LC" ]; then
-  echo "Resolved local repo origin ($REMOTE_REPO) does not match PR repo ({owner}/{repo}). Stop and ask for the correct local path."
-  exit 1
-fi
-```
-
-If this fails, do not update `.local-paths` automatically; ask for the correct path and rerun Phase 1.
+If a guard is false, do not update `.local-paths` automatically; ask for the correct path and rerun Phase 1.
 
 **Module-inventory extraction:** capture KB `## Modules` / `## Components`. If absent, set `module_inventory = needs-grep`; derive it in Phase 5 from the PR worktree, not the pre-worktree checkout.
 
@@ -59,15 +45,11 @@ python3 .claude/scripts/pr-github-helper.py comment-dossiers "$PR_URL" --local-r
 
 Use a **PR-unique** dossier filename (`{owner}-{repo}-{number}`) - `$TMPDIR` is a shared per-user dir on macOS, and a concurrent nase session running this helper for a different PR can clobber a fixed `pr-comment-dossiers.json` between write and re-read, silently loading the wrong PR's threads.
 
-Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, and unresolved thread dossiers from that JSON. If the helper or `gh` fails, stop with the raw error; do not fall back to an ad hoc query unless you also update `.claude/scripts/pr-github-helper.py` and its tests.
+Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `guards`, and unresolved thread dossiers from that JSON. If the helper or `gh` fails, stop with the raw error; do not fall back to an ad hoc query unless you also update `.claude/scripts/pr-github-helper.py` and its tests.
 
-**Same-repo guard:** `headRepository.nameWithOwner` must match `{owner}/{repo}` case-insensitively. If null or different, stop; this command does not handle forks or second repos.
+**Single-repo gate:** every field of `guards` must hold - `originOk` (local `origin` resolves to `{owner}/{repo}`), `sameRepoOk` (PR head repo matches; forks and second repos are unsupported), `headRefOk` (`origin/{headRefName}` exists locally). Any false value stops Phase 2; report which one and the `originRepo` it actually found.
 
-Set `pr_head_ref = origin/{headRefName}` for Phase 3 code reads and Phase 5 worktree setup. Verify it exists before proceeding:
-
-```bash
-git -C {repo_path} rev-parse --verify origin/{headRefName}
-```
+Set `pr_head_ref = origin/{headRefName}` for Phase 3 code reads and Phase 5 worktree setup.
 
 Capture both thread `id` (GraphQL resolve) and `databaseId` (REST reply); they are not interchangeable.
 
@@ -75,11 +57,11 @@ PR feedback has three surfaces: inline review threads, review *submission* bodie
 
 ## Phase 3: Build Dossiers, Evaluate, & Present Plan
 
-Follow `.claude/docs/pr-review-verification.md` and `.claude/docs/ai-code-verification-debt.md` before classifying any thread. Every unresolved thread gets a bounded dossier; high-risk comments get deeper evidence, but low-risk comments still need a short evidence chain.
+Follow `.claude/docs/pr-review-verification.md`, `.claude/docs/pr-review-fix-verification.md`, and `.claude/docs/ai-code-verification-debt.md` before classifying any thread. Every unresolved thread gets a bounded dossier; high-risk comments get deeper evidence, but low-risk comments still need a short evidence chain.
 
 **Step 3a - Build one dossier per unresolved thread before classification:**
 
-Use `threads[]` from `$TMPDIR/pr-comment-dossiers-{owner}-{repo}-{number}.json` as the baseline dossier: comment chain, `id`/`databaseId`, path/line, head/base excerpts, diff availability, and KB mentions are already bounded there. Before trusting a re-read of this file, re-assert `headRefName` and `headRepository.nameWithOwner` still match the target `{owner}/{repo}` (the Phase 2 same-repo guard); if they differ, stop - the file was clobbered by a concurrent session. The helper uses the same `mentions:<path>` lookup shape as the older manual pass.
+Use `threads[]` from `$TMPDIR/pr-comment-dossiers-{owner}-{repo}-{number}.json` as the baseline dossier: comment chain, `id`/`databaseId`, path/line, head/base excerpts, diff availability, and KB mentions are already bounded there. Before trusting a re-read of this file, re-check its `guards` object against the target `{owner}/{repo}`; if any field flipped, stop - the file was clobbered by a concurrent session. The helper uses the same `mentions:<path>` lookup shape as the older manual pass.
 
 For each thread, add only the evidence the helper cannot know:
 
@@ -87,7 +69,7 @@ For each thread, add only the evidence the helper cannot know:
 - Related test/scanner evidence, or the exact missing verification signal.
 - Explicit AI provenance per `.claude/docs/ai-code-verification-debt.md → Explicit AI Provenance`; record `none-found` instead of inferring from style.
 
-Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; do not re-fetch full files or full diffs unless the bounded excerpt is insufficient for a specific thread. Keep this investigation **diff-first** per `.claude/docs/pr-review-verification.md` §11: the bounded dossier is your diff anchor - narrow with `rg`/`git grep` from the changed symbol before reading, widen only to a contract the diff evidences (cite the diff→widen link), and on a failed search retry once with the changed symbol/path, then mark evidence-missing rather than guessing neighboring paths. Before classifying, run the **Trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own dossier-building investigation - narrowed? batched? diff-anchored? recovered without guessing? - and treat evidence from a widen-first / path-guessing trace as WEAK, re-verifying before it supports an accept/decline.
+Use the dossier shape from `.claude/docs/ai-code-verification-debt.md → Comment Dossier Contract`; do not re-fetch full files or full diffs unless the bounded excerpt is insufficient for a specific thread. Keep this investigation **diff-first** per `.claude/docs/pr-review-verification.md` §11 - the bounded dossier is your diff anchor - and before classifying run the **Trace-shape self-check** in §12 on your own dossier-building investigation. This is main-thread work with the doc already loaded, so read those sections rather than an inline paraphrase; treat evidence from a widen-first / path-guessing trace as WEAK and re-verify before it supports an accept/decline.
 
 **Step 3b - Assign risk before deciding action:**
 
@@ -122,7 +104,7 @@ Accept only when the change measurably improves correctness/clarity. If current 
 
 Before Phase 4, run an independent read-only verification pass for any thread with `P0`, `P1`, `ask-user`, or uncertainty in the dossier.
 
-Use `Mode: comment-dossier` from `.claude/docs/review-modes.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`). Pass the review-thread dossier, supporting evidence, and missing-evidence notes; do not pass your intended classification - withholding it is what makes the second read independent. Tag the result `verify-override` if you proceed against it.
+Use `Mode: comment-dossier` from `.claude/docs/review-mode-comment-threads.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`). Pass the review-thread dossier, supporting evidence, and missing-evidence notes; do not pass your intended classification - withholding it is what makes the second read independent. Tag the result `verify-override` if you proceed against it.
 
 If the pass returns nothing usable, keep the uncertainty in the dossier and ask the user before executing. A verifier that produced no verdict is not a verdict.
 

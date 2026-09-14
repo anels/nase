@@ -79,7 +79,15 @@ SAFE_EXPRESSION_VALUE = re.compile(
     rb"(?is)^(?:await[ \t]+)?(?:"
     rb"secrets\.(?:token_bytes|token_hex|token_urlsafe|randbelow|choice)|"
     rb"getpass\.getpass|input|"
-    rb"[A-Z_][A-Z0-9_.]*\.(?:get|read|fetch|retrieve)_secret"
+    rb"[A-Z_][A-Z0-9_.]*\.(?:get|read|fetch|retrieve)_secret|"
+    # A snake_case retrieval call under any name: `find_one(docs, "Kind", name)`,
+    # `load_config(path)`. The leading verb is what absolves it - a retrieval returns
+    # whatever the store held, so the literals in its argument list are selectors, not the
+    # value. Case-sensitively lower so a wrapper spelled `SecretStr("abc")` or `GetSecret`
+    # cannot use this door, and the verb must lead so `wrap(...)` and `decrypt(...)` stay
+    # flagged. This is the arg-bearing twin of CALL_EXPRESSION_VALUE below, which only
+    # clears calls whose argument list holds no alphanumerics at all.
+    rb"(?-i:(?:find|lookup|resolve|select|load|fetch|read|get)_[a-z0-9_]*)"
     rb")[ \t]*\([^\r\n]*\)$"
 )
 # `secret = find_one(...)` / `token = fetch()` - a call under any name whose argument list
@@ -1119,6 +1127,11 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
     )
     context_secret_preflight(contexts)
     evidence_projection = project_payload(canonical_bytes(evidence))
+    # Computed here rather than in build_bundle so --candidate-tree-only reports it too:
+    # the diff-size gate in fsd-implementation-loop.md reads this number before a bundle
+    # exists, and a hand-rolled `git diff --stat` + `ls-files --others` sum is a different
+    # measurement (base vs worktree, untracked uncounted) than base_oid vs candidate tree.
+    total_lines_changed, per_file_lines = changed_lines(repo, base_oid, tree_oid)
     metadata = {
         "schema_version": 1,
         "base_oid": base_oid,
@@ -1128,6 +1141,7 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         "contract_inventory_sha256": inventory_sha,
         "current_candidate_tree_oid": current_tree_oid,
         "changed_path_count": len(paths),
+        "total_lines_changed": total_lines_changed,
         "changed_paths_sha256": sha256_bytes(canonical_bytes(paths)),
         "evidence_candidate_tree_oid": evidence["candidate_tree_oid"],
         "evidence": {key: value for key, value in evidence_projection.items() if key != "content"},
@@ -1147,6 +1161,7 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         "paths": paths,
         "evidence": evidence_projection,
         "contexts": contexts,
+        "per_file_lines": per_file_lines,
     }
 
 
@@ -1154,7 +1169,8 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
     repo = data["repo"]
     base_oid = data["base_oid"]
     tree_oid = data["tree_oid"]
-    total, per_file = changed_lines(repo, base_oid, tree_oid)
+    total = metadata["total_lines_changed"]
+    per_file = data["per_file_lines"]
     binary_files = [item for item in per_file if item["binary"]]
     metadata["binary_path_metadata"] = [
         path_metadata(repo, base_oid, tree_oid, item["source_path"], item["path"])

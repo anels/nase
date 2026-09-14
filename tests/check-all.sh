@@ -43,6 +43,37 @@ esac
 failed=0
 current_section=""
 failures=()
+# Test files already run in this invocation. `--changed` is `run_fast; run_changed_extras`,
+# and FAST_SCRIPT_TESTS is a subset of SCRIPT_TESTS, so without this the 18 fast files ran
+# twice - each one incrementing `failed` and adding its own summary row, so a single broken
+# file exited 2.
+ran_test_files=()
+
+# Test files are the wall clock: 70 of them, every one building its own fixtures under
+# its own mktemp root, none touching repo state. They are subprocess-spawn bound rather
+# than CPU bound, so the useful width is higher than the core count. Override with
+# NASE_TEST_JOBS=1 to get a serial run back when debugging an interleaved failure.
+if [[ -n "${NASE_TEST_JOBS:-}" ]]; then
+  TEST_JOBS="$NASE_TEST_JOBS"
+else
+  TEST_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+  [[ "$TEST_JOBS" =~ ^[0-9]+$ ]] || TEST_JOBS=4
+  # Twice the core count, because these tests spend most of their time waiting on
+  # subprocess startup rather than computing. Measured on a 14-core machine over the 53
+  # script tests: width 1 = 470s, 4 = 263s, 8 = 211s, 14 = 208s, 24 = 177s. The knee is
+  # around 8 and core-count leaves ~15% on the table.
+  TEST_JOBS=$((TEST_JOBS * 2))
+fi
+# Validate and cap AFTER the branch, so an override is held to the same bounds the
+# computed value is: `NASE_TEST_JOBS=1000` used to fan out to 1000 processes, and a
+# non-numeric one used to reach the arithmetic below as a silent 0.
+[[ "$TEST_JOBS" =~ ^[0-9]+$ ]] || TEST_JOBS=1
+# Force base 10 before any arithmetic: a zero-padded value like `08` passes the regex but
+# `(( ))` reads it as octal, errors with "value too great for base", and evaluates false -
+# which silently disables the cap and the throttle both.
+TEST_JOBS=$((10#$TEST_JOBS))
+(( TEST_JOBS > 32 )) && TEST_JOBS=32
+(( TEST_JOBS < 1 )) && TEST_JOBS=1
 
 SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || true)
 SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally; GitHub Actions still runs this gate.'
@@ -55,7 +86,7 @@ RUFF_SKIP='SKIP: ruff is not installed locally (pip install ruff); GitHub Action
 # script cannot land in one gate and miss the other.
 SHELL_FILES=()
 for _shell_file in .claude/hooks/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh \
-  tests/scripts/*.sh workspace/skills/scripts/*.sh; do
+  tests/lib/*.sh tests/scripts/*.sh workspace/skills/scripts/*.sh; do
   [[ -f "$_shell_file" ]] && SHELL_FILES+=("$_shell_file")
 done
 unset _shell_file
@@ -98,29 +129,60 @@ format_command() {
   printf '%s' "${out% }"
 }
 
+# Sole writer of `failed` and `failures`, so the summary table cannot drift from the
+# `[pass]`/`[fail]` lines. Callers that ran the command themselves (the parallel replay
+# below) pass the rc and duration they recorded; `$@` after them is the rerun command.
+record_gate_result() {
+  local gate="$1" rc="$2" duration="$3"
+  shift 3
+  if [[ "$rc" -eq 0 ]]; then
+    printf '[pass] %s (%ss)\n' "$gate" "$duration"
+    return 0
+  fi
+  printf '[fail] %s (exit %s, %ss)\n' "$gate" "$rc" "$duration" >&2
+  failures+=("${current_section}|${gate}|${rc}|${duration}s|$(format_command "$@")")
+  failed=$((failed + 1))
+  return 0
+}
+
 run_gate() {
   local gate="$1"
   shift
-  local start end duration rc rerun
+  local start end rc
   start=$(date +%s)
   printf '[gate] %s\n' "$gate"
   "$@"
   rc=$?
   end=$(date +%s)
-  duration=$((end - start))
-  if [[ "$rc" -eq 0 ]]; then
-    printf '[pass] %s (%ss)\n' "$gate" "$duration"
-    return 0
-  fi
-  rerun=$(format_command "$@")
-  printf '[fail] %s (exit %s, %ss)\n' "$gate" "$rc" "$duration" >&2
-  failures+=("${current_section}|${gate}|${rc}|${duration}s|${rerun}")
-  failed=$((failed + 1))
-  return 0
+  record_gate_result "$gate" "$rc" "$((end - start))" "$@"
 }
 
-run_test_files() {
+already_ran_test_file() {
+  local candidate="$1" seen
+  for seen in "${ran_test_files[@]+"${ran_test_files[@]}"}"; do
+    [[ "$seen" == "$candidate" ]] && return 0
+  done
+  return 1
+}
+
+run_test_files_serially() {
   local test_file
+  for test_file in "$@"; do
+    run_gate "$(basename "$test_file")" bash "$test_file"
+  done
+}
+
+# Run independent test files concurrently, then replay their results in the order they
+# were listed. Reporting order is the input order, never completion order, so a failure
+# table stays diffable across runs. Each job's stdout+stderr is buffered to its own file
+# and flushed whole, so two tests cannot interleave lines.
+#
+# `failures+=` cannot run in a job: a background subshell gets a copy of the array and
+# the parent never sees the append. Jobs write an rc file instead and the parent does the
+# accounting, which is also what keeps `failed` accurate.
+run_test_files() {
+  local test_file absent=() present=() run_dir gate
+  local idx=0 pids=() rc duration
   for test_file in "$@"; do
     if [[ ! -f "$test_file" ]]; then
       case "$test_file" in
@@ -129,11 +191,77 @@ run_test_files() {
           continue
           ;;
       esac
-      run_gate "$(basename "$test_file")" test -f "$test_file"
+      absent+=("$test_file")
       continue
     fi
-    run_gate "$(basename "$test_file")" bash "$test_file"
+    already_ran_test_file "$test_file" && continue
+    ran_test_files+=("$test_file")
+    present+=("$test_file")
   done
+
+  # A missing non-optional test is a gate failure in its own right; keep that serial and
+  # first so the reason is the first thing on screen.
+  for test_file in "${absent[@]+"${absent[@]}"}"; do
+    run_gate "$(basename "$test_file")" test -f "$test_file"
+  done
+
+  (( ${#present[@]} == 0 )) && return 0
+
+  if (( TEST_JOBS <= 1 )); then
+    run_test_files_serially "${present[@]}"
+    return 0
+  fi
+
+  # Falling back to serial rather than `return 1`: a bare return would skip the whole
+  # batch without incrementing `failed` or printing a `[fail]`, so a tmpdir problem would
+  # read as "these tests passed".
+  if ! run_dir=$(mktemp -d "${TMPDIR:-/tmp}/nase-check-all-XXXXXXXX"); then
+    printf '[warn] mktemp -d failed; running %s test file(s) serially\n' "${#present[@]}" >&2
+    run_test_files_serially "${present[@]}"
+    return 0
+  fi
+  # Results replay only after `wait`, so without this a hung test is total silence with no
+  # clue which file. Name the batch up front.
+  printf '[batch] %s test file(s) at width %s\n' "${#present[@]}" "$TEST_JOBS"
+  for test_file in "${present[@]}"; do
+    # Sliding window on explicit PIDs. `wait -n` would be the natural throttle, but it
+    # landed in bash 4.3 and macOS still ships 3.2, where it exits 2 with "invalid
+    # option" - the loop then busy-spins on `jobs -rp`, forking twice per iteration and
+    # stealing the CPU the tests are supposed to be using. Blocking on the oldest PID
+    # costs some head-of-line latency and never spins.
+    if (( ${#pids[@]} >= TEST_JOBS )); then
+      wait "${pids[0]}" 2>/dev/null || true
+      pids=("${pids[@]:1}")
+    fi
+    {
+      local start end job_rc
+      start=$(date +%s)
+      bash "$test_file" >"$run_dir/$idx.out" 2>&1
+      # Capture before anything else runs: `$?` after the `date` below is date's status,
+      # which would report every failing test as a pass.
+      job_rc=$?
+      end=$(date +%s)
+      printf '%s %s\n' "$job_rc" "$((end - start))" >"$run_dir/$idx.rc"
+    } &
+    pids+=("$!")
+    idx=$((idx + 1))
+  done
+  wait
+
+  idx=0
+  for test_file in "${present[@]}"; do
+    gate=$(basename "$test_file")
+    read -r rc duration 2>/dev/null < "$run_dir/$idx.rc" || { rc=1; duration=0; }
+    printf '[gate] %s\n' "$gate"
+    cat "$run_dir/$idx.out" 2>/dev/null
+    record_gate_result "$gate" "$rc" "$duration" bash "$test_file"
+    idx=$((idx + 1))
+  done
+  # Explicit, not a RETURN trap: a trap set inside a function is not function-scoped, so
+  # it also fires when unrelated functions return, where `run_dir` is out of scope and
+  # `set -u` kills the run mid-gate. An interrupted run leaves the dir behind; that is
+  # the cheaper problem.
+  rm -rf "$run_dir"
 }
 
 list_modes() {
@@ -156,12 +284,24 @@ Major gate groups:
 EOF
 }
 
+check_bash_syntax() {
+  local f rc=0
+  for f in "${SHELL_FILES[@]}"; do
+    if ! bash -n "$f"; then
+      printf 'rerun: bash -n %q\n' "$f" >&2
+      rc=1
+    fi
+  done
+  return "$rc"
+}
+
 run_bash_syntax() {
   section "bash syntax"
-  local f
-  for f in "${SHELL_FILES[@]}"; do
-    run_gate "bash -n $f" bash -n "$f"
-  done
+  # One gate over the whole list rather than one per file: 105 gate lines cost more to
+  # read than they inform. `bash -n` names the offending file on failure, and the helper
+  # echoes a copy-pasteable rerun for it, because the summary's Rerun column can only
+  # show `check_bash_syntax` - a shell function the reader cannot invoke.
+  run_gate "bash -n ${#SHELL_FILES[@]} shell file(s)" check_bash_syntax
 }
 
 run_python_syntax() {
@@ -418,10 +558,15 @@ run_changed_extras() {
   fi
   printf '%s\n' "$changed" | sed 's/^/[changed] /'
 
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/hooks/|tests/hooks/)'; then
+  # tests/lib/ for the same reason as the scripts branch below: 3 hook tests source
+  # tests/lib/assert.sh.
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/hooks/|tests/hooks/|tests/lib/)'; then
     run_hook_tests
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/|tests/scripts/|workspace/skills/scripts/|tests/check-all\.sh)'; then
+  # tests/lib/ is in this list because 18 script tests source tests/lib/assert.sh: editing
+  # the shared assertion helper changes what every one of them checks, and without this
+  # it triggered no test run at all.
+  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/|tests/scripts/|tests/lib/|workspace/skills/scripts/|tests/check-all\.sh)'; then
     run_script_tests
   fi
   if printf '%s\n' "$changed" | grep -qE '^\.claude/commands/nase/[^/]+\.md$'; then
@@ -446,15 +591,13 @@ run_changed_extras() {
     run_evals
   fi
 
-  local test_file
-  section "changed test files"
-  while IFS= read -r test_file; do
-    case "$test_file" in
-      tests/hooks/test-*.sh|tests/scripts/test-*.sh|workspace/skills/scripts/test-*.sh)
-        [[ -f "$test_file" ]] && run_gate "$test_file" bash "$test_file"
-        ;;
-    esac
-  done <<< "$changed"
+  # No separate "changed test files" pass. Every shape a changed test file can take
+  # already triggers a routing branch above that runs the whole set containing it:
+  # `tests/hooks/test-*.sh` matches the hooks branch, and both `tests/scripts/test-*.sh`
+  # and `workspace/skills/scripts/test-*.sh` match the scripts branch, whose
+  # run_script_tests globs both directories (SCRIPT_TESTS). `ran_test_files` is what keeps
+  # any overlap - including FAST_SCRIPT_TESTS, which run_fast already executed - from
+  # running a second time and double-counting its failure.
 }
 
 run_fast() {
@@ -511,7 +654,11 @@ print_summary() {
   printf '\n%d gate(s) failed.\n' "$failed" >&2
   printf '\n| Section | Gate | Exit | Duration | Rerun |\n' >&2
   printf '|---|---|---:|---:|---|\n' >&2
-  for row in "${failures[@]}"; do
+  # Reached only when failed > 0, and record_gate_result is the only writer of either,
+  # incrementing `failed` and appending a row together, so the array is non-empty here.
+  # The `+` guard is belt-and-braces for bash 3.2 (what macOS ships), where "${arr[@]}"
+  # on an EMPTY array trips `set -u`.
+  for row in "${failures[@]+"${failures[@]}"}"; do
     IFS='|' read -r section_name gate exit_code duration rerun <<< "$row"
     printf '| %s | %s | %s | %s | `%s` |\n' "$section_name" "$gate" "$exit_code" "$duration" "$rerun" >&2
   done

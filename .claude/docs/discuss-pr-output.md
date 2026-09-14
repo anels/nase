@@ -9,7 +9,7 @@
 - Step 8 - Stage 4: submit the review (gated write)
 - Step 9 - Stage 5: completion message
 - Error Handling
-- Ongoing - KB update (on confirmed findings)
+- Ongoing - KB auto-write (on confirmed findings)
 - Notes
 - Final - Daily Log
 
@@ -19,7 +19,7 @@ Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visib
 
 **Mandatory de-duplication filter (apply before presenting):** map each candidate finding against the existing comment set already fetched in Step 2; do not re-fetch. Drop candidates whose `(file, line, claim)` overlaps an existing open or resolved thread from a human or bot reviewer. If every candidate drops out, output `0 inline + 0 top-level` and state that prior reviewers already covered the diff.
 
-**Output discipline:** chat only, no file write. Narrative uses `conversation:`; GitHub drafts/posts use `output:`. Keep paths, lines, symbols, identifiers in English.
+**Output discipline:** chat only, no file write. The narrative/skeleton split is the entrypoint's Discipline block; it applies to every render below without restating.
 
 Order in chat:
 1. Summary line - counts per severity/disposition + dropped count
@@ -31,6 +31,8 @@ Order in chat:
 7. Findings grouped by severity/disposition; confidence remains a separate evidence score
 8. Triage classifications from Step 3 - if any unresolved comments existed
 9. Inline open questions - one bullet each for domain inputs code tracing cannot answer.
+
+The nine items above render as one block and then the work continues in the same turn: Step 6.5 auto-traces whatever is left, and Step 7 asks the draft question. The report looks like a finished deliverable, which is exactly why it is easy to stop on - but the only turn boundary before any write is Step 7's `AskUserQuestion`. A review that ends at the report leaves the user holding an analysis with no offer to act on it.
 
 ### Sense Check block
 
@@ -45,8 +47,6 @@ Render after Problem framing, before Risk map. Always present even when every pi
 | Out-of-scope | ✅/⚠️ | diff confined to {N} files in scope; or drive-by edit at {file:line} |
 | Tests | ✅/⚠️/❌ | plan present + L1/L2 covered; or gap at {layer} |
 ```
-
-Status symbols - narrative around them goes in `conversation:` language; pillar names, file paths, IN-#### keys, layer labels stay English.
 
 ### Verification block
 
@@ -73,7 +73,7 @@ Score guide: 5 exemplary, 4 solid, 3 adequate, 2 needs work, 1 significant gaps.
 
 **Do not blend spec-fit into a code-quality average.** A failing **Problem fit** (implements the wrong thing / doesn't solve the stated problem) is not offset by high Logic/Design/Code-quality - a PR can be clean *and* wrong (adapted from `mattpocock/skills → code-review` two-axis "never pick a cross-axis winner"). The **Overall** verdict must state a low Problem-fit explicitly rather than averaging it away; when spec-fit and code-quality diverge, name both in the one-sentence verdict.
 
-**Internal only - never post this scorecard to GitHub.**
+**Internal only - never post this scorecard to GitHub.** It is a reader-facing verdict surface: no later step consumes it. The review state at Step 8 is decided by blocking / needs-answer counts alone, so a low score never gates a submission and a high one never excuses a blocking finding.
 
 ---
 
@@ -106,17 +106,13 @@ For each candidate include:
 - Severity, kind, and disposition from the private outgoing-comment record
 - Category tag in bold: `**Bug**`, `**Security**`, `**Architecture**`, `**Testability**`
 - File and approximate line (English, paste-ready)
-- One-sentence description (in `conversation:` language) with consequence if unfixed
+- One-sentence description with consequence if unfixed
 - Evidence source (e.g. "confirmed via code trace through DashboardService.cs:332", "confirmed via Confluence AS tracker", "introduced in {pr_ref}")
 - For deep-dived findings: a brief summary of what was traced and what was found (1-2 sentences - enough to show the work, not a full report)
 - For `nit (non-blocking)`: safe, concise summaries of PR introduction, project authority or concrete benefit, and the formatter/linter check.
 - For `issue (blocking)`: safe, concise `Concrete failure:` and `Why merge must wait:` summaries. Keep the rest of the private record private.
 
 ---
-
-Steps 6.5 → 7 → 8 → 9 are the fixed handoff sequence. If preconditions do not apply, say so and move on.
-
-All chat in steps 6.5–8 stays in `conversation:` language. Draft and posted GitHub text stays in `output:` language.
 
 ## Step 6.5 - Stage 2: automatic additional deep dives
 
@@ -130,7 +126,7 @@ Collect remaining trace-worthy items:
 
 If none, say "No additional deep-dive candidates - auto-dive covered everything." and proceed to Step 7.
 
-Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how much a trace could move the verdict and spawn Explore agents for the top items in parallel (cap at 4 to bound cost; if more remain, note the ones you deferred and why). Use the same pattern as Step 5b: each spawn prompt carries the inline diff-first directive and the §12 trace-shape self-check. Update findings with the evidence returned, then proceed to Step 7.
+Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how much a trace could move the verdict and spawn Explore agents (role `worker` per `.claude/roles.yaml`, same as Step 5b - an unrouted spawn inherits the session model, which bills a code trace at whatever the main loop is running) for the top items in parallel (cap at 4 to bound cost; if more remain, note the ones you deferred and why). Use the same pattern as Step 5b: each spawn prompt carries `.claude/docs/pr-review-verification.md` §13 copied verbatim. Update findings with the evidence returned, then proceed to Step 7.
 
 ## Step 7 - Stage 3: draft decision
 
@@ -139,6 +135,15 @@ Ask the user how to handle drafting via `AskUserQuestion`. Three options, always
 **Before drafting, run the trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own main-thread investigation (Steps 4–5d): did it narrow before reading, batch discovery, stay diff-anchored, and recover from failed searches without path-guessing? Downgrade any finding that survived only a widen-first / path-guessing trace to WEAK and re-verify it before including it in the draft.
 
 Then enforce the outgoing-comment research gate from Step 4c. Every draft must have a complete private record, a current diff coordinate, and a `Publish decision: draft`. Drop candidates with missing evidence, unresolved coordinates, duplicate root causes, sensitive evidence that cannot be safely summarized, or a kind-specific gate failure.
+
+"Current diff coordinate" is mechanically checkable, and this text is about to be posted on someone else's PR - so check it mechanically. Write the assembled drafts to a file and run:
+
+```bash
+python3 .claude/scripts/citation-validator.py "{drafts_file}" \
+  --root nase="$NASE_ROOT" --repo-root {alias}="{repo_path}" --format json
+```
+
+Exit `1` means a cited `path:line`, PR URL, or Jira key does not resolve: re-anchor or drop that draft, never post it. Exit `2` is `UNKNOWN` (Confluence needs MCP) - a private-source citation should not have been in a GitHub-bound draft anyway, so treat it as a prompt to cut the citation.
 
 ```
 Question: "Draft inline comments now?"
@@ -160,12 +165,9 @@ Behavior per choice:
 **Draft format** (used by Draft + post and Draft + discuss):
 
 - **Voice profile**: before drafting, follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`; read `workspace/communication-style.md` for high-stakes or ambiguous comments. Keep no-blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), and no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` - don't over-escalate severity, prefer measured assessments.
-- **No intent-label prefix.** The chat report already carries `kind` and `disposition`; opening the posted comment with `nit (non-blocking):` or `question (needs-answer):` spends the first line restating a classification the author cannot act on. Severity lives in the review state and in how the comment reads, not in a tag. Start on the claim itself.
+- **No intent-label prefix.** The chat report already carries `kind` and `disposition`; opening the posted comment with `nit (non-blocking):` or `question (needs-answer):` spends the first line restating a classification the author cannot act on. Severity lives in the review state and in how the comment reads, not in a tag. Start on the claim itself. (The `github-review-comment` capsule points here for this rule; everything else about length, anchoring, and tone is the capsule's and is not restated below.)
 - **Ship the claim, not your homework.** Post the minimum an author needs to verify the finding and fix it: what is wrong, the one or two references that make it checkable, and the fix direction. Corroborating evidence you gathered while convincing *yourself* - a second confirming source, an upstream cross-check, a correction to the PR description - belongs in the chat report. It reads as thoroughness while writing and as a wall of text on arrival, and it buries the sentence the author actually needs. Hold it in reserve for a reply if they push back.
 - **Two sentences, roughly 60 words.** Sentence count alone is a weak guard - two 55-word sentences are still a wall. If the draft runs long, the fix is almost always cutting a supporting citation, not compressing grammar.
-- Backtick every identifier, path, `path:line`, column, and code fragment. Bare `QUEUEITEMS.ID` or `views/jobs.view.lkml:506` in prose is hard to scan and GitHub may mangle the punctuation.
-- Conversational peer tone - not formal or gatekeeper.
-- Lead with the concrete failure mode, then the fix direction when it is unambiguous. Omit the fix rather than guess at one.
 - Cluster repeated instances into one representative comment and mention sibling occurrences briefly. A nit is always non-blocking regardless of confidence.
 - Keep the private record private. Include only the minimum safe evidence needed for the author; never include secrets, credentials, unredacted scanner matches, private document excerpts, or unnecessary internal URLs.
 - For findings that went through `pr-review-verification.md` §7 (citation/triage verification of a bot claim): append one short line with the verification command + result (e.g. `shellcheck exited 0 on this file`) so the author can audit instead of re-litigating
@@ -192,7 +194,7 @@ The LookerML cross-check and the PR-body correction are still worth having; they
 
 Enter this step only when Step 7 = "Draft + post". Otherwise skip it.
 
-**Ownership check:** compare `gh api user --jq .login` against the PR `user.login`.
+**Ownership check:** compare `viewerLogin` from the Step 2 `review-context` JSON against the PR `user.login`. Do not make a fresh `gh api user` call - it rode along in that batch precisely so the write boundary does not add a serial round trip.
 
 - If the PR is not the user's, submitting a review notifies the author - confirm once more before proceeding ("PR is owned by @other-user - submitting a review will notify them. Proceed?").
 - If the PR is self-authored, GitHub does not allow the author to approve it. Never recommend or submit `APPROVE`; publish only as `COMMENT`, or keep the result in `Draft + discuss`. State the hypothetical merge verdict in chat instead of trying to encode it as an approval. Source: [GitHub required-review documentation](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
@@ -226,13 +228,11 @@ For a non-owned PR with a confirmed blocking issue, `REQUEST_CHANGES` is the onl
 
 - Recompute state eligibility from the confirmed findings immediately before manifest creation. If the selected state is no longer eligible, do not build or authorize a manifest; return to review-state selection with the changed evidence.
 - Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`, name the unresolved question, missing domain evidence, or self-review verdict without calling it blocking. For `REQUEST_CHANGES`, name the confirmed must-not-merge concern in one or two sentences.
-- Inline comments: post the drafts verbatim - the Step 7 **Draft format** rules (no label prefix, ~60 words, backticked identifiers, supporting evidence held back for chat) are the posting contract, not a drafting-only style. Use `output:` language and the voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
+- Inline comments: post the drafts verbatim - the Step 7 **Draft format** rules (no label prefix, ~60 words, supporting evidence held back for chat) plus the `github-review-comment` capsule are the posting contract, not a drafting-only style. Use `output:` language and the voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
 - Build the review payload as a private file, prepare the manifest, show it, get the immediate `AskUserQuestion` approval of that exact manifest, then authorize and execute:
 
 ```bash
-# mktemp -d with the X's last: BSD/macOS does not expand a template that has a suffix
-# after the X's, so "foo.XXXXXXXX.md" yields that literal shared name. The 0700 dir is
-# also what makes the payload private, which chmod on a file in a shared /tmp is not.
+# Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 REVIEW_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-review-{number}-XXXXXXXX")
 REVIEW_FILE="$REVIEW_DIR/review.json"
 trap 'rm -rf "$REVIEW_DIR"' EXIT
@@ -253,7 +253,7 @@ python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 
 ## Step 9 - Stage 5: completion message
 
-Reached only after Step 8 submits successfully. Emit a single chat block (labels in `conversation:` language, URL and counts English):
+Reached only after Step 8 submits successfully. Emit a single chat block:
 
 ```
 ✅ Submitted.
@@ -272,7 +272,6 @@ Get the review URL from the execute response (`html_url`, or build `https://gith
 ## Error Handling
 
 - **Auth failure** (`gh` not authenticated or 403): report the error and stop - do not retry or guess credentials.
-- **Oversized diff** (>5000 lines based on `additions + deletions` from PR metadata): skip `gh pr diff` and use `gh pr diff --stat` instead. Read only the top N most-changed files individually. Note in the output which files were skipped.
 - **Private repo / 404**: verify the repo exists and the user has access. Suggest `gh auth status` if unclear.
 - **Rate limit (HTTP 429)**: wait and retry once. If still limited, report and stop.
 

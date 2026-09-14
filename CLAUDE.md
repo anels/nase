@@ -111,7 +111,7 @@ No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
 
 When the user corrects wording/tone on an external draft I produced (Slack, PR description/review comment, external doc), follow `.claude/docs/style-delta-capture.md`:
 - Address the edit, log a pending `[STYLE-DELTA]` line, and never write `workspace/communication-style.md` directly.
-- `/nase:wrap-up` Step 4e batches deltas and gates the write. Triggers, scope, log format, and the inline high-confidence gate all live in that doc.
+- `/nase:wrap-up` Step 9 batches deltas and gates the write. Triggers, scope, log format, and the inline high-confidence gate all live in that doc.
 - A `[style-edit-detect]` hook reminder is a nudge to log the delta, not a license to write the style doc.
 
 ## Code Review

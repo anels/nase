@@ -15,7 +15,6 @@
 - Grill Session - {YYYY-MM-DD}
 - Step 6.5: Doc Hygiene Pass (auto-cleanup)
 - Step 7: Report
-- Step 8: Follow-up Human Grill Recommendation (when applicable)
 - Notes
 
 Stress-test an existing plan via a relentless frontier-round interview. Goal: walk every branch of the decision tree until shared understanding, resolving each round's frontier (facts first, then a batched ask) and recording resolutions back to the effort doc so `/nase:fsd` can pick up the constraints.
@@ -52,7 +51,7 @@ Hold the resolved absolute path as `repo_path`. All codebase exploration in Step
 
 Before building the decision tree, verify the plan's **load-bearing mechanism premise** — the 1-2 assumptions about how an external repo, pipeline, or system actually works that the plan's core approach rests on (e.g. "the cert job is separate", "AppGw config is imperative az", "this pipeline stage runs before that gate"). Fetch + grep the authority repo/pipeline (`repo_path` or the external source named in the plan) for those specific decision points and confirm each holds. If a premise is wrong, correct the plan body first, then build the tree.
 
-A grill run on an ungrounded premise multiplies the wrong model across every branch — the whole tree, and the rounds spent resolving it, are wasted when the premise flips only late (the failure this guards against). Step 4b resolves per-branch questions but does **not** re-validate the shared premise the tree is built from, so it must be grounded here. Keep this scoped to the load-bearing premise only — this is not a full re-research of the design; the base `/nase:design` workflow Steps 1-2 own that.
+A grill run on an ungrounded premise multiplies the wrong model across every branch — the whole tree, and the rounds spent resolving it, are wasted when the premise flips only late (the failure this guards against). Step 4b resolves per-branch questions but does **not** re-validate the shared premise the tree is built from, so it must be grounded here. Keep this scoped to the load-bearing premise only. A full re-research of the design is out of scope for grill entirely - that is what a fresh `/nase:design` run does, and grill does not fall back into the base interactive workflow it skipped at Activation.
 
 Remaining work is also a load-bearing premise. Follow `.claude/docs/open-work-freshness.md` before ranking any item as open. Use the fetched-ref implementation and test mechanism, not the current checkout or a name-only grep. Consume `freshness_outcome` before building the decision tree: on `blocked`, skip the tree, carry the missing evidence into **Open after grill**, and do not suggest FSD; on `already_shipped`, skip the tree, report the shipping evidence, and do not suggest FSD; on `continue`, exclude `already_done` items from the tree and retain their shipping evidence for Step 6.5.
 
@@ -66,11 +65,19 @@ Read the plan content (effort doc body or raw text). Extract every branch where 
 - Architectural choices the plan glosses over — interface shape, seam location, data path.
 - Review packaging ambiguity — proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, or implementation phases being treated as PRs without justification.
 
-Output internally: a list `branches: [{id, topic, why-it-matters, persona, depends_on: [branch-id]}]`. Assign each branch a stable `id`. Set `depends_on: []` only when the branch can be resolved independently; when a branch's valid options or recommendation depend on another decision, list that prerequisite's id. Dependency ids must exist, and the graph must contain no self-dependency or cycle. Cap at 15 top-level branches by keeping a dependency-closed set: if a kept branch depends on another branch, keep its full prerequisite chain too. Prioritize by load-bearingness (security, data-loss risk, irreversibility, cross-team coordination) and move the rest, plus any branch that depends on a moved branch, to `## Open after grill`. Revalidate ids and acyclicity after applying the cap. The 15-cap protects the 25-branch budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
+Output internally: a list `branches: [{id, topic, why-it-matters, persona, load_bearing, depends_on: [branch-id]}]`. Assign each branch a stable `id`. Set `depends_on: []` only when the branch can be resolved independently; when a branch's valid options or recommendation depend on another decision, list that prerequisite's id. Set `load_bearing: true` for security, data-loss, irreversibility, and cross-team-coordination branches.
+
+Do not validate or cap the graph by hand - `.claude/scripts/grill-frontier.py` owns it:
+
+```bash
+python3 .claude/scripts/grill-frontier.py --file "$BRANCHES_JSON"
+```
+
+It rejects missing dependency ids, self-dependency, and cycles (exit 1, naming the branches); applies the dependency-closed 15-cap, keeping each kept branch's full prerequisite chain; and returns `kept_ids`, `cap_dropped_ids`, `open_after_grill_ids`, `frontier_ids`, `blocked_ids`, and `budget_remaining`. Everything in `cap_dropped_ids` and `open_after_grill_ids` goes to `## Open after grill`. The 15-cap protects the 25-branch budget in Step 5 from being burned on shallow branches before the load-bearing ones are reached.
 
 ## Step 3.4: Persona Lenses (multi-perspective grill)
 
-Run the plan past five reviewer personas; each catches a different failure class, and a design that survives all five is far harder to break than one grilled from a single angle. Walk the lenses, generate the sharpest 1–3 questions per persona that the plan does not already answer, and fold them into `branches` (tag each with its `persona` and preserve or add `depends_on` edges). Apply Step 3's dependency-closed 15-cap again, then revalidate dependency ids and acyclicity. A question a persona answers from the codebase/KB is resolved in Step 4 like any other branch; only genuine forks reach the user.
+Run the plan past five reviewer personas; each catches a different failure class, and a design that survives all five is far harder to break than one grilled from a single angle. Walk the lenses, generate the sharpest 1–3 questions per persona that the plan does not already answer, and fold them into `branches` (tag each with its `persona` and preserve or add `depends_on` edges). Re-run `grill-frontier.py` on the enlarged list; it re-validates and re-caps. A question a persona answers from the codebase/KB is resolved in Step 4 like any other branch; only genuine forks reach the user.
 
 Lead with whichever personas matter most for this design (a CLI util needs little PM/SRE; a tenant-facing service needs all five). End with a **pre-mortem**: assume it's six months out and this design caused an incident — what was the cause? Treat each answer as a branch.
 
@@ -116,7 +123,7 @@ When recording resolutions (Step 6), keep the `persona` tag and a **severity** �
 
 ## Step 4: Grill Loop (frontier rounds)
 
-Work the decision tree in **rounds**, not one question at a time. Compute the **frontier** from the branch graph: it is every unresolved branch whose `depends_on` ids are all resolved. These are the decisions you can resolve *now* without guessing at answers you haven't heard yet. A branch whose resolution depends on another still-open branch is not on the frontier; it belongs to a later round. If a branch is deferred, move all of its transitive dependents to `open_after_grill` instead of treating the missing decision as settled. Resolve the whole current frontier each round (facts first, then a single batched ask), then recompute the frontier and repeat. This front-loads evidence lookups and cuts the user's turn count versus asking serially. (Adapted from mattpocock/skills `batch-grill-me`; see `workspace/kb/general/workflow.md` §2026-07-16.)
+Work the decision tree in **rounds**, not one question at a time. The **frontier** is every unresolved branch whose `depends_on` ids are all resolved - the decisions you can settle *now* without guessing at answers you have not heard yet. Re-run `grill-frontier.py` each round with the accumulated `resolved` and `deferred` id lists **and the running `budget_spent`** - the cumulative count of user-answerable branches put to the user since this grill started, summed across every round so far, not the current round's count. `budget_spent` defaults to 0, so omitting it pins `budget_remaining` at 25 every round and removes the bound entirely. It returns the new `frontier_ids`, moves the transitive dependents of any deferral into `open_after_grill_ids` rather than treating the missing decision as settled, and reports `budget_remaining`. Resolve the whole current frontier each round (facts first, then a single batched ask), then re-run it and repeat. This front-loads evidence lookups and cuts the user's turn count versus asking serially. (Adapted from mattpocock/skills `batch-grill-me`; see `workspace/kb/general/workflow.md` §2026-07-16.)
 
 ### 4a. Classify the frontier
 
@@ -136,21 +143,12 @@ Only fall through to 4c for branches that are genuinely user-answerable, or wher
 
 ### 4c. Ask the frontier's user-answerable branches (batched round)
 
-Batch the round's user-answerable branches into a **single `AskUserQuestion` call**, up to the harness cap of 4 questions per call and never more than the Step 5 budget remaining (`25 - user-answerable branches already resolved`). If the frontier exceeds either limit, ask the most load-bearing branches that fit and carry the rest into the next round. Each question is still one single decision (never compound) and always leads with a recommended answer. Use the structured per-question form:
+Batch the round's user-answerable branches into a **single `AskUserQuestion` call** per `.claude/docs/skill-authoring-contract.md` → §5, which owns recommendation-first options and ordering by load-bearingness. Grill adds two bounds: the harness cap of 4 questions per call, and `ask_allowance` from the latest `grill-frontier.py` run (which is why Step 4 must pass `budget_spent`). If the frontier exceeds either, ask the most load-bearing branches that fit and carry the rest into the next round.
 
-```
-question: "{Question — clear, single-decision, no compound 'and']}"
-header: "{≤12 char tag}"
-options:
-  - label: "Recommended: {answer}" , description: "{1 sentence why + main tradeoff}"
-  - label: "{alt 1}"               , description: "{when this would be better}"
-  - label: "{alt 2}"               , description: "{when this would be better}"  # optional — drop if no second alt
-```
-
-Rules:
-- Always include a recommended answer in the first slot — never ask without an opinion. If you genuinely can't form one, that's a signal to do more codebase exploration before asking.
-- 1-3 alts is the working range. Drop "alt 2" when the decision is binary (sync vs async). Drop both alts when the question is yes/no on a recommendation — fall through to harness-added "Other" for disagreement.
-- The harness-added "Other" is the user's free-form escape hatch and the signal-channel for termination (Step 5).
+Grill-specific rules on top of §5:
+- If you genuinely cannot form a recommendation, that is a signal to explore the codebase more before asking - not a reason to ask without one.
+- 1-3 alternatives is the working range. Drop the second when the decision is binary (sync vs async); drop both when the question is yes/no on a recommendation and let the harness-added "Other" carry disagreement.
+- "Other" is also the signal-channel for termination (Step 5).
 - Never compound questions. "Should X be sync or async, and where does it live?" → split into two grill iterations.
 - **`<thinking>` invite for ambiguous user answers**: if a prior user answer was vague, contradictory, or you sense the user's mental model differs from yours in ways the option list cannot capture, append a one-line note before the `AskUserQuestion`:
   > `If you'd rather walk me through the reasoning than pick an option, wrap it in <thinking>...</thinking> in your reply and I'll parse the shape instead of asking again.`
@@ -162,11 +160,11 @@ Rules:
 After each round's answers:
 0. Apply the Step 5 stop-token rule first. If it matches, record the same batch's non-termination answers as specified there, then skip the steps below and end the grill.
 1. Append to internal buffer `grill_resolutions: [{persona, severity, topic, question, answer, rationale}]` (Step 6 does the single write; `persona`/`severity` default to `—`/`suggestion` for non-persona branches).
-2. Each answered decision reshapes the tree: settled branches push the frontier outward and unblock branches that depended on them. If an answer implies a new follow-up decision, add it as a branch. **Recompute the frontier** and run the next round (4a–4d).
+2. Each answered decision reshapes the tree: settled branches push the frontier outward and unblock branches that depended on them. If an answer implies a new follow-up decision, add it as a branch. Re-run `grill-frontier.py` and start the next round (4a–4d).
 
 ## Step 5: Termination
 
-The loop ends when the frontier is empty — every branch resolved/deferred — or when the user explicitly stops the grill.
+The loop ends when `grill-frontier.py` reports `terminated: true` — every branch resolved or deferred — or when the user explicitly stops the grill.
 
 If every branch has been handled by evidence lookup, user answer, or `open_after_grill`, proceed to Step 5.6 with `termination = branches exhausted`. Do not ask a synthetic final question just to collect a stop token.
 
@@ -185,7 +183,7 @@ If a user-facing question batch is active, the user can also stop via any questi
 
 If any answer matches, record the other non-termination answers returned in the same batch, set `termination` to the first matching stop token in question order, and end the grill before adding follow-up branches or recomputing the frontier. The stop-token answer itself is not a branch resolution. If an `Other` payload does not match (e.g. a long free-form override of the recommendation), treat it as a non-termination answer and continue the loop with it.
 
-Hard cap: 25 user-answerable branches resolved total (across all rounds). If reached without an empty frontier, say so and ask whether to continue or stop. This is a safety bound, not a normal exit.
+Hard cap: 25 user-answerable branches resolved total (across all rounds) - the `budget_total` `grill-frontier.py` defaults to. It is reached when the script returns `ask_allowance: 0` with `terminated: false`. Say so and ask whether to continue or stop. On **continue**, pass an explicitly raised `budget_total` on every subsequent call; without it `budget_remaining` stays 0, each round allows no questions, and `terminated` never flips - the loop spins on empty rounds after the user agreed to keep going. This is a safety bound, not a normal exit.
 
 ## Step 5.6: Convergence loop
 
@@ -238,12 +236,7 @@ Anything still unresolved (codebase exploration was inconclusive, or user deferr
 
 ```
 
-Update lifecycle: append a checked item if the doc didn't already track grill:
-```
-- [x] Plan grilled — {YYYY-MM-DD}
-```
-
-(If a previous grill checked this, do not duplicate. Just rely on the Grill Session timestamp.)
+The `## Grill Session — {YYYY-MM-DD}` heading written above is the lifecycle record for this pass; do not add a separate `- [x] Plan grilled` line.
 
 ## Step 6.5: Doc Hygiene Pass (auto-cleanup)
 
@@ -275,17 +268,13 @@ Report to the user (conversation language):
 - 1-line summary of the most load-bearing constraint added
 - Only suggest `/nase:fsd {slug}` when `freshness_outcome = continue`; otherwise report the blocker or shipped evidence and no implementation handoff.
 
-Daily log entry per `.claude/docs/daily-log-format.md` (tag: `grill` — ad-hoc, not in canonical tag table; add to that table if grill becomes a regular workflow):
-`grilled {slug} — {N} branches, {top constraint} → effort doc updated`
-
-## Step 8: Follow-up Human Grill Recommendation (when applicable)
-
-For non-trivial designs — 8+ branches in the human grill loop, or designs touching CI/CD pipelines, infra, or cross-team coordination — recommend a **follow-up human grill pass** after the design body is updated with all current resolutions. The first human pass surfaces structural risks (constraints, dependencies, missing requirements); the later follow-up pass — re-reading the updated body — surfaces representational drift that only appears against the revised body: cache key format mismatch between body and resolution, dependsOn ordering, hardcoded artifact names, conditional-cleanup gaps. This is separate from the Step 5.6 convergence loop, which re-runs persona lenses against the revised snapshot rather than re-reading the written body with a human.
-
-Trigger output (append to Step 7 report when applicable):
+When the loop ran 8+ branches, or the design touches CI/CD, infra, or cross-team coordination, close the report with:
 > "Recommend a follow-up human grill once the design body is updated — this pass caught {N} structural issues; a later reread typically surfaces representational drift (cache keys, ordering, hardcoded names) only visible against the revised body."
 
-Skip recommendation when the human grill loop had ≤4 branches or the design is purely greenfield code (no infra/CI artifacts to drift against).
+That is a different pass from the Step 5.6 convergence loop: 5.6 re-runs persona lenses against the revised snapshot, this one re-reads the written body with a human. Skip it for ≤4 branches or purely greenfield code with no infra/CI artifacts to drift against.
+
+Daily log entry per `.claude/docs/daily-log-format.md` (tag: `grill` — ad-hoc, not in canonical tag table; add to that table if grill becomes a regular workflow):
+`grilled {slug} — {N} branches, {top constraint} → effort doc updated`
 
 ## Notes
 

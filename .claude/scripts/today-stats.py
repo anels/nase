@@ -2,7 +2,7 @@
 """
 today-stats.py — Emit a single date's skill-usage counts.
 
-Used by /nase:wrap-up Step 4d. Token/session accounting was removed: it read
+Used by /nase:wrap-up Step 8. Token/session accounting was removed: it read
 ~/.claude/usage-data/session-meta/, which is not populated in every harness, so
 the numbers were unreliable. Skill ranking comes from workspace/stats/skill-usage.jsonl
 (written by the skill-tracking hooks) and is reliable.

@@ -63,6 +63,32 @@ roles:
       - Complex cross-repo analysis
       - Tech debt audit
 
+# Where the top-5 skills actually dispatch. A spawn that names no role inherits the
+# session model, so on an Opus session every unrouted fan-out bills at Opus for work
+# that does not need it. Name a role at every spawn site.
+#
+#   Skill              Phase / work                                  Role
+#   ----------------   -------------------------------------------   --------
+#   design             KB + repo + workspace context scans           (persisted haiku agents)
+#   design             auto Step 4a scoring the draft                verifier
+#   design             grill branch resolution (codebase/config)     lookup
+#   design             architecture trade-off with no local          architect
+#                      precedent, cross-repo or security-shaped
+#   discuss-pr         PR metadata / changed files                   (nase-pr-metadata-reader, haiku)
+#   discuss-pr         Step 5b + 6.5 code traces                     worker
+#   discuss-pr         Step 5.7 doubt pass                           verifier
+#   discuss-pr         bot-comment batch-verify                      verifier
+#   address-comments   Phase 2 dossier collection                    verifier
+#   address-comments   Phase 7.5 resolution gate                     verifier
+#   fsd                Phase 6.4 candidate review                    verifier
+#   fsd                Phase 4 implementation (Team mode)            worker
+#   wrap-up            log / stats / effort scans                    (nase-workspace-state-scanner, haiku)
+#
+# architect is the exception, not a tier to reach for: it is the only opus role, and
+# no skill currently routes to it. Reaching for it needs a reason a verifier pass
+# cannot cover - an unfamiliar codebase, a security threat model, a cross-repo
+# architecture call. "This feels important" is not one.
+#
 # Routing rules:
 #   default: worker
 #   Never use architect for something lookup can answer.

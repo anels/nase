@@ -18,4 +18,6 @@ options:
     description: "Do nothing else; leave follow-up for later"
 ```
 
+Drop the "Request review" option when Phase 9b already staged re-review pings - offering the skill that just ran reads as though the ping did not happen.
+
 Do not auto-run prep-merge or request-review. The former can rewrite history and the latter stages human pings. Invoke only the option the user selected; stop on "Stop here".

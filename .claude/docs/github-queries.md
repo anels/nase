@@ -79,9 +79,7 @@ Filter threads where `isResolved == false`.
 Replying to an existing review comment is a REST write against the integer `databaseId` of the thread's first comment. Use this exact shape - the flag choice is not a style question, it decides whether the reviewer sees your text or a local file path.
 
 ```bash
-# mktemp -d with the X's last: BSD/macOS does not expand a template that has a suffix
-# after the X's, so "foo.XXXXXXXX.md" yields that literal shared name. The 0700 dir is
-# also what makes the payload private, which chmod on a file in a shared /tmp is not.
+# Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 # One dir per reply matters here: address-comments posts replies in a loop, so a shared
 # predictable name would let iteration N+1 clobber the payload manifest N was bound to.
 REPLY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-XXXXXXXX")
@@ -106,7 +104,7 @@ NEW_ID=$(python3 .claude/scripts/external-write-action.py execute --manifest "$M
 The reply body only exists correctly if GitHub stored what you wrote, so confirm at the consumer boundary before reporting the thread as answered or resolving it:
 
 ```bash
-# See the mktemp note above: the X's must be last for BSD to expand the template.
+# Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 POSTED_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-posted-XXXXXXXX")
 trap 'rm -rf "$POSTED_DIR"' EXIT
 POSTED_FILE="$POSTED_DIR/posted.md"
@@ -143,7 +141,7 @@ Two mutation shapes share one throttle rule. Pick the shape by call pattern; bot
 Use when each `resolveReviewThread` follows a per-thread reply, so calls must be sequenced one at a time per thread.
 
 ```bash
-# See the mktemp note above: the X's must be last for BSD to expand the template.
+# Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 QUERY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/resolve-review-thread-XXXXXXXX")
 trap 'rm -rf "$QUERY_DIR"' EXIT
 QUERY_FILE="$QUERY_DIR/query.json"
@@ -167,7 +165,7 @@ Notes:
 Use when you have N threads to resolve with no per-thread reply (e.g. auto-resolving bot-declined threads). One round-trip resolves all of them via GraphQL aliases.
 
 ```bash
-# See the mktemp note above: the X's must be last for BSD to expand the template.
+# Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 BATCH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/resolve-review-batch-XXXXXXXX")
 trap 'rm -rf "$BATCH_DIR"' EXIT
 BATCH_FILE="$BATCH_DIR/batch.json"

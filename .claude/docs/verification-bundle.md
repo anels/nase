@@ -1,6 +1,6 @@
 # Verification Bundle
 
-This document owns the local artifact passed to the FSD reviewer that covers both code quality and spec conformance. Review invocation and action reduction live in `.claude/docs/fsd-delivery-gates.md` and `.claude/scripts/fsd-review-gate.py`.
+This document owns the local artifact passed to the FSD reviewer that covers both code quality and spec conformance. Review invocation and action reduction live in `.claude/docs/fsd-candidate-review.md` and `.claude/scripts/fsd-review-gate.py`.
 
 ## Build
 
@@ -40,15 +40,16 @@ The helper creates a temporary `GIT_INDEX_FILE`, runs `read-tree HEAD`, `git add
 
 All stat, name-status, changed-line, sample, and full-diff sections compare `base_oid` directly with `candidate_tree_oid`. Rename samples use the actual source and destination paths unless a path itself resembles a credential assignment, in which case the rendered path is replaced by a stable redaction marker and recorded as an evidence gap. Binary patches are represented only by redacted-safe path, mode, Git object OID, and byte size. Text diff projections are capped at 64 KiB, full diffs at 128 KiB of changed blob content, and the entire bundle at 512 KiB. Staging or committing the same content therefore preserves the reviewed identity.
 
-To resolve only the candidate identity:
+To resolve only the candidate identity. No `--inventory-file`: this call runs in Phase 6.1 Step 2, before the inventory is frozen in Step 6, so there is nothing to pass.
 
 ```bash
 python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" \
   --base "$BASE" \
-  --inventory-file "{canonical_inventory_json}" \
   --candidate-tree-only
 ```
+
+The printed metadata carries `candidate_tree_oid`, `changed_path_count`, and `total_lines_changed`; the diff-size guard reads the last of these.
 
 ## Verification Evidence
 
@@ -96,4 +97,4 @@ Each context payload is capped at 64 KiB and total embedded context at 256 KiB. 
 
 Reviewers must echo `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and the exact bundle SHA-256. The reducer rejects a mismatch with the independently captured pre-review bundle SHA-256, candidate tree, changed-path hash/count, inventory hash, or reviewer echo as `STALE`.
 
-Before commit, the real staged `git write-tree` must equal `approved_candidate_tree_oid`. After commit and commit-message amend, `HEAD^{tree}` must equal it. A mismatch restarts Phase 6 and a fresh review. No similar diff, staged descendant, or later commit inherits approval. When `review_outcome = not-run` no action set an approved tree, so both assertions bind `tested_candidate_tree_oid` instead - see `.claude/docs/fsd-delivery-gates.md → When the review did not run`. The binding is what these assertions guarantee; which tree it names is what the missing review changes.
+Before commit, the real staged `git write-tree` must equal `approved_candidate_tree_oid`. After commit and commit-message amend, `HEAD^{tree}` must equal it. A mismatch restarts Phase 6 and a fresh review. No similar diff, staged descendant, or later commit inherits approval. When `review_outcome = not-run` no action set an approved tree, so both assertions bind `tested_candidate_tree_oid` instead - see `.claude/docs/fsd-candidate-review.md → When the review did not run`. The binding is what these assertions guarantee; which tree it names is what the missing review changes.

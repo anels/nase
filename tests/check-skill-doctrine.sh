@@ -30,6 +30,7 @@
 #   D23. fsd/address-comments/simplify lose the code-comment default or the gate that scores it
 #   D24. a pipeline skill's phase number disagrees between its heading, its document's
 #        Contents list, and the cross-references that route to it
+#   D25. a `Step N` cross-reference names a step its skill's numbered workflow does not have
 #
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
@@ -215,9 +216,9 @@ section "D5: gate owners declare the gate unconditional"
 # explicit unconditional marker: a positive token the author has to delete before
 # the gate can become optional again, which a reviewer will see in the diff.
 declare -a D5_OWNERS=(
-  ".claude/docs/pr-review-verification.md"
+  ".claude/docs/pr-review-fix-verification.md"
   ".claude/docs/address-comments-delivery.md"
-  ".claude/docs/fsd-delivery-gates.md"
+  ".claude/docs/fsd-candidate-review.md"
 )
 D5_MARKER='no availability branch|gate is unconditional|always runs'
 d5_hits=""
@@ -716,15 +717,16 @@ required = {
     ".claude/docs/pr-review-verification.md": [
         "## 11. Diff-First Investigation",
         "## 12. Trace-Shape Self-Check",
+        "## 13. Spawn Directive (copy verbatim)",         # the block spawn sites copy
     ],
     ".claude/docs/discuss-pr-analysis.md": [
         "§11",                                       # §11 block reference
-        "diff-first investigation directive, inline",     # inline directive @ Step 5b spawn
+        "§13, copied verbatim into the prompt",      # inline directive @ Step 5b spawn
         "trace-shape self-check",                         # self-check call site(s)
         "§12",                                       # §12 self-check reference
     ],
     ".claude/docs/discuss-pr-output.md": [
-        "inline diff-first directive",                    # inline directive @ optional deep-dive spawn
+        "§13 copied verbatim",                       # inline directive @ optional deep-dive spawn
         "trace-shape self-check",
         "§12",
     ],
@@ -857,7 +859,7 @@ required = {
         "verification triad",
         "staged proposal",
     ],
-    ".claude/docs/fsd-delivery-gates.md": [
+    ".claude/docs/fsd-pr-delivery.md": [
         "invoke `/nase:learn`",
         "verification triad",
     ],
@@ -977,7 +979,7 @@ required = {
         "Default to none",
         "comment_quality",
     ],
-    ".claude/docs/fsd-delivery-gates.md": [
+    ".claude/docs/fsd-candidate-review.md": [
         ".claude/docs/code-comment-policy.md",
         "necessity and concision",
     ],
@@ -985,10 +987,10 @@ required = {
         ".claude/docs/code-comment-policy.md",
         "Default to none",
     ],
-    ".claude/docs/pr-review-verification.md": [
+    ".claude/docs/pr-review-fix-verification.md": [
         ".claude/docs/code-comment-policy.md",
     ],
-    ".claude/docs/review-modes.md": [
+    ".claude/docs/review-mode-comment-threads.md": [
         "restates the code or narrates the change",
     ],
     ".claude/commands/nase/simplify.md": [
@@ -1040,7 +1042,9 @@ SKILLS = {
         (
             ".claude/docs/fsd-intake-and-setup.md",
             ".claude/docs/fsd-implementation-loop.md",
-            ".claude/docs/fsd-delivery-gates.md",
+            ".claude/docs/fsd-candidate-review.md",
+            ".claude/docs/fsd-pr-delivery.md",
+            ".claude/docs/fsd-closeout.md",
         ),
     ),
     "address-comments": (
@@ -1121,6 +1125,71 @@ if [[ -n "$d24_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': fsd and address-comments phase numbers resolve consistently\n'
+fi
+
+section "D25: step-numbered skills' cross-references resolve to a real step"
+d25_hits=$(python3 - <<'PY'
+import re
+from pathlib import Path
+
+# D24 only sees 'Phase N' headings. /nase:wrap-up numbers its workflow as a plain ordered
+# list and every caller spells the reference 'Step N', so both halves of that gate miss it:
+# CLAUDE.md, three shared docs, and today-stats.py all routed to a 'Step 4e' that the
+# renumbering to 1-14 had already deleted, and the drift read as ordinary prose.
+SKILLS = {
+    "wrap-up": ".claude/commands/nase/wrap-up.md",
+}
+ROOTS = (Path(".claude"), Path("CLAUDE.md"))
+SCAN_SUFFIXES = (".md", ".py", ".sh")
+
+LIST_ITEM = re.compile(r"^([0-9]+)\. ")
+hits = []
+
+files = []
+for root in ROOTS:
+    if root.is_file():
+        files.append(root)
+    elif root.is_dir():
+        files.extend(
+            p for p in sorted(root.rglob("*")) if p.is_file() and p.suffix in SCAN_SUFFIXES
+        )
+
+for skill, entrypoint in SKILLS.items():
+    path = Path(entrypoint)
+    if not path.exists():
+        hits.append(f"  {entrypoint}: missing")
+        continue
+    steps = {
+        m.group(1)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if (m := LIST_ITEM.match(line))
+    }
+    if not steps:
+        hits.append(f"  {entrypoint}: no numbered workflow steps found")
+        continue
+    # Matches the backticked and bare spellings alike; the optional decimal and letter
+    # suffix are what a stale sub-step reference looks like.
+    reference = re.compile(
+        rf"/nase:{re.escape(skill)}\x60?\s+Step ([0-9]+(?:\.[0-9]+)?[a-z]?)\b"
+    )
+    for file in files:
+        text = file.read_text(encoding="utf-8", errors="replace")
+        for label in sorted(set(reference.findall(text))):
+            if label not in steps:
+                hits.append(
+                    f"  {file}: '/nase:{skill} Step {label}' has no matching step "
+                    f"in {entrypoint} (steps are 1-{max(steps, key=int)})"
+                )
+
+print("\n".join(hits))
+PY
+)
+if [[ -n "$d25_hits" ]]; then
+  red "FAIL"; printf ': step-numbered cross-references point at steps that do not exist:\n'
+  printf '%s\n' "$d25_hits"
+  failed=$((failed+1))
+else
+  green "PASS"; printf ': wrap-up step cross-references resolve\n'
 fi
 
 # ---------- Result ---------------------------------------------------------

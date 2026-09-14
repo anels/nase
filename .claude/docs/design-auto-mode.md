@@ -6,7 +6,6 @@
 - Hard Gate
 - Language preflight (Step 0 - MUST run before Step 1, non-negotiable)
 - No-Ask Contract (mid-pipeline)
-- Execute, Don't Narrate
 - Research Ladder (per open question)
 - Step 1: Deep Context Gathering
 - Step 2: Autonomous Design
@@ -30,29 +29,17 @@ Same as base skill: no code, no implementation, no FSD. Only the effort doc is p
 
 ## Language preflight (Step 0 — MUST run before Step 1, non-negotiable)
 
-Read `workspace/config.md` → `## Language`. Write all chat output — the Step 4.5 `AskUserQuestion` batch and the Step 6 report — in the `conversation:` value; write the effort doc in `output:`. English stays only for code identifiers, file paths, PR/Jira IDs, repo names, and structural labels. If config is missing or has no `## Language` section, default English and note it once. Do not defer this to Step 6 — every user-facing string the pipeline emits depends on it.
+The base skill's pointer applies; resolve it before Step 1, not at Step 6. Auto mode emits exactly two user-facing surfaces — the Step 4.5 `AskUserQuestion` batch and the Step 6 report — and both depend on the answer.
 
 ## No-Ask Contract (mid-pipeline)
 
 **Never use `AskUserQuestion` mid-pipeline.** For every decision point, execute the Research Ladder first. Collect anything still unknowable into `human_input_queue` and keep going — do not stop to ask. The **one** place auto mode talks to the user is **Step 4.5**, which batches the whole queue into `AskUserQuestion` at the end, after research and grill have shrunk it to only what genuinely needs a human. Only after the ladder is exhausted does a question reach that batch.
 
-| Branch type | Resolution strategy |
-|-------------|---------------------|
-| codebase-answerable | Execute Grep/Read/Glob in `repo_path`; follow existing conventions |
-| config-answerable | Read domain KB file, repo `CLAUDE.md`, Confluence runbooks |
-| jira-answerable | Execute `searchJiraIssuesUsingJql`; prior decisions are often in comments |
-| effort-answerable | Execute `grep -r` across `workspace/efforts/*.md` |
-| unknowable | Add to `human_input_queue` only after all applicable research sources above come back empty |
-
 "Unknowable" means: requires a business/stakeholder decision, involves external team ownership with no documented precedent, or has zero signal across all applicable research sources. **Exhaust every source before marking unknowable.** A single empty grep is not exhaustion.
 
-## Execute, Don't Narrate
-
-**If you can run it — run it. Do not write "I would check X" or "we could look at Y." Just look.**
-
-This applies to every research step in this algorithm. Grep, Read, Glob, searchJiraIssuesUsingJql — if a tool can answer the question, call it. Speculation about what the codebase might contain is not evidence.
-
 ## Research Ladder (per open question)
+
+**If you can run it — run it.** Not "I would check X" or "we could look at Y": call the tool. Speculation about what the codebase might contain is not evidence. This governs every research step below and everywhere else in this algorithm.
 
 Run this sequence before giving up on any question:
 
@@ -101,9 +88,11 @@ Follow the base command's interactive workflow Steps 3-5 with these adaptations:
 
 **Approach selection** - do not ask mid-pipeline. Run the Research Ladder. If a decision is still unknowable, add it to `human_input_queue`, use the most KB-aligned default assumption, and log its evidence.
 
-**Plan gates and PR packaging** - run `.claude/docs/design-research.md` Parts B-C. Write a junior-implementable `### Implementation Plan` with per-step files, tests, done conditions, and dependency graph. Write `### PR Plan` with `Target PR count: 1` unless a Core Contract split boundary applies. If more than one PR is proposed, run the Research Ladder against the split boundary and explain why one coherent PR is worse for review or merge safety.
+**Plan gates and PR packaging** - Part B already ran at 1j against the gathered evidence; here re-check only the gates whose inputs the chosen option changed, then run Part C. Write a junior-implementable `### Implementation Plan` with per-step files, tests, done conditions, and dependency graph. Write `### PR Plan` with `Target PR count: 1` unless a Core Contract split boundary applies. If more than one PR is proposed, run the Research Ladder against the split boundary and explain why one coherent PR is worse for review or merge safety.
 
 **Recommendation** - auto-select the best evidenced option. If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
+
+**ETA** - read `.claude/docs/eta-estimation.md` and write the ETA section from the implementation steps. The base skill scores `ETA` as a Quality criterion in every mode, so auto mode owns producing it; `--review` scores what is written here.
 
 **External writes** - skip Jira creation in auto mode.
 
@@ -117,40 +106,17 @@ This step runs unconditionally after the effort-doc draft is prepared in memory.
 
 **Purpose:** actively resolve every open question and design ambiguity through tool execution before submitting the doc for review. This is not a reasoning exercise — it is a research execution phase.
 
-Before collecting branches, follow `.claude/docs/open-work-freshness.md` for every proposed implementation-plan item and success criterion. Consume `freshness_outcome` in the shared order: on `blocked`, discard the in-memory draft without staging it and report the missing evidence; on `already_shipped`, discard the draft, report the shipping evidence, and create no todo or FSD handoff; on `continue`, remove any `already_done` scope from the in-memory draft before writing.
+Before collecting branches, follow `.claude/docs/open-work-freshness.md` for every proposed implementation-plan item and success criterion. Consume `freshness_outcome` per that document's `Auto design` row; the draft being in memory rather than on disk is the only difference - discard means discard without staging.
 
 ### 3a. Collect all branches
 
-Gather every item that needs investigation:
-- All items in `## Open Questions` in the effort doc
-- Any ambiguous wording spotted during the initial self-review ("we could", "either X or Y", "TBD", "later")
-- Missing invariants the design asserts without specifying: error modes, retry semantics, idempotency, ordering, concurrency, rollout, observability
-- **Persona-lens questions** — walk the design through the five lenses + pre-mortem in `.claude/docs/design-grill-mode.md → Persona Lenses` (architect / PM / senior-eng / SRE / security) and add the sharpest unanswered questions, tagged with their persona
-
-Cap at 15 branches. Prioritize by load-bearingness: security, data-loss risk, irreversibility, cross-team coordination first.
+Collect branches exactly as `.claude/docs/design-grill-mode.md → Step 3` specifies — the same open-questions / ambiguous-wording / missing-invariant sources, the same persona lenses, the same dependency-closed 15-branch cap and load-bearingness ordering. Run it against the in-memory draft instead of a saved effort doc.
 
 ### 3b. For each branch: classify then execute
 
-**Do not reason about what you might find. Run the tools and look.**
+Run the Research Ladder on each branch and apply what it returns to the design. Two grill-specific bindings: codebase reads run against `fresh_default_oid` (`git -C {repo_path} grep -n -E -e "{keyword}" "{fresh_default_oid}" -- "{target_path}"`, then `git show` from that same commit), and every resolution logs the `file:line` that settled it.
 
-Classify each branch:
-
-**codebase-answerable** → execute immediately against `fresh_default_oid`:
-```
-git -C {repo_path} grep -n -E -e "{keyword}" "{fresh_default_oid}" -- "{target_path}"
-```
-Then read the relevant files from that same commit with `git show`. Extract the concrete answer, apply it to the design, and log what file:line resolved it.
-
-**config-answerable** → execute immediately:
-Read the relevant KB section, `CLAUDE.md`, or Confluence runbook. Extract the constraint. Apply it to the design.
-
-**jira-answerable** → execute immediately:
-```
-searchJiraIssuesUsingJql: project in (...) AND (summary ~ "{keyword}" OR description ~ "{keyword}") ORDER BY updated DESC
-```
-Read comments on the top 2-3 hits. Extract the prior decision. Apply it to the design.
-
-**unknowable** (only after executing all applicable sources above) → add to `human_input_queue`:
+A branch reaches **unknowable** only after every applicable rung came back empty. Record it in `human_input_queue` as:
 ```
 question: "{Concrete, specific question}"
 why_unknowable: "{What was tried and why it came back empty}"
@@ -204,13 +170,9 @@ This is the single point where auto mode talks to the user. By now research + gr
 
 **If non-empty:**
 
-1. Convert each queued item into an `AskUserQuestion` entry:
-   - `question` — the concrete, specific question (not "clarify scope" but "Should the export endpoint support CSV only, or also Excel?").
-   - `header` — ≤12-char tag.
-   - `options` — **first option = the default assumption the design already applied, suffixed " (Recommended)"**, its `description` quoting *why* (the evidence/principle behind the auto-choice). Then the real alternative(s), each `description` stating the trade-off. The harness adds "Other" as the free-form escape.
-2. **Batch** — group related entries into the fewest `AskUserQuestion` calls the harness supports. If the queue is large, order by load-bearingness (security / data-loss / irreversibility / cross-team first) so the most consequential are asked first.
-3. After each answer: apply the decision to the relevant design sections, and record it in a `### Resolved Decisions` block (columns: `#`, `Question`, `Decision`, `Applied to`) for the audit trail.
-4. Anything the user skips or answers with "Other → defer" stays in `human_input_queue` for the `## Human Input Required` section (Step 5b). Everything answered is removed from the queue.
+1. Convert each queued item into an `AskUserQuestion` entry per `.claude/docs/skill-authoring-contract.md` → §5, which owns batching, recommendation-first options, load-bearingness ordering, and the `### Resolved Decisions` table. The only design-specific part: `question` is the concrete decision (not "clarify scope" but "Should the export endpoint support CSV only, or also Excel?"), and the recommended option is the default assumption the design already applied.
+2. After each answer, apply the decision to the relevant design sections before moving on.
+3. Anything the user skips or answers with "Other → defer" stays in `human_input_queue` for the `## Human Input Required` section (Step 5b). Everything answered is removed from the queue.
 
 This replaces the old "queue everything to the doc and tell the user to run `--review`" behavior: the user gets asked once, at the end, and the written doc already reflects their answers.
 
@@ -219,6 +181,16 @@ This replaces the old "queue everything to the doc and tell the user to run `--r
 ### 5a. Apply all revisions
 
 Finalize the in-memory effort doc with all changes from Steps 3-4.5. Follow `.claude/docs/workspace-write-guard.md`: stage the final content, show its diff, and apply it with the fresh guard metadata to `workspace/efforts/{slug}.md`. Do not write or overwrite the target directly.
+
+Run two mechanical checks against the **staged** content, before apply. Both catch defects that are cheap here and invisible later - `.claude/docs/effort-doc-audit.md` notes that a doc with no canonical rows falls back silently to frontmatter, so nothing downstream surfaces a missing `## Lifecycle` block or an invalid `partial_delivery`.
+
+```bash
+python3 .claude/scripts/citation-validator.py "{staged_path}" \
+  --root nase="$NASE_ROOT" --repo-root {alias}="{repo_path}" --format json
+python3 .claude/scripts/effort-state.py --file "{staged_path}" --evaluate-transition
+```
+
+`citation-validator.py` is the mechanical half of the Grounding criterion and of `design-research.md`'s *Cite or gap* rule: exit `1` means a cited PR, Jira key, or `path:line` does not resolve - fix or `gap`-mark it before applying. Exit `2` is `UNKNOWN` (Confluence needs MCP); record it, do not treat it as a pass. `effort-state.py` failing to classify the doc means its structure is wrong, not that the classifier is.
 
 ### 5b. Append `## Human Input Required`
 

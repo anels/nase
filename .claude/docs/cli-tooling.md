@@ -1,5 +1,13 @@
 # CLI Tooling
 
+## Contents
+
+- Selection Rules
+- Availability Probe
+- Tool Groups
+- Skill Integration Map
+- Integration Contracts
+
 Use CLI tools in nase skills only when they improve evidence quality, reduce
 context volume, or make verification more deterministic.
 
@@ -63,6 +71,22 @@ impact.
 | `tech-debt-audit` | Optional `semgrep`, `trivy`, and `gitleaks` passes can seed candidates, but verified evidence remains required. Use `actionlint` only for GitHub Actions-heavy repos and `hadolint` only for Dockerfile-heavy repos when already installed. |
 | `skill-audit` | The stdlib `skill-audit-scan.py` pattern scan stays canonical; `semgrep` may supplement injection or exfiltration checks when installed. |
 | `stats` / `recap` | Prefer `duckdb` for large JSONL/CSV/log aggregation, use `qsv` for quick CSV sampling, and use `ccusage` for coding-agent token/cost summaries. Return compact summaries only. |
+
+### Running the post-edit gates (`fsd`, `address-comments`)
+
+Both skills probe the same four groups, so probe once per run and reuse the result:
+
+```bash
+python3 .claude/scripts/tool-availability.py --group baseline --group ci --group review --group security --format json
+```
+
+`/nase:fsd` must not run this at all - `fsd-preflight.py` already probed those groups
+and the answer is `toolAvailability` in `$TMPDIR/fsd-preflight.json`.
+
+Missing optional tools are warning-only: they never block a commit, a reply, or a
+thread resolution when the code and test evidence is otherwise adequate. Scanner
+output is a candidate, not a verdict - check every finding against the changed file
+and the task scope before acting on it.
 
 ## Integration Contracts
 

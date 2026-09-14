@@ -436,6 +436,32 @@ class SecretScanTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIsNone(module.secret_kind(source))
 
+    def test_snake_case_retrieval_calls_with_arguments_are_not_credentials(self):
+        # Real code, not just prose: a product repo's Helm render-check workflow assigns a
+        # `find_one(docs, "ExternalSecret", name)` lookup to a variable named after the
+        # resource kind, which blocked every FSD run that touched that file. A retrieval
+        # returns what the store held, so the literals in its argument list are selectors,
+        # not the value.
+        for source in (
+            b"secret" + b' = find_one(docs, "ExternalSecret", name)',
+            b"api_" + b"key" + b' = load_config(path, "prod")',
+            b"client_" + b"secret" + b" = get_entry(store, 12)",
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(module.secret_kind(source))
+
+    def test_retrieval_call_rule_stays_narrow(self):
+        # The verb has to lead and has to be lower snake_case, so a wrapper cannot use this
+        # door to launder a pasted literal.
+        for source in (
+            b"client_" + b"secret" + b' = Find_One(docs, "hardcoded-canary-4831")',
+            b"client_" + b"secret" + b' = findOne(docs, "hardcoded-canary-4831")',
+            b"client_" + b"secret" + b' = unwrap_find(docs, "hardcoded-canary-4831")',
+            b"client_" + b"secret" + b' = SecretStr("hardcoded-canary-4831")',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(module.secret_kind(source), "credential-assignment")
+
     def test_call_expression_rule_stays_narrow(self):
         # An alphanumeric argument keeps the value flagged, so no call wrapper can launder a
         # pasted literal, and a trailing tail is not a call at all.

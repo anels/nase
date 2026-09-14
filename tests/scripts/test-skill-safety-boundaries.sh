@@ -82,9 +82,9 @@ check_contains "GitHub mutation binds the target-mapped account" .claude/scripts
 check_contains "GitHub mutation selects the manifest-bound token" .claude/scripts/external-write-action.py 'token = github_account_token(executable, host, approved)'
 check_contains "GitHub mutation verifies the token actor" .claude/scripts/external-write-action.py 'github_token_actor(executable, root, host, token)'
 check_contains "opaque GitHub mutations require an explicit owner" .claude/docs/github-queries.md '--github-owner "{owner}"'
-check_contains "FSD uses delivery gate guard" .claude/commands/nase/fsd.md "fsd-delivery-gates.md"
-check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-delivery-gates.md "external-write-action.py"
-check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-delivery-gates.md "trap 'rm -rf \"\$PR_BODY_DIR\"' EXIT"
+check_contains "FSD uses candidate review gate guard" .claude/commands/nase/fsd.md "fsd-candidate-review.md"
+check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-pr-delivery.md "external-write-action.py"
+check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-pr-delivery.md "trap 'rm -rf \"\$PR_BODY_DIR\"' EXIT"
 check_contains "address-comments cleans private PR body files" .claude/docs/address-comments-delivery.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 check_contains "prep-merge cleans private PR body files" .claude/commands/nase/prep-merge.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 

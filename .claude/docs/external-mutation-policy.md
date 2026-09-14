@@ -4,6 +4,7 @@
 
 - The rule
 - CLI mutation action contract
+- Private payload directory
 - Hook backstops
 - What this policy is NOT
 - Application checklist for new skills
@@ -49,6 +50,21 @@ jq . "$MANIFEST"
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
+
+### Private payload directory
+
+A mutation whose payload is a file writes it to a fresh 0700 directory, never to a
+shared path. The 0700 directory is what makes the payload private; `chmod` on a file
+in a shared `/tmp` is not. Callers differ only in the prefix and the file name:
+
+```bash
+# The X's must come LAST. BSD/macOS does not expand a template with a suffix after
+# them, so "foo.XXXXXXXX.md" yields that literal - and shared - name.
+PAYLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/{prefix}-XXXXXXXX")
+trap 'rm -rf "$PAYLOAD_DIR"' EXIT
+```
+
+Skills reference this block; they do not restate the `mktemp` rule.
 
 ### `execute` exit codes
 
