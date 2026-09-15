@@ -6,11 +6,15 @@
 - Measured baselines
 - Formats and thresholds
 - HTML → HTML+ mapping
+- In-page links and anchors
+- Note runs, contents and table widths
 - Void elements
 - Self-closing tags
 - The whitespace rule
 - Nesting violations: detect, do not rewrite
 - Rasterization
+  - A chart drawn by script images blank - `plan` exits 5
+  - Font stacks that headless Chrome does not resolve
 - Attaching the images
 - Splitting
 - The publication ledger
@@ -82,8 +86,10 @@ Rules are applied in this order; the first match wins.
 | `h1`-`h6` | same; a leading `h1` matching the page title has **the element** stripped, never the block |
 | `p`, `strong`, `em`, `code` | same |
 | `a[href]` matching `…atlassian.net/browse/KEY-123` | `<a href … data-card-appearance="inline">` → renders as a real Jira macro |
+| `a[href^="#"]` whose target is a heading | `<a href="#Heading-text">` - rewritten, see *In-page links and anchors* |
+| `a[href^="#"]` whose target is not a heading, and `a` with no `href` | unwrapped: label kept, link dropped, counted in a warning |
 | `a` (other) | plain `<a href>` |
-| `table`/`thead`/`tbody`/`tr`/`th`/`td` | same; `colspan`/`rowspan` > 1 preserved |
+| `table`/`thead`/`tbody`/`tr`/`th`/`td` | same; `colspan`/`rowspan` > 1 preserved, `data-colwidth` stamped per column |
 | `ul`/`ol`/`li`, nested | same |
 | `blockquote` | same |
 | `pre > code[class*="language-X"]` | `<pre><code class="language-X">`; inner markup flattened to escaped text |
@@ -111,6 +117,56 @@ resolves from the leading `# Title`. Titles are clamped to 255 chars, heading fr
 **Count anything only after `<style>`, `<script>`, and comments are stripped.** A raw regex
 over `Platform_Cost_Report-2026-07.html` finds 12 `<svg>`; the twelfth is the literal text
 `<svg>` inside a CSS comment.
+
+## In-page links and anchors
+
+Confluence addresses a heading by **its rendered text with runs of whitespace turned into
+hyphens**, disambiguating a repeated heading with `.1`, `.2`. A source's own slug id means
+nothing to it, so `href="#2-breakdown"` published verbatim points at nothing.
+
+This failure is invisible at publish time. Every link renders, the page looks finished, and
+the reader is the one who finds out. That is why the converter resolves each in-page href
+against a map built from the source's headings rather than passing it through:
+
+| Source | Emitted |
+|---|---|
+| `<h2 id="2-breakdown">2. Breakdown</h2>` + `<a href="#2-breakdown">` | `<a href="#2.-Breakdown">` |
+| `<a id="action-a1"></a>` (anchor target in a paragraph) | dropped entirely |
+| `<a href="#action-a1"><code>A1</code></a>` | `<code>A1</code>` - label kept, link dropped |
+
+A paragraph-level anchor has no Confluence equivalent, so the label survives and the link
+does not. `plan` reports the count in `warnings`; anchor the target on a heading in the source
+if those jumps matter. Confluence's own `anchor` macro is not a substitute - it publishes
+cleanly and still does not answer a plain `#name` href.
+
+An `<a id=…>` with no `href` is also the ADF crash: it converts to `<a href=""></a>`, whose
+empty text node fails validation with `Invalid ADF document: … must be at least 1 characters
+long [minLength]`, and the whole create is refused.
+
+## Note runs, contents and table widths
+
+Three shaping passes run **after** the split, on each assembled page body. They add
+presentation, and the split threshold measures content: letting a width attribute decide that
+a report ships as two pages would move every inbound link to page 1 of 2. `CAP_BYTES` is
+checked on the shaped bytes, so a page that genuinely overflows is still refused.
+
+- **Note runs** - two or more consecutive `blockquote` siblings fold into one
+  `<details><summary>ℹ️ Note</summary>` holding one bullet per note. A report's side-notes are
+  small grey print in the browser; Confluence has no equivalent register, so a run of four
+  lands as four full-weight blockquotes and buries the paragraph they annotate. A lone note
+  stays inline - one blockquote already reads as an aside. A run already inside a `details` is
+  left alone, so a source that collapses its own notes is not double-wrapped.
+  `--no-group-notes`, `--note-run N`.
+- **Contents** - when the source shipped a navigation sidebar, its fixed-position container is
+  dropped and the page loses the only way through a long document. `--toc auto` (default)
+  emits a collapsed `Table of Contents` holding the native `toc` macro; `always` / `never`
+  override.
+- **Table widths** - Confluence divides a table evenly with no width declared, so a column of
+  two-character deltas gets the same room as a column of prose and the prose wraps to six
+  lines. Each column is weighted by its longest cell, clamped at both ends so one long cell
+  cannot take the whole table, and stamped as `data-colwidth` summing to the 760px default
+  measure. Six columns or more also get `data-layout="center" data-width="1011"`.
+  `--no-colwidth`.
 
 ## Void elements
 
@@ -212,6 +268,20 @@ Two things are captured whole and screenshotted rather than converted:
    source's own `<style>` blocks to learn which classes those are - no selector list to
    maintain. `--no-rasterize` turns this off and takes the unwrapped content instead.
 
+   Discovery parses whole `selector { body }` rules (`CSS_RULE`) and pulls every class out of
+   the selector, rather than scanning for a dot. Scanning cost real containers: the `.5` in a
+   preceding `font: 15px/1.5` matched as a class name and the run after it swallowed the next
+   real selector, so `.a, .b { display: grid }` lost `.b` and a rule behind an attribute
+   selector was lost outright. **A class missed here is a silent total loss** - the container
+   is not captured, `CHART_CLASS` then drops the bars inside it as decorative, and
+   `--rasterize-only <class>` reports the author's correct class as matching nothing, so the
+   chart ships as label soup with no image to replace it. `CLASS_IN_SELECTOR` anchors on a
+   character an identifier may start with, and quoted strings are stripped first so a dot in
+   `[data-version="1.5"]` is not read as a class.
+   `tests/fixtures/confluence-publish/grid-class-discovery.html` pins all of it; measured
+   against the five shipped `workspace/recaps/effort-rollup-*.html`, corrected discovery agrees
+   with the old scan exactly, so no published report changed.
+
    The heuristic is deliberately blunt and over-collects: `display: grid` is as true of an
    incident card or a themes index as of a bar chart, and imaging prose costs the reader
    full-text search, copy-paste, and working links inside it. `--rasterize-only <class>`
@@ -242,6 +312,45 @@ headless-Chrome call needs never become a shell string that has to survive quoti
 - **PNGs land at 2 ×** via `--force-device-scale-factor=2`. The media node declares the
   logical size and doubled pixel dimensions, so the image stays sharp on a retina display.
 - `--disable-javascript` is set on the capture pass; these charts are static.
+- **The capture window holds the block's padding.** The standalone document insets the visual
+  by `BLOCK_PADDING` (12 px) a side. A measured block absorbs that, but an `<svg>` is pinned to
+  its `viewBox` size, so a window sized to the `viewBox` alone loses 12 px off the **right and
+  bottom** - the chart's frame, its last x tick, a treemap's bottom row. `cmd_render` grows the
+  window by `2 × BLOCK_PADDING` on both axes for `kind: svg` and records the grown size, because
+  the media node declares it and it must match the PNG.
+  `tests/fixtures/confluence-publish/chart-viewbox.html` is 400 × 200 and must record 424 × 224
+  after `render`.
+
+### A chart drawn by script images blank - `plan` exits 5
+
+With JavaScript off at capture, an `<svg>` whose shapes are added at page load is empty and
+rasterizes to a white rectangle. Every other signal says the run was fine: `plan` reports the
+chart count with no warning, the `--rasterize-only` no-primitive check passes because the
+subtree *does* hold an inline `<svg>`, and `render` reports `rendered`. The PNG is 2.4 KB of
+white next to 25-56 KB for a real chart.
+
+So `plan` refuses it: any captured subtree holding an `<svg>` with no `path`, `rect`, `circle`,
+`ellipse`, `line`, `polyline`, `polygon`, `text`, `image`, `use` or `foreignObject` descendant
+exits `EXIT_BLANK_VISUAL` (5), names the image, and names the fix. Generate the shapes into the
+markup instead - `.claude/scripts/chart-svg.py` emits static SVG for the geometry CSS cannot
+draw. `tests/fixtures/confluence-publish/blank-svg-chart.html` pins the refusal, and
+`chart-viewbox.html` pins that a real chart still passes.
+
+### Font stacks that headless Chrome does not resolve
+
+Measured in Chrome 153 on macOS: `serif`, `sans-serif`, `monospace`, `cursive`, `fantasy` and
+`system-ui` resolve on their own. `ui-sans-serif`, `ui-serif`, `ui-monospace`, `ui-rounded`,
+`math` and the `-apple-system` vendor keyword do **not** - each falls back to the serif default.
+A stack terminated by one of them therefore looks sans-serif in the browser the chart was
+authored in and publishes in serif, which nothing short of opening the PNG reveals.
+
+`plan` warns on any `font` or `font-family` declaration whose last family is outside that set of
+six, skipping the check under `--no-rasterize` because the text path takes Confluence's own
+fonts. Custom properties are resolved one level from the same stylesheet first: every report
+here spells its stacks as `font-family: var(--sans)`, so a check that skipped `var()` would
+inspect nothing that matters. A reference still unresolved after that is skipped rather than
+guessed. `tests/fixtures/confluence-publish/font-stack-fallback.html` covers the shorthand, the
+custom property, a `var()` fallback, and the three shapes that must **not** be reported.
 
 Chrome is optional. Per-visual `status` ends at `rendered`, or one of `skipped:no-renderer`,
 `skipped:unmeasurable`, `skipped:render-timeout`, `skipped:no-output` - and either way the

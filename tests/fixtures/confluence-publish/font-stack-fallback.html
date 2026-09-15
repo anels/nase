@@ -1,0 +1,31 @@
+<!doctype html>
+<html data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Font Stack Fallback Regression</title>
+<style>
+  :root {
+    --ui-only: ui-sans-serif, -apple-system;
+    --terminated: system-ui, Roboto, sans-serif;
+  }
+  body { background: #fff; color: #1b1d22; font: 15px/1.5 var(--terminated); margin: 2rem; }
+  /* Headless Chrome resolves none of these on its own, so a captured chart
+     using them publishes in serif while the source looks sans in a browser. */
+  .label-bad { font-family: var(--ui-only); }
+  .tick-bad { font: 600 11px ui-monospace; }
+  .fallback-bad { font-family: var(--nowhere, ui-serif); }
+  /* These must not be reported. */
+  .label-ok { font-family: var(--terminated); }
+  .tick-ok { font: 600 11px system-ui, sans-serif; }
+  .unknowable { font-family: var(--defined-elsewhere); }
+</style>
+</head>
+<body>
+<h1>Font Stack Fallback Regression</h1>
+<svg viewBox="0 0 320 80">
+  <text class="label-bad" x="8" y="24">serif in the PNG</text>
+  <text class="tick-bad" x="8" y="48">also serif</text>
+  <text class="label-ok" x="8" y="72">sans in the PNG</text>
+</svg>
+</body>
+</html>

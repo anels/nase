@@ -99,12 +99,43 @@ Build the charts with self-contained HTML and CSS:
   by the heading.
 - Light **and** dark tokens, both stamped (`prefers-color-scheme` +
   `:root[data-theme=…]`).
-- Self-contained: zero `<script>` / `<link>` / `src=` / `@import`.
+- Self-contained: zero `<script>` / `<link>` / `src=` / `@import`. This is not only
+  a portability rule: the publish path captures with `--disable-javascript`, so a
+  chart drawn at page load images as a blank rectangle and `plan` exits 5.
+- **End every font stack with a generic headless Chrome resolves** - `sans-serif`,
+  `serif`, `monospace`, `cursive`, `fantasy` or `system-ui`. `ui-sans-serif`,
+  `ui-serif`, `ui-monospace` and `-apple-system` do not resolve on their own, so a
+  stack ending in one publishes the charts in serif while the source looks
+  sans-serif in the browser you author in. `plan` warns; fix the stack, including
+  inside the `--sans` / `--mono` custom properties.
 - Every count sits in a real `<td>`.
 - **Render and look at it before claiming done** - screenshot both themes with
   headless Chrome, confirm filled bars stay distinguishable from their tracks, and
   grep the emitted class attributes. A status class the renderer silently dropped
   looks identical in a screenshot.
+
+Two chart kinds need geometry CSS cannot express, and
+`.claude/scripts/chart-svg.py` emits them as static SVG - no library in the page,
+nothing for the capture pass to fail at:
+
+- **`treemap`** - merged PRs by repo, or delivered efforts by theme. Use it when
+  the question is *where did the month's volume go*, which a sorted table answers
+  slowly and an area comparison answers at a glance. Feed it
+  `[{"name": …, "value": …}, …]`; cells below `--label-min` carry their name in a
+  `<title>` only, so keep the table beside it.
+- **`line`** - merges per day across the month. Use it when the question is
+  *what shape did the month have* - a steady cadence, one release spike, a dead
+  fortnight. Feed it `[{"x": <label>, "y": <count>}, …]` already bucketed; it
+  labels the first point, the last, and the peak, and nices the y domain to whole
+  tick steps.
+
+Both inherit `--chart-1`..`--chart-3`, `--chart-ink`, `--chart-grid` and
+`--chart-label` from the report, so they follow its light and dark palettes
+instead of carrying their own. Neither replaces a paired bar: a `before → after`
+row is two CSS widths with a per-row rescaling rule, and a general chart shape
+fights that rule rather than honouring it. Add a chart kind only when the data
+already in the report supports it - an invented trend line is the same defect as
+an invented metric.
 
 ## Publishing and sharing
 

@@ -1,0 +1,29 @@
+<!doctype html>
+<html data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Blank SVG Chart Regression</title>
+<style>
+  body { background: #fff; color: #1b1d22; font: 15px/1.5 system-ui, sans-serif; margin: 2rem; }
+  .figure { display: grid; gap: 1rem; }
+</style>
+</head>
+<body>
+<h1>Blank SVG Chart Regression</h1>
+<p>The chart below is drawn by script at page load, so the markup holds an empty
+  <code>svg</code>. The capture pass runs with JavaScript disabled, which makes this
+  rasterize to a blank rectangle while the render step still reports success.</p>
+<div class="figure"><svg id="drawn-later" viewBox="0 0 640 200"></svg></div>
+<script>
+  var box = document.getElementById('drawn-later');
+  [3, 1, 4, 1, 5].forEach(function (value, index) {
+    var node = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    node.setAttribute('x', String(index * 128));
+    node.setAttribute('y', String(200 - value * 35));
+    node.setAttribute('width', '90');
+    node.setAttribute('height', String(value * 35));
+    box.appendChild(node);
+  });
+</script>
+</body>
+</html>
