@@ -63,7 +63,7 @@ roles:
       - Complex cross-repo analysis
       - Tech debt audit
 
-# Where the top-5 skills actually dispatch. A spawn that names no role inherits the
+# Where named skill phases actually dispatch. A spawn that names no role inherits the
 # session model, so on an Opus session every unrouted fan-out bills at Opus for work
 # that does not need it. Name a role at every spawn site.
 #
@@ -83,6 +83,13 @@ roles:
 #   fsd                Phase 6.4 candidate review                    verifier
 #   fsd                Phase 4 implementation (Team mode)            worker
 #   wrap-up            log / stats / effort scans                    (nase-workspace-state-scanner, haiku)
+#   simplify           Step 5-6 anti-slop pass                       (code-simplifier plugin agent)
+#   tech-debt-audit    Step 7 tech-debt-review sanity pass           verifier
+#   kb-review          broad review, disjoint KB domains             (nase-context-kb-researcher, haiku)
+#
+# Ad hoc work is the larger share of sweeping: most repo reading in this workspace
+# happens in the main loop with no skill named at all. The routing rule in CLAUDE.md
+# covers that case; this table only records where the named phases dispatch.
 #
 # architect is the exception, not a tier to reach for: it is the only opus role, and
 # no skill currently routes to it. Reaching for it needs a reason a verifier pass
