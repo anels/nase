@@ -37,7 +37,13 @@ python3 .claude/scripts/confluence-publish.py plan \
 
 Exit 3 = a single block exceeds the cap; exit 4 = a nesting construct Confluence rejects. Both name the cause - relay it and stop; do not restructure the user's document.
 
-Read `plan.json` for `title`, `pages[]`, `split_differs_without_visuals`, and `warnings` - `plan` flags a captured block that draws nothing (prose about to become an image) and a `--rasterize-only` class that matched nothing (a typo that images nothing at all). Relay either in the confirm; both otherwise look like a clean plan.
+Exit 5 = a captured chart holds an `<svg>` that draws nothing, so it would publish as a blank rectangle: the capture pass runs with JavaScript disabled, and a chart drawn at page load has no shapes in the markup. Relay it and stop. The source has to emit its geometry at build time - `.claude/scripts/chart-svg.py` does that for treemaps and time-axis lines - and that is the author's change to make, not a conversion flag.
+
+**Relay the font-stack warning.** `plan` warns when a stack ends in a family headless Chrome does not resolve (`ui-sans-serif`, `ui-serif`, `ui-monospace`, `-apple-system`, …): those charts publish in serif while the source looks sans-serif in a browser, so the author cannot see it without opening the PNG.
+
+**Shaping is on by default.** `plan` rewrites in-page links to the heading anchors Confluence answers to, folds runs of consecutive side-notes into one collapsed `ℹ️ Note`, stamps table column widths from each column's own content, and mirrors a source's navigation sidebar as a collapsed `Table of Contents`. Turn any of it off with `--no-group-notes`, `--no-colwidth`, `--toc never`. `.claude/docs/confluence-publish-conversion.md → In-page links and anchors` and `→ Note runs, contents and table widths` carry the rules; do not hand-patch the emitted body to get these effects, because the next month's run would need the same patch again.
+
+Read `plan.json` for `title`, `pages[]`, `split_differs_without_visuals`, and `warnings` - `plan` flags a captured block that draws nothing (prose about to become an image), a `--rasterize-only` class that matched nothing (a typo that images nothing at all), and in-page links dropped because their target is a paragraph anchor rather than a heading. Relay any of them in the confirm; all three otherwise look like a clean plan.
 
 ## Step 4 - Find the target (before asking anything)
 
@@ -66,6 +72,14 @@ A single batched `AskUserQuestion` presenting a decision-ready brief - never the
 State that space permissions were **not** verified - the MCP exposes no permission field - and that the secret scan is partial. The audience call stays with the user.
 
 ## Step 6 - Publish
+
+**Re-check the source first.** Compare its current size and mtime against what Step 3 planned from:
+
+```bash
+stat -f '%m %z' "{source}"   # Linux: stat -c '%Y %s'
+```
+
+Anything between Step 3 and here - a credential prompt, this confirmation, a conversion bug worth fixing - is time the author can spend editing the file. Verified: a run that planned at 18:46 published a page at 19:29 carrying the 18:44 text, and the author had rewritten four sections at 19:10. The page said what the report used to say. If the source moved, re-run Step 3 and re-confirm rather than publishing what you hold.
 
 ```bash
 python3 .claude/scripts/confluence-publish.py render --plan "workspace/tmp/confluence-{slug}/plan.json"

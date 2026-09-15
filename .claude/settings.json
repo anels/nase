@@ -1,5 +1,7 @@
 {
   "autoMemoryDirectory": "workspace/memory",
+  "bashOutputMaxChars": 8000,
+  "autoCompactWindow": 300000,
   "worktree": {
     "baseRef": "fresh"
   },

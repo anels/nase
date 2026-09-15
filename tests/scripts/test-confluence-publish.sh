@@ -53,11 +53,50 @@ check_contains "void: content after <head> survives" "$body" "Still emitted."
 check_contains "void: br emitted" "$body" "<br />"
 check_absent "void: img dropped" "$body" "missing.png"
 
+# --- anchors, notes and table widths ---------------------------------------
+# An in-page link is a silent failure: it renders whether or not it resolves, so
+# the only way to know is to assert the shape Confluence answers to. The
+# source's own `#slug` id means nothing there.
+out="$WORK/anchors"; rc=$(plan_of "$FIX/anchors-notes-tables.html" "$out")
+check "anchors: plan exits 0" "$rc" "0"
+body=$(cat "$out"/page-000.body.html)
+check_contains "anchors: heading link uses the rendered heading text" "$body" 'href="#2.-Two"'
+check_absent   "anchors: source slug never published"                 "$body" 'href="#two"'
+check_absent   "anchors: no empty href for an id-only anchor"         "$body" '<a href=""'
+check_contains "anchors: unresolvable link keeps its label"           "$body" 'see note A for the caveat'
+check_absent   "anchors: unresolvable link drops the anchor"          "$body" 'href="#note-a"'
+check_contains "anchors: external link untouched"                     "$body" 'href="https://example.com/spec"'
+warn=$(jqp "$out/plan.json" "' '.join(d['warnings'])")
+check_contains "anchors: dropped links are reported"                  "$warn" "in-page link"
+
+check_contains "notes: a run collapses into one expand" "$body" "<summary>ℹ️ Note</summary>"
+check_contains "notes: every note survives the fold"    "$body" 'late-arriving records'
+check_contains "notes: a lone note stays inline"        "$body" '<blockquote>The only note here'
+
+check_contains "tables: widths are stamped"             "$body" 'data-colwidth='
+check_contains "tables: six columns break out wide"     "$body" '<table data-layout="center" data-width="1011"'
+# A narrow table's row must still add up to the page measure, and the prose
+# column must beat the delta column - even widths are the defect being fixed.
+widths=$(python3 -c 'import re,sys;b=open(sys.argv[1],encoding="utf-8").read();t=re.search(r"<table(?! data-layout).*?</table>",b,re.S).group(0);w=[int(x) for x in re.findall(r"data-colwidth=\"(\d+)\"",t)][:3];print(f"{len(w)} {sum(w)} {int(len(w)==3 and w[2]>w[1])}")' "$out/page-000.body.html")
+check "tables: prose column widest, row sums to the page measure" "$widths" "3 760 1"
+
+check_contains "toc: source sidebar becomes a collapsed contents block" "$body" 'data-extension-key="toc"'
+
+out="$WORK/anchors-plain"
+python3 "$SCRIPT" plan --source "$FIX/anchors-notes-tables.html" --out-dir "$out" \
+  --toc never --no-group-notes --no-colwidth >/dev/null 2>&1
+body=$(cat "$out"/page-000.body.html)
+check_absent "toc: --toc never emits none"               "$body" 'data-extension-key="toc"'
+check_absent "notes: --no-group-notes leaves runs alone" "$body" "<summary>ℹ️ Note"
+check_absent "tables: --no-colwidth stamps nothing"      "$body" 'data-colwidth='
+
 # --- mapping coverage ------------------------------------------------------
 out="$WORK/mapping"; rc=$(plan_of "$FIX/mapping.html" "$out")
 check "mapping: plan exits 0" "$rc" "0"
 body=$(cat "$out"/page-000.body.html)
-check_contains "mapping: colspan preserved"        "$body" '<td colspan="2">'
+# The width stamp lands on the same tag, so assert both rather than loosening
+# the colspan check to a needle a stray attribute could also satisfy.
+check_contains "mapping: colspan preserved"        "$body" '<td colspan="2" data-colwidth='
 check_contains "mapping: note panel"               "$body" 'data-type="panel-note"'
 check_contains "mapping: warning panel"            "$body" 'data-type="panel-warning"'
 check_contains "mapping: error panel"              "$body" 'data-type="panel-error"'
@@ -448,6 +487,90 @@ check_absent "inline: bare run does not weld onto the next block" "$body" \
   "Draft Body text follows"
 check_contains "inline: block after a bare run gets its own paragraph" "$body" \
   "<p>Body text follows the tag.</p>"
+
+# --- grid class discovery reads rules, not dots ----------------------------
+# The regression: a decimal in a preceding declaration (`font: 15px/1.5`) used
+# to pass as a class selector and swallow the real `.viz` after it, so the chart
+# container never registered. That is a silent total loss - the container is not
+# captured, CHART_CLASS drops the bars inside it, and the author's correct
+# `--rasterize-only` class reports as matching nothing.
+discovered=$(python3 - "$SCRIPT" "$FIX/grid-class-discovery.html" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("publish", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    print(",".join(sorted(module.layout_classes(handle.read()))))
+PY
+)
+# Pre-fix this returned `5,after-pad,ba,wide`: a bogus numeric class, and three
+# real containers lost - the one after the decimal, the second selector of a
+# two-selector rule, and the one behind an attribute selector.
+check "grid: discovery finds every grid selector and nothing else" \
+  "$discovered" "after-pad,attr-cell,ba,ba-row,viz,wide"
+
+out="$WORK/grid"; rc=$(plan_of "$FIX/grid-class-discovery.html" "$out")
+check "grid: plan exits 0" "$rc" "0"
+check "grid: every grid container is captured" \
+  "$(jqp "$out/plan.json" "len([v for p in d['pages'] for v in p['visuals']])")" "3"
+# The load-bearing consequence: an unregistered container leaves its bars to be
+# dropped as decorative, so the chart becomes label soup with no image.
+check "grid: no bar subtree dropped as decorative" \
+  "$(jqp "$out/plan.json" "d['dropped_chart_subtrees']")" "0"
+
+out="$WORK/grid-scoped"
+python3 "$SCRIPT" plan --source "$FIX/grid-class-discovery.html" --out-dir "$out" \
+  --rasterize-only viz >/dev/null 2>&1
+check "grid: --rasterize-only exits 0" "$?" "0"
+check "grid: the named class matches exactly one container" \
+  "$(jqp "$out/plan.json" "len([v for p in d['pages'] for v in p['visuals']])")" "1"
+check_absent "grid: a real class is not reported as a typo" \
+  "$(jqp "$out/plan.json" "' '.join(d['warnings'])")" "matched"
+
+# --- a chart drawn by script images blank, so plan refuses it ---------------
+# The failure this pins: `render` reports `rendered` and `plan` reports no
+# warning for an <svg> whose shapes never existed in the markup, because the
+# capture pass runs with --disable-javascript. Only the markup shows it.
+out="$WORK/blank"; err="$WORK/blank.err"
+python3 "$SCRIPT" plan --source "$FIX/blank-svg-chart.html" --out-dir "$out" >/dev/null 2>"$err"
+check "blank svg: plan exits 5" "$?" "5"
+check_contains "blank svg: names the image" "$(cat "$err")" "chart-01.png"
+check_contains "blank svg: names the cause" "$(cat "$err")" "disable-javascript"
+check_contains "blank svg: names the fix" "$(cat "$err")" "chart-svg.py"
+
+# A chart that does draw in the markup must not trip the same check.
+out="$WORK/drawing"; rc=$(plan_of "$FIX/chart-viewbox.html" "$out")
+check "blank svg: a real chart still passes" "$rc" "0"
+
+# --- font stacks that headless Chrome does not resolve ----------------------
+# Invisible in the authoring browser and only wrong in the published PNG, so the
+# assertion is on the warning, not on pixels.
+out="$WORK/fonts"; rc=$(plan_of "$FIX/font-stack-fallback.html" "$out")
+check "fonts: plan still exits 0" "$rc" "0"
+warns=$(jqp "$out/plan.json" "' '.join(d['warnings'])")
+check_contains "fonts: resolves var() before judging" "$warns" "ui-sans-serif, -apple-system"
+check_contains "fonts: reads the font shorthand" "$warns" "600 11px ui-monospace"
+check_contains "fonts: judges a var() fallback" "$warns" "ui-serif"
+check_absent "fonts: a terminated stack is not reported" "$warns" "Roboto"
+check_absent "fonts: an unresolvable var is not guessed" "$warns" "defined-elsewhere"
+
+# --- the capture window has to hold the block padding ----------------------
+# An <svg> is pinned to its viewBox size while the capture block insets it by
+# 12px, so a window sized to the viewBox alone loses the right and bottom edge -
+# the chart frame, the last x tick, the bottom row of a treemap.
+out="$WORK/pad"
+python3 "$SCRIPT" plan --source "$FIX/chart-viewbox.html" --out-dir "$out" >/dev/null 2>&1
+check "padding: svg viewBox is 400x200 before render" \
+  "$(jqp "$out/plan.json" "[(v['width'],v['height']) for p in d['pages'] for v in p['visuals']]")" \
+  "[(400, 200)]"
+python3 "$SCRIPT" render --plan "$out/plan.json" >/dev/null 2>&1
+recorded=$(jqp "$out/plan.json" "[(v['width'],v['height']) for p in d['pages'] for v in p['visuals']]")
+status=$(jqp "$out/plan.json" "[v['status'] for p in d['pages'] for v in p['visuals']]")
+if [ "$status" = "['skipped:no-renderer']" ]; then
+  printf 'SKIP  padding: no headless Chrome on this machine\n'
+else
+  check "padding: render grows the window by 12px a side" "$recorded" "[(424, 224)]"
+fi
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

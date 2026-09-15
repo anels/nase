@@ -98,6 +98,37 @@ expect_rc "atlassian discover allowed" .claude/hooks/atlassian-generic-write-gua
 expect_rc "atlassian generic malformed JSON blocked" .claude/hooks/atlassian-generic-write-guard.sh "{" 2 "could not parse"
 expect_missing_jq "atlassian generic missing jq blocked" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_write"
 
+# createConfluenceComment is the one catalog write with no named tool, so the
+# guard gates it on the payload it can actually read. The rejects below are the
+# probes that must fail: a name-only allowlist would let every one of them pass.
+comment_reply=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"markdown",value:"reply"}}}}')
+comment_footer=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{contentId:"1",commentType:"footer",body:{format:"html",value:"<p>note</p>"}}}}')
+comment_inline=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{contentId:"1",commentType:"inline",inlineSelection:{selectedText:"anchor",matchIndex:0,matchCount:1},body:{format:"markdown",value:"note"}}}}')
+comment_inline_no_selection=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{contentId:"1",commentType:"inline",body:{format:"markdown",value:"note"}}}}')
+comment_bad_format=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"storage",value:"reply"}}}}')
+comment_string_body=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:"reply"}}}')
+comment_empty_body=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"markdown",value:""}}}}')
+oversize_comment=$(head -c 4097 /dev/zero | tr '\0' 'x')
+comment_oversize=$(jq -cn --arg body "$oversize_comment" '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"markdown",value:$body}}}}')
+comment_mixed_target=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",contentId:"1",commentType:"footer",body:{format:"markdown",value:"reply"}}}}')
+comment_no_target=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{body:{format:"markdown",value:"reply"}}}}')
+comment_bad_type=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{contentId:"1",commentType:"page",body:{format:"markdown",value:"note"}}}}')
+comment_no_cloud=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",inputs:{parentCommentId:"9",body:{format:"markdown",value:"reply"}}}}')
+comment_destructive=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeDestructive",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"markdown",value:"reply"}}}}')
+expect_rc "atlassian comment reply allowed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_reply" 0
+expect_rc "atlassian comment footer allowed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_footer" 0
+expect_rc "atlassian comment inline allowed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_inline" 0
+expect_rc "atlassian comment inline without selection blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_inline_no_selection" 2 "inlineSelection.selectedText"
+expect_rc "atlassian comment bad format blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_bad_format" 2 "expected \"markdown\" or \"html\""
+expect_rc "atlassian comment string body blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_string_body" 2 "needs inputs.body as an object"
+expect_rc "atlassian comment empty body blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_empty_body" 2 "empty inputs.body.value"
+expect_rc "atlassian comment oversize body blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_oversize" 2 "4097 byte body"
+expect_rc "atlassian comment mixed target blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_mixed_target" 2 "a reply carries parentCommentId alone"
+expect_rc "atlassian comment without target blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_no_target" 2 "has no target"
+expect_rc "atlassian comment bad commentType blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_bad_type" 2 "expected \"footer\" or \"inline\""
+expect_rc "atlassian comment without cloudId blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_no_cloud" 2 "is missing cloudId"
+expect_rc "atlassian comment under executeDestructive blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_destructive" 2 "outside every payload-bound Atlassian gate"
+
 small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"adf"}}')
 # Size the oversize fixtures from the guard's own cap so they stay oversize
 # whenever that cap moves.

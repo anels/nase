@@ -1,0 +1,38 @@
+<!doctype html>
+<html data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Grid Class Discovery Regression</title>
+<style>
+  /* No class name is spelled with a leading dot anywhere in these comments:
+     discovery must find each one in its own rule, not in prose about the rule.
+     The decimal in the line below used to pass as a class selector, and the run
+     after it swallowed the next real selector - so that chart container never
+     registered, its bars were dropped as decorative, and naming the class in
+     --rasterize-only reported the author's correct class as matching nothing. */
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem; background: #fff; }
+  .viz { display: grid; gap: 1rem; }
+  /* Both selectors in one grid rule count. */
+  .ba, .ba-row { display: grid; }
+  /* A dot inside an attribute value is not a class. */
+  [data-version="1.5"] .attr-cell { display: grid; }
+  /* A grid class nested in a media query still counts. */
+  @media (min-width: 40rem) { .wide { display: grid; } }
+  /* A decimal in shorthand padding, immediately before another grid class. */
+  .pad { padding: .3rem .6rem; }
+  .after-pad { display: grid; }
+  /* Not grid: must not be registered. */
+  .plain { color: #111; }
+  .bar-fill { width: 60%; background: #2f6f4f; }
+</style>
+</head>
+<body>
+<h1>Grid Class Discovery Regression</h1>
+<div class="viz">
+  <div class="bar-fill">p95 latency 4200 ms</div>
+</div>
+<div class="ba-row"><span>before 4200 ms</span><span>after 1100 ms</span></div>
+<div class="after-pad"><span>coverage 61% to 84%</span></div>
+<p>Merged delivery PRs in month: 71</p>
+</body>
+</html>

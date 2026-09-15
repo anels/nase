@@ -65,6 +65,7 @@ See [README.md — Available commands](README.md#available-commands). Core loop:
 Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
 Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`verifier`/`architect` model/tool routing.
 When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist — `lookup` and `verifier` are read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
+Delegate a survey - a read sweep whose answer is a conclusion, not the file contents - and delegate it in ad hoc work, not only in a named skill phase. A subagent's reads never enter this conversation, so the sweep costs a brief plus a short report instead of several file dumps. Keep a read inline when you already know the file and the line, when the raw text is the deliverable, or when you must edit what you just read.
 
 ### Bash / Path Rules
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
