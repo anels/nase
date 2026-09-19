@@ -2,6 +2,14 @@
 
 This document owns the local artifact passed to the FSD reviewer that covers both code quality and spec conformance. Review invocation and action reduction live in `.claude/docs/fsd-candidate-review.md` and `.claude/scripts/fsd-review-gate.py`.
 
+## Contents
+
+- Build
+- Candidate Tree
+- Verification Evidence
+- Bound Context
+- Closure Binding
+
 ## Build
 
 ```bash
@@ -68,7 +76,11 @@ Resolve `tested_candidate_tree_oid` immediately before the final verification co
 
 An evidence payload is capped at 64 KiB. Larger JSON keeps SHA-256, original byte count, and head/tail projection. Invalid UTF-8 is rejected.
 
-Before writing any reviewer artifact, the helper runs a redacted, high-confidence secret preflight over the canonical task, inventory, structured command evidence, every changed candidate blob, diff projections, paths, and requested context. Blob and diff scans use bounded chunks. A possible credential in candidate-controlled content stops bundle creation and reports only kind plus redacted-safe location, never the matched value. Credential-like bytes that exist only on the base side of a deletion are omitted from the rendered diff and recorded as a `BASE` evidence gap, which prevents the reducer from returning `PROCEED`. Credential-like path text is replaced by a stable hash marker and likewise becomes an evidence gap. A final scan of the assembled bundle fails closed if any credential-like bytes remain. Existing repository secret tooling may add broader checks, but must run against the same candidate tree before external review.
+Before writing any reviewer artifact, the helper runs a redacted, high-confidence secret preflight over the canonical task, inventory, structured command evidence, every changed candidate blob, diff projections, paths, and requested context. Blob and diff scans use bounded chunks. A possible credential in candidate-controlled content stops bundle creation and reports only kind plus redacted-safe location, never the matched value. Credential-like bytes anywhere in a diff force that diff out of the bundle and are recorded as an evidence gap on the side whose blob carries them, which prevents the reducer from returning `PROCEED`. Credential-like path text is replaced by a stable hash marker and likewise becomes an evidence gap. A final scan of the assembled bundle fails closed if any credential-like bytes remain. Existing repository secret tooling may add broader checks, but must run against the same candidate tree before external review.
+
+A changed file may carry a credential-shaped constant the repository has already reviewed. Pass `--secret-scan-allowlist {path}` with `<sha256>  <path>  # reason` lines. The digest covers the whole line with its trailing `\r\n` or `\n` stripped. The path is the repository-relative candidate path, not the redaction marker the bundle renders when the path itself looks like a credential. FSD writes this file under `{nase_workspace}/workspace/tmp/`, never inside the target repository and never at the workspace allowlist path `tests/check-local-sensitive-artifacts.sh` reads, because that gate spells paths differently.
+
+An acknowledgement suppresses only the line it hashes, so a real secret on any other line still stops the bundle. A single-line or minified file has one line, so one acknowledgement there covers the whole file. A missing or malformed allowlist is fatal rather than ignored, and more than 64 acknowledged lines in one file stops the bundle too. The acknowledgement buys a bundle, not a diff - the credential-like bytes still force the diff out and the bundle declares a `CANDIDATE` `credential_like_diff_omitted` gap, which keeps the reducer off `PROCEED`. Hand-editing a flagged file to get past the gate is not the alternative to this flag.
 
 ## Bound Context
 

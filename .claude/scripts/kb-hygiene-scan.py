@@ -124,6 +124,7 @@ STALE_RE = re.compile(
 CORRECTION_RE = re.compile(r"(Correction\s+20[0-9]{2}-[0-9]{2}-[0-9]{2}:|Superseded by:)", re.I)
 LAST_UPDATED_RE = re.compile(r"Last updated:\s*(20[0-9]{2}-[0-9]{2}-[0-9]{2})", re.I)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 DATED_HEADING_RE = re.compile(r"^###\s+(20[0-9]{2}-[0-9]{2}-[0-9]{2})\s+[—-]\s+(.+?)\s*$")
 DOMAIN_MAP_TARGET_RE = re.compile(r"^\s*-\s+.+?→\s+([^ \t\[]+)")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
@@ -131,6 +132,17 @@ WORKSPACE_REF_PREFIXES = (
     "workspace/",
     "memory/",
 )
+
+CURATION_PROTECTED_RE = re.compile(
+    r"\b(incidents?|postmortems?|post-mortems?|outages?|sev[0-9]|decisions?|adr|rationales?"
+    r"|constraints?|invariants?|gotchas?|footguns?|ownership|alumni|security|credentials?"
+    r"|secrets?|runbooks?|cross-validation)\b",
+    re.I,
+)
+CURATION_DATE_RE = re.compile(r"(20[0-9]{2})-([0-9]{2})(?:-([0-9]{2}))?")
+VERIFIED_RE = re.compile(r"\bverified\s+20[0-9]{2}-[0-9]{2}-[0-9]{2}\b", re.I)
+CURATION_BUDGET_RATIO = 0.30
+MERGE_OVERLAP_RATIO = 0.25
 
 
 class RepoIndex:
@@ -194,12 +206,51 @@ def parse_args() -> argparse.Namespace:
         default=3,
         help="Corrections/supersessions per section before compaction is suggested.",
     )
+    parser.add_argument(
+        "--curate-age-days",
+        type=int,
+        default=90,
+        help="Age after which a dated log section is nominated for curation.",
+    )
+    parser.add_argument(
+        "--max-kb-lines",
+        type=int,
+        default=800,
+        help="Non-blank line budget for one project KB file.",
+    )
+    parser.add_argument(
+        "--no-curate",
+        action="store_true",
+        help="Skip the curation pass and report hygiene issues only.",
+    )
     return parser.parse_args()
 
 
 def require_file_mode_args(args: argparse.Namespace) -> None:
     if not args.repo_root or not args.kb_file:
         raise SystemExit("--repo-root and --kb-file are required unless --workspace-scan is used")
+
+
+def fenced_lines(lines: list[str]) -> set[int]:
+    """Line numbers inside fenced code blocks.
+
+    Shell comments such as `# 1. VSTest run ids` match the heading pattern, so
+    without this the scanner reports section paths that do not exist and, worse,
+    hands curation a section span that starts inside a code block.
+    """
+    inside: set[int] = set()
+    fence: str | None = None
+    for idx, line in enumerate(lines, start=1):
+        match = FENCE_RE.match(line)
+        if fence is None:
+            if match:
+                fence = match.group(1)[0]
+                inside.add(idx)
+            continue
+        inside.add(idx)
+        if match and match.group(1)[0] == fence:
+            fence = None
+    return inside
 
 
 def normalize_heading(title: str) -> str:
@@ -223,6 +274,7 @@ def issue(
     text: str,
     section: str,
     suggestions: list[str] | None = None,
+    **extra: Any,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {
         "line": line,
@@ -234,6 +286,7 @@ def issue(
     }
     if suggestions:
         data["suggestions"] = suggestions
+    data.update(extra)
     return data
 
 
@@ -419,6 +472,307 @@ def broken_ref_action(suggestions: list[str]) -> tuple[str, str]:
     return "needs_human", "Source reference does not exist at HEAD and no replacement path was found"
 
 
+def heading_date(title: str) -> date | None:
+    """Newest date named in a heading, or None.
+
+    A range heading such as `2026-04-07 -> 2026-04-09` ages from its newest
+    date, so a still-running topic is never aged out by the day it started.
+    """
+    best: date | None = None
+    for match in CURATION_DATE_RE.finditer(title):
+        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3) or 1)
+        try:
+            value = date(year, month, day)
+        except ValueError:
+            continue
+        if best is None or value > best:
+            best = value
+    return best
+
+
+def build_sections(lines: list[str], fenced: set[int]) -> list[dict[str, Any]]:
+    """Every heading with its line span and its ancestor titles."""
+    heads: list[tuple[int, str, int]] = []
+    for idx, line in enumerate(lines, start=1):
+        match = None if idx in fenced else HEADING_RE.match(line)
+        if match:
+            heads.append((len(match.group(1)), match.group(2).strip(), idx))
+
+    sections: list[dict[str, Any]] = []
+    for pos, (level, title, start) in enumerate(heads):
+        end = len(lines)
+        for next_level, _, next_start in heads[pos + 1 :]:
+            if next_level <= level:
+                end = next_start - 1
+                break
+        ancestors: list[str] = []
+        want = level - 1
+        for prev_level, prev_title, _ in reversed(heads[:pos]):
+            if prev_level <= want:
+                ancestors.append(prev_title)
+                want = prev_level - 1
+                if want <= 0:
+                    break
+        sections.append(
+            {
+                "level": level,
+                "title": title,
+                "start": start,
+                "end": end,
+                "path": [*reversed(ancestors), title],
+            }
+        )
+    return sections
+
+
+def is_protected(section: dict[str, Any]) -> bool:
+    """Sections curation never nominates.
+
+    A section that records why something is the way it is answers a question no
+    `git log` replays, so age says nothing about its value. The same test guards
+    every curation category, deletion and merge alike.
+    """
+    return bool(
+        CURATION_PROTECTED_RE.search(" > ".join(section["path"]))
+        or VERIFIED_RE.search(section["title"])
+    )
+
+
+def section_ref_health(
+    body: list[str], repo: RepoIndex, repo_root: pathlib.Path
+) -> tuple[int, int]:
+    """Source refs in a section that still resolve at HEAD, and those that do not."""
+    live = dead = 0
+    for line in body:
+        for raw_ref in BACKTICK_RE.findall(line):
+            candidate = source_candidate(raw_ref, repo_root)
+            if not candidate:
+                continue
+            if repo.exists(candidate[0]):
+                live += 1
+            else:
+                dead += 1
+    return live, dead
+
+
+TOPIC_STOPWORDS = {
+    "and",
+    "api",
+    "fix",
+    "fixes",
+    "for",
+    "from",
+    "into",
+    "new",
+    "note",
+    "notes",
+    "the",
+    "update",
+    "updates",
+    "with",
+}
+
+
+def topic_key(title: str) -> frozenset[str]:
+    """Significant words in a heading, with dates, PR refs, and noise removed."""
+    text = CURATION_DATE_RE.sub(" ", title)
+    text = re.sub(r"#\s*[0-9]+", " ", text)
+    words = {
+        word
+        for word in re.findall(r"[a-z][a-z0-9.]{2,}", text.lower())
+        if word not in TOPIC_STOPWORDS
+    }
+    return frozenset(words)
+
+
+def merge_candidates(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sections that cover one topic across several dated entries.
+
+    Splitting one subject over five dated blocks forces a reader to replay
+    history to learn the current state. Only dated, unprotected headings are
+    grouped, because an undated heading is a topical current-state section and
+    merging two of those destroys a distinction the author made on purpose.
+
+    Two shared significant words plus a quarter of the combined vocabulary is a
+    deliberately narrow signal, because a wrong grouping costs a wrong rewrite.
+    """
+    keyed: list[tuple[dict[str, Any], frozenset[str]]] = []
+    for section in sections:
+        if section["level"] < 2 or heading_date(section["title"]) is None:
+            continue
+        if is_protected(section):
+            continue
+        key = topic_key(section["title"])
+        if len(key) >= 2:
+            keyed.append((section, key))
+    parent = list(range(len(keyed)))
+
+    def find(node: int) -> int:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for left in range(len(keyed)):
+        key = keyed[left][1]
+        for right in range(left + 1, len(keyed)):
+            other = keyed[right][1]
+            shared = key & other
+            if len(shared) >= 2 and len(shared) / len(key | other) >= MERGE_OVERLAP_RATIO:
+                parent[find(left)] = find(right)
+
+    groups: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for index, (section, _) in enumerate(keyed):
+        groups[find(index)].append(section)
+
+    issues: list[dict[str, Any]] = []
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda item: item["start"])
+        head = group[0]
+        others = ", ".join(f"line {item['start']}" for item in group[1:])
+        issues.append(
+            issue(
+                line=head["start"],
+                category="merge_candidate",
+                action="curate",
+                message=(
+                    f"{len(group)} sections cover the same topic ({others}). "
+                    "Reconcile them into one current-state section and keep only the "
+                    "dated entries that record a decision."
+                ),
+                text="#" * head["level"] + f" {head['title']}",
+                section=" > ".join(head["path"]),
+                duplicate_lines=[item["start"] for item in group],
+            )
+        )
+    return sorted(issues, key=lambda item: item["line"])
+
+
+def curation_scan(
+    *,
+    lines: list[str],
+    repo: RepoIndex,
+    repo_root: pathlib.Path,
+    fenced: set[int],
+    today: date,
+    age_days: int,
+    max_kb_lines: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Report which dated sections have outlived their usefulness.
+
+    The scanner never decides to delete. It measures age, size, and whether the
+    code a section describes still exists, so `/nase:onboard` can fold the
+    durable half into a current-state section before removing the rest.
+    """
+    sections = build_sections(lines, fenced)
+    issues: list[dict[str, Any]] = []
+    total_lines = sum(1 for line in lines if line.strip())
+    candidate_lines = 0
+    covered_end = 0
+
+    for section in sections:
+        if section["level"] < 2 or section["start"] <= covered_end:
+            continue
+
+        # A dated heading is what marks an entry as a log rather than a topic, so
+        # `## API Surface` stays whatever dates its body happens to cite.
+        own = heading_date(section["title"])
+        if own is None or is_protected(section):
+            continue
+
+        # Age from the newest date anywhere inside, so an old container still
+        # collecting this month's findings is not nominated along with them.
+        body = lines[section["start"] : section["end"]]
+        dates = [own]
+        dates += [
+            found
+            for nested in sections
+            if section["start"] <= nested["start"] <= section["end"]
+            and (found := heading_date(nested["title"])) is not None
+        ]
+        dates += [found for line in body if (found := heading_date(line)) is not None]
+        when = max(dates)
+        age = (today - when).days
+        if age <= age_days:
+            continue
+
+        live, dead = section_ref_health(body, repo, repo_root)
+        span = sum(1 for line in body if line.strip()) + 1
+        candidate_lines += span
+        covered_end = section["end"]
+        issues.append(
+            issue(
+                line=section["start"],
+                category="curation_candidate",
+                action="curate",
+                message=(
+                    f"Dated section is {age} days old and {span} lines; "
+                    f"{live} source refs still resolve at HEAD, {dead} do not. "
+                    "Fold any durable fact into a current-state section before removing it."
+                ),
+                text=lines[section["start"] - 1],
+                section=" > ".join(section["path"]),
+                age_days=age,
+                span_lines=span,
+                refs_at_head=live,
+                refs_missing=dead,
+            )
+        )
+
+    issues.extend(merge_candidates(sections))
+
+    top_sections = [item for item in sections if item["level"] == 2]
+    dated_top = [item for item in top_sections if heading_date(item["title"])]
+    if len(dated_top) >= 12 and len(dated_top) >= 0.4 * len(top_sections):
+        issues.append(
+            issue(
+                line=1,
+                category="reorganize_candidate",
+                action="curate",
+                message=(
+                    f"{len(dated_top)} of {len(top_sections)} top-level sections are dated entries; "
+                    "the file reads as a changelog rather than a KB. Regroup the durable facts under "
+                    "`.claude/docs/kb-template.md -> Project KB Structure`."
+                ),
+                text="",
+                section="(file)",
+                dated_top_sections=len(dated_top),
+                top_sections=len(top_sections),
+            )
+        )
+
+    if total_lines > max_kb_lines:
+        issues.append(
+            issue(
+                line=1,
+                category="oversized_kb",
+                action="curate",
+                message=(
+                    f"KB is {total_lines} non-blank lines against a {max_kb_lines} budget; "
+                    "curate or split by topic."
+                ),
+                text="",
+                section="(file)",
+                total_lines=total_lines,
+            )
+        )
+
+    budget_lines = int(total_lines * CURATION_BUDGET_RATIO)
+    curation = {
+        "dated_top_sections": len(dated_top),
+        "top_sections": len(top_sections),
+        "total_lines": total_lines,
+        "candidate_lines": candidate_lines,
+        "candidate_ratio": round(candidate_lines / total_lines, 4) if total_lines else 0.0,
+        "budget_ratio": CURATION_BUDGET_RATIO,
+        "budget_lines": budget_lines,
+        "over_budget": candidate_lines > budget_lines,
+    }
+    return issues, curation
+
+
 def scan(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = pathlib.Path(args.repo_root).resolve()
     kb_file = pathlib.Path(args.kb_file).resolve()
@@ -432,8 +786,10 @@ def scan(args: argparse.Namespace) -> dict[str, Any]:
     seen_current_headings: dict[str, int] = {}
     correction_counts: Counter[tuple[str, int]] = Counter()
 
+    fenced = fenced_lines(lines)
+
     for idx, line in enumerate(lines, start=1):
-        heading = HEADING_RE.match(line)
+        heading = None if idx in fenced else HEADING_RE.match(line)
         if heading:
             level = len(heading.group(1))
             title = heading.group(2).strip()
@@ -562,8 +918,21 @@ def scan(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
 
+    curation: dict[str, Any] | None = None
+    if not args.no_curate:
+        curation_issues, curation = curation_scan(
+            lines=lines,
+            repo=repo,
+            repo_root=repo_root,
+            fenced=fenced,
+            today=today,
+            age_days=args.curate_age_days,
+            max_kb_lines=args.max_kb_lines,
+        )
+        issues.extend(curation_issues)
+
     summary = Counter(item["action"] for item in issues)
-    return {
+    result: dict[str, Any] = {
         "kb_file": str(kb_file),
         "repo_root": str(repo_root),
         "summary": {
@@ -572,9 +941,13 @@ def scan(args: argparse.Namespace) -> dict[str, Any]:
             "stale_mark": summary.get("stale_mark", 0),
             "needs_human": summary.get("needs_human", 0),
             "mark_not_delete": summary.get("mark-not-delete", 0),
+            "curate": summary.get("curate", 0),
         },
         "issues": sorted(issues, key=lambda item: (item["line"], item["category"])),
     }
+    if curation is not None:
+        result["curation"] = curation
+    return result
 
 
 def print_text(result: dict[str, Any]) -> None:
@@ -604,8 +977,17 @@ def print_text(result: dict[str, Any]) -> None:
         f"auto-fix={summary['auto_fix']} "
         f"stale-mark={summary['stale_mark']} "
         f"mark-not-delete={summary['mark_not_delete']} "
-        f"needs-human={summary['needs_human']}"
+        f"needs-human={summary['needs_human']} "
+        f"curate={summary.get('curate', 0)}"
     )
+    curation = result.get("curation")
+    if curation:
+        budget = "over budget" if curation["over_budget"] else "within budget"
+        print(
+            f"Curation: {curation['candidate_lines']}/{curation['total_lines']} lines "
+            f"({curation['candidate_ratio']:.0%}) are candidates, "
+            f"budget {curation['budget_lines']} lines per run - {budget}."
+        )
     if not result["issues"]:
         print("No hygiene issues found.")
         return

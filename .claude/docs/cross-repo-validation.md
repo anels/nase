@@ -11,7 +11,7 @@
 - Performance
 - Failure modes & graceful degradation
 
-Used by `/nase:onboard` after Single Repo Mode and after Batch Refresh Mode (Step 6) to keep the per-repo KBs consistent with each other and with the cross-project tracker.
+Used by `/nase:onboard` → `## Single repo` and `## Batch refresh` to keep the per-repo KBs consistent with each other and with the cross-project tracker.
 
 The goal is to catch drift — a claim in one repo's KB that contradicts another's reality — and surface it to the user. **Read-only by default.** Never auto-mutates KB content; produces a diff report and asks before writing.
 

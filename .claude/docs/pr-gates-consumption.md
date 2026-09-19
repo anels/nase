@@ -2,7 +2,7 @@
 
 Consumers (`fsd`, `address-comments`, `prep-merge`) read the repo's `## PR Gates` KB section so the commit subject, PR title, PR body, size, and local lint gates they draft already satisfy the repo's merge-blocking checks. Gates like conventional-commit format, Jira key in title, required PR-body sections, and size labels fail *fast* — but only after a push round-trip, so satisfying them up front saves a full push/fail/fix cycle.
 
-**Producer:** `/nase:onboard` Step 3d.1 writes the `## PR Gates` section (branch-protection required checks, every `on: pull_request` workflow, what each checks, fail mode, fix recipe, skip mechanism, `Required?`, action pins, config files). Section shape lives in `.claude/docs/kb-template.md → ## PR Gates`.
+**Producer:** `/nase:onboard` → `## Single repo` writes the `## PR Gates` section (branch-protection required checks, every `on: pull_request` workflow, what each checks, fail mode, fix recipe, skip mechanism, `Required?`, action pins, config files). Section shape lives in `.claude/docs/kb-template.md → ## PR Gates`.
 
 This doc is the *consumer* side. It never writes the KB — if the section is stale it points the user back at `/nase:onboard`.
 
@@ -27,7 +27,7 @@ If a field has no corresponding gate, leave it empty — a repo with no commit-l
 
 ## 2. Freshness / empty fallback (live-fetch)
 
-The `## PR Gates` section is **stale or empty** when: the section header is absent, the repo was onboarded before Step 3d.1 existed, or every data cell still holds a template placeholder (value wrapped in `{...}`). Detect placeholder rows with `^\s*\|?\s*\{.*\}` on the data cells.
+The `## PR Gates` section is **stale or empty** when: the section header is absent, the repo was onboarded before this section existed, or every data cell still holds a template placeholder (value wrapped in `{...}`). Detect placeholder rows with `^\s*\|?\s*\{.*\}` on the data cells.
 
 When stale/empty, do a **bounded live read** at consume-time. Do not write the KB here.
 

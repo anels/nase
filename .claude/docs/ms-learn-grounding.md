@@ -14,7 +14,7 @@
 
 Read-only verification step that grounds KB claims about Azure / .NET / Microsoft SDK behavior against authoritative Microsoft Learn documentation.
 
-Used by `/nase:onboard` Step 3j and any future skill that writes durable claims about Microsoft technology surfaces.
+Used by `/nase:onboard` → `## Single repo` and any future skill that writes durable claims about Microsoft technology surfaces.
 
 ---
 

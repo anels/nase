@@ -103,6 +103,36 @@ cat > "$FIXTURE/workspace/kb/projects/fixture.md" <<'EOF'
 - Correction 2026-04-02: first correction.
 - Superseded by: second correction.
 - Correction 2026-04-03: third correction.
+
+## Build Commands
+
+```bash
+# 2026-01-02 fenced comment that is not a heading
+dotnet build
+```
+
+## ToolGuardrail query optimization (PR #2526, 2026-01-08)
+- `src/Service.cs`: filters moved into the base query.
+
+## Widget cache rollout (PR #2101, 2026-01-05)
+- First half of the widget cache story.
+
+## Widget cache follow-up (PR #2115, 2026-01-06)
+- Second half of the widget cache story.
+
+## Known Incidents
+### INC-1 outage 2026-01-09
+- Historical record that curation must never touch.
+
+## Widget cache incident 2026-01-07
+- Dated, but an incident record: it shares a topic with the two PR sections above
+  and must still never be nominated as one half of a merge.
+
+## Widget Cache Operations
+- Undated topical section, one of a deliberately separate pair.
+
+## Widget Cache Invalidation
+- Undated topical section, the other half of that pair.
 EOF
 
 cat > "$FIXTURE/workspace/kb/.domain-map.md" <<'EOF'
@@ -175,6 +205,67 @@ assert_contains "line ranges beyond file length need humans" "$out" "[NEEDS_HUMA
 assert_not_contains "valid source ref is not flagged" "$out" "src/Service.cs:1"
 assert_not_contains "leading-dot refs are not stripped" "$out" "github/workflows/validate.yml"
 assert_not_contains "dot pipeline refs are not stripped" "$out" "pipelines/build.yml"
+
+assert_contains "aged dated PR sections are curation candidates" "$out" "curation_candidate"
+assert_contains "curation candidates are actionable" "$out" "[CURATE]"
+assert_contains "same-topic sections are merge candidates" "$out" "merge_candidate"
+assert_not_contains "fenced shell comments are not headings" "$out" "fenced comment that is not a heading"
+
+curation_json=$(python3 "$SCRIPT" \
+  --repo-root "$FIXTURE/repo" \
+  --kb-file "$FIXTURE/workspace/kb/projects/fixture.md" \
+  --today 2026-05-29 \
+  --json 2>&1)
+
+if printf '%s' "$curation_json" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+issues = data["issues"]
+curate = [i for i in issues if i["action"] == "curate"]
+assert curate, "no curation findings"
+titles = " ".join(i["section"] for i in curate)
+assert "ToolGuardrail" in titles, titles
+assert "Known Incidents" not in titles, titles
+assert "Change History" not in titles, titles
+assert "Widget cache incident" not in titles, titles
+merges = [i for i in issues if i["category"] == "merge_candidate"]
+assert len(merges) == 1, merges
+assert len(merges[0]["duplicate_lines"]) == 2, merges
+assert "Widget cache rollout" in merges[0]["section"], merges
+merged_text = " ".join(m["section"] + m["message"] for m in merges)
+assert "Widget Cache Operations" not in merged_text, merged_text
+curation = data["curation"]
+assert curation["budget_ratio"] == 0.3
+assert curation["candidate_lines"] > 0
+assert curation["over_budget"] is False, curation
+assert curation["dated_top_sections"] >= 3, curation
+'; then
+  pass=$((pass + 1))
+  printf 'PASS  curation protects incidents and undated topics, groups duplicates, reports a budget\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  curation protects incidents and undated topics, groups duplicates, reports a budget\n%s\n' "$curation_json" >&2
+fi
+
+no_curate_out=$(python3 "$SCRIPT" \
+  --repo-root "$FIXTURE/repo" \
+  --kb-file "$FIXTURE/workspace/kb/projects/fixture.md" \
+  --today 2026-05-29 \
+  --no-curate --json 2>&1)
+
+if printf '%s' "$no_curate_out" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+assert not any(i["action"] == "curate" for i in data["issues"])
+assert "curation" not in data
+assert data["summary"]["curate"] == 0
+'; then
+  pass=$((pass + 1))
+  printf 'PASS  --no-curate suppresses the curation pass\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  --no-curate suppresses the curation pass\n%s\n' "$no_curate_out" >&2
+fi
 
 json_out=$(python3 "$SCRIPT" \
   --repo-root "$FIXTURE/repo" \
