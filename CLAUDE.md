@@ -127,7 +127,7 @@ When the user corrects wording/tone on an external draft I produced (Slack, PR d
 ## Code Quality Standards
 
 - **Minimal changes**: write the minimum code needed — do not add unrequested features or refactor surrounding code
-- **"While we're at it" rejection**: drive-by improvements you noticed while doing the assigned task default to rejected. Flag them as a follow-up at the end (filename + one-line description) so the user can choose; never bundle them silently. The exception: a one-line typo fix in code you already had to touch for the actual task.
+- **"While we're at it" disclosure**: per the user's global CLAUDE.md, fix failing lint, failing tests, flaky tests, and broken-looking UI even when unrelated to the assigned task; name each such fix in the handoff and the PR description (filename + one-line description). Everything else you noticed, such as a refactor, rename, or unrequested feature, stays a follow-up note.
 - **No comments by default**: unless the user asks or the logic is genuinely non-obvious; `.claude/docs/code-comment-policy.md` owns when one is warranted and its shape
 - **Check dependencies first**: verify in the project's dependency file before using a library
 - **Do not weaken tests to hide failures**: fix production defects; update or add tests when intended behavior or contracts change
