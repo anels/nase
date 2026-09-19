@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import contextlib
 import hashlib
 import json
 import posixpath
@@ -735,10 +736,39 @@ def scan_stream_for_secret(stream: Any) -> tuple[str, int] | None:
     return None
 
 
-def scan_blob_for_secret(repo: Path, oid: str) -> tuple[str, int] | None:
+@contextlib.contextmanager
+def blob_stream(repo: Path, oid: str) -> Any:
+    """A fresh readable stream over one blob, re-openable per call.
+
+    `scan_source_for_secret` reopens its source to resume past an acknowledged
+    line, so a single `cat-file` process cannot serve it.
+    """
     with nase_git.streaming("cat-file", "blob", oid, repo=repo) as process:
         assert process.stdout is not None
-        return scan_stream_for_secret(process.stdout)
+        yield process.stdout
+
+
+def scan_blob_for_secret(repo: Path, oid: str) -> tuple[str, int] | None:
+    with blob_stream(repo, oid) as stream:
+        return scan_stream_for_secret(stream)
+
+
+def load_secret_scan_allowlist(path: str | None) -> set[tuple[str, str]]:
+    """Read `<sha256>  <path>` acknowledgements, or an empty set when unasked.
+
+    A missing or malformed file is fatal, because an allowlist the caller named
+    and the scan then ignored would report clean over lines nobody reviewed.
+    """
+    if not path:
+        return set()
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SystemExit(f"--secret-scan-allowlist could not be read: {exc}") from exc
+    entries, error = parse_secret_scan_allowlist(text)
+    if error is not None:
+        raise SystemExit(f"--secret-scan-allowlist is unusable: {error}")
+    return entries
 
 
 def secret_preflight(
@@ -748,6 +778,7 @@ def secret_preflight(
     task: str,
     inventory: Any,
     evidence: Any,
+    allowlist: set[tuple[str, str]],
 ) -> None:
     for label, data in (
         ("task", task.encode("utf-8")),
@@ -761,11 +792,17 @@ def secret_preflight(
         entry = tree_entry(repo, tree_oid, path)
         if not entry or entry["type"] != "blob":
             continue
-        hit = scan_blob_for_secret(repo, entry["oid"])
-        if hit:
-            kind, byte_offset = hit
+        oid = entry["oid"]
+        hit = scan_source_for_secret(lambda oid=oid: blob_stream(repo, oid), path, allowlist)
+        if hit is ALLOWLIST_BUDGET_EXHAUSTED:
             raise SystemExit(
-                f"possible {kind} secret in CANDIDATE:{safe_display_path(path)} near byte {byte_offset}; bundle was not written"
+                f"CANDIDATE:{safe_display_path(path)} acknowledges more than {ALLOWLIST_MAX_SKIPS} "
+                "credential-shaped lines; bundle was not written"
+            )
+        if hit:
+            kind, line_number = hit
+            raise SystemExit(
+                f"possible {kind} secret in CANDIDATE:{safe_display_path(path)} at line {line_number}; bundle was not written"
             )
 
 
@@ -949,6 +986,40 @@ def dirty_submodule_gaps(repo: Path, tree_oid: str) -> list[dict[str, str]]:
     return gaps
 
 
+def diff_omission_gaps(
+    repo: Path, base_oid: str, tree_oid: str, paths: list[str]
+) -> list[dict[str, str]]:
+    """Declare an omitted diff on whichever side carries the credential-like bytes.
+
+    The scan ignores the `--secret-scan-allowlist`. An acknowledgement lets the bundle
+    build; it does not restore the diff, so the missing evidence still has to reach the
+    reducer. When no blob explains the omission, every path is declared on the candidate
+    side rather than leaving a diff-less bundle with no gap.
+    """
+    gaps: list[dict[str, str]] = []
+    for path in paths:
+        for tree, oid in (("BASE", base_oid), ("CANDIDATE", tree_oid)):
+            entry = tree_entry(repo, oid, path)
+            if entry and entry["type"] == "blob" and scan_blob_for_secret(repo, entry["oid"]):
+                gaps.append(
+                    {
+                        "path": safe_display_path(path),
+                        "reason": "credential_like_diff_omitted",
+                        "tree": tree,
+                    }
+                )
+    if not gaps:
+        gaps = [
+            {
+                "path": safe_display_path(path),
+                "reason": "credential_like_diff_omitted",
+                "tree": "CANDIDATE",
+            }
+            for path in paths
+        ]
+    return gaps
+
+
 def unique_gaps(items: list[dict[str, str]]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -1118,7 +1189,15 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         raise SystemExit("task must be valid UTF-8") from exc
     if len(task_bytes) > ITEM_LIMIT:
         raise SystemExit("task exceeds the 64 KiB bundle item limit")
-    secret_preflight(repo, tree_oid, paths, task, inventory, evidence)
+    secret_preflight(
+        repo,
+        tree_oid,
+        paths,
+        task,
+        inventory,
+        evidence,
+        load_secret_scan_allowlist(args.secret_scan_allowlist),
+    )
     contexts = resolve_contexts(
         repo,
         base_oid,
@@ -1259,16 +1338,9 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
             repo, "diff", "--no-ext-diff", "--no-textconv", "--text", base_oid, tree_oid
         )
         if secret_kind(full_diff):
-            for path in data["paths"]:
-                entry = tree_entry(repo, base_oid, path)
-                if entry and entry["type"] == "blob" and scan_blob_for_secret(repo, entry["oid"]):
-                    metadata["evidence_gaps"].append(
-                        {
-                            "path": safe_display_path(path),
-                            "reason": "credential_like_diff_omitted",
-                            "tree": "BASE",
-                        }
-                    )
+            metadata["evidence_gaps"].extend(
+                diff_omission_gaps(repo, base_oid, tree_oid, data["paths"])
+            )
             lines.extend(
                 [
                     "## Full Diff Omitted",
@@ -1312,12 +1384,11 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
                 repo, base_oid, tree_oid, item["source_path"], item["path"]
             )
             if credential_omitted:
-                metadata["evidence_gaps"].append(
-                    {
-                        "path": safe_display_path(item["source_path"]),
-                        "reason": "credential_like_diff_omitted",
-                        "tree": "BASE",
-                    }
+                omitted_paths = [item["source_path"]]
+                if item["path"] != item["source_path"]:
+                    omitted_paths.append(item["path"])
+                metadata["evidence_gaps"].extend(
+                    diff_omission_gaps(repo, base_oid, tree_oid, omitted_paths)
                 )
             lines.append(fenced(safe_display_path(item["display"]), projection, "diff"))
     metadata["evidence_gaps"] = unique_gaps(metadata["evidence_gaps"])
@@ -1350,6 +1421,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--context-request-file")
     parser.add_argument("--reviewer-identity-output")
     parser.add_argument("--candidate-tree-only", action="store_true")
+    parser.add_argument(
+        "--secret-scan-allowlist",
+        help=(
+            "path to a `<sha256>  <path>  # reason` file whose lines the candidate "
+            "secret scan acknowledges (default: none, every hit blocks the bundle)"
+        ),
+    )
     parser.add_argument("--max-full-diff-lines", type=int, default=2000)
     parser.add_argument("--max-files", type=int, default=5)
     return parser

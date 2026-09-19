@@ -219,6 +219,8 @@ python3 .claude/scripts/verify-bundle.py \
 
 Use `changed_path_count` from Step 2 as a safe upper bound. The helper rejects stale evidence, secret-like candidate/evidence content, silently omitted text paths, unbounded binary patches, and oversized output before writing the reviewer artifact. It writes the trusted reviewer identity JSON from the exact completed bundle bytes. Preserve that file outside the candidate bundle and proceed to Phase 6.4 with its immutable `base_oid`, `candidate_tree_oid`, `contract_inventory_sha256`, and `bundle_sha256`.
 
+When a changed file carries a credential-shaped constant the repository already reviewed, the build stops with `possible ... secret in CANDIDATE:{path} at line N`. Do not edit the file to get past it. Write `{nase_workspace}/workspace/tmp/fsd-secret-allowlist-{branch_slug}.txt` in the format `.claude/docs/verification-bundle.md` specifies, pass it as `--secret-scan-allowlist`, and tell the user which line you acknowledged. That path is separate from the workspace allowlist `tests/check-local-sensitive-artifacts.sh` reads; the two spell paths differently. The bundle is then built without the diff and declares a `CANDIDATE` `credential_like_diff_omitted` gap, so the reducer returns `CONTEXT` rather than `PROCEED`.
+
 `.claude/docs/verification-bundle.md` is the artifact contract this call produces: what each section holds, how the candidate tree and evidence are bound, which context blobs the reviewer is allowed to see, and the closure binding Phase 7 asserts against. Read it when a bundle field or a reviewer-visibility question is in doubt.
 
 ### Anti-rationalization gate (apply before deciding to skip any sub-step in Phases 5–7)

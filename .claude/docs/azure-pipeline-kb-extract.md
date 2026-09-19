@@ -1,6 +1,6 @@
 # Azure Pipeline KB Extraction — Capture + KB-Write Spec
 
-Used by `/nase:onboard` Step 3d (Azure-specific portion) and Step 4.5. Covers (a) what to pull out of each Azure Pipeline YAML file, (b) how to write it into the per-repo KB's `## Azure Pipelines` section.
+Used by `/nase:onboard` → `## Single repo` for the Azure-specific portion of the repo mapping and KB draft. Covers (a) what to pull out of each Azure Pipeline YAML file, (b) how to write it into the per-repo KB's `## Azure Pipelines` section.
 
 Skill body cites this doc instead of inlining the rules. Schema for the KB section itself lives in `.claude/docs/kb-template.md → ## Azure Pipelines`.
 

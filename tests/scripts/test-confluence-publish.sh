@@ -71,7 +71,11 @@ check_contains "anchors: dropped links are reported"                  "$warn" "i
 
 check_contains "notes: a run collapses into one expand" "$body" "<summary>ℹ️ Note</summary>"
 check_contains "notes: every note survives the fold"    "$body" 'late-arriving records'
-check_contains "notes: a lone note stays inline"        "$body" '<blockquote>The only note here'
+check_contains "notes: a lone note stays inline"        "$body" '<blockquote><p>The only note here'
+# Confluence's HTML import drops a blockquote's plain-text runs when they are not
+# inside a <p>, leaving only the <a>/<code> elements standing.
+check_contains "notes: self-collapsed blockquote gets a paragraph"   "$body" '<blockquote><p><strong>Self-collapsed note.</strong>'
+check_contains "notes: text between inline tags survives"           "$body" 'Text between <a href="https://example.com/x">a link</a> and <code>a code span</code> must survive.'
 
 check_contains "tables: widths are stamped"             "$body" 'data-colwidth='
 check_contains "tables: six columns break out wide"     "$body" '<table data-layout="center" data-width="1011"'

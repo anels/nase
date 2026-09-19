@@ -187,7 +187,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 1. {constraint}
 
 ## Brittle Boundaries
-<!-- Top-3 high-risk integration / contract / data boundaries an AI agent should know about BEFORE touching code. Refreshed by /nase:onboard Step 3h. Rationale: change-absorption capacity comes from explicit contracts at brittle boundaries (CATS framework — see workspace/kb/general/llm.md → AI Code Quality & Velocity). -->
+<!-- Top-3 high-risk integration / contract / data boundaries an AI agent should know about BEFORE touching code. Refreshed by /nase:onboard -> Single repo. Rationale: change-absorption capacity comes from explicit contracts at brittle boundaries (CATS framework — see workspace/kb/general/llm.md → AI Code Quality & Velocity). -->
 | Boundary | Why brittle | Last incident / drift | Touch protocol |
 |----------|------------|----------------------|----------------|
 | `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing — e.g. "run contract tests against platform-monitoring", "check the BI layer's partition before COALESCE", "validate Avro schema vs LogExport target"} |
@@ -231,7 +231,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 | {name} | {alpha/staging/prod} | {ne, eus, jp} | `{RG or cluster name}` | {group} | {gates, freeze windows} |
 
 ## PR Gates
-<!-- Refreshed by /nase:onboard Step 3d.1. Captures every check a PR must clear so commit/fsd/prep-merge sessions don't push work that CI rejects. -->
+<!-- Refreshed by /nase:onboard -> Single repo. Captures every check a PR must clear so commit/fsd/prep-merge sessions don't push work that CI rejects. -->
 
 ### Branch-protection required checks
 <!-- Authoritative blocker list — derived from `required_status_checks.contexts[]` and `required_status_checks.checks[].context`. These exact context names block merge. -->

@@ -432,6 +432,42 @@ def group_note_runs(html: str, minimum: int = 2) -> str:
     return "".join(out)
 
 
+BLOCK_TAG_PREFIXES = (
+    "<p",
+    "<ul",
+    "<ol",
+    "<table",
+    "<div",
+    "<blockquote",
+    "<details",
+    "<pre",
+    "<h1",
+    "<h2",
+    "<h3",
+    "<h4",
+    "<h5",
+    "<h6",
+)
+
+
+def ensure_blockquote_paragraphs(html: str) -> str:
+    """Wrap a blockquote's bare inline content in <p>.
+
+    Confluence's HTML import treats a blockquote's direct children as block
+    nodes, so bare text nodes are dropped with no error and only the
+    `<a>`/`<code>` elements survive. Blockquotes that `group_note_runs`
+    already folded start with `<ul>` and are left as they are.
+    """
+
+    def wrap(match: re.Match) -> str:
+        inner = match.group(1)
+        if inner.lstrip().startswith(BLOCK_TAG_PREFIXES):
+            return match.group(0)
+        return f"<blockquote><p>{inner.strip()}</p></blockquote>"
+
+    return re.sub(r"<blockquote>(.*?)</blockquote>", wrap, html, flags=re.DOTALL)
+
+
 # A column narrower than this is unreadable however short its content, and one
 # wider than this starves every other column. Clamping before the split is what
 # keeps a 250-character prose column from collapsing the numbers beside it.
@@ -1420,6 +1456,7 @@ def cmd_plan(args) -> int:
             # overflows is still refused rather than published broken.
             if not args.no_group_notes:
                 body = group_note_runs(body, args.note_run)
+            body = ensure_blockquote_paragraphs(body)
             if not args.no_colwidth:
                 body = size_tables(body, DEFAULT_TABLE_WIDTH)
             if index == 0 and want_toc:

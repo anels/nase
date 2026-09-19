@@ -34,6 +34,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - **Read `workspace/config.md` at session start.** Use `AI engineer:` as your name, `workspace:` as the folder name, and `## Language` values strictly: `conversation:` for chat/explanations, `output:` for GitHub/Jira/Confluence/Slack, English for code identifiers. This outranks skill/plugin examples. If config is missing, prompt `/nase:init`.
 - **Name correction**: if configured name is not "nase" and the user calls you "nase", occasionally (1 in 3) grumble and correct them briefly.
 - **Ask when unsure**: if scope or requirements are ambiguous, present the interpretations and ask.
+- **Conversational brevity, always on (independent of caveman mode)**: match reply length to question complexity. Skip restating the task back, trailing recap paragraphs when the result already shows itself (diff, file path, command output), agreement filler ("Great question", "You're right that..."), and hedging softeners ("I think", "it seems") when the evidence already supports a direct answer. This governs interactive chat replies specifically; skill artifacts follow `.claude/docs/skill-contract.md`, external drafts follow `## Communication` below.
 
 ### File & Workspace Rules
 - `workspace/` is git-ignored and holds personal KB/logs/journals/tmp data; `.claude/`, top-level docs/config, and `tests/` are tracked except local `.claude/settings.local.json`, `.claude/skills/`, and generated `.claude/commands/nase/workspace/` wrappers.

@@ -5,8 +5,12 @@ set -euo pipefail
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 python3 - "$ROOT" <<'PY'
+import hashlib
 import importlib.util
+import json
+import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -560,6 +564,131 @@ class SecretScanTest(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertIsNone(module.secret_kind(path.read_bytes()))
+
+
+class CandidateAllowlistTest(unittest.TestCase):
+    """The allowlist reaches the candidate scan, and only the lines it names."""
+
+    def build_repo(self, lines: list[bytes]) -> tuple[Path, str, bytes]:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        repo = Path(directory)
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        source = repo / "cfg.py"
+        source.write_bytes(b"\n".join(lines) + b"\n")
+        subprocess.run(["git", "-C", str(repo), "add", "cfg.py"], check=True)
+        tree_oid = subprocess.run(
+            ["git", "-C", str(repo), "write-tree"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return repo, tree_oid, source.read_bytes()
+
+    def preflight(self, repo: Path, tree_oid: str, allowlist: set) -> None:
+        module.secret_preflight(repo, tree_oid, ["cfg.py"], "task", {}, {}, allowlist)
+
+    def test_acknowledged_line_no_longer_blocks_the_bundle(self):
+        sanctioned = b"DEFAULT_" + b"PASSWORD" + b' = "legacy-canary-4831"'
+        repo, tree_oid, _ = self.build_repo([b"import os", sanctioned])
+        with self.assertRaises(SystemExit):
+            self.preflight(repo, tree_oid, set())
+        key = (hashlib.sha256(sanctioned).hexdigest(), "cfg.py")
+        self.preflight(repo, tree_oid, {key})
+
+    def test_acknowledgement_covers_only_its_own_line(self):
+        sanctioned = b"DEFAULT_" + b"PASSWORD" + b' = "legacy-canary-4831"'
+        later = b"client_" + b"secret" + b"=abcdefgh12345678"
+        repo, tree_oid, _ = self.build_repo([sanctioned, b"import os", later])
+        key = (hashlib.sha256(sanctioned).hexdigest(), "cfg.py")
+        with self.assertRaises(SystemExit) as raised:
+            self.preflight(repo, tree_oid, {key})
+        self.assertIn("at line 3", str(raised.exception))
+
+    def test_allowlist_is_keyed_on_the_exact_line_and_path(self):
+        sanctioned = b"DEFAULT_" + b"PASSWORD" + b' = "legacy-canary-4831"'
+        repo, tree_oid, _ = self.build_repo([sanctioned])
+        for key in (
+            (hashlib.sha256(sanctioned + b" ").hexdigest(), "cfg.py"),
+            (hashlib.sha256(sanctioned).hexdigest(), "other.py"),
+        ):
+            with self.subTest(key=key), self.assertRaises(SystemExit):
+                self.preflight(repo, tree_oid, {key})
+
+    def test_malformed_allowlist_file_fails_closed(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        path = Path(directory) / "allowlist"
+        path.write_text("not-a-sha256  cfg.py\n", encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            module.load_secret_scan_allowlist(str(path))
+        with self.assertRaises(SystemExit):
+            module.load_secret_scan_allowlist(str(path.parent / "absent"))
+        self.assertEqual(module.load_secret_scan_allowlist(None), set())
+
+
+class DiffOmissionGapTest(unittest.TestCase):
+    """An acknowledged line unblocks the build; the diff it suppresses stays a gap."""
+
+    def build_bundle(self, allowlist_line: bytes | None) -> tuple[int, dict, str]:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        repo = Path(directory) / "repo"
+        repo.mkdir()
+        def run(*args: str) -> None:
+            subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        run("config", "user.email", "test@example.com")
+        run("config", "user.name", "Test")
+        (repo / "cfg.py").write_bytes(b"import os\n")
+        run("add", "cfg.py")
+        run("commit", "-q", "-m", "init")
+        sanctioned = b"DEFAULT_" + b"PASSWORD" + b' = "legacy-canary-4831"'
+        (repo / "cfg.py").write_bytes(b"import os\n" + sanctioned + b"\n")
+        command = [
+            sys.executable,
+            str(BUNDLE),
+            "--repo",
+            str(repo),
+            "--base",
+            "HEAD",
+            "--task",
+            "acknowledge the reviewed constant",
+            "--output",
+            str(Path(directory) / "bundle.md"),
+        ]
+        if allowlist_line is not None:
+            allowlist = Path(directory) / "allowlist"
+            digest = hashlib.sha256(allowlist_line).hexdigest()
+            allowlist.write_text(f"{digest}  cfg.py  # reviewed\n", encoding="utf-8")
+            command += ["--secret-scan-allowlist", str(allowlist)]
+        completed = subprocess.run(command, capture_output=True, text=True)
+        bundle_path = Path(directory) / "bundle.md"
+        if completed.returncode != 0 or not bundle_path.is_file():
+            return completed.returncode, {}, ""
+        text = bundle_path.read_text(encoding="utf-8")
+        head = text.splitlines()[0]
+        metadata = json.loads(head[len("<!-- fsd-artifact: ") : -len(" -->")])
+        return completed.returncode, metadata, text
+
+    def test_unacknowledged_candidate_secret_still_blocks_the_bundle(self):
+        returncode, _, _ = self.build_bundle(None)
+        self.assertNotEqual(returncode, 0)
+
+    def test_acknowledged_candidate_line_leaves_a_candidate_gap(self):
+        sanctioned = b"DEFAULT_" + b"PASSWORD" + b' = "legacy-canary-4831"'
+        returncode, metadata, text = self.build_bundle(sanctioned)
+        self.assertEqual(returncode, 0)
+        self.assertIn("## Full Diff Omitted", text)
+        self.assertIn(
+            {
+                "path": "cfg.py",
+                "reason": "credential_like_diff_omitted",
+                "tree": "CANDIDATE",
+            },
+            metadata["evidence_gaps"],
+        )
 
 
 unittest.main(verbosity=1)

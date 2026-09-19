@@ -133,9 +133,9 @@ Stateful skills read prior output and adjust later behavior.
 
 ## Cross-repo awareness
 
-`/nase:onboard` Step 6 reads each repo's `## Outbound Calls` table and checks target repos' `## Inbound Endpoints` / API surface KB sections. Mismatches are surfaced in the report and summarized in `## Cross-Validation Notes`.
+`/nase:onboard` runs `.claude/docs/cross-repo-validation.md` before promoting a shared claim, reading each repo's `## Outbound Calls` table and checking target repos' `## Inbound Endpoints` / API surface KB sections. Mismatches are surfaced in the report and summarized in `## Cross-Validation Notes`.
 
-Brittle Boundaries (`onboard.md:112`) records each repo's top 3 high-risk areas plus a touch protocol.
+Brittle Boundaries (`.claude/docs/kb-template.md -> ## Brittle Boundaries`) records each repo's top 3 high-risk areas plus a touch protocol.
 
 ## Workspace write safety
 

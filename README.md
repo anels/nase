@@ -122,7 +122,7 @@ small kernel around Claude Code: Markdown commands define workflows, lifecycle
 hooks gate risky tool calls, scripts provide deterministic checks, and
 `workspace/` holds human-readable state.
 
-- **Human-readable memory** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and tasks load only relevant files instead of dumping the whole repo into context.
+- **Human-readable memory** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and curates what aged out (`--no-curate` skips that pass), so tasks load only relevant files instead of dumping the whole repo into context.
 - **35 Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
 - **Lifecycle hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
 - **Evidence loops** — PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and an independent read-only verifier pass before outward-facing writes.

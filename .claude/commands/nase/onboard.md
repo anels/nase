@@ -1,7 +1,7 @@
 ---
 name: nase:onboard
 description: "Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL."
-argument-hint: "[repo-path-or-url|--force]"
+argument-hint: "[repo-path-or-url|--force|--no-curate]"
 category: Knowledge base
 ---
 
@@ -19,6 +19,8 @@ Build or refresh compact repo knowledge without dumping the repository into cont
   all-groups option) so a routine refresh does not default to the whole map. Skip the prompt when the caller is
   non-interactive or already passed `--group`.
 - Path or GitHub URL: resolve one repo through `.claude/docs/repo-resolution.md`.
+- `--no-curate`: skip the curation pass in `.claude/docs/kb-hygiene.md -> Curation`. Hygiene, drift, and admission gates
+  still run. Use it when a refresh must touch nothing but the facts it verified.
 - `--force`: bypass the content-hash skip, never safety or drift gates. It does not authorize a no-op KB write. It does not
   un-retire an entry either: retiring is a durable statement about the upstream, not a stale cache.
 
@@ -36,19 +38,21 @@ python3 .claude/scripts/tool-availability.py --group baseline --group repo --gro
 ```
 
 Use available tools per `.claude/docs/cli-tooling.md`, and never write this machine-local availability into the repo KB.
-4. Run `.claude/scripts/kb-hygiene-scan.py` before updating an existing entry, then classify each finding with `.claude/docs/kb-hygiene.md`. That doc owns which facts this command may auto-fix from repo `HEAD` and which must be reported instead of rewritten; a scanner finding is not by itself permission to edit.
-5. Compute the content hash per `.claude/docs/content-hash-cache.md`; skip unchanged repos unless forced. When the repository yields no durable knowledge change, keep every KB target file byte-identical even under `--force`.
+4. Run `.claude/scripts/kb-hygiene-scan.py` before updating an existing entry, then classify each finding with `.claude/docs/kb-hygiene.md`. That doc owns which facts this command may auto-fix from repo `HEAD`, which must be reported instead of rewritten, and which stale, duplicated, or low-value sections to refresh, merge, or remove; a scanner finding is not by itself permission to edit.
+5. Compute the content hash per `.claude/docs/content-hash-cache.md`; skip unchanged repos unless forced. When the repository yields no durable knowledge change, keep every KB target file byte-identical even under `--force`. Curation is driven by the state of the KB file, not by repo movement, so a repo that skips the knowledge refresh still gets its curation pass; with no candidates that pass is byte-identical too.
 
 ## Single repo
 
 1. Map purpose, architecture, entry points, data/control flow, tests, CI, deployment, ownership, operational boundaries, brittle edges, and current workbench commands.
 2. Cite exact files and commands. Separate confirmed facts, inferred relationships, and unknowns. Apply `.claude/docs/kb-template.md -> Verification triad` to every new durable claim; V2 and V3 are admission gates.
 3. For Microsoft technologies, apply `.claude/docs/ms-learn-grounding.md`. For ADO pipelines, use `.claude/docs/azure-pipeline-kb-extract.md`.
-4. Reconcile current-state sections in place, then draft only the focused project KB, domain-map, or context changes supported by new durable evidence. Do not add dated refresh blocks, HEAD/count/status heartbeats, hygiene summaries, or placeholders. Stage each changed full file, show diffs, and apply only after mtime/hash/staged-hash checks.
-5. Run `.claude/docs/cross-repo-validation.md` against any shared claim before promoting it to general KB. Keep the validation receipt in the command output or report; do not add a status-only footer to the KB file.
+4. Reconcile current-state sections in place, then draft only the focused project KB, domain-map, or context changes supported by new durable evidence. Do not add dated refresh blocks, HEAD/count/status heartbeats, hygiene summaries, or placeholders, and do not key a new section on a PR number or a date unless it records a decision, an incident, or a constraint. The durable fact goes in the topical section with the PR link inline as evidence.
+5. Curate the existing file in the same pass, following `.claude/docs/kb-hygiene.md -> Curation`: refresh what drifted from `HEAD`, merge sections that cover one topic, fold the durable half of an aged dated block into its topical section and delete the rest, and regroup the file under `.claude/docs/kb-template.md -> Project KB Structure` when dated entries dominate it. Stay inside the per-run line budget and leave protected sections alone. Re-run the scanner against the staged file and reject a draft that raises `curation.dated_top_sections`.
+6. Stage each changed full file, show diffs, and apply only after mtime/hash/staged-hash checks.
+7. Run `.claude/docs/cross-repo-validation.md` against any shared claim before promoting it to general KB. Keep the validation receipt in the command output or report; do not add a status-only footer to the KB file.
 
 ## Batch refresh
 
-Resolve all configured repos first, apply the group scope when one is set, then process independent clean repos in bounded parallel slices. Skip missing, inaccessible, dirty, or unchanged repos with explicit reasons. Each repo keeps an independent staged diff and drift check; one failure does not invalidate successful siblings.
+Resolve all configured repos first, apply the group scope when one is set, then process independent clean repos in bounded parallel slices. Skip missing, inaccessible, or dirty repos with explicit reasons. A repo whose content hash is unchanged skips the knowledge refresh but still gets its curation pass, so report it as curated-only rather than as a skip. Each repo keeps an independent staged diff and drift check; one failure does not invalidate successful siblings.
 
-Finish with refreshed/skipped/retired/failed counts, changed KB paths, evidence gaps, and the next scheduled refresh. Name the group scope and the groups left untouched, so a partial refresh is never mistaken for a full one. Append the daily-log entry.
+Finish with refreshed/skipped/retired/failed counts, changed KB paths, evidence gaps, and the next scheduled refresh. Report curation as its own four counts - refreshed, merged, removed, regrouped sections - plus any candidates deferred by the line budget, so a cleanup is never read as a knowledge change. Name the group scope and the groups left untouched, so a partial refresh is never mistaken for a full one. Append the daily-log entry.
