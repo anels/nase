@@ -1,19 +1,30 @@
 ---
 name: nase:kb-review
-description: "Audit and repair KB plus workspace state for stale data, broken references, credential exposure, unsafe backup or restore behavior, and lifecycle drift. Use for review KB, workspace hygiene, clean up KB, or periodic health checks."
+description: "Audit KB and workspace state for stale data, layer drift, unverified status claims, broken references, credential exposure, and unsafe backups, then apply safe repairs. Use for review KB, workspace hygiene, clean up KB, or curate KB."
 argument-hint: "[workspace/path] [--kb-only] [--report-only|--repair]"
 category: Knowledge base
 ---
 
-Audit the KB and the workspace mechanisms that keep it trustworthy, then apply only approved changes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/workspace-write-guard.md`.
+Audit the KB and the workspace mechanisms that keep it trustworthy, apply the repairs whose correct value is already decided, and gate the rest. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/workspace-write-guard.md`.
+
+Content rules live in `.claude/docs/kb-lifecycle-layers.md`. This file owns scope, scanning, repair authority, and the report.
 
 ## Scope and mode
 
 1. Default to the full `workspace/` health review. A path argument narrows the content review, but full-scope trust checks still cover credentials, task and effort indexes, backup metadata, and the writers that can corrupt durable state. Reject paths outside the repository.
-   - `--kb-only` is the fast maintenance path. Restrict content, structure, relationship, searchability, usage, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited. Default behavior remains the full review.
-2. Default to `--report-only`. `--repair` prepares exact patches after discovery, but still uses the approval boundaries below. Do not let repair mode narrow discovery.
-3. For broad reviews, dispatch read-only `nase-context-kb-researcher` slices for disjoint KB domains. The main thread owns KB edits and report writes, security triage, state reconciliation, and every mutation.
-4. When the reviewed root must remain untouched, store machine-readable before and after SHA-256 manifests outside that root and require them to match.
+   - `--kb-only` is the fast maintenance path. Restrict content, structure, relationship, searchability, usage, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited.
+2. Run in one of three modes.
+
+   | Invocation | Behavior |
+   |---|---|
+   | no flag (default), reported as `mode: auto` | Scan, apply every *decided* repair from `## Repair classes`, write the report. |
+   | `--report-only` | Zero writes. Report only. |
+   | `--repair` | Adds one late approval checkpoint that also covers judgment-bearing rewrites. |
+
+   Mode MUST NOT narrow discovery. A narrower mode changes what gets written, never what gets looked at.
+3. `workspace/` is git-ignored, so the undo path is the backup, not git. Read the newest good backup before the first write and record its name and timestamp in the report frontmatter and the chat summary. A backup older than a deletion target's mtime does not cover that target, so that deletion drops to judgment-bearing. When no backup exists, degrade to `--report-only` and say so.
+4. For broad reviews, dispatch read-only `nase-context-kb-researcher` slices for disjoint KB domains. The main thread owns KB edits and report writes, security triage, state reconciliation, and every mutation.
+5. When the reviewed root must remain untouched, store machine-readable before and after SHA-256 manifests outside that root and require them to match.
 
 ## Deterministic preflight
 
@@ -22,15 +33,17 @@ Capture results under `workspace/tmp/`; never paste full scanner output into cha
 1. Run `python3 .claude/scripts/workspace-quality-scan.py --root . --days 30 --json` and parse every finding. A zero exit from `.claude/scripts/validate-workspace.sh` is wiring evidence only, not proof that the workspace is healthy.
 2. Run `python3 .claude/scripts/kb-hygiene-scan.py --workspace-scan --root . --json`, then scan each in-scope project KB against its repository `HEAD` where the repo is available. Record the helper path and explicit root override used.
 3. Run `bash tests/check-local-sensitive-artifacts.sh --workspace`. This full ignored-workspace pass reports only path, line, and secret kind. Classify a match only through bounded local inspection whose output is redacted before it reaches a tool result, report, or chat. Never quote, copy, diff, or store the matched value.
-4. Run the normal workspace validation and relevant focused tests. Record command, exit status, and the shortest decisive output.
+4. Take the counts in `.claude/docs/kb-lifecycle-layers.md → Over-breadth needs a count`. It is not a judgment call.
+5. Run the normal workspace validation and relevant focused tests. Record command, exit status, and the shortest decisive output.
 
 ## Deep review
 
 ### Content and relationships
 
 - Index headings, explicit links, domain-map entries, age, size, lesson candidates, effort references, and todo entries.
-- Classify contradictions, duplicates, healthy overlaps, missing cross-references, stale content, orphans, sparse files, temporary artifacts, one-sided entries, low-signal platitudes, and lesson-promotion candidates.
-- Use `.claude/docs/kb-relationship-graph.md`, `.claude/docs/kb-staleness.md`, and `.claude/docs/kb-template.md -> Verification triad`. Age alone is not evidence that a fact is obsolete. Separate broken Markdown links from inert code-span references.
+- Classify contradictions, duplicates, healthy overlaps, missing cross-references, stale content, orphans, sparse files, temporary artifacts, one-sided entries, low-signal platitudes, layer mixing, and lesson-promotion candidates.
+- Use `.claude/docs/kb-relationship-graph.md`, `.claude/docs/kb-staleness.md`, and `.claude/docs/kb-template.md → Verification triad`. Age alone is not evidence that a fact is obsolete. Separate broken Markdown links from inert code-span references.
+- Apply `.claude/docs/kb-lifecycle-layers.md` in full; every rule it states produces findings here.
 
 ### Security and propagation
 
@@ -39,8 +52,8 @@ Capture results under `workspace/tmp/`; never paste full scanner output into cha
 
 ### Authoritative state
 
-- Validate active, done, and archived effort frontmatter against `.claude/docs/effort-model.md -> Status Vocabulary` and file location.
-- `workspace/efforts/` is authoritative for initiatives. `workspace/tasks/todo.md` contains independent open work only: no checked or dropped items, no duplicate initiative state, and no unresolved effort pointer. `bash tests/check-effort-pointer-integrity.sh` enforces this both ways - every pointer resolves, every active effort is listed, no item is left checked - so run it and repair what it names rather than re-deriving the reconciliation by hand.
+- Validate active, done, and archived effort frontmatter against `.claude/docs/effort-model.md → Status Vocabulary` and file location.
+- `workspace/efforts/` is authoritative for initiatives. `workspace/tasks/todo.md` contains independent open work only, with no checked or dropped items, no duplicate initiative state, and no unresolved effort pointer. `bash tests/check-effort-pointer-integrity.sh` enforces this both ways, so run it and repair exactly what it names rather than re-deriving the reconciliation by hand.
 - Check durable indexes and manifests for unique keys, referential integrity, and atomic publication. Exercise writers, optimizers, backup, and restore helpers against a copy fixture so duplicate identifiers or a failed second write cannot delete or split state.
 
 ### Operational contracts
@@ -51,22 +64,72 @@ Capture results under `workspace/tmp/`; never paste full scanner output into cha
 - Inventory `workspace/tmp/` by producer, age, size, and recoverability. Do not classify a file as disposable until its producer and restore path are known.
 - When both journal and daily log exist, compare freshness and flag lost post-wrap-up entries instead of assuming one source is complete.
 
-## Findings and repair
+## Repair classes
 
-1. Write `workspace/recaps/kb-review-{YYYY-MM-DD}.md` with severity, evidence path and line, impact, root cause, repair class, verification, and status for every finding. Redact values before the report is drafted.
-2. Group repairs as:
-   - deterministic local workspace correction,
-   - judgment-bearing local rewrite or code fix,
-   - external, credential, deletion, or rotation action.
-3. Push one late approval checkpoint containing exact local targets and compact diff summaries. Missing evidence stays a finding, not a rewrite.
-4. For approved durable workspace changes, stage complete targets, show diffs, and apply through `workspace-write-guard.py` with mtime, source hash, and staged hash checks. Never auto-delete a non-empty file.
-5. For approved versioned helper fixes, use the repository branch or worktree workflow and add the smallest fixture-based regression test that reproduces the failure. An exact code proposal is not repair-ready until that test executes successfully in a disposable copy.
-6. External, credential, deletion, and rotation actions require separate named approval with the exact target and payload. Never publish, rotate, prune backups, or delete temporary state as part of the local repair batch.
+### Decided - apply without asking
+
+Every condition holds, or the repair drops to the next class. Target inside `workspace/`, correct value fixed by a scanner finding plus your own re-read of the source, no credential involved, backup from `## Scope and mode` step 3 named. This class writes only under the default mode; under `--report-only` list every qualifying item as a finding instead of applying it.
+
+- Broken link whose new target is verified to exist.
+- Domain-map gap, meaning an entry pointing at a missing file. Remove it, or repoint it to a verified path.
+- Orphan file with no domain-map entry. Add the entry; adding is not deleting.
+- Effort frontmatter status outside `Status Vocabulary` whose correct value follows from file location plus live state.
+- Anything `check-effort-pointer-integrity.sh` names, repaired the way it names.
+- Missing or drifted `last-updated:` where the correct date is derivable.
+- A status claim that verification resolved. Write the measured value.
+- `**Confidence:** high` stripped per the over-breadth thresholds.
+- Layer mixing whose correct destination is unambiguous, including a dated gotcha promotion whose re-verification passed. A promotion replaces the dated block's gotcha text with a one-line `Promoted -> ...` pointer; it is an edit, not a deletion, and does not count toward the deletion disclosure below.
+- Accretion blocks per `.claude/docs/kb-staleness.md → Step D2`, and temp artifacts whose producer and restore path are both known.
+
+Deletion is in this class because the backup is the undo path. **Every deleted path MUST be listed individually in the report and the chat summary, with its line count and its restore route.** An aggregate count is not a disclosure.
+
+### Judgment-bearing - one late checkpoint
+
+This class covers merging two entries, rewriting wording, dropping a low-signal platitude, promoting a lesson, and any ADR-layer edit. Present exact local targets and compact diff summaries in a single checkpoint. Under the default mode, report these; under `--repair`, the checkpoint covers them.
+
+### Separately gated - named approval each
+
+External publication, credential rotation or removal, backup pruning, and any write outside `workspace/` each need their own approval naming the exact target and payload. These MUST NOT ride along in the local batch. Versioned helper fixes go through the repository branch or worktree workflow with the smallest fixture-based regression test that reproduces the failure; an exact code proposal is not repair-ready until that test executes successfully in a disposable copy.
+
+### Never automatic
+
+- A repair where the scanner's classification and your own re-read of the source disagree. Missing or conflicting evidence stays a finding, not a rewrite.
+- Anything resting on an `unverified` claim.
+- Anything whose correct value you would have to choose rather than read.
+
+Apply every approved durable workspace change through `workspace-write-guard.py` with mtime, source hash, and staged hash checks.
+
+## Report contract
+
+Write `workspace/recaps/kb-review-{YYYY-MM-DD}.md`. Redact values before drafting. The report opens with this frontmatter.
+
+```yaml
+---
+last_curated: YYYY-MM-DD
+mode: auto | report-only | repair
+backup_relied_on: "<archive name or timestamp>"
+coverage:
+  reviewed: "<path:line-range>, ..."
+  unreviewed: "<path:line-range>, ..."
+counts: { applied: N, deleted: N, checkpointed: N, gated: N, unverified: N, open: N }
+net_lines: <signed integer across curated content files>
+known_stale:
+  - "<claim> - unverified as of YYYY-MM-DD"
+---
+```
+
+Body carries, per finding, severity, evidence path and line, impact, root cause, layer, repair class, verification, and status.
+
+`coverage` keeps batching honest. Review a file over roughly 600 lines in ranges and record each range. **MUST NOT report a file as reviewed when only part of it was read.** A non-empty `coverage.unreviewed` is where the next run starts.
 
 ## Verification and output
 
-Before marking an applied repair or exact proposal repair-ready, re-run every deterministic preflight command and focused regression test against the modified target or disposable copy. A green validator does not close remaining scanner findings. Report applied, skipped, drifted, externally gated, and still-open items.
+Before marking an applied repair or an exact proposal repair-ready, re-run every deterministic preflight command and focused regression test against the modified target or disposable copy. A green re-run does not close a finding that is still open.
 
-The complete report is the canonical artifact. Chat returns its path and at most five short lines with the highest-severity findings and the approval boundary.
+The complete report is the canonical artifact. Chat returns its path and at most five short lines carrying the highest-severity findings, the backup relied on, every deleted path, and the approval boundary.
 
 Preserve provenance, project boundaries, and confidential markers.
+
+## Unvalidated rules
+
+The 600-line batching threshold is a round number, not a measurement. The rest sit in the shared doc's own `Unvalidated rules`.
