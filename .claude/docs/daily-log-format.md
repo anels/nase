@@ -10,7 +10,7 @@ Standardized format for appending entries to `workspace/logs/{YYYY-MM-DD}.md`.
 workspace/logs/{YYYY-MM-DD}.md
 ```
 
-Use today's date. Create the file with a `# Work Log — {YYYY-MM-DD}` header and `## Sessions` section if it doesn't exist.
+Use today's date, meaning the local calendar day (`.claude/scripts/nase_time.py: local_today()`), never UTC. Create the file with a `# Work Log — {YYYY-MM-DD}` header and `## Sessions` section if it doesn't exist.
 
 ## Entry Format
 
@@ -34,8 +34,6 @@ Renames only — i.e. tags where the form differs from the command name. Every o
 | `/nase:design --auto` | `auto-design` | Sub-mode of design |
 | `/nase:design --grill` | `grill` | Sub-mode of design |
 
-Skills not in this rename table: use the command name without the `/nase:` prefix (e.g. `/nase:fsd` → `fsd`, `/nase:wrap-up` → `wrap-up`).
-
 ## Rules
 
 - One line per entry. No multi-line blocks.
@@ -48,4 +46,4 @@ Skills not in this rename table: use the command name without the `/nase:` prefi
 
 Skills that need to show up in completion history MUST append their own bullet on completion. Telemetry records slash-command activation and tool outcomes, but the daily-log bullet is the durable completion audit record.
 
-Format: the standard entry shape above (`- {HH:MM} | {skill-tag}: {summary}`), using the skill's canonical tag from the rename table. Skip the bullet and the completed work is absent from the daily audit trail.
+Format: the standard entry shape above (`- {HH:MM} | {skill-tag}: {summary}`), using the skill's canonical tag from *Skill Tags* above. Skip the bullet and the completed work is absent from the daily audit trail.

@@ -126,4 +126,4 @@ The caller (skill) collects:
 - A low-value accretion candidates list with fold/delete recommendations.
 - A temp/outdated artifacts list grouped by safe-to-delete vs review-first.
 
-The caller decides what to do with these — write to a report file, prompt for action, or both. This doc only defines *what* "stale" means; the *what next* is the skill's job.
+The caller decides what to do with these: write to a report file, apply per its own repair-class rules, prompt for action, or some mix. This doc only defines *what* "stale" means; the *what next* is the skill's job.

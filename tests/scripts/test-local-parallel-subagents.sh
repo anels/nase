@@ -17,6 +17,17 @@ assert_file() {
   fi
 }
 
+assert_not_contains() {
+  local name="$1"
+  local file="$2"
+  local pattern="$3"
+  if grep -Fq -- "$pattern" "$file"; then
+    fail "$name"
+  else
+    pass "$name"
+  fi
+}
+
 assert_agent_contract() {
   local agent="$1"
   local path=".claude/agents/${agent}.md"
@@ -76,17 +87,26 @@ assert_contains "kb-review requires replayable non-mutation proof" ".claude/comm
 assert_contains "kb-review tests collision-safe backup writers" ".claude/commands/nase/kb-review.md" "archive names must be collision-safe"
 assert_contains "kb-review executes exact code proposals" ".claude/commands/nase/kb-review.md" "not repair-ready until that test executes successfully"
 assert_contains "kb-review reruns full preflight for exact proposals" ".claude/commands/nase/kb-review.md" "every deterministic preflight command"
-assert_contains "kb-review separates local repairs from destructive and external actions" ".claude/commands/nase/kb-review.md" "External, credential, deletion, and rotation actions"
+assert_contains "kb-review keeps a green rerun from closing open findings" ".claude/commands/nase/kb-review.md" "green re-run does not close a finding that is still open"
+assert_contains "kb-review separates local repairs from destructive and external actions" ".claude/commands/nase/kb-review.md" "MUST NOT ride along in the local batch"
+assert_contains "kb-review names writes outside the workspace" ".claude/commands/nase/kb-review.md" 'any write outside `workspace/`'
+assert_contains "kb-review discloses every automatic deletion by path" ".claude/commands/nase/kb-review.md" "Every deleted path MUST be listed individually"
+assert_contains "kb-review reports the backup it relied on" ".claude/commands/nase/kb-review.md" "backup_relied_on"
+assert_contains "kb-review downgrades a deletion whose backup predates the target" ".claude/commands/nase/kb-review.md" "older than a deletion target's mtime does not cover that target"
+assert_contains "kb-review references the lifecycle layers doc" ".claude/commands/nase/kb-review.md" ".claude/docs/kb-lifecycle-layers.md"
+assert_contains "lifecycle layers refuse to guess a status" ".claude/docs/kb-lifecycle-layers.md" "MUST NOT pick a status when verification fails"
+assert_contains "lifecycle layers state a MUST NOT be written rule" ".claude/docs/kb-lifecycle-layers.md" "MUST NOT be written"
+assert_contains "lifecycle layers keep the unknown valid-time fallback" ".claude/docs/kb-lifecycle-layers.md" "true since unknown"
 assert_contains "effort model points to stable kb-review section" ".claude/docs/effort-model.md" 'Deep review -> Authoritative state'
 assert_contains "kb relationship graph points to stable kb-review section" ".claude/docs/kb-relationship-graph.md" 'Deep review -> Content and relationships'
 assert_contains "kb staleness points to stable kb-review section" ".claude/docs/kb-staleness.md" 'Deep review -> Content and relationships'
 assert_contains "kb write routing points to stable kb-review section" ".claude/docs/kb-write-routing.md" 'Deep review -> Content and relationships'
 assert_contains "lesson promotion points to stable kb-review section" ".claude/docs/lessons-format.md" 'Deep review -> Content and relationships'
-assert_cmd "effort model has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/effort-model.md" '/nase:kb-review` Step'
-assert_cmd "kb relationship graph has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/kb-relationship-graph.md" '/nase:kb-review` Step'
-assert_cmd "kb staleness has no removed kb-review steps" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/kb-staleness.md" '/nase:kb-review` (Steps'
-assert_cmd "kb write routing has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/kb-write-routing.md" '/nase:kb-review` Step'
-assert_cmd "lesson format has no removed kb-review step" bash -c '! grep -Fq "$2" "$1"' _ ".claude/docs/lessons-format.md" '/nase:kb-review` Step'
+assert_not_contains "effort model has no removed kb-review step" ".claude/docs/effort-model.md" '/nase:kb-review` Step'
+assert_not_contains "kb relationship graph has no removed kb-review step" ".claude/docs/kb-relationship-graph.md" '/nase:kb-review` Step'
+assert_not_contains "kb staleness has no removed kb-review steps" ".claude/docs/kb-staleness.md" '/nase:kb-review` (Steps'
+assert_not_contains "kb write routing has no removed kb-review step" ".claude/docs/kb-write-routing.md" '/nase:kb-review` Step'
+assert_not_contains "lesson format has no removed kb-review step" ".claude/docs/lessons-format.md" '/nase:kb-review` Step'
 
 assert_contains "fsd searches KB mentions for touched paths" ".claude/commands/nase/fsd.md" "mentions:<path>"
 assert_contains "discuss-pr searches KB mentions for core changed files" ".claude/commands/nase/discuss-pr.md" "mentions:<path>"

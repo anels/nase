@@ -209,7 +209,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 - Capture verified, non-obvious lessons, articles, and patterns into durable KB files; no-op refreshes stay out.
 - `/nase:extract-skills` turns repeated workflows into workspace-local commands.
-- `/nase:kb-review` audits KB and workspace trust, then prepares approved repairs without automatic deletion.
+- `/nase:kb-review` audits KB and workspace trust, applies the repairs whose correct value is already decided, and gates judgment, credential, and out-of-workspace changes.
 - `/nase:kb-teamshare` exports sanitized KB + skills; teammates import with `/nase:kb-merge`.
 
 ```
@@ -248,7 +248,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 |---------|---------|
 | `/nase:kb-gap-detect` | Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries. |
 | `/nase:kb-merge` | Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export. |
-| `/nase:kb-review` | Audit and repair KB plus workspace state for stale data, broken references, credential exposure, unsafe backup or restore behavior, and lifecycle drift. Use for review KB, workspace hygiene, clean up KB, or periodic health checks. |
+| `/nase:kb-review` | Audit KB and workspace state for stale data, layer drift, unverified status claims, broken references, credential exposure, and unsafe backups, then apply safe repairs. Use for review KB, workspace hygiene, clean up KB, or curate KB. |
 | `/nase:kb-search` | Search KB files for topics, keywords, patterns, and related entries. Use for search KB, find in KB, or is X documented; use /nase:kb-update or /nase:learn to write. |
 | `/nase:kb-teamshare` | Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, share skills, or package content for /nase:kb-merge. |
 | `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns. |

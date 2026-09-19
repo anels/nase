@@ -42,8 +42,10 @@ Never auto-rewrite these without user confirmation:
 Reconcile current-state sections in place and remove superseded current wording.
 Genuine historical notes are never silently deleted. Use one of these markers:
 
-- `Correction YYYY-MM-DD: ...` when a prior claim was wrong.
-- `Superseded by: ...` when a prior claim was true at the time but replaced by a later change.
+- `**Correction** (recorded YYYY-MM-DD, true since YYYY-MM-DD): ...` when a prior claim was wrong.
+- `**Superseded by** <anchor> (recorded YYYY-MM-DD, true since YYYY-MM-DD)` when a prior claim was true at the time but replaced by a later change.
+
+`.claude/docs/kb-lifecycle-layers.md → Two times, always` owns this syntax; both dates are MUST, not optional.
 
 If a section has more than three corrections or supersession markers, report it as a compaction candidate instead of adding another long correction chain.
 
