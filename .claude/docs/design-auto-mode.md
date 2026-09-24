@@ -27,28 +27,28 @@ This is the **default** mode when `/nase:design` runs with no flag and the slug 
 
 Same as base skill: no code, no implementation, no FSD. Only the effort doc is produced.
 
-## Language preflight (Step 0 — MUST run before Step 1, non-negotiable)
+## Language preflight (Step 0 - MUST run before Step 1, non-negotiable)
 
-The base skill's pointer applies; resolve it before Step 1, not at Step 6. Auto mode emits exactly two user-facing surfaces — the Step 4.5 `AskUserQuestion` batch and the Step 6 report — and both depend on the answer.
+The base skill's pointer applies; resolve it before Step 1, not at Step 6. Auto mode emits exactly two user-facing surfaces - the Step 4.5 `AskUserQuestion` batch and the Step 6 report - and both depend on the answer.
 
 ## No-Ask Contract (mid-pipeline)
 
-**Never use `AskUserQuestion` mid-pipeline.** For every decision point, execute the Research Ladder first. Collect anything still unknowable into `human_input_queue` and keep going — do not stop to ask. The **one** place auto mode talks to the user is **Step 4.5**, which batches the whole queue into `AskUserQuestion` at the end, after research and grill have shrunk it to only what genuinely needs a human. Only after the ladder is exhausted does a question reach that batch.
+**Never use `AskUserQuestion` mid-pipeline.** For every decision point, execute the Research Ladder first. Collect anything still unknowable into `human_input_queue` and keep going - do not stop to ask. The **one** place auto mode talks to the user is **Step 4.5**, which batches the whole queue into `AskUserQuestion` at the end, after research and grill have shrunk it to only what genuinely needs a human. Only after the ladder is exhausted does a question reach that batch.
 
 "Unknowable" means: requires a business/stakeholder decision, involves external team ownership with no documented precedent, or has zero signal across all applicable research sources. **Exhaust every source before marking unknowable.** A single empty grep is not exhaustion.
 
 ## Research Ladder (per open question)
 
-**If you can run it — run it.** Not "I would check X" or "we could look at Y": call the tool. Speculation about what the codebase might contain is not evidence. This governs every research step below and everywhere else in this algorithm.
+**If you can run it - run it.** Not "I would check X" or "we could look at Y": call the tool. Speculation about what the codebase might contain is not evidence. This governs every research step below and everywhere else in this algorithm.
 
 Run this sequence before giving up on any question:
 
-1. **Codebase** — execute Grep/Glob/Read in `repo_path`. Look for: existing patterns, similar features, constants, schema definitions, interface signatures, test expectations, recent commits touching the relevant area.
-2. **KB** — read the domain KB file. Look for: architecture decisions, constraints, ownership, past choices on similar problems.
-3. **CLAUDE.md** — read the repo's coding standards for relevant constraints.
-4. **Jira** — execute `searchJiraIssuesUsingJql` for related tickets using keyword fragments from the question. Read comments on the top 2-3 hits.
-5. **Effort docs** — execute `grep -r` across `workspace/efforts/*.md` for related design decisions.
-6. **External docs** — when the question is about an external library/SDK/API/platform behavior, run the source ladder in `.claude/docs/design-research.md → Part A`: official docs (`context7`/`ms-learn` MCP or `WebSearch`+`WebFetch`), dependency source/changelog at the pinned version, then issue trackers. Cite the URL/source; apply the comprehension gate.
+1. **Codebase** - execute Grep/Glob/Read in `repo_path`. Look for: existing patterns, similar features, constants, schema definitions, interface signatures, test expectations, recent commits touching the relevant area.
+2. **KB** - read the domain KB file. Look for: architecture decisions, constraints, ownership, past choices on similar problems.
+3. **CLAUDE.md** - read the repo's coding standards for relevant constraints.
+4. **Jira** - execute `searchJiraIssuesUsingJql` for related tickets using keyword fragments from the question. Read comments on the top 2-3 hits.
+5. **Effort docs** - execute `grep -r` across `workspace/efforts/*.md` for related design decisions.
+6. **External docs** - when the question is about an external library/SDK/API/platform behavior, run the source ladder in `.claude/docs/design-research.md → Part A`: official docs (`context7`/`ms-learn` MCP or `WebSearch`+`WebFetch`), dependency source/changelog at the pinned version, then issue trackers. Cite the URL/source; apply the comprehension gate.
 
 After all 6: if still no signal, classify as unknowable. When forced to choose between equally valid options with no signal, apply the Design Principles ordering from the base skill and pick the option that best satisfies the leading principle. Log the auto-selection reasoning.
 
@@ -62,23 +62,23 @@ Resolve the repo and KB, then gather repo state, active efforts, Jira context, r
 
 **Additional parallel research:**
 
-**1f. Related effort docs** — grep `workspace/efforts/*.md` for terms from $ARGUMENTS. Extract: constraints established, approaches rejected, open questions left by prior designs.
+**1f. Related effort docs** - grep `workspace/efforts/*.md` for terms from $ARGUMENTS. Extract: constraints established, approaches rejected, open questions left by prior designs.
 
-**1g. Codebase archaeology** — for the main domain area, find the 5 most recently modified relevant files and read them. This surfaces in-flight patterns and active conventions:
+**1g. Codebase archaeology** - for the main domain area, find the 5 most recently modified relevant files and read them. This surfaces in-flight patterns and active conventions:
 ```bash
 git -C {repo} log --oneline --diff-filter=M --name-only -- {relevant-paths} | head -20
 ```
 
-**1h. Epic/feature context** — if Atlassian MCP is available, search for open epics or stories that might scope this work:
+**1h. Epic/feature context** - if Atlassian MCP is available, search for open epics or stories that might scope this work:
 ```
 project in (...) AND issuetype in (Epic, Story) AND (summary ~ "{keywords}") AND status != Done ORDER BY updated DESC
 ```
 
-**1i. External research** — run `.claude/docs/design-research.md → Part A` for any external-dependency-leaning approach: official docs, dependency source/changelog (pinned version), issue trackers, Q&A, blogs. Ground every external claim with a URL/source; run the debias pass before locking a direction.
+**1i. External research** - run `.claude/docs/design-research.md → Part A` for any external-dependency-leaning approach: official docs, dependency source/changelog (pinned version), issue trackers, Q&A, blogs. Ground every external claim with a URL/source; run the debias pass before locking a direction.
 
-**1j. Plan-phase gates** — run the applicable gates from `.claude/docs/design-research.md → Part B`: bug-repro + root-cause (bug-shaped work), prod-data validation (scale/usage assumptions), unit-test-gap analysis (any code change). Resolve from evidence where possible; queue genuine unknowns.
+**1j. Plan-phase gates** - run the applicable gates from `.claude/docs/design-research.md → Part B`: bug-repro + root-cause (bug-shaped work), prod-data validation (scale/usage assumptions), unit-test-gap analysis (any code change). Resolve from evidence where possible; queue genuine unknowns.
 
-After gathering: synthesize context internally. No user interaction — proceed directly to Step 2.
+After gathering: synthesize context internally. No user interaction - proceed directly to Step 2.
 
 ---
 
@@ -100,17 +100,17 @@ Keep the complete effort-doc draft in memory and proceed directly to Step 3. Do 
 
 ---
 
-## Step 3: Codebase Grill Pass (mandatory — always runs)
+## Step 3: Codebase Grill Pass (mandatory - always runs)
 
 This step runs unconditionally after the effort-doc draft is prepared in memory. It does not depend on review scores. Even if the initial self-review gave all PASS, the grill still runs.
 
-**Purpose:** actively resolve every open question and design ambiguity through tool execution before submitting the doc for review. This is not a reasoning exercise — it is a research execution phase.
+**Purpose:** actively resolve every open question and design ambiguity through tool execution before submitting the doc for review. This is not a reasoning exercise - it is a research execution phase.
 
 Before collecting branches, follow `.claude/docs/open-work-freshness.md` for every proposed implementation-plan item and success criterion. Consume `freshness_outcome` per that document's `Auto design` row; the draft being in memory rather than on disk is the only difference - discard means discard without staging.
 
 ### 3a. Collect all branches
 
-Collect branches exactly as `.claude/docs/design-grill-mode.md → Step 3` specifies — the same open-questions / ambiguous-wording / missing-invariant sources, the same persona lenses, the same dependency-closed 15-branch cap and load-bearingness ordering. Run it against the in-memory draft instead of a saved effort doc.
+Collect branches exactly as `.claude/docs/design-grill-mode.md → Step 3` specifies - the same open-questions / ambiguous-wording / missing-invariant sources, the same persona lenses, the same dependency-closed 15-branch cap and load-bearingness ordering. Run it against the in-memory draft instead of a saved effort doc.
 
 ### 3b. For each branch: classify then execute
 
@@ -129,7 +129,7 @@ design_section: "{Which section this affects}"
 
 After working through all branches:
 - Apply all resolutions to the relevant in-memory design sections
-- Remove resolved items from `## Open Questions` and note what resolved each one (e.g., "Resolved via `src/api/routes.ts:42` — existing pattern uses pagination")
+- Remove resolved items from `## Open Questions` and note what resolved each one (e.g., "Resolved via `src/api/routes.ts:42` - existing pattern uses pagination")
 - Items moved to `human_input_queue` stay in `## Open Questions` with the note: "→ Queued for Step 4.5 human input"
 
 Proceed to Step 4.
@@ -164,9 +164,9 @@ After 3 iterations: exit with status `max-iterations`. Remaining issues go to `h
 
 ## Step 4.5: Resolve Human Input (the one interactive batch)
 
-This is the single point where auto mode talks to the user. By now research + grill + review have shrunk `human_input_queue` to only what genuinely needs a human — business/stakeholder calls, decisions with no codebase/KB/Jira/external signal. Ask them all here, together, before the final write.
+This is the single point where auto mode talks to the user. By now research + grill + review have shrunk `human_input_queue` to only what genuinely needs a human - business/stakeholder calls, decisions with no codebase/KB/Jira/external signal. Ask them all here, together, before the final write.
 
-**If `human_input_queue` is empty: skip this step entirely** — write the doc and report with no prompt. The best auto run asks nothing.
+**If `human_input_queue` is empty: skip this step entirely** - write the doc and report with no prompt. The best auto run asks nothing.
 
 **If non-empty:**
 
@@ -194,7 +194,7 @@ python3 .claude/scripts/effort-state.py --file "{staged_path}" --evaluate-transi
 
 ### 5b. Append `## Human Input Required`
 
-Append only if `human_input_queue` is still non-empty **after Step 4.5** — i.e. the user deferred these at the end-of-run prompt (skipped, or "Other → defer"). Most questions should be resolved by then; this section is the leftover. Place AFTER `## Open Questions` and BEFORE `## Lifecycle`.
+Append only if `human_input_queue` is still non-empty **after Step 4.5** - i.e. the user deferred these at the end-of-run prompt (skipped, or "Other → defer"). Most questions should be resolved by then; this section is the leftover. Place AFTER `## Open Questions` and BEFORE `## Lifecycle`.
 
 ```markdown
 ## Human Input Required
@@ -206,7 +206,7 @@ You deferred these at the end-of-run prompt. Provide answers below, then run `/n
 | 1 | {question} | {business/stakeholder decision — no codebase signal} | {sources checked} | {conservative default} | {design section} |
 ```
 
-Each row must be a concrete, actionable question — not "clarify scope" but "Should the export endpoint support CSV only, or also Excel? Default: CSV-only (matches existing download endpoints in `src/api/export.ts`)."
+Each row must be a concrete, actionable question - not "clarify scope" but "Should the export endpoint support CSV only, or also Excel? Default: CSV-only (matches existing download endpoints in `src/api/export.ts`)."
 
 ### 5c. Update lifecycle
 
@@ -231,7 +231,7 @@ Report to user (conversation language). Include:
 - Final verdict: APPROVED or max-iterations-reached
 - Stats: {N} review rounds, {M} branches grilled ({X} resolved from evidence), {A} questions answered at the end-of-run prompt, {K} deferred
 - If the user deferred questions (`## Human Input Required` non-empty):
-  > **{K} questions still open** — you deferred these at the prompt; they're in `## Human Input Required`. Run `/nase:design --review {slug}` to resolve them before implementing.
+  > **{K} questions still open** - you deferred these at the prompt; they're in `## Human Input Required`. Run `/nase:design --review {slug}` to resolve them before implementing.
 - If APPROVED with nothing deferred:
   > Design approved with no open questions. Run `/nase:fsd {slug}` when ready to implement.
 
@@ -242,8 +242,8 @@ Daily log entry (per `.claude/docs/daily-log-format.md`):
 
 ## Notes
 
-- **Step 3 is unconditional** — the Codebase Grill Pass runs every time, regardless of whether the initial design looks complete. This is intentional: it surfaces hidden constraints before review, not after.
-- **Execute before concluding** — if the Research Ladder says "check the codebase," that means calling Grep/Read/Glob, not reasoning about what might be there.
-- **Auto-assumptions are conservative** — when forced to pick, prefer the simpler, more reversible option and flag it for review.
-- **If `--auto` + `--review`** — this should not reach Auto Mode; base mode detection routes to Review Mode first.
-- **Hard Gate still applies** — no code edits, no FSD invocation, no PRs. Only the effort doc is written.
+- **Step 3 is unconditional** - the Codebase Grill Pass runs every time, regardless of whether the initial design looks complete. This is intentional: it surfaces hidden constraints before review, not after.
+- **Execute before concluding** - if the Research Ladder says "check the codebase," that means calling Grep/Read/Glob, not reasoning about what might be there.
+- **Auto-assumptions are conservative** - when forced to pick, prefer the simpler, more reversible option and flag it for review.
+- **If `--auto` + `--review`** - this should not reach Auto Mode; base mode detection routes to Review Mode first.
+- **Hard Gate still applies** - no code edits, no FSD invocation, no PRs. Only the effort doc is written.

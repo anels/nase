@@ -87,6 +87,7 @@ cat > "$FIXTURE/workspace/kb/projects/fixture.md" <<'EOF'
 - Ambiguous source ref: `Startup.cs`
 - Workspace note: `workspace/tasks/lessons.md`
 - Placeholder: `FILL_IN`
+- Multi-word placeholder: <fill in the owner name>.
 
 ## API Surface
 - Auth claim is stale and may be outdated. Check `api/AuthController.cs:1`.
@@ -100,9 +101,9 @@ cat > "$FIXTURE/workspace/kb/projects/fixture.md" <<'EOF'
 ## Change History
 ### 2026-04-01
 - Old local claim was stale but kept for learning.
-- Correction 2026-04-02: first correction.
-- Superseded by: second correction.
-- Correction 2026-04-03: third correction.
+- **Correction** (recorded 2026-04-02, true since 2026-04-02): first correction.
+- **Superseded by** second correction (recorded 2026-04-02, true since 2026-04-02).
+- **Correction** (recorded 2026-04-03, true since 2026-04-03): third correction.
 
 ## Build Commands
 
@@ -275,7 +276,7 @@ json_out=$(python3 "$SCRIPT" \
   --json 2>&1)
 json_rc=$?
 
-if [ "$json_rc" = 0 ] && printf '%s' "$json_out" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["summary"]["total"] >= 6; assert any(i["action"] == "auto-fix" for i in data["issues"]); assert any(i["action"] == "needs_human" for i in data["issues"]); assert any(i["category"] == "line_out_of_range" and i["action"] == "needs_human" for i in data["issues"])'; then
+if [ "$json_rc" = 0 ] && printf '%s' "$json_out" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["summary"]["total"] >= 6; assert any(i["action"] == "auto-fix" for i in data["issues"]); assert any(i["action"] == "needs_human" for i in data["issues"]); assert any(i["category"] == "line_out_of_range" and i["action"] == "needs_human" for i in data["issues"]); assert sum(1 for i in data["issues"] if i["category"] == "unresolved_placeholder") >= 2, "expected both the bare FILL_IN and the multi-word bracket placeholder to be caught"'; then
   pass=$((pass + 1))
   printf 'PASS  json output is parseable and classified\n'
 else

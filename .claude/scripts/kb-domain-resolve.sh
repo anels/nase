@@ -38,7 +38,7 @@ DOMAIN_KEY=$(echo "$INPUT" | tr '[:upper:]' '[:lower:]' | tr '_' '-' | tr ' ' '-
 # Match lines like: - platform-monitoring → workspace/kb/projects/platform-monitoring.md
 # Also handles: - sre → workspace/kb/ops/sre.md
 KB_PATH=$(grep -E "^[[:space:]]*-[[:space:]]+${DOMAIN_KEY}[[:space:]]+→" "$DOMAIN_MAP" \
-  | sed -E 's/.*→[[:space:]]*//' \
+  | sed -E 's/[^→]*→[[:space:]]*//' \
   | awk '{print $1}' \
   || true)
 

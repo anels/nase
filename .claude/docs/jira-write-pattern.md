@@ -1,6 +1,6 @@
-# Jira Write Pattern — Shared Reference
+# Jira Write Pattern - Shared Reference
 
-Canonical format rule for skills that create or edit Jira content via Atlassian MCP. Referenced by skills that mutate Jira (investigate-sre-jira, alert-rule-quality-checker, design). Pairs with `.claude/docs/external-mutation-policy.md` (the approval + token gate) and `.claude/docs/confluence-adf-pattern.md` (Confluence is the opposite — ADF there).
+Canonical format rule for skills that create or edit Jira content via Atlassian MCP. Referenced by skills that mutate Jira (investigate-sre-jira, alert-rule-quality-checker, design). Pairs with `.claude/docs/external-mutation-policy.md` (the approval + token gate) and `.claude/docs/confluence-adf-pattern.md` (Confluence is the opposite - ADF there).
 
 ---
 
@@ -18,31 +18,31 @@ ADF JSON re-serializes between the moment a skill computes the token sha and the
 
 ## When you must @mention a person: ADF + batch token
 
-**Markdown cannot render a resolving @mention.** A plain `@name` and Jira wiki `[~accountid:…]` both render as literal text in a markdown body — the user is not linked and not notified. A real mention requires an ADF `mention` node:
+**Markdown cannot render a resolving @mention.** A plain `@name` and Jira wiki `[~accountid:…]` both render as literal text in a markdown body - the user is not linked and not notified. A real mention requires an ADF `mention` node:
 
 ```json
 {"type": "mention", "attrs": {"id": "<accountId>", "text": "@Display Name"}}
 ```
 
-Only `type` and `attrs.id` (the Atlassian account ID) are required; `text` should carry the leading `@`. Resolve the account ID with `lookupJiraAccountId` (or `atlassianUserInfo` for yourself) — never guess it.
+Only `type` and `attrs.id` (the Atlassian account ID) are required; `text` should carry the leading `@`. Resolve the account ID with `lookupJiraAccountId` (or `atlassianUserInfo` for yourself) - never guess it.
 
 So when a comment or description must mention/notify someone, send the whole body as `contentFormat: "adf"`. Because ADF drifts the single-shot sha (above), the guard allows ADF **only under a batch / issue-allowlist token**, which binds the approved issue set + an op-count cap instead of the payload bytes. Steps:
 
 1. `AskUserQuestion` showing the target issue(s) and the mention(s).
-2. Write a batch token (`approved_issues`, `max_ops`, `created_at`) — see `.claude/docs/external-mutation-policy.md` → batch token.
+2. Write a batch token (`approved_issues`, `max_ops`, `created_at`) - see `.claude/docs/external-mutation-policy.md` → batch token.
 3. Call `editJiraIssue` / `addCommentToJiraIssue` with `contentFormat: "adf"`.
 
-`createJiraIssue` cannot use a batch token (no issue key exists yet), so it is markdown-only — create the issue in markdown, then add the mention via an ADF `addCommentToJiraIssue` or `editJiraIssue` under a batch token.
+`createJiraIssue` cannot use a batch token (no issue key exists yet), so it is markdown-only - create the issue in markdown, then add the mention via an ADF `addCommentToJiraIssue` or `editJiraIssue` under a batch token.
 
 ### Links render without ADF
 
-A bare Jira key (`PROJ-123`) auto-links natively, and a full URL renders as a clickable link, in a markdown body — so you do not need ADF just for Jira/GitHub references. ADF is only required for **mentions** and other rich nodes (smart cards, panels). Reserve it for those.
+A bare Jira key (`PROJ-123`) auto-links natively, and a full URL renders as a clickable link, in a markdown body - so you do not need ADF just for Jira/GitHub references. ADF is only required for **mentions** and other rich nodes (smart cards, panels). Reserve it for those.
 
 ---
 
 ## Token sha must include `contentFormat`
 
-The single-shot token's `payload_sha256` is computed over the exact `jq -cS .tool_input` that will be sent. Build the full payload — including `contentFormat: "markdown"` — *before* hashing, then send it byte-identical:
+The single-shot token's `payload_sha256` is computed over the exact `jq -cS .tool_input` that will be sent. Build the full payload - including `contentFormat: "markdown"` - *before* hashing, then send it byte-identical:
 
 - No trailing newline on the body.
 - No late edits between hashing and the call.
@@ -63,4 +63,4 @@ The guard selects by tool name, so `executeWrite` / `executeDestructive` cannot 
 
 ## Reading is unaffected
 
-This rule is about **writes**. Reading Jira (`getJiraIssue`, `searchJiraIssuesUsingJql`) and choosing `responseContentFormat` is independent — read in whatever format is most useful.
+This rule is about **writes**. Reading Jira (`getJiraIssue`, `searchJiraIssuesUsingJql`) and choosing `responseContentFormat` is independent - read in whatever format is most useful.

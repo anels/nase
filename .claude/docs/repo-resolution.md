@@ -1,4 +1,4 @@
-# Repo Resolution & KB Loading — Shared Reference
+# Repo Resolution & KB Loading - Shared Reference
 
 Canonical algorithms used across nase skills. Skills with skill-specific deviations (e.g., onboard's batch mode) keep that logic inline and reference only the shared portions.
 

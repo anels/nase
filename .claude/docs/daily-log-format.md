@@ -1,4 +1,4 @@
-# Daily Log Format — Shared Reference
+# Daily Log Format - Shared Reference
 
 Standardized format for appending entries to `workspace/logs/{YYYY-MM-DD}.md`.
 
@@ -25,7 +25,7 @@ Other sections may exist, but they are not counted as skill/session activity.
 
 ### Skill Tags (canonical)
 
-Renames only — i.e. tags where the form differs from the command name. Every other `/nase:*` skill uses the command name with the `/nase:` prefix stripped (e.g. `wrap-up`, `today`, `tech-digest`, `reflect`, `kb-update`, `kb-gap-detect`).
+Renames only - i.e. tags where the form differs from the command name. Every other `/nase:*` skill uses the command name with the `/nase:` prefix stripped (e.g. `wrap-up`, `today`, `tech-digest`, `reflect`, `kb-update`, `kb-gap-detect`).
 
 | Skill | Tag | Notes |
 |-------|-----|-------|
@@ -38,7 +38,7 @@ Renames only — i.e. tags where the form differs from the command name. Every o
 
 - One line per entry. No multi-line blocks.
 - Include repo name or PR number when relevant: `fsd: {repo-name} — add watchdog function ({pr_number})`
-- Append immediately when the action completes — do not batch entries.
+- Append immediately when the action completes - do not batch entries.
 - Deterministic hooks use the same shape, e.g. `- 10:42 | worktree: removed \`/tmp/foo\``.
 - Files such as `workspace/logs/{YYYY-MM-DD}-sre-tracker.md` use a separate tracker schema and are excluded from daily-log quality checks.
 

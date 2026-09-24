@@ -1,4 +1,4 @@
-# lessons.md — format and write policy
+# lessons.md - format and write policy
 
 Canonical structure for `workspace/tasks/lessons.md`. Every skill that appends to this file follows this contract.
 
@@ -24,7 +24,7 @@ Canonical structure for `workspace/tasks/lessons.md`. Every skill that appends t
 | `style` | Communication-style rules captured from user corrections |
 | `calibration` | ETA accuracy or daily-score calibration (written by `/nase:wrap-up`) |
 
-Pick the closest match. Do not invent new categories — extend this list instead.
+Pick the closest match. Do not invent new categories - extend this list instead.
 
 ## Body
 
@@ -33,7 +33,7 @@ Pick the closest match. Do not invent new categories — extend this list instea
 **Do:** {concrete action or rule}
 ```
 
-`calibration` entries use a different body — see `/nase:wrap-up` Step 6.
+`calibration` entries use a different body - see `/nase:wrap-up` Step 6.
 
 ## Writers
 
@@ -54,7 +54,7 @@ Downstream skill-optimization tooling mines this file for skill changes. Routine
 - The lesson is already captured (search the file before appending).
 - The "rule" is generic engineering advice with no concrete trigger.
 
-Silence is acceptable. Notability bar applies — same as KB writes.
+Silence is acceptable. Notability bar applies - same as KB writes.
 
 ## Promotion
 

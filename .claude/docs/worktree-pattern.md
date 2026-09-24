@@ -23,7 +23,7 @@ directory accumulates `{repo}-fsd`, `{repo}-fsd-1`, `{repo}-address-comments` le
 ```
 
 `{worktree_root}` is `$HOME/.nase-worktrees`. Expand `$HOME` to its absolute value
-before using the path — the skills pass these paths to `git -C` and to file tools that
+before using the path - the skills pass these paths to `git -C` and to file tools that
 do not perform shell tilde expansion.
 
 If that path already exists, append `-1`, `-2`, etc. until an available path is found.
@@ -35,7 +35,7 @@ Each skill uses its own suffix (e.g. `fsd`, `address-comments`, `prep-merge`).
 **Do not put the root in `/tmp`.** macOS runs `com.apple.tmp_cleaner` daily at 00:00 and
 deletes aged `/tmp` content regardless of Git worktree locks. That silently destroys the
 retained quarantine worktrees this pattern's cleanup step deliberately keeps for human
-inspection — and any uncommitted work inside a retained dirty worktree — while leaving a
+inspection - and any uncommitted work inside a retained dirty worktree - while leaving a
 stale locked entry in `git worktree list`. `$HOME` is not swept.
 
 ## Creation
@@ -49,8 +49,8 @@ git -C {repo_path} worktree add {worktree_path} {ref}
 worktrees. Create it with `mkdir -p` and never clear it wholesale.
 
 Where `{ref}` is one of:
-- `origin/{branch_name}` — existing remote branch (most skills, e.g. address-comments, prep-merge)
-- `-b {new_branch} origin/{default_branch}` — create a new branch off default (e.g. fsd)
+- `origin/{branch_name}` - existing remote branch (most skills, e.g. address-comments, prep-merge)
+- `-b {new_branch} origin/{default_branch}` - create a new branch off default (e.g. fsd)
 
 After creating the worktree, if you need the local branch to track the remote (not detached HEAD):
 
@@ -60,13 +60,13 @@ git -C {worktree_path} checkout -B {branch_name} origin/{branch_name}
 
 ## Key Rule
 
-**Do NOT use `EnterWorktree`** — it creates its own worktree and won't adopt one you already created. Use absolute paths to `{worktree_path}` for all subsequent git and file operations instead.
+**Do NOT use `EnterWorktree`** - it creates its own worktree and won't adopt one you already created. Use absolute paths to `{worktree_path}` for all subsequent git and file operations instead.
 
 ## Recovery: branch already used by another worktree
 
 If `git worktree add origin/{branch}` reports the branch is already checked out elsewhere (typically the main repo on the same branch), the new worktree comes up on **detached HEAD** and `checkout -B {branch} origin/{branch}` will fail with `fatal: '{branch}' is already used by worktree at '...'`.
 
-Do **not** switch the main repo off the branch — that touches the user's working state. Instead:
+Do **not** switch the main repo off the branch - that touches the user's working state. Instead:
 
 1. Leave the worktree on detached HEAD.
 2. Do all work (rebase, soft-reset, commit) there as usual.
@@ -86,7 +86,7 @@ Do **not** switch the main repo off the branch — that touches the user's worki
 
 A concurrent `/nase:address-comments` (or other) session sharing repo state can check out a different branch in your worktree path between phases, silently dropping your uncommitted edits. So re-verify HEAD before commit: confirm `git -C {worktree_path} rev-parse --abbrev-ref HEAD` still equals `{branch}` before staging.
 
-If it moved, do **not** yank the worktree back — the other session may be mid-flight on it. Create a fresh suffixed worktree (e.g. `{suffix}-1`) on `origin/{branch}` and redo the edits. `origin` HEAD is the source of truth and uncommitted edits are cheap to redo.
+If it moved, do **not** yank the worktree back - the other session may be mid-flight on it. Create a fresh suffixed worktree (e.g. `{suffix}-1`) on `origin/{branch}` and redo the edits. `origin` HEAD is the source of truth and uncommitted edits are cheap to redo.
 
 ## Cleanup
 

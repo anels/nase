@@ -48,8 +48,8 @@ Apply before presenting the draft to the user:
 
 - [ ] Bullets are `- item`, not a literal `•` (see Formatting Mechanics - a literal `•` never indents)
 - [ ] No line ends with a bare URL while the next line is non-empty (bullet *or* prose) - put content after the URL on the same line
-- [ ] No opening greeting ("Hi", "Hello", "Hope you're well") — jump straight to content
-- [ ] No AI filler words ("certainly", "absolutely", "I'd be happy to", "I wanted to reach out") — delete
+- [ ] No opening greeting ("Hi", "Hello", "Hope you're well") - jump straight to content
+- [ ] No AI filler words ("certainly", "absolutely", "I'd be happy to", "I wanted to reach out") - delete
 - [ ] Technical content: use bullets, not prose paragraphs
 - [ ] Can the message be cut by 30%? If yes, cut it
 - [ ] DM to non-Chinese-native colleagues: 100% English
@@ -59,7 +59,7 @@ Apply before presenting the draft to the user:
 - [ ] PR review request format: `[link] @reviewer1 @reviewer2 pls help review / pls take a look` or `Could you help review [link] - [TLDR]`
 - [ ] No redundant `this?` after a PR URL in review requests
 - [ ] Reassignment / change notifications: cc all affected people, add "let me know if anything breaks"
-- [ ] Personnel change messages: include a specific memory or detail — no generic templates
+- [ ] Personnel change messages: include a specific memory or detail - no generic templates
 - [ ] Incident update format: symptom → cause → current status → action request; cc TL/PM
 
 ## Key Rules
@@ -68,4 +68,4 @@ Apply before presenting the draft to the user:
 - Short is correct for technical DMs ("let me see" / "done" / "merged" are complete messages)
 - For people events (onboarding, offboarding, anniversaries): add warmth and specific details
 - For technical/process updates: concise bullets, root cause first, no band-aid
-- `cc:` or `@mention` everyone who may be affected — transparency is the default
+- `cc:` or `@mention` everyone who may be affected - transparency is the default

@@ -11,9 +11,9 @@ Find the right reviewers for one or more PRs and stage Slack DM drafts.
 
 Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
 
-Follows `.claude/docs/external-mutation-policy.md` — all Slack messages go through `slack_send_message_draft` (never `_send`). This skill only stages Slack drafts; it does not assign reviewers on GitHub. The Slack DM is the request; the reviewer accepts (or declines) by reading the PR. Skipping the GitHub assignment avoids a second mutation that the recipient has to re-acknowledge in their queue.
+Follows `.claude/docs/external-mutation-policy.md` - all Slack messages go through `slack_send_message_draft` (never `_send`). This skill only stages Slack drafts; it does not assign reviewers on GitHub. The Slack DM is the request; the reviewer accepts (or declines) by reading the PR.
 
-## Step 0 — Language preflight (MUST run first, non-negotiable)
+## Step 0 - Language preflight (MUST run first, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and AskUserQuestion prompts; use `output:` for Slack drafts and any GitHub-facing text.
 
@@ -25,11 +25,11 @@ Load what the skipped steps carried: the repo KB via `.claude/docs/repo-resoluti
 
 Step 7's ask becomes a re-review opener - `Pushed fixes for your comments on the PR - ready for another look when you get a minute.`, or `Responded to ...` when `no_commit=true`. Report each as `Slack DM draft staged for @{login} (Slack: {slack_handle}) - review + send manually.`
 
-## Step 1 — Parse inputs
+## Step 1 - Parse inputs
 
 Parse each reference with `python3 .claude/scripts/pr-github-helper.py parse "$PR_URL"` and group by repo from its normalized `owner`/`repo`/`number`. If any input is not a single GitHub PR, ask for a corrected URL before fetching metadata.
 
-## Step 2 — Fetch PR metadata (parallel per PR)
+## Step 2 - Fetch PR metadata (parallel per PR)
 
 Fetch PR metadata using the helper's **light** variant, which centralizes the field set from `.claude/docs/github-queries.md`:
 
@@ -42,7 +42,7 @@ Save: title, url, base branch, changed file paths, additions/deletions count, bo
 For multiple PRs, cherry-pick batches, or large diffs, dispatch `nase-pr-metadata-reader` once per PR in the same turn.
 It returns title/body/base/head/changed-file/signals only. The main thread merges those rows before owner resolution.
 
-## Step 3 — Resolve code owners
+## Step 3 - Resolve code owners
 
 Use this priority order to generate candidates. Always reach the KB before going to GitHub, but validate current ownership before drafting a request.
 Resolve each repo and its KB path via `.claude/docs/repo-resolution.md` before reading ownership signals; do not assume `workspace/kb/projects/<repo-name>.md` exists until resolution succeeds.
@@ -54,7 +54,7 @@ The main thread owns Slack lookup, recipient confirmation, and draft staging.
 **3a. Read project KB**
 
 Read the KB path returned by repo resolution once. Extract ownership signals in a single pass:
-1. Look for the `## Ownership Map` table — match each changed file path to a row (directory prefix or module name); collect Primary Owner and Secondary Owner GitHub handles.
+1. Look for the `## Ownership Map` table - match each changed file path to a row (directory prefix or module name); collect Primary Owner and Secondary Owner GitHub handles.
 2. Also scan for ownership notes, team sections, or "who to ping for X" annotations anywhere else in the file.
 
 If the KB has no Ownership Map (repo not yet onboarded), skip to 3b.
@@ -67,7 +67,7 @@ Use this to validate KB candidates and fill gaps. Check if the repo is cloned lo
 ```bash
 gh api "repos/{owner}/{repo}/contents/CODEOWNERS" --jq '.content' | base64 --decode
 ```
-(Use `--decode` long form — works on both macOS and Linux; `base64 -d` fails on macOS.)
+(Use `--decode` long form - works on both macOS and Linux; `base64 -d` fails on macOS.)
 
 Before matching, ask GitHub for CODEOWNERS parse errors when the API is available:
 ```bash
@@ -84,44 +84,46 @@ Path patterns follow gitignore-style glob semantics. The two that a matcher gets
 - An **empty owner line** deliberately leaves matching files unowned. CODEOWNERS has **no** `!pattern` negation, so do not read one into an empty-owner rule.
 - GitHub **ignores** lines using unsupported syntax. Do not invent owners for those lines; report the affected files as unresolved.
 
-**3c. Exclude the PR author and alumni** — skip the PR author's handle. Also check the KB for an "Alumni" or "no longer on team" section and skip anyone listed there.
+**3c. Exclude the PR author and alumni** - skip the PR author's handle. Also check the KB for an "Alumni" or "no longer on team" section and skip anyone listed there.
 
-## Step 4 — Resolve Slack users
+## Step 4 - Resolve Slack users
 
 For each GitHub handle:
-1. Try to find the real name — check KB file first (often has `@githubhandle` → real name mappings), then infer from the handle itself.
+1. Try to find the real name - check KB file first (often has `@githubhandle` → real name mappings), then infer from the handle itself.
 2. Search Slack: `mcp__plugin_slack_slack__slack_search_users`. Pick the query shape based on the given name's commonness (sanitized pattern: org-affixed names returned no matches; bare uncommon given names and full common names resolved cleanly):
-   - **Uncommon given name** (`UncommonName`, `RareGiven`, etc.): search the bare given name first — Slack ranks profile-name fuzziness above org-affixed phrases.
+   - **Uncommon given name** (`UncommonName`, `RareGiven`, etc.): search the bare given name first - Slack ranks profile-name fuzziness above org-affixed phrases.
    - **Common given name** (`CommonGiven`, etc.): search `"{Given} {Surname}"` without org suffix.
-   - **Never** include the corporate suffix (`CorpSuffix`, etc.) — profiles don't store it; it kills the match.
+   - **Never** include the corporate suffix (`CorpSuffix`, etc.) - profiles don't store it; it kills the match.
    - If the first form returns 0, fall back to the other form.
-3. If unresolvable, note it — don't block the whole flow.
+3. If unresolvable, note it - don't block the whole flow.
 
-## Step 5 — Classify PR complexity
+## Step 5 - Classify PR complexity
 
 **Simple PR** (ask for *approval*): ≤ 3 files, total diff ≤ 50 lines, OR changes are clearly mechanical (CODEOWNERS, config values, version bumps, dependency pins).
 
 **Complex PR** (ask for *review*): multiple source files with logic changes, large diffs, architectural impact, or unclear scope.
 
-When in doubt, lean towards "review."
+When in doubt, lean towards "review." Try jev first (`jev-judgment-points.md` point `request-review.complexity`); confidence < 0.9 or unavailable → fall back to the rule above.
 
-## Step 6 — Detect cherry-pick groups
+## Step 6 - Detect cherry-pick groups
 
 Cherry-picks share the same intent across different base branches. Group PRs as cherry-picks when:
 - Titles are identical or differ only by branch suffix/prefix (e.g. "fix X -> release/v1", "fix X -> release/v2")
 - Or commits share the same `Cherry-picked from commit {sha}` trailer in the commit body (more reliable than title matching)
 - Or the user explicitly called them cherry-picks
 
+Try jev first (`jev-judgment-points.md` point `request-review.cherry-pick-group`); confidence < 0.9 or unavailable → fall back to the rules above.
+
 Cherry-pick group → **one combined DM** per person listing all PR links.
 Unrelated PRs → **separate DMs** per PR per person.
 
-Follow `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` — apply when drafting Slack messages in Steps 7–9.
+Follow `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` - apply when drafting Slack messages in Steps 7–9.
 
-## Step 7 — Draft messages
+## Step 7 - Draft messages
 
 Write a single-PR DM like a colleague asking a quick favour - start with the ask, one line on what the change does, then the link. No formal sign-off. Cherry-pick groups are the exception: use the `- ` list format below.
 
-**No "Hey [name]," opener.** A Slack DM is already a 1:1 channel — Slack shows the recipient's name in the header, so naming them again in the body just adds noise. Open with the ask itself ("Could you help review [url] - [TLDR]"). This is purely a Slack-DM convention; if the skill ever drafts to a multi-person channel, an opener that names the target reviewer would be appropriate again.
+**No "Hey [name]," opener.** A Slack DM is already a 1:1 channel - Slack shows the recipient's name in the header, so naming them again in the body just adds noise. Open with the ask itself ("Could you help review [url] - [TLDR]").
 
 The TLDR should complete one of these naturally (pick whichever fits):
 - "this mainly fixes …"
@@ -156,26 +158,26 @@ Keep it short - people will read the PR description for details. Bullets are `- 
 draft tool's list syntax; a literal `•` renders flat with no indent. Keep the branch name after
 the URL on the same line so the auto-linker cannot swallow the next bullet.
 
-## Step 8 — Confirm recipient list and draft
+## Step 8 - Confirm recipient list and draft
 
 People move teams or leave companies, and sometimes you want a different reviewer than what git history suggests. Give the user control over the final list before staging any Slack drafts.
 
 Use two `AskUserQuestion` calls:
 
-**Question 1 — select recipients** (`multiSelect: true`):
+**Question 1 - select recipients** (`multiSelect: true`):
 
-Present each resolved person as a selectable option, pre-selected, labelled with their real name and a brief reason (`Alice Smith` — "14 commits to changed files"). List unresolved handles in the question text, not as options. The "Other" free-text option lets the user add someone not on the list.
+Present each resolved person as a selectable option, pre-selected, labelled with their real name and a brief reason (`Alice Smith` - "14 commits to changed files"). List unresolved handles in the question text, not as options. The "Other" free-text option lets the user add someone not on the list.
 
-**Question 2 — message preview** (single-select, only if question 1 returned selections):
+**Question 2 - message preview** (single-select, only if question 1 returned selections):
 
 Show the drafted message and ask "Stage Slack DM drafts for the selected people?"
-- `Stage drafts` — proceed
-- `Cancel` — abort
+- `Stage drafts` - proceed
+- `Cancel` - abort
 
 **Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__plugin_slack_slack__slack_search_users`) and add them to the draft list. If the search is ambiguous, surface the candidates and ask the user to clarify before staging drafts.
 
 Only stage drafts for the people the user confirmed in question 1.
 
-## Step 9 — Stage DM drafts (parallel)
+## Step 9 - Stage DM drafts (parallel)
 
-Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed. Then stop — do not also assign the same people on GitHub. Slack ping is the request; the GitHub review queue updates when the reviewer actually leaves a review.
+Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed. Then stop - do not also assign the same people on GitHub. Slack ping is the request; the GitHub review queue updates when the reviewer actually leaves a review.

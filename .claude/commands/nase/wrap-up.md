@@ -24,6 +24,6 @@ Steps 6, 7, and 9 each read a shared doc that a typical day does not need. Run t
 9. Consolidate pending style deltas. Count them first with `grep -c '\[STYLE-DELTA\]' workspace/logs/{today}.md || true` - `grep -c` exits 1 on zero matches and 2 on a missing file, so without the `|| true` the predicate reads as a command failure rather than as "no deltas". On zero (or no log file), record `style-delta=skipped-no-deltas` and move on without reading the doc. Otherwise follow `.claude/docs/style-delta-capture.md`; never write the style profile from inference.
 10. Build the journal with outcomes, reflection, lessons, KB/style changes, blockers, and stats. Render the final card from `.claude/docs/closing-block.md` at the end of the journal file.
 11. Stage the complete journal with `python3 .claude/scripts/workspace-write-guard.py stage`, show the diff, then run `workspace-write-guard.py apply` with recorded mtime/hash/staged hash. The main thread owns the write.
-12. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, and the closing card as the final visible block — echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
+12. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, and the closing card as the final visible block - echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
 
 Chained skill failures are recorded once and do not erase successful sibling steps. Never convert a skipped conditional step into a completion claim.

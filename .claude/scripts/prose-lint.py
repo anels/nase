@@ -135,14 +135,18 @@ class Document:
 
 
 # --- masking ---------------------------------------------------------------
-# Fenced blocks, inline code, and URLs become spaces of equal length, so a pasted
-# log or an identifier never trips a prose rule while offsets stay exact.
+# Fenced blocks, inline code, URLs, leading YAML frontmatter, and markdown
+# table rows become spaces of equal length, so a pasted log, an identifier, a
+# doc's metadata block, or a data table never trips a prose rule meant for
+# authored sentences, while offsets stay exact.
 # Quoted prose from someone else is NOT masked - read the hits before acting.
 
 _MASK_PATTERNS = (
     re.compile(r"^(```|~~~).*?^\1", re.DOTALL | re.MULTILINE),
     re.compile(r"`[^`\n]+`"),
     re.compile(r"<?https?://[^\s>|]+>?"),
+    re.compile(r"\A---\n.*?\n---[ \t]*\n?", re.DOTALL),
+    re.compile(r"^[ \t]*\|.*\|[ \t]*$", re.MULTILINE),
 )
 
 

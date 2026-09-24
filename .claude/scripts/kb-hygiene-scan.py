@@ -121,7 +121,7 @@ STALE_RE = re.compile(
     r"\b(stale local|stale tree|stale kb|is stale|was stale|now stale|outdated|no longer correct|incorrectly claimed|behind origin|drift correction|superseded by)\b",
     re.I,
 )
-CORRECTION_RE = re.compile(r"(Correction\s+20[0-9]{2}-[0-9]{2}-[0-9]{2}:|Superseded by:)", re.I)
+CORRECTION_RE = re.compile(r"\*\*(Correction|Superseded by)\*\*", re.I)
 LAST_UPDATED_RE = re.compile(r"Last updated:\s*(20[0-9]{2}-[0-9]{2}-[0-9]{2})", re.I)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")

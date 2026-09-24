@@ -1,4 +1,4 @@
-# Closing Block — Shared Reference
+# Closing Block - Shared Reference
 
 ## Contents
 
@@ -19,7 +19,7 @@ Canonical spec for the compact closing card that ends `/nase:today` and `/nase:w
 
 Seven plain lines, blank line above to separate from the previous section. This card is the **last visible content** the user sees. Nothing follows it: no status line, reminder, or extra note.
 
-**Where it renders.** A skill that produces its result in chat (`/nase:today`) ends its chat reply with the card. A skill that writes its result to a file (`/nase:wrap-up`) puts the card at the end of that file **and** echoes it as the final block of its chat reply — the journal path plus highlights come first, the card comes last. Writing the card only into the file is a bug: the user closing the day never opens the file, so the card never shows.
+**Where it renders.** A skill that produces its result in chat (`/nase:today`) ends its chat reply with the card. A skill that writes its result to a file (`/nase:wrap-up`) puts the card at the end of that file **and** echoes it as the final block of its chat reply - the journal path plus highlights come first, the card comes last. Writing the card only into the file is a bug: the user closing the day never opens the file, so the card never shows.
 
 **Render inside a fenced code block.** Emit the seven lines wrapped in a ```` ``` ```` fence. Rendered as prose, a Markdown viewer treats each `│` rail as its own paragraph and blows the card open with blank lines between every row; the fence keeps the box tight and monospaced so the rails line up.
 
@@ -35,13 +35,13 @@ Seven plain lines, blank line above to separate from the previous section. This 
 ```
 ````
 
-1. **`╭─ {Name}`** — opener line. NOT wrapped in `**...**`.
-2. **`│`** — blank rail line.
-3. **`│     {TLDR}`** — one sentence/fragment, ≤ 110 chars, conversation language. `·` (middot) as separator when listing items. State items, not intent — skip generic openers. Do not include a visible `TLDR:` label.
-4. **`│`** — blank rail line.
-5. **`│     {tint}`** — one-liner (style palette below). Memorable, not a plan summary. Do not include a visible `tint:` label.
-6. **`│`** — blank rail line.
-7. **`╰─`** — closing rail. No text after it.
+1. **`╭─ {Name}`** - opener line. NOT wrapped in `**...**`.
+2. **`│`** - blank rail line.
+3. **`│     {TLDR}`** - one sentence/fragment, ≤ 110 chars, conversation language. `·` (middot) as separator when listing items. State items, not intent - skip generic openers. Do not include a visible `TLDR:` label.
+4. **`│`** - blank rail line.
+5. **`│     {tint}`** - one-liner (style palette below). Memorable, not a plan summary. Do not include a visible `tint:` label.
+6. **`│`** - blank rail line.
+7. **`╰─`** - closing rail. No text after it.
 
 Do NOT use blockquote `>`.
 
@@ -49,25 +49,25 @@ Do NOT use blockquote `>`.
 
 `{Name}` = the `AI engineer:` value from `workspace/config.md`. Read it once at section start. If the file is missing, fall back to `nase`.
 
-## Tint — style palette (pick one per run)
+## Tint - style palette (pick one per run)
 
 Examples are English for compactness. The actual tint is rendered in the user's conversation language (see `language-config.md`); only an attributed `quote` may keep its original-language wording.
 
 | Style | Shape | Example |
 |---|---|---|
-| `quote` | Attributed line, real person; famous quotes allowed | "Programs must be written for people to read, and only incidentally for machines to execute." — Abelson and Sussman |
+| `quote` | Attributed line, real person; famous quotes allowed | "Programs must be written for people to read, and only incidentally for machines to execute." - Abelson and Sussman |
 | `proverb` | Cultural saying, idiom | "Measure twice, cut once." |
-| `original` | Your own aphorism | "A reviewer is the upstream's last sieve — the bugs it misses don't grow legs and walk away." |
+| `original` | Your own aphorism | "A reviewer is the upstream's last sieve - the bugs it misses don't grow legs and walk away." |
 | `joke` | Dry programmer humor, no setup-punchline | "Main branch put on three pounds today." |
 | `dark-humor` | Gallows humor about tools/process/time, never real harm or real people | "The build passed. Clearly nobody told it about tomorrow." |
 | `ice-cold` | High-cold sarcasm; elegant, brief, no cruelty | "The stale KB has entered its principal-engineer era." |
 | `motivation` | Encouraging, not cheesy | "Small steps, fast. No need to wait for perfect." |
-| `observation` | Wry remark on the work / day | "Waiting for a reply is like waiting for water to boil — the longer you stare, the slower it goes." |
+| `observation` | Wry remark on the work / day | "Waiting for a reply is like waiting for water to boil - the longer you stare, the slower it goes." |
 | `zen` | Spacious, no moral, no instruction | "The PR is not merged, yet it is on its way." |
 | `chuuni` | Anime-villain energy, fully committed | "The sealed compiler within my left hand stirs again. Today, it shall taste blood." |
 | `absurd` | Non-sequitur, deliberately ridiculous | "Every semicolon is a tiny coffin for a thought." |
 | `solemn` | Ceremonial, carved-in-stone | "Let the record show: on this day, the build was green." |
-| `playful` | Cheeky, impish wink, no punchline | "The bug knows you're looking — that's why it's hiding behind the semicolon." |
+| `playful` | Cheeky, impish wink, no punchline | "The bug knows you're looking - that's why it's hiding behind the semicolon." |
 | `deadpan` | Flat affect on a load-bearing line; treat the trivial as cosmic, the cosmic as trivial; self-deprecating without bitterness | "I've reopened this PR five times. The reviewer never flipped a card." |
 
 ## Tint generation rules
@@ -77,14 +77,14 @@ Examples are English for compactness. The actual tint is rendered in the user's 
 3. **Conversation language.** See `language-config.md`. Tint goes in `conversation:` language. Exception: a `quote` may keep its original wording if translation loses the bite.
 4. **Funny can be sharp, not mean.** Dark humor and sarcasm target the work, tooling, process, entropy, or the speaker's own fate. Never punch at a teammate, customer, identity, illness, layoff, death, or real-world tragedy.
 5. **Quote discipline.** Use `quote` only when the quote and attribution are known. If unsure, convert it into `original` instead of guessing.
-6. **Anti-AI-slop — never use these or their cousins:**
+6. **Anti-AI-slop - never use these or their cousins:**
    - "stay focused" / "you got this" / "let's crush it" / "let's go!" / "keep pushing"
    - "remember to..." / "don't forget that..." / "as they say..."
    - Generic affirmation ("great work!", "amazing!")
    - Hashtag-style optimism ("#GrindMode")
    - 💪 / 🚀 / 🔥 as substitute for substance
-7. **Rotate style — cheap check.** Look at the prior closing card's tint line only (one file: today → `workspace/logs/{yesterday}.md`; wrap-up → most recent `workspace/journals/*.md`). In the new format, this is the second non-empty `│     ...` content line inside the closing card. During the format migration, fall back to `│ tint:` and then the legacy `｜` line. Pick a different style. Best-effort, not a strict scan.
-8. **Be willing to be weird.** A zen koan, a Lu Xun pastiche, a deadpan one-liner about the weather — these stick. Corporate-poster aphorisms do not.
+7. **Rotate style - cheap check.** Look at the prior closing card's tint line only (one file: today → `workspace/logs/{yesterday}.md`; wrap-up → most recent `workspace/journals/*.md`). In the new format, this is the second non-empty `│     ...` content line inside the closing card. During the format migration, fall back to `│ tint:` and then the legacy `｜` line. Pick a different style. Best-effort, not a strict scan.
+8. **Be willing to be weird.** A zen koan, a Lu Xun pastiche, a deadpan one-liner about the weather - these stick. Corporate-poster aphorisms do not.
 
 ## TLDR rules
 
@@ -92,12 +92,12 @@ Examples are English for compactness. The actual tint is rendered in the user's 
 - `·` (middot) as item separator. Concrete signal only: counts, hot PR numbers, blocker names, ticket keys, stale-KB counts.
 - Skip generic openers ("today we...", "we completed..."). State items, not intent.
 - **Source of items differs by skill:**
-  - `/nase:today` — items lifted from Focus + blockers + PRs + Jira + stale-KB sections already drafted in this run.
-  - `/nase:wrap-up` — items lifted from today's actual outcomes (Steps 1–5: completed PRs/Jira, lessons captured, KB updates, blockers hit).
+  - `/nase:today` - items lifted from Focus + blockers + PRs + Jira + stale-KB sections already drafted in this run.
+  - `/nase:wrap-up` - items lifted from today's actual outcomes (Steps 1–5: completed PRs/Jira, lessons captured, KB updates, blockers hit).
 
-## `deadpan` style — seed bank
+## `deadpan` style - seed bank
 
-When picking `deadpan`, draw on these as shape references (don't copy verbatim; generate fresh in context). These are English shape-references — render the actual tint in the user's `conversation:` language per rule 3.
+When picking `deadpan`, draw on these as shape references (don't copy verbatim; generate fresh in context). These are English shape-references - render the actual tint in the user's `conversation:` language per rule 3.
 
 - "I've reopened this PR five times. The reviewer never flipped a card."
 - "I'm not bad at tests. I'm afraid they'll actually pass."

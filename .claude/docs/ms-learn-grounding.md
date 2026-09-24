@@ -1,4 +1,4 @@
-# MS Learn Grounding — Shared Reference
+# MS Learn Grounding - Shared Reference
 
 ## Contents
 
@@ -45,12 +45,12 @@ Pure Go / Rust / Python / JS repos with no Microsoft dependencies: skip groundin
 
 Ground specific factual claims, not the full KB. Target the kinds of statements that go stale fastest:
 
-- **SDK method behavior** — "method X returns Y under Z condition" / "default timeout is N ms"
-- **API contract** — "endpoint requires header X" / "version W deprecates field Y"
-- **Configuration semantics** — "setting X overrides Y" / "default sampling rate is Z%"
-- **Service tier behavior** — "tier T has limit L" / "feature F requires SKU S"
-- **Deprecation / EOL** — "feature F retires on date D"
-- **Auth model** — "scope X grants permission Y"
+- **SDK method behavior** - "method X returns Y under Z condition" / "default timeout is N ms"
+- **API contract** - "endpoint requires header X" / "version W deprecates field Y"
+- **Configuration semantics** - "setting X overrides Y" / "default sampling rate is Z%"
+- **Service tier behavior** - "tier T has limit L" / "feature F requires SKU S"
+- **Deprecation / EOL** - "feature F retires on date D"
+- **Auth model** - "scope X grants permission Y"
 
 Do **not** ground:
 
@@ -97,9 +97,9 @@ Do **not** ground:
 
 ## Out of Scope
 
-- **Auto-amending other repos' KBs** — grounding only annotates the repo currently being onboarded.
-- **External docs other than Microsoft Learn** — AWS docs, GCP docs, generic OSS docs. Future grounding sources land as separate shared docs (e.g. `aws-docs-grounding.md`).
-- **Replacing CLAUDE.md or codebase reading** — Learn is a corroboration source, not a substitute for actually reading the repo.
+- **Auto-amending other repos' KBs** - grounding only annotates the repo currently being onboarded.
+- **External docs other than Microsoft Learn** - AWS docs, GCP docs, generic OSS docs. Future grounding sources land as separate shared docs (e.g. `aws-docs-grounding.md`).
+- **Replacing CLAUDE.md or codebase reading** - Learn is a corroboration source, not a substitute for actually reading the repo.
 
 ## Audit Trail
 

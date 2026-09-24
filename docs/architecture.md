@@ -121,13 +121,13 @@ Halts and warns if any match, since squashing would flatten a postmortem breadcr
 
 Stateful skills read prior output and adjust later behavior.
 
-- **Estimate calibration** — `/nase:wrap-up` compares `ETA estimate:` log lines with actual elapsed time. Drift > 30% writes a calibration note for `/nase:estimate-eta`.
-- **Independent verifier gates** — review/handoff skills hand their artifact to one fresh-context read-only subagent for a second read. The reviewer is local, so there is no availability branch and no skip path; findings must still be verified against repo evidence.
-- **`/nase:doctor` Claude Code self-check** — scans `~/.claude/projects/<encoded-cwd>/` and warns when transcript size ≥ 500 MB or count ≥ 500, suggesting `claude project purge`. Surfaces harness bloat that `workspace/` backups don't see.
+- **Estimate calibration** - `/nase:wrap-up` compares `ETA estimate:` log lines with actual elapsed time. Drift > 30% writes a calibration note for `/nase:estimate-eta`.
+- **Independent verifier gates** - review/handoff skills hand their artifact to one fresh-context read-only subagent for a second read. The reviewer is local, so there is no availability branch and no skip path; findings must still be verified against repo evidence.
+- **`/nase:doctor` Claude Code self-check** - scans `~/.claude/projects/<encoded-cwd>/` and warns when transcript size ≥ 500 MB or count ≥ 500, suggesting `claude project purge`. Surfaces harness bloat that `workspace/` backups don't see.
 - **Pushed-amend guard** - `/nase:improve-commit-message` first fetches every configured remote head into fresh remote-tracking refs, then runs `git branch -r --contains HEAD`. A pushed HEAD requires exact approval for the current SHA and proposed message immediately before amend, and cannot inherit approval from `--auto-accept` or an earlier workflow prompt. A failed remote refresh is treated as possibly pushed and uses the same exact approval gate. The next push requires `--force-with-lease`. Publish state is only one of the two axes: a HEAD on `main`, `master`, `develop`, `release`, or `release/*` also withholds `--auto-accept` even when nothing has been pushed, because remote containment cannot tell you whether the branch is protected.
-- **Confidence decay on extracted skills** — `/nase:extract-skills` reads `confidence:` and `extracted:` frontmatter, decays score with age, surfaces stale entries for removal.
-- **Log compaction** — `/nase:wrap-up` rewrites entries older than 4 hours as one-liners and appends originals to `workspace/logs/archive/{YYYY-MM-DD}-full.md`.
-- **Notability bar on KB writes** — `/nase:learn` aborts the write if extracted content is generic (e.g. "HTTPS encrypts traffic"). Gate documented in `.claude/docs/kb-template.md`.
+- **Confidence decay on extracted skills** - `/nase:extract-skills` reads `confidence:` and `extracted:` frontmatter, decays score with age, surfaces stale entries for removal.
+- **Log compaction** - `/nase:wrap-up` rewrites entries older than 4 hours as one-liners and appends originals to `workspace/logs/archive/{YYYY-MM-DD}-full.md`.
+- **Notability bar on KB writes** - `/nase:learn` aborts the write if extracted content is generic (e.g. "HTTPS encrypts traffic"). Gate documented in `.claude/docs/kb-template.md`.
 
 ---
 
@@ -173,7 +173,7 @@ they break a skill at runtime.
 
 ## Tech-debt audit vocabulary
 
-`/nase:tech-debt-audit` Step 3 uses Ousterhout vocabulary — findings are categorized as:
+`/nase:tech-debt-audit` Step 3 uses Ousterhout vocabulary - findings are categorized as:
 
 - Shallow modules (interface nearly as complex as the implementation)
 - Layering violations (business logic in controllers / API handlers)
@@ -192,12 +192,12 @@ Use them when a repeated workflow needs isolated, read-only candidate gathering 
 
 | Role | Model | Effort | When to use |
 |------|-------|--------|-------------|
-| `lookup` | `haiku` | `low` | Data gathering, grep/glob, scans. Includes prompt prefix "This is a simple lookup — keep reasoning minimal." |
+| `lookup` | `haiku` | `low` | Data gathering, grep/glob, scans. Includes prompt prefix "This is a simple lookup - keep reasoning minimal." |
 | `worker` | `sonnet` | `medium` | Code changes, KB updates, debugging, reviews. Default. |
 | `verifier` | `sonnet` | `medium` | Read-only spec-vs-artifact checks and review-thread verification. |
 | `architect` | `opus` | `high` | Unfamiliar codebases, security, architecture, design. |
 
-Default to `worker`; do not use `architect` for `lookup` work. Each role also carries an `effort:` tier; size it to the task via the Effort scaling rule in `roles.yaml` (drop one tier for trivial/mechanical sub-steps, raise one for complex/ambiguous work — model and effort move independently). Automated effort/model downgrade requires a quality eval gate first.
+Default to `worker`; do not use `architect` for `lookup` work. Each role also carries an `effort:` tier; size it to the task via the Effort scaling rule in `roles.yaml` (drop one tier for trivial/mechanical sub-steps, raise one for complex/ambiguous work - model and effort move independently). Automated effort/model downgrade requires a quality eval gate first.
 
 ---
 
@@ -328,5 +328,5 @@ Restore is a directory transaction owned by `.claude/scripts/restore-workspace.p
 - Offline evals: `evals/pr-review/` covers PR/review and `evals/core-workflows/` covers high-frequency lifecycle workflows; `.claude/scripts/pr-review-eval.py` validates and scores both schema-v1 sets.
 - Skill context telemetry: `.claude/scripts/skill-usage-report.py` converts activation/outcome JSONL into tier counts and approximate entrypoint context hotspots without treating estimates as billing truth.
 - Diagrams: `docs/assets/*.svg` are hand-maintained inline SVG, edited in place. Keep each one's `<title>`/`<desc>` and its `id` prefix in sync with the file name.
-- Hook regression tests: `tests/hooks/` — exercise every block/allow case for `block-dangerous-git.sh`
+- Hook regression tests: `tests/hooks/` - exercise every block/allow case for `block-dangerous-git.sh`
 - CI gates: `.github/workflows/validate.yml` and `tests/check-all.sh`

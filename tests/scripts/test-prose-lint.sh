@@ -78,6 +78,28 @@ rc=$(run github-pr-body "$TMP/masked.md" "$TMP/masked.json")
 n=$(jq_count "$TMP/masked.json" REG-T1)
 if [ "$n" = "0" ]; then pass "fenced code, inline code and URLs are masked"; else fail "fenced code, inline code and URLs are masked (got $n T1 hits)"; fi
 
+cat >"$TMP/frontmatter.md" <<'EOF'
+---
+title: Q3 rollup — draft
+---
+
+Body text is fine and short.
+EOF
+rc=$(run confluence-doc "$TMP/frontmatter.md" "$TMP/frontmatter.json")
+n=$(jq_count "$TMP/frontmatter.json" FMT-DASH)
+if [ "$n" = "0" ]; then pass "YAML frontmatter is masked"; else fail "YAML frontmatter is masked (got $n FMT-DASH hits)"; fi
+
+cat >"$TMP/table.md" <<'EOF'
+Some intro text here to open the document.
+
+| Metric | Note |
+|--------|------|
+| Latency | improved a lot — mostly cache hits |
+EOF
+rc=$(run confluence-doc "$TMP/table.md" "$TMP/table.json")
+n=$(jq_count "$TMP/table.json" FMT-DASH)
+if [ "$n" = "0" ]; then pass "markdown table rows are masked"; else fail "markdown table rows are masked (got $n FMT-DASH hits)"; fi
+
 # --- word boundaries: no substring hits ------------------------------------
 
 printf 'The delivery landed at 09:20 and the run completed on host 12.\n' >"$TMP/boundary.md"

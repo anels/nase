@@ -9,11 +9,11 @@ Cleanup pass on recently-modified code: deletion-first anti-slop cleanup plus `c
 
 Replaces the retired Anthropic bundled `/simplify` (removed in Claude Code v2.1.147). Uses whichever `code-simplifier` subagent is installed (`code-simplifier:code-simplifier` or `pr-review-toolkit:code-simplifier`), with the anti-slop contract embedded in the dispatch prompt.
 
-**Input:** `$ARGUMENTS` — optional scope override (`--scope=<glob>`), `--review`, `--dry-run`, `--verbose`.
+**Input:** `$ARGUMENTS` - optional scope override (`--scope=<glob>`), `--review`, `--dry-run`, `--verbose`.
 
-## Step 0 — Language preflight (MUST run first, non-negotiable)
+## Step 0 - Language preflight (MUST run first, non-negotiable)
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat. The subagent edits code identifiers and comments — those follow project conventions, not `conversation:`.
+Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat. The subagent edits code identifiers and comments - those follow project conventions, not `conversation:`.
 
 ## Steps
 
@@ -54,7 +54,7 @@ Look for concrete smells only:
 - Unearned comments: judge every comment in scope against `.claude/docs/code-comment-policy.md`. Delete the ones that restate the code, narrate the change (`// added per review feedback`), or assert a *why* with no anchor. Deleting a comment is behavior-preserving, which makes this pass the right place for it - but never strip a doc comment the repo mandates through an analyzer, lint rule, CI gate, or consistent existing convention. Where a comment and the code disagree, do not rewrite the comment to match: this pass cannot change behavior, so if the code looks like the wrong one, report it as a follow-up in Step 8 instead of cementing it.
 - Duplication: repeated logic, copy-paste branches, duplicate conditionals, repeated parsing or normalization.
 - Needless abstraction: pass-through wrappers, speculative indirection, single-use helper layers, clever one-liners that obscure intent.
-  - **Reuse-first ladder test** (operationalizes DRY + YAGNI from `.claude/docs/design-principles.md`; apply after comprehending the existing flow): for each added construct, find the first rung that justifies it — (1) needs to exist? (YAGNI) (2) already in codebase? (3) in stdlib? (4) native platform feature? (5) already-installed dependency? (6) one-liner? (7) only then a new minimal implementation. If a construct is covered by rungs 1–6, cut it. Never cut trust-boundary validation, security, or accessibility regardless of rung.
+  - **Reuse-first ladder test** (operationalizes DRY + YAGNI from `.claude/docs/design-principles.md`; apply after comprehending the existing flow): for each added construct, find the first rung that justifies it - (1) needs to exist? (YAGNI) (2) already in codebase? (3) in stdlib? (4) native platform feature? (5) already-installed dependency? (6) one-liner? (7) only then a new minimal implementation. If a construct is covered by rungs 1–6, cut it. Never cut trust-boundary validation, security, or accessibility regardless of rung.
 - Control-flow noise: deeply nested logic, nested ternaries, avoidable branching, broad catches that hide intent.
 - Boundary leaks: wrong-layer imports, hidden coupling, misplaced responsibilities, unexpected side effects.
 - Weak tests: broad assertions, missing edge cases around changed behavior, cleanup without a practical verification path.
@@ -79,8 +79,8 @@ The simplifier ships under different names depending on which plugin is installe
 resolve it against the Agent tool's available-agent list instead of assuming one. Take the
 first that is actually available and hold it as `$SIMPLIFIER_AGENT`:
 
-1. `code-simplifier:code-simplifier` — `claude-plugins-official`
-2. `pr-review-toolkit:code-simplifier` — `pr-review-toolkit`
+1. `code-simplifier:code-simplifier` - `claude-plugins-official`
+2. `pr-review-toolkit:code-simplifier` - `pr-review-toolkit`
 
 Never guess a name that is not in the list; an unavailable `subagent_type` fails the call
 outright rather than degrading, which costs a round trip mid-workflow.
@@ -125,7 +125,7 @@ Do not force through a cleanup that weakens behavior confidence.
 
 ### 8. Summarize to chat
 
-Per `.claude/docs/skill-contract.md` — chat output ≤ 5 lines:
+Per `.claude/docs/skill-contract.md` - chat output ≤ 5 lines:
 
 ```
 Simplified N files (M changes).
@@ -144,11 +144,11 @@ The commit-sequence next step is `/nase:improve-commit-message`. This skill does
 
 ## Notes
 
-- **Behavior preservation is mandatory** — the subagent must never change functionality. If you suspect it did, run the project's tests before committing.
-- **Scope discipline** — only recently-modified files. Don't expand to the rest of the repo even if obvious wins are visible there; that's a separate task.
-- **Deletion first** — remove dead code and debug leftovers before introducing helpers or abstractions.
-- **Regression confidence beats tidiness** — if a simplification cannot be verified, leave it alone or report it as a follow-up.
-- **`/code-review` is orthogonal** — `/code-review` (Claude Code 2.1.147+) reports correctness bugs at low/med/high effort and optionally posts inline PR comments. `/nase:simplify` does cleanup. They don't replace each other.
+- **Behavior preservation is mandatory** - the subagent must never change functionality. If you suspect it did, run the project's tests before committing.
+- **Scope discipline** - only recently-modified files. Don't expand to the rest of the repo even if obvious wins are visible there; that's a separate task.
+- **Deletion first** - remove dead code and debug leftovers before introducing helpers or abstractions.
+- **Regression confidence beats tidiness** - if a simplification cannot be verified, leave it alone or report it as a follow-up.
+- **`/code-review` is orthogonal** - `/code-review` (Claude Code 2.1.147+) reports correctness bugs at low/med/high effort and optionally posts inline PR comments. `/nase:simplify` does cleanup. They don't replace each other.
 
 ## Attribution
 

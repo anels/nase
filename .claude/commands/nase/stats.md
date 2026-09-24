@@ -7,7 +7,7 @@ model: haiku
 effort: low
 ---
 
-**Input:** $ARGUMENTS — optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`
+**Input:** $ARGUMENTS - optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`
 
 ## Steps
 
@@ -51,7 +51,7 @@ Follow `.claude/docs/cli-tooling.md` for optional large-data aggregation. Probe 
 
 Collect data inline:
 1. Create a temp directory: `TMPDIR_STATS=$(mktemp -d)` and register cleanup: `trap 'rm -rf "$TMPDIR_STATS"' EXIT` (ensures cleanup even if the skill errors mid-execution)
-2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (for each `{repo_path}` in `.local-paths`: `git -C {repo_path} log --since="{date}T00:00" --until="{date}T23:59" --oneline 2>/dev/null | wc -l` — sum across all repos), and PRs (grep for PR URLs in the log).
+2. For each date in range, count sessions from `workspace/logs/{date}.md` (count `## Session` headers), commits across all repos in `.local-paths` (for each `{repo_path}` in `.local-paths`: `git -C {repo_path} log --since="{date}T00:00" --until="{date}T23:59" --oneline 2>/dev/null | wc -l` - sum across all repos), and PRs (grep for PR URLs in the log).
 3. Write results to `$TMPDIR_STATS/daily.csv` (format: `date,sessions,commits,prs`).
 4. Get skill rankings from `python3 .claude/scripts/today-stats.py --since "$START_DATE" --date "$END_DATE"`, which prints `total_invocations`, `unique_skills`, and one `skill <name> <count>` line per skill over the whole range. Every stamp in `workspace/stats/skill-usage.jsonl` is UTC, so a date-prefix match on `ts` puts an evening local session in the next day's bucket; the script buckets by local calendar day instead. Do not read the JSONL directly. `skill-usage-report.py` is the wrong tool here, because its `--window` only labels hot/cold tiers, its counts are all-time plus fixed 7d and 30d windows, and `--print-report` writes a report file this skill does not want.
 5. Count knowledge entries from `workspace/tasks/lessons.md` matching the date range.
@@ -74,7 +74,7 @@ CHART=$(python3 .claude/scripts/stats-chart.py \
   --start "$START_DATE" --end "$END_DATE")
 ```
 
-Bar fill is `█`; empty buckets show `░` under the label so silent days/weeks stay visible. Max 10 rows tall, with `0`, max, and up to two mid Y-axis labels at counts that actually appear. The script handles cross-platform date math — no need for shell date arithmetic.
+Bar fill is `█`; empty buckets show `░` under the label so silent days/weeks stay visible. Max 10 rows tall, with `0`, max, and up to two mid Y-axis labels at counts that actually appear. The script handles cross-platform date math - no need for shell date arithmetic.
 
 Sample shape (per-day form):
 
@@ -88,7 +88,7 @@ Sample shape (per-day form):
 
 ### 4. Print to chat (no report file)
 
-Read AI name from `workspace/config.md` (`AI engineer:` line). Print everything inline — do NOT write a report file.
+Read AI name from `workspace/config.md` (`AI engineer:` line). Print everything inline - do NOT write a report file.
 
 ```
 📊 {AI_NAME} Stats — {range label} ({START_DATE} ~ {END_DATE})
@@ -116,7 +116,7 @@ Skills (grouped by usage tier — easier to scan than a flat ranked list):
 {column_chart}
 ```
 
-Bar fill = `█`; empty bucket marker at row 0 = `░`. If all metrics are 0, display zeros — do not error.
+Bar fill = `█`; empty bucket marker at row 0 = `░`. If all metrics are 0, display zeros - do not error.
 
 ### 5. Cleanup
 

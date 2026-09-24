@@ -151,13 +151,13 @@ and explicit status rows beginning with `Post-deploy`, `Verified`, `Validated`,
 **outside** every `## Lifecycle` section are implementation-plan steps that
 authors routinely leave unticked after the work lands, so they are ignored entirely.
 
-A trailing clause on a *checked* row (`PR opened — PR-1 #173; PR-1b + PR-2 still
+A trailing clause on a *checked* row (`PR opened - PR-1 #173; PR-1b + PR-2 still
 pending`) is also honoured, since older docs record outstanding work that way. Prefer
-separate rows — the clause match only covers a few phrasings ("still pending", "not
+separate rows - the clause match only covers a few phrasings ("still pending", "not
 started", "remains pending", "yet to be opened") and a novel wording will slip past it.
 
-**When the gate fires on a row that is not actually owed** — a plan step that drifted
-into `## Lifecycle`, or a row nobody ticked after the work shipped — fix the document:
+**When the gate fires on a row that is not actually owed** - a plan step that drifted
+into `## Lifecycle`, or a row nobody ticked after the work shipped - fix the document:
 tick it, reword it, or move it out of the section. Do not work around the gate; the
 row is the contract, and a wrong row will mislead the next reader too.
 
@@ -165,7 +165,7 @@ row is the contract, and a wrong row will mislead the next reader too.
 
 Two optional frontmatter keys make dependencies first-class instead of prose buried
 in the body, so `/nase:efforts` can compute an unblocked-work view without parsing
-each doc body. Both are optional — omit when not applicable.
+each doc body. Both are optional - omit when not applicable.
 
 | field | value | meaning |
 |---|---|---|
@@ -189,7 +189,7 @@ must compute unblocked from `status` + `blocked-by`, never store it.
 ## Single-File Invariant
 
 One effort = one file: `workspace/efforts/{slug}.md`. Do **not** spawn per-phase
-sidecar files (`{slug}-phase-2.md`, `{slug}-plan-v3.md`, etc.) — that is the failure
+sidecar files (`{slug}-phase-2.md`, `{slug}-plan-v3.md`, etc.) - that is the failure
 mode that decays into hundreds of orphan plan files. All phase progress appends to the
 single doc: check the `## Lifecycle` boxes, add `phase_*_pr:` frontmatter pointers for
 per-phase PRs, and append notes in-place. A restarting agent re-reads the one doc rather

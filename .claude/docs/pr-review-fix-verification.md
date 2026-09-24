@@ -27,7 +27,7 @@ For any 🔧 needs-fix items that originate from an EARLIER review round (commen
 
 ## 6. Suggestion-block re-derivation
 
-A reviewer's ```suggestion fenced code block captures *intent*, not a literal patch — especially when it proposes a different data structure for an existing field. Snippets routinely drop critical wrapping that the original declaration carried: generic args, nullability, equality comparers, modifiers (`readonly`, `init`), `AsReadOnly()` wrappers, type aliases. Read the original declaration's full signature before applying. If the suggestion changes the container type (e.g. `ConcurrentDictionary<string, T?>` with `StringComparer.OrdinalIgnoreCase` → `Dictionary<string, T>.AsReadOnly()`), enumerate: (a) is the comparer still needed? (b) keep nullable value type? (c) widen receiver to `ReadOnlyDictionary<TKey,TValue>`? Restore the dropped wrapping in the final implementation — do not copy-paste the snippet verbatim. Pattern surfaced in a prior dashboarding PR review.
+A reviewer's ```suggestion fenced code block captures *intent*, not a literal patch - especially when it proposes a different data structure for an existing field. Snippets routinely drop critical wrapping that the original declaration carried: generic args, nullability, equality comparers, modifiers (`readonly`, `init`), `AsReadOnly()` wrappers, type aliases. Read the original declaration's full signature before applying. If the suggestion changes the container type (e.g. `ConcurrentDictionary<string, T?>` with `StringComparer.OrdinalIgnoreCase` → `Dictionary<string, T>.AsReadOnly()`), enumerate: (a) is the comparer still needed? (b) keep nullable value type? (c) widen receiver to `ReadOnlyDictionary<TKey,TValue>`? Restore the dropped wrapping in the final implementation - do not copy-paste the snippet verbatim. Pattern surfaced in a prior dashboarding PR review.
 
 ## 8. Comment dossier contract
 
@@ -44,7 +44,7 @@ an outward-facing, hard-to-undo action. The verifier is a local subagent, so the
 is no availability branch to skip through.
 
 Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`,
-tools: Read/Grep/Glob/Bash — no Edit/Write). Give it ONLY:
+tools: Read/Grep/Glob/Bash - no Edit/Write). Give it ONLY:
 - the unresolved review threads from Phase 2 (full comment chains)
 - the final post-Phase-4 dossier/action map and drafted replies from Phase 6
 - the implementation diff:
@@ -59,7 +59,7 @@ Ask it to judge independently, per thread:
 - does any reply contradict the dossier evidence or omit a required verification note?
 - does the diff add a code comment that `.claude/docs/code-comment-policy.md` would not earn - restating the code, narrating the change, or an unanchored *why*? Report it; a comment that contradicts the line below it is a FAIL, an unearned one is not.
 
-Do NOT include your own classification reasoning or expected verdict — an independent
+Do NOT include your own classification reasoning or expected verdict - an independent
 read is the only thing this gate buys, and naming your expected answer spends it.
 Use the `comment-resolution` mode contract from `.claude/docs/review-mode-comment-threads.md` as the
 subagent's instructions verbatim. Log `thread-resolution verify: {VERDICT}`; overrides

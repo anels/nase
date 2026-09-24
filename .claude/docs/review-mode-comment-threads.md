@@ -5,7 +5,7 @@ The two review-thread modes `/nase:address-comments` spawns - dossier verificati
 Read this file together with `.claude/docs/review-modes.md`, which owns the spawn
 shape, output handling, error handling, and the notes that apply to every mode.
 
-### Mode: `comment-dossier` — pre-action review-thread dossier verifier
+### Mode: `comment-dossier` - pre-action review-thread dossier verifier
 
 Used by `/nase:address-comments` before user confirmation for high-risk or uncertain unresolved review threads. Goal: independently check whether the dossier has enough evidence to classify the thread and whether the reviewer premise is supported, false, or still ambiguous.
 
@@ -50,7 +50,7 @@ prompt:
   Verify whether the dossier supports classification.
 ```
 
-### Mode: `comment-resolution` — review-thread fix verifier
+### Mode: `comment-resolution` - review-thread fix verifier
 
 Used by `/nase:address-comments` after local fixes and tests pass, before commit/push. Goal: independently verify that each accepted review thread is addressed by the diff and that replies for declined/reply-only threads match the dossier/action map.
 

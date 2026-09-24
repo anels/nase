@@ -16,7 +16,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 ### 1. Read backup config
 - Resolve workspace root: `NASE_ROOT=$(git rev-parse --show-toplevel)`
 - Read `backup-target` from `$NASE_ROOT/.local-paths`
-- If `.local-paths` does not exist or has no `backup-target=` entry, tell the user: no backup target configured — run `/nase:init` first
+- If `.local-paths` does not exist or has no `backup-target=` entry, tell the user: no backup target configured - run `/nase:init` first
 
 ### 2. List available backups
 List all backups in the target directory. Current `stop-backup.sh` creates `.zip` archives; keep `.7z` support for older/manual backups:
@@ -53,7 +53,7 @@ ZIP_PATH=$(python3 "$NASE_ROOT/.claude/scripts/restore-workspace.py" resolve-bac
   --target "$TARGET" --selection "$SELECTED_BACKUP") || exit 1
 ```
 
-The `|| exit 1` is load-bearing: command substitution otherwise leaves `ZIP_PATH` empty on a rejected selection and the flow walks into `inspect` with no archive. Report the helper's error and stop — never fall back to the raw selection.
+The `|| exit 1` is load-bearing: command substitution otherwise leaves `ZIP_PATH` empty on a rejected selection and the flow walks into `inspect` with no archive. Report the helper's error and stop - never fall back to the raw selection.
 
 ### 4. Inspect and confirm
 

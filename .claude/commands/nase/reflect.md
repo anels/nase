@@ -11,11 +11,11 @@ Fresh reflections capture more than end-of-day summaries. Also invoked by `/nase
 
 If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (including CLAUDE.md update proposals) and auto-apply changes. Used by `/nase:wrap-up`.
 
-**Context:** $ARGUMENTS (optional — name of the task or feature just completed)
+**Context:** $ARGUMENTS (optional - name of the task or feature just completed)
 
 ## Steps
 
-**Step 0 — Language preflight (MUST run first, non-negotiable):** follow `.claude/docs/language-config.md` → Minimum Step 0 block.
+**Step 0 - Language preflight (MUST run first, non-negotiable):** follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 
 1. Identify the task being reflected on:
    a. From `$ARGUMENTS` if provided
@@ -23,20 +23,20 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
    If both are empty, ask the user what to reflect on.
 
 2. Answer these reflection questions:
-   - **What went well?** — techniques, decisions, speed
-   - **What was harder than expected?** — surprises, wrong assumptions
-   - **What would I do differently?** — if starting fresh
-   - **What pattern or rule can I extract?** — generalizable to future tasks
-   - **Any new tool/technique discovered?** — worth remembering
+   - **What went well?** - techniques, decisions, speed
+   - **What was harder than expected?** - surprises, wrong assumptions
+   - **What would I do differently?** - if starting fresh
+   - **What pattern or rule can I extract?** - generalizable to future tasks
+   - **Any new tool/technique discovered?** - worth remembering
 
-   Focus on the question with the strongest signal — not every question needs a deep answer every time.
+   Focus on the question with the strongest signal - not every question needs a deep answer every time.
 
 3. Score the task on:
    - Accuracy (did the output match requirements?) 1-5
    - Efficiency (unnecessary steps taken?) 1-5
    - Code quality (clean, simple, correct?) 1-5
 
-   Scores are a calibration tool, not a grade. They help detect patterns over time — if efficiency is consistently low, it signals a workflow issue worth addressing.
+   Scores are a calibration tool, not a grade. They help detect patterns over time - if efficiency is consistently low, it signals a workflow issue worth addressing.
 
 4. Save key learnings to `workspace/tasks/lessons.md` (create with `# Lessons` header if missing). Follow `.claude/docs/lessons-format.md` for header, category list, and body format. If the extracted pattern is a reusable rule: also save to the auto-memory directory as a feedback-type memory file. Verify the append: read back the last entry to confirm it was written correctly.
 
@@ -47,7 +47,7 @@ If `$ARGUMENTS` contains `--auto-accept`, skip all AskUserQuestion prompts (incl
 ## Output Format
 
 ---
-**Reflection — {task name}**
+**Reflection - {task name}**
 
 Went well: ...
 Harder than expected: ...

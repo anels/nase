@@ -1,4 +1,4 @@
-# AI Attribution — Per-Repo Config
+# AI Attribution - Per-Repo Config
 
 ## Contents
 
@@ -22,8 +22,8 @@ Used by `commit-push-pattern.md`, `pr-creation-pattern.md`, `/nase:fsd`, `/nase:
 |---------|------|
 | Commit messages | Per-repo config (this doc) |
 | PR descriptions | Per-repo config (this doc) |
-| Inline PR review comments | Never — global rule, see `~/.claude/CLAUDE.md` |
-| Slack messages | Never — global rule, see `~/.claude/CLAUDE.md` |
+| Inline PR review comments | Never - global rule, see `~/.claude/CLAUDE.md` |
+| Slack messages | Never - global rule, see `~/.claude/CLAUDE.md` |
 
 Per-repo config only governs commits and PR descriptions. Inline review comments and Slack messages stay AI-clean regardless of config.
 
@@ -38,8 +38,8 @@ Workspace-root `.local-paths` stores one line per repo:
 {RepoName}-ai-attribution=off
 ```
 
-- `on` — include AI attribution (commit trailer + PR description footer)
-- `off` — strip AI attribution
+- `on` - include AI attribution (commit trailer + PR description footer)
+- `off` - strip AI attribution
 
 `{RepoName}` matches the existing repo key in `.local-paths` (e.g., `Platform`, `service-fabric-packaging`).
 
@@ -103,11 +103,11 @@ When config is `off`: omit both. Never add other AI markers (no "AI-assisted", n
 
 When `/nase:prep-merge` squashes multiple commits:
 
-- **Non-AI co-authors**: always preserve `Co-Authored-By` trailers (independent of this config) — those represent real humans.
+- **Non-AI co-authors**: always preserve `Co-Authored-By` trailers (independent of this config) - those represent real humans.
 - **Claude co-author**: include only if `{RepoName}-ai-attribution=on`.
 
 ---
 
 ## Changing Config Later
 
-User can edit `.local-paths` directly. No tooling needed — the file is plain `key=value` lines.
+User can edit `.local-paths` directly. No tooling needed - the file is plain `key=value` lines.
