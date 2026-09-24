@@ -32,14 +32,14 @@ Applies to project KBs and general KB entries written by `/nase:learn`, `/nase:k
 - Reference env vars and config paths exactly: `ANTHROPIC_API_KEY`, not "the API key"; `~/.claude/settings.json`, not "the settings file".
 - No speculative content ("chosen for scalability" when reason is unknown).
 
-**Notability bar — write an entry when:**
+**Notability bar - write an entry when:**
 - A decision that took discussion, research, or trial-and-error
 - A gotcha discovered through failure
 - A cross-cutting flow that spans multiple files
 - A constraint or invariant not visible from the code
 - A subsystem or third-party integration referenced by multiple places
 
-**Do not** restate what code already says. **Silence is acceptable** — if nothing meets the bar, write nothing.
+**Do not** restate what code already says. **Silence is acceptable** - if nothing meets the bar, write nothing.
 
 **Verification triad: apply before writing, re-check in `/nase:kb-review`.** Adapt the three questions from [kangarooking/cangjie-skill's RIA-TV++ triple verification](https://github.com/kangarooking/cangjie-skill/blob/55e4b7059c423534f94cfbdeb0a4ee34f3ba6182/README.en.md) to nase's existing confidence model: V2 and V3 are admission gates; V1 sets confidence.
 - **V1 Corroboration:** Two independent sources, or one authoritative primary source plus your own verification (a diff, a repro, or a run), supports the default high confidence. A single sourced claim gets `**Confidence:** medium`; an unverified hypothesis gets `**Confidence:** low` or is dropped. Never state weak evidence as fact.
@@ -48,11 +48,11 @@ Applies to project KBs and general KB entries written by `/nase:learn`, `/nase:k
 
 **State the boundary for actionable guidance.** Say when the guidance does *not* apply and name any blind spot in the source, not only when to apply it. A trigger without a boundary is incomplete; `/nase:kb-review` flags it. This adapts the same source's RIA++ **B (Boundary)** field: the counter-example is often the load-bearing half.
 
-**Page shapes** — use as section types within KB files:
-- **Entity** — a stable named thing (a library, subsystem, third-party service)
-- **Decision** — "why we chose X" — include rejected alternatives and their cost
-- **Flow** — a multi-step process spanning files
-- **Gotcha** — a specific surprise, constraint, or invariant to preserve
+**Page shapes** - use as section types within KB files:
+- **Entity** - a stable named thing (a library, subsystem, third-party service)
+- **Decision** - "why we chose X" - include rejected alternatives and their cost
+- **Flow** - a multi-step process spanning files
+- **Gotcha** - a specific surprise, constraint, or invariant to preserve
 
 See `workspace/kb/general/workflow.md → KB Writing Conventions (2026-05-13)` and `memory/feedback_kb-writing-conventions.md` for the full rationale.
 

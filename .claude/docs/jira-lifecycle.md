@@ -1,4 +1,4 @@
-# Jira Lifecycle — Shared Reference
+# Jira Lifecycle - Shared Reference
 
 Standard patterns for reading and transitioning Jira issues via Atlassian MCP. Referenced by skills that check or update Jira status (today, wrap-up, investigate-sre-jira, address-comments, request-review).
 
@@ -6,7 +6,7 @@ Standard patterns for reading and transitioning Jira issues via Atlassian MCP. R
 
 ## Prerequisites
 
-Read `cloudId` from `workspace/config.md` → `## Jira` section before any MCP call. If `cloudId` is missing or Atlassian MCP is unavailable, skip all Jira operations silently — never block the skill on Jira access.
+Read `cloudId` from `workspace/config.md` → `## Jira` section before any MCP call. If `cloudId` is missing or Atlassian MCP is unavailable, skip all Jira operations silently - never block the skill on Jira access.
 
 ---
 
@@ -45,7 +45,7 @@ Limit to 10 results unless a broader sweep is needed.
 
 ## Transitions
 
-Do not hardcode transition IDs — they vary by project and workflow. Always look them up:
+Do not hardcode transition IDs - they vary by project and workflow. Always look them up:
 
 ```
 getTransitionsForJiraIssue(cloudId, issueIdOrKey)
@@ -59,9 +59,9 @@ transitionJiraIssue(cloudId, issueIdOrKey, {transition: {id: "<id>"}})
 
 ### Confirmation rules
 
-- **Any transition** — require explicit user confirmation before calling `transitionJiraIssue`. Present the ticket key, summary, current status, and target status.
-- **Done / Resolved / Canceled / Closed** — treat as high-risk closure. Never silently close.
-- **Write-token backstop** — every Jira mutation must publish a fresh `workspace/.jira-write-token` immediately after the payload-showing `AskUserQuestion` approval and immediately before the MCP call. Use `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>` so token publication shares the workspace mutation lock with consumption. Follow `.claude/docs/external-mutation-policy.md` for token shape.
+- **Any transition** - require explicit user confirmation before calling `transitionJiraIssue`. Present the ticket key, summary, current status, and target status.
+- **Done / Resolved / Canceled / Closed** - treat as high-risk closure. Never silently close.
+- **Write-token backstop** - every Jira mutation must publish a fresh `workspace/.jira-write-token` immediately after the payload-showing `AskUserQuestion` approval and immediately before the MCP call. Use `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>` so token publication shares the workspace mutation lock with consumption. Follow `.claude/docs/external-mutation-policy.md` for token shape.
 
 For SRE tickets specifically: see KB `workspace/kb/ops/oncall-runbooks.md` → Transition IDs for the known IDs and per-transition confirmation requirements.
 

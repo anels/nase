@@ -16,7 +16,7 @@ Self-triggered learning loop. When the user corrects wording on a draft you prod
 Capture a delta when **all** of the following hold:
 
 1. **Surface** is one of: Slack draft, PR description/body, PR inline/review comment, external doc/announcement.
-2. **You produced the draft first** — capture applies to corrections of AI output, not to user-original content.
+2. **You produced the draft first** - capture applies to corrections of AI output, not to user-original content.
 3. **User intervened** via one of these patterns:
    - Replaces wording: "change X to Y" / "instead say X" / "改成 X" / "换成 X"
    - Removes wording: "drop X" / "remove X" / "don't say X" / "去掉 X" / "不要说 X"
@@ -24,7 +24,7 @@ Capture a delta when **all** of the following hold:
    - Tone shift: "too AI" / "too formal" / "less formal" / "sounds AI" / "AI 味"
    - Future rule: "next time..." / "from now on..." / "下次..." / "以后..."
    - Direct rewrite: user pastes the rewritten version back.
-4. **Generalizable** — the correction implies a rule that applies to future drafts of similar artifacts. Skip one-off factual fixes such as a wrong name, wrong ticket id, or stale link.
+4. **Generalizable** - the correction implies a rule that applies to future drafts of similar artifacts. Skip one-off factual fixes such as a wrong name, wrong ticket id, or stale link.
 
 Skip code changes, code comments, and internal KB/workspace docs; those follow normal repo/KB correction handling.
 

@@ -15,10 +15,10 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Command names
 
 `$ARGUMENTS` supports:
 
-- `--window N` — include events from the last `N` days. Default: `30`.
-- `--window all` — include all events.
-- `--top N` — number of top files and skills to show. Default: `10`.
-- `--verbose` — print the full generated report inline after writing it.
+- `--window N` - include events from the last `N` days. Default: `30`.
+- `--window all` - include all events.
+- `--top N` - number of top files and skills to show. Default: `10`.
+- `--verbose` - print the full generated report inline after writing it.
 
 ## Run
 

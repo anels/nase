@@ -1,4 +1,4 @@
-# Skill Authoring Contract — Shared Reference
+# Skill Authoring Contract - Shared Reference
 
 ## Contents
 
@@ -25,13 +25,13 @@ Skim once before authoring; treat as binding when editing skill files.
 
 ## Scope
 
-This contract applies to nase **slash-commands** (`.claude/commands/nase/*.md`, `.claude/commands/nase/workspace/*.md` synced from `workspace/skills/*.md`). It does **not** govern Anthropic Agent Skills (`~/.claude/skills/{name}/SKILL.md`) — those follow the Agent Skills open standard at agentskills.io. If you author both kinds in the same PR, treat them as separate contracts.
+This contract applies to nase **slash-commands** (`.claude/commands/nase/*.md`, `.claude/commands/nase/workspace/*.md` synced from `workspace/skills/*.md`). It does **not** govern Anthropic Agent Skills (`~/.claude/skills/{name}/SKILL.md`) - those follow the Agent Skills open standard at agentskills.io. If you author both kinds in the same PR, treat them as separate contracts.
 
 ---
 
 ## 1. Language preflight (chat output)
 
-Every chat-producing skill MUST start with a Step 0 language-preflight block. Copy the pointer verbatim from `.claude/docs/language-config.md → Canonical pointer`; never reword it and never restate the preflight rules inline. CLAUDE.md inheritance alone is **not** sufficient — auto-drift to English has been observed.
+Every chat-producing skill MUST start with a Step 0 language-preflight block. Copy the pointer verbatim from `.claude/docs/language-config.md → Canonical pointer`; never reword it and never restate the preflight rules inline. CLAUDE.md inheritance alone is **not** sufficient - auto-drift to English has been observed.
 
 Skills that also write to external systems (PR / Slack / Jira / Confluence) read **both** `conversation:` AND `output:` and route per channel.
 
@@ -45,7 +45,7 @@ Every Slack / Jira / Confluence / GitHub / ADO / cloud-resource mutation MUST go
 - Draft-first (`slack_send_message_draft`, `workspace/tmp/{name}.md` for Confluence, draft PR)
 - `AskUserQuestion` immediately before the mutation call, showing the concrete payload
 
-No "I'll just transition this ticket without asking" exemptions — Jira-In-Progress is a notification + watcher event too. Slack is absolute: NEVER call `slack_send_message`, always `_draft`.
+No "I'll just transition this ticket without asking" exemptions - Jira-In-Progress is a notification + watcher event too. Slack is absolute: NEVER call `slack_send_message`, always `_draft`.
 
 Reference `.claude/docs/external-mutation-policy.md` from any mutation-capable skill (one-line pointer near the top).
 
@@ -77,7 +77,7 @@ may skip human confirmation only. They must never skip final drift checks.
 Per `feedback_ado-az-cli-only.md`: all Azure DevOps interactions use `az` CLI. Never `curl -u ":$ADO_PAT"` or similar PAT-bearing curl invocations.
 
 - Read queries: `az pipelines runs list/show`, `az pipelines build show`, `az pipelines variable list`
-- Non-CLI verbs (cancel, post with nested JSON, timeline): `az rest --method <verb> --uri ...` — still reuses `az login`, no PAT env vars
+- Non-CLI verbs (cancel, post with nested JSON, timeline): `az rest --method <verb> --uri ...` - still reuses `az login`, no PAT env vars
 - Auth failures: tell the user to `az login`, do not fall back to curl
 
 CI check: `tests/check-skill-doctrine.sh → D1` (hard fail).
@@ -97,10 +97,10 @@ CI check: `tests/check-skill-doctrine.sh → D1` (hard fail).
 ## 5. AskUserQuestion discipline
 
 - Batch related questions into a single `AskUserQuestion` call (`questions` array). Multi-screen prompt sequences for the same decision are a token-burn anti-pattern.
-- Show the **concrete payload** in the question prompt — Jira transition target, Confluence diff, ADO `templateParameters`, PR title+body. Generic "should we proceed?" is not a gate.
-- After the gate fires, ACT immediately on the answer — do not wait for an additional confirmation turn.
+- Show the **concrete payload** in the question prompt - Jira transition target, Confluence diff, ADO `templateParameters`, PR title+body. Generic "should we proceed?" is not a gate.
+- After the gate fires, ACT immediately on the answer - do not wait for an additional confirmation turn.
 - **Recommendation first.** The first option is the default the skill already applied, with ` (Recommended)` appended and a `description` that gives the evidence or principle behind that choice. Remaining options state their trade-off. Never ask without an opinion: a question with no recommendation hands the user work the skill was supposed to do. The harness adds "Other" as the free-form escape.
-- **Record what the answer changed.** A skill whose answers alter a durable artifact appends a `### Resolved Decisions` block to it — columns `#`, `Question`, `Decision`, `Applied to` — and keeps the table cumulative across runs. Without it a later reader cannot tell an auto-selected default from a human call.
+- **Record what the answer changed.** A skill whose answers alter a durable artifact appends a `### Resolved Decisions` block to it - columns `#`, `Question`, `Decision`, `Applied to` - and keeps the table cumulative across runs. Without it a later reader cannot tell an auto-selected default from a human call.
 - Order a large batch by load-bearingness: security, data-loss, irreversibility, and cross-team coordination first.
 
 ---
@@ -111,7 +111,7 @@ CI check: `tests/check-skill-doctrine.sh → D1` (hard fail).
 - For lists of paths, prefer arrays over space-separated strings; if you must use a string, pipe through `xargs -0` or `read -r -a arr`
 - Use `set -euo pipefail` in long scripts; `set -uo pipefail` if a non-zero exit code is part of the contract somewhere
 - Guard `$()` substitution failures with `|| { echo "ERROR: ..." >&2; return 1; }` when downstream depends on the value being non-empty
-- `gh api --paginate -q 'length'` emits per-page lengths — sum via `awk '{s+=$1} END {print s}'` or use `jq -s 'add | length'`
+- `gh api --paginate -q 'length'` emits per-page lengths - sum via `awk '{s+=$1} END {print s}'` or use `jq -s 'add | length'`
 - Verify `command -v` before invoking optional binaries (`gh`, `az`, `7z`)
 - Follow `.claude/docs/cli-tooling.md` before adding a new optional CLI dependency to a skill; prefer `.claude/scripts/tool-availability.py` for machine-local probes and keep missing optional tools warning-only unless the current workflow cannot produce reliable evidence without them
 
@@ -134,7 +134,7 @@ CLAUDE.md §"Saying yes = saying no" applies at skill-creation time. Before auth
 
 1. Grep existing trigger keywords across `.claude/commands/nase/*.md` + `workspace/skills/*.md` for overlap
 2. Answer in your PR description: "what existing skill does this make redundant, and if none, why isn't this a flag on an existing one?"
-3. Refuse to ship if two skills share >50% of their trigger surface — fold into a `--flag` instead
+3. Refuse to ship if two skills share >50% of their trigger surface - fold into a `--flag` instead
 
 Counter-example: `/nase:learn` + `/nase:workspace:learn-with-exa` shipped with overlapping triggers ("learn", topic keywords) for 6 weeks before being folded into `/nase:learn --exa`. Don't repeat.
 
@@ -153,7 +153,7 @@ Describe the shape in the skill's own prose where a reader needs it.
 
 ## 9. Output discipline
 
-The runtime rules — artifact/chat/verbose handling and `AskUserQuestion` batching — are canonical in `.claude/docs/skill-contract.md`; a running skill loads that, not this. What follows is the author-side half: the checklist to run against a skill body before shipping it, and the catalog examples to copy the shape from.
+The runtime rules - artifact/chat/verbose handling and `AskUserQuestion` batching - are canonical in `.claude/docs/skill-contract.md`; a running skill loads that, not this. What follows is the author-side half: the checklist to run against a skill body before shipping it, and the catalog examples to copy the shape from.
 
 ---
 
@@ -164,40 +164,40 @@ The runtime rules — artifact/chat/verbose handling and `AskUserQuestion` batch
 - [ ] No full-table / full-document echo in the default code path.
 - [ ] `--verbose` branch (if present) is the only place an inline dump appears.
 - [ ] Any user-facing decision points use a batched `AskUserQuestion`.
-- [ ] Checkpoints are pushed right — evidence/codebase/KB lookups exhausted before the user is asked; nothing the codebase can answer becomes a checkpoint.
+- [ ] Checkpoints are pushed right - evidence/codebase/KB lookups exhausted before the user is asked; nothing the codebase can answer becomes a checkpoint.
 - [ ] Checkpoints present a decision-ready brief (what + why + link down), never the raw draft.
 - [ ] Every shown command, pasted output, and quoted artifact is redacted before it reaches chat or a draft; loops run against environment variables rather than literal credentials.
 - [ ] Cross-doc pointers into `workspace/...` use code-spans (`` `workspace/kb/general/workflow.md → Section` ``), not markdown links. Lychee CI runs with `--exclude-path workspace`, so md-links from `.claude/`, `CLAUDE.md`, or `README.md` into `workspace/` fail as "Cannot find file". Code-spans are inert for lychee. Pattern surfaced in a prior PR.
 
 ### Examples in the catalog
 
-- `/nase:wrap-up` — full journal to `workspace/journals/{YYYY-MM-DD}.md`, chat gets 4-bullet highlights + closing block.
-- `/nase:stats` — heatmap and counts to `workspace/stats/report-{YYYY-MM-DD}.md`, chat gets the top-line numbers.
-- `/nase:skill-usage` — table to `workspace/stats/skill-usage-{YYYY-MM-DD}.md`, chat gets tier counts + top N.
-- `/nase:recap` — recap to `workspace/recaps/{period}.md`, chat gets a one-paragraph wrap.
+- `/nase:wrap-up` - full journal to `workspace/journals/{YYYY-MM-DD}.md`, chat gets 4-bullet highlights + closing block.
+- `/nase:stats` - heatmap and counts to `workspace/stats/report-{YYYY-MM-DD}.md`, chat gets the top-line numbers.
+- `/nase:skill-usage` - table to `workspace/stats/skill-usage-{YYYY-MM-DD}.md`, chat gets tier counts + top N.
+- `/nase:recap` - recap to `workspace/recaps/{period}.md`, chat gets a one-paragraph wrap.
 
 ## 10. Skill-invocation error handling
 
 When a skill chains other skills (`/nase:reflect`, `/nase:learn`, `/team`, etc.):
-- Don't assume success — catch failure ("skill X not available", "tool returned error", "user cancelled")
+- Don't assume success - catch failure ("skill X not available", "tool returned error", "user cancelled")
 - Set the per-step status to `failed` not `done`, continue to next step where safe
 - Surface the failure once at the end (do not bury silently)
 
 ---
 
-## 11. Authoring self-review — failure modes & invocation cost (advisory)
+## 11. Authoring self-review - failure modes & invocation cost (advisory)
 
-Judgment-based self-review checklist for new/edited skill bodies. **Advisory, not CI-gated** (these are inherently non-mechanical — detecting a no-op line or a backfiring prohibition needs a reader, not a grep). Source: `mattpocock/skills → writing-great-skills`; full KB context in `workspace/kb/general/workflow.md 2026-07-10`.
+Judgment-based self-review checklist for new/edited skill bodies. **Advisory, not CI-gated** (these are inherently non-mechanical - detecting a no-op line or a backfiring prohibition needs a reader, not a grep). Source: `mattpocock/skills → writing-great-skills`; full KB context in `workspace/kb/general/workflow.md 2026-07-10`.
 
 Root virtue: **predictability = the skill drives the same *process*, not the same output.** Cost/maintainability are symptoms of losing that, not competing goals.
 
 Six failure modes to scan a draft for:
-1. **Premature completion** — a step lets the agent stop early. Fix order: sharpen the step's completion criterion *first*; only then split to hide post-completion steps (hiding works only across a real context boundary, not an inline model-invoked call).
-2. **Duplication** — the same meaning stated in two places. Single source of truth per meaning.
-3. **Sediment** — stale layers left by edits. The default fate without active pruning.
-4. **Sprawl** — too long even when every line is live. Cure is the information hierarchy / a split, not word-trimming.
-5. **No-op** — a line the model already obeys by default. Test: *does it change behavior vs default?* "Be thorough" is a no-op; replace with a stronger leading word ("relentless"). Prune with the no-op test **per sentence in isolation — delete the whole sentence when it fails**, not trim words. Be aggressive.
-6. **Negation** — a bare prohibition backfires ("don't think of an elephant"). Prompt the *positive* target instead; keep a ban only when the target is unphraseable positively, and still pair it with what-to-do.
+1. **Premature completion** - a step lets the agent stop early. Fix order: sharpen the step's completion criterion *first*; only then split to hide post-completion steps (hiding works only across a real context boundary, not an inline model-invoked call).
+2. **Duplication** - the same meaning stated in two places. Single source of truth per meaning.
+3. **Sediment** - stale layers left by edits. The default fate without active pruning.
+4. **Sprawl** - too long even when every line is live. Cure is the information hierarchy / a split, not word-trimming.
+5. **No-op** - a line the model already obeys by default. Test: *does it change behavior vs default?* "Be thorough" is a no-op; replace with a stronger leading word ("relentless"). Prune with the no-op test **per sentence in isolation - delete the whole sentence when it fails**, not trim words. Be aggressive.
+6. **Negation** - a bare prohibition backfires ("don't think of an elephant"). Prompt the *positive* target instead; keep a ban only when the target is unphraseable positively, and still pair it with what-to-do.
 
 ### Read-tax discipline
 
@@ -209,9 +209,9 @@ A skill's resident cost is driven by which reference files it re-reads every run
 
 When a skill or its shared docs grow expensive, measure Read% (reads / total tool calls) before trimming prose. The fix is usually inlining the hot core plus gating the cold tail, not word-trimming (cross-check the sprawl failure mode above).
 
-Completion criteria have two axes: **clarity** (resists premature completion) + **demand** (sets legwork depth — an exhaustive "every modified model accounted for" beats "produce a change list"). Strongest criteria are both checkable and exhaustive.
+Completion criteria have two axes: **clarity** (resists premature completion) + **demand** (sets legwork depth - an exhaustive "every modified model accounted for" beats "produce a change list"). Strongest criteria are both checkable and exhaustive.
 
-**Invocation-by-cost** (reinforces §8 pattern + the two-tier taxonomy in `workflow.md`): model-invoked keeps a `description` and pays permanent **context load** (it sits in the window every turn) — pick it only when the agent or another skill must reach the skill on its own. User-invoked (`disable-model-invocation: true`) is zero context load but spends human **cognitive load** (someone must remember it exists). When user-invoked skills outgrow memory, add one router skill that names the others.
+**Invocation-by-cost** (reinforces §8 pattern + the two-tier taxonomy in `workflow.md`): model-invoked keeps a `description` and pays permanent **context load** (it sits in the window every turn) - pick it only when the agent or another skill must reach the skill on its own. User-invoked (`disable-model-invocation: true`) is zero context load but spends human **cognitive load** (someone must remember it exists). When user-invoked skills outgrow memory, add one router skill that names the others.
 
 ---
 
@@ -240,4 +240,4 @@ CI checks: `tests/scripts/test-command-skill-size-budget.sh` and `tests/check-sh
 This is THE source of truth for skill authoring rules. When adding a new rule:
 1. For a mechanically enforceable rule, implement the CI check first (in `check-skill-doctrine.sh`) and add the rule here with a CI-check pointer
 2. Put non-mechanical guidance in §11 and label it advisory
-3. Update affected skills in the same PR — do not ship a new enforceable rule before the skills comply
+3. Update affected skills in the same PR - do not ship a new enforceable rule before the skills comply

@@ -5,7 +5,7 @@ Adversarial artifact/contract reviewer spawned by `/nase:discuss-pr` Step 5.7.
 Read this file together with `.claude/docs/review-modes.md`, which owns the spawn
 shape, output handling, error handling, and the notes that apply to every mode.
 
-### Mode: `finding-doubt` — artifact/contract adversarial reviewer
+### Mode: `finding-doubt` - artifact/contract adversarial reviewer
 
 Used by `/nase:discuss-pr` Step 5.7 after the primary reviewer has candidate findings. Goal: run a fresh-context adversarial pass on the artifact and contract without leaking the original claim.
 

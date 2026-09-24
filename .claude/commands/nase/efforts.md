@@ -26,7 +26,7 @@ Every other flag runs the workflow below.
 ### Step 1: Inventory
 
 - Active: every `workspace/efforts/*.md` excluding `done/` and `archive/`. Read each file's YAML frontmatter (`status`, `scope`, `repo`, `jira`, `created`, and, if present, `blocked-by`, `discovered-from`, `tracking_only`) and its `## Lifecycle` section if present. Capture last-updated date via `stat` mtime.
-- Done: count files in `workspace/efforts/done/` (count only — don't read each).
+- Done: count files in `workspace/efforts/done/` (count only - don't read each).
 - Archived: count files under `workspace/efforts/archive/*/` (count only). Terminal tracking-only efforts land here instead of `done/` per `.claude/docs/effort-model.md → Terminal Destination`, so reporting `done/` alone understates what closed.
 
 If `workspace/efforts/` has no active files, say so and stop.
@@ -45,7 +45,7 @@ Status vocabulary lives in `.claude/docs/effort-model.md -> Status Vocabulary`; 
 
 Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet: effort-slug blockers can be resolved locally from `done/` or `archive/*/`, but PR/Jira blockers need the Step 3 live reads.
 
-### Step 3: Drift check (the value-add — verify against live state)
+### Step 3: Drift check (the value-add - verify against live state)
 
 One command does the live reads and audits the classifier's two mechanical blind spots in one pass (~15 s for 50 efforts / 90 PRs - do not fan out agents or call `gh` serially instead):
 

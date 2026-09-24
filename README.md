@@ -1,4 +1,4 @@
-# nase — A personal AI engineering workspace for Claude Code
+# nase - A personal AI engineering workspace for Claude Code
 ```
 
  ████████    ██████    █████   ██████
@@ -13,7 +13,7 @@
 A [Claude Code](https://claude.ai/code) workspace for AI-assisted engineering across multiple repos: repo memory, workflow commands, lifecycle hooks, daily logs, and backups.
 
 > **Name origin**:
-> **nase** can mean ***N***ot ***A*** ***S***oftware ***E***ngineer, ***N***ot ***A***I ***S***oftware ***E***ngineer, or the recursive ***N***ase is an ***A***ssistant for ***S***oftware ***E***ngineer. It also sounds like 那谁 (*nà shuí*) in Chinese — "hey, whatsyourname".
+> **nase** can mean ***N***ot ***A*** ***S***oftware ***E***ngineer, ***N***ot ***A***I ***S***oftware ***E***ngineer, or the recursive ***N***ase is an ***A***ssistant for ***S***oftware ***E***ngineer. It also sounds like 那谁 (*nà shuí*) in Chinese - "hey, whatsyourname".
 
 ---
 
@@ -65,11 +65,11 @@ Then run `nase` from any terminal to open Claude Code in the workspace.
 
 ### Prerequisites
 
-- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — required
-- **Git** — required for hooks and report commands
-- **[GitHub CLI (`gh`)](https://cli.github.com/)** — required for PR metadata, diffs, reviews, and PR creation workflows
+- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** - required
+- **Git** - required for hooks and report commands
+- **[GitHub CLI (`gh`)](https://cli.github.com/)** - required for PR metadata, diffs, reviews, and PR creation workflows
 - **7z or zip** - required for backups; 7z/7zz is also required to inspect and restore legacy `.7z` backups
-- **jq** — required by hooks that parse Claude Code lifecycle JSON (`block-dangerous-git.sh`, external-write guards, `track-skill.sh`, telemetry hooks)
+- **jq** - required by hooks that parse Claude Code lifecycle JSON (`block-dangerous-git.sh`, external-write guards, `track-skill.sh`, telemetry hooks)
 - **python3** - required by date-range helpers, transactional workspace restore, and tech-digest archival
 
 #### Recommended agent CLI tools
@@ -122,10 +122,10 @@ small kernel around Claude Code: Markdown commands define workflows, lifecycle
 hooks gate risky tool calls, scripts provide deterministic checks, and
 `workspace/` holds human-readable state.
 
-- **Human-readable memory** — `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and curates what aged out (`--no-curate` skips that pass), so tasks load only relevant files instead of dumping the whole repo into context.
-- **35 Markdown commands** — daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
-- **Lifecycle hooks** — block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
-- **Evidence loops** — PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and an independent read-only verifier pass before outward-facing writes.
+- **Human-readable memory** - `workspace/kb/projects/<repo>.md` plus shared `workspace/kb/general/`; `/nase:onboard` populates them and curates what aged out (`--no-curate` skips that pass), so tasks load only relevant files instead of dumping the whole repo into context.
+- **35 Markdown commands** - daily kickoff, onboarding, design, implementation, PR review, KB hygiene, wrap-up. See [Available commands](#available-commands).
+- **Lifecycle hooks** - block destructive git and guard high-risk external writes, back up `workspace/`, log `/nase:*` usage, and run validation helpers. See [Hooks at a glance](#hooks-at-a-glance).
+- **Evidence loops** - PR/review/audit commands require repo evidence, focused tests, explicit AI-provenance checks where relevant, and an independent read-only verifier pass before outward-facing writes.
 - **Offline skill evals** - `evals/pr-review/` covers PR/review flows; `evals/core-workflows/` covers design, daily, learning, onboarding, incident, and deployment flows.
 
 `workspace/` content persists locally and is auto-backed-up. The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) lives in git; your content stays local.
@@ -254,6 +254,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns. |
 | `/nase:onboard` | Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL. |
 | `/nase:tech-digest` | Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, tech digest, what's new, latest in AI, morning digest, or tech roundup. |
+| `/nase:terminology` | Define, update, or look up scope-aware terminology (same term can mean different things per repo/domain), cross-linked. Use for what does X mean, add a term, or glossary entry; use kb-update/learn otherwise. |
 
 ### Learning & reflection
 
@@ -318,7 +319,7 @@ External-write hooks block direct Slack sends, require a fresh prompted Jira wri
 
 Other hooks: `SessionStart` creates today's log, reports backup status, and syncs local `workspace/skills` into generated `/nase:workspace:*` command wrappers; `UserPromptSubmit` records slash-command recognition, `UserPromptExpansion` records activation, and `PostToolUse:Skill` records tool outcome; `Stop` backs up `workspace/` only after credential, coverage, and symlink checks pass, then verifies the private snapshot and final archive against the same content manifest before publication; `StopFailure`, `PostToolUseFailure`, and `SubagentStop` write redacted bounded failure/subagent summaries; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` lints edited files and blocks on a finding - `shellcheck` for `.sh`, `ruff` for `.py`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts. `WorktreeCreate` is intentionally unwired because Claude Code expects that hook to create and print the worktree path.
 
-Full table with behavior details: [`docs/architecture.md` — Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
+Full table with behavior details: [`docs/architecture.md` - Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
 
 The `Stop` hook reads `backup-target` from `.local-paths` (set by `/nase:init`). If the file doesn't exist, the hook silently skips.
 
@@ -344,7 +345,7 @@ nase/
 | `.local-paths` | No | Machine-specific paths |
 | `workspace/` | No | Per-user content |
 
-Full layout (kit + `workspace/`): [`docs/architecture.md` — Workspace layout](docs/architecture.md#workspace-layout).
+Full layout (kit + `workspace/`): [`docs/architecture.md` - Workspace layout](docs/architecture.md#workspace-layout).
 
 ---
 
@@ -372,7 +373,7 @@ Found a bug or have a suggestion? [Open an issue](https://github.com/anels/nase/
 
 ## Further reading
 
-- [`docs/architecture.md`](docs/architecture.md) — how nase is wired: how a tool call is gated, hooks, the effort lifecycle, feedback loops in skills, cross-repo awareness, model routing, full workspace layout
-- [`CLAUDE.md`](CLAUDE.md) — operating rules loaded into every Claude Code session
-- `.claude/commands/nase/*.md` — source for each slash command
-- `.claude/docs/*.md` — shared algorithm docs referenced by skills (`kb-template`, `daily-log-format`, `repo-resolution`, `skill-contract`, etc.)
+- [`docs/architecture.md`](docs/architecture.md) - how nase is wired: how a tool call is gated, hooks, the effort lifecycle, feedback loops in skills, cross-repo awareness, model routing, full workspace layout
+- [`CLAUDE.md`](CLAUDE.md) - operating rules loaded into every Claude Code session
+- `.claude/commands/nase/*.md` - source for each slash command
+- `.claude/docs/*.md` - shared algorithm docs referenced by skills (`kb-template`, `daily-log-format`, `repo-resolution`, `skill-contract`, etc.)

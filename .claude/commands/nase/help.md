@@ -34,7 +34,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Translate eve
 ---
 
 ## Notes
-- Do not hardcode the command list — always read it through `command_catalog.py` so help stays in sync with command frontmatter
-- Do not hardcode the KB layout — helper scans `workspace/kb/` so it reflects current structure
+- Do not hardcode the command list - always read it through `command_catalog.py` so help stays in sync with command frontmatter
+- Do not hardcode the KB layout - helper scans `workspace/kb/` so it reflects current structure
 - Keep default help to a screenful; `--verbose` preserves the old full-section behavior
 - If README.md is missing, the helper still renders commands from `.claude/commands/nase/` filenames

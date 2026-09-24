@@ -25,7 +25,7 @@ python3 .claude/scripts/verify-bundle.py \
 
 Keep inventory, evidence, result, state, and bundle files outside the target repository. Otherwise those artifacts become untracked candidate content.
 
-- `--task` takes the **literal** task text. Passing a path binds a bundle whose task description is the string `workspace/efforts/….md`, and the reviewer correctly returns `UNVERIFIABLE` on nearly every axis — a whole QA round spent on operator input.
+- `--task` takes the **literal** task text. Passing a path binds a bundle whose task description is the string `workspace/efforts/….md`, and the reviewer correctly returns `UNVERIFIABLE` on nearly every axis - a whole QA round spent on operator input.
 - `--max-files` defaults to **5**. For large diffs, use the candidate metadata's `changed_path_count` as a safe upper bound so every text path is sampled. A whole-file diff (for example, a CRLF-renormalized file under `* text=auto`) can otherwise consume the default budget. The helper refuses to build a bundle when the limit would silently omit review evidence.
 
 The first bundle line is machine-readable `fsd-artifact` JSON. It records:

@@ -20,8 +20,8 @@ python3 .claude/scripts/tool-availability.py --group data --group usage --format
 
 Use CLI aggregation when available; keep raw logs out of context.
 5. Derive unique PRs, reviews, commits, repos, incidents, lessons, KB updates, decisions, blockers, and completed work. Counts must be de-duplicated and backed by surviving source lines or live metadata.
-6. Validate citations with `.claude/docs/citation-validator.md`. Remove unsupported claims or state the evidence gap.
-7. Write `workspace/recaps/{start}_{end}.md` with stats, overview, chronological highlights, tasks, lessons, KB changes, decisions, and concrete next-period suggestions.
+6. Validate citations with `.claude/docs/citation-validator.md`. Remove unsupported claims or state the evidence gap. Keep the `--format json` payload for step 7.
+7. Write `workspace/recaps/{start}_{end}.md` with stats, overview, chronological highlights, tasks, lessons, KB changes, decisions, and concrete next-period suggestions. Then persist the payload from step 6 as `workspace/recaps/{start}_{end}.md.receipt.json` per `.claude/docs/citation-validator.md → Persist the receipt`.
 8. Return only the artifact pointer and up to five highlights unless `--verbose` is present.
 
 Missing logs or tools reduce coverage; they do not justify invented activity. This command is read-only except for its recap artifact and daily-log entry.

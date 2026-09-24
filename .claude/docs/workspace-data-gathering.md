@@ -4,8 +4,8 @@ Shared algorithm for loading workspace activity data within a date range. Used b
 
 ## Inputs
 
-- `START_DATE` / `END_DATE` — the date range (YYYY-MM-DD)
-- `SCOPE` — `"day"` (wrap-up: today only) or `"range"` (recap: arbitrary range)
+- `START_DATE` / `END_DATE` - the date range (YYYY-MM-DD)
+- `SCOPE` - `"day"` (wrap-up: today only) or `"range"` (recap: arbitrary range)
 
 ## Algorithm
 
@@ -26,7 +26,7 @@ Read `$SCAN_OUT` before reading raw workspace files. It contains:
 
 If a payload has `"truncated": true` and the compact content is not enough to answer a required question, read the referenced `path` directly and only around the missing section. Do not pre-load every raw file just because one payload is truncated.
 
-Do NOT load KB domain files upfront — only read a specific one if needed to clarify something mentioned in journals/logs.
+Do NOT load KB domain files upfront - only read a specific one if needed to clarify something mentioned in journals/logs.
 
 ### 2. Resolve missing detail on demand
 
@@ -42,7 +42,7 @@ For each day from `$SCAN_OUT`:
 - **Task status (from todo.md):** completed during range; in-progress or blocked at range end.
 - **Lessons added during range (from lessons.md):** scan for section headers in the format `## {category} -- {YYYY-MM-DD} -- {title}` (double-hyphen separator per `.claude/docs/lessons-format.md`) where the date falls within the range. Group by category (workflow / code / debugging / ops / infra / calibration).
 - **KB updates:** look for `## KB Updates` sections in journals, or any mention of KB files being updated. Note which files changed and what was added.
-- **Key decisions:** scan journals for architectural, workflow, or process decisions — often found in reflection sections or explicit decision notes.
+- **Key decisions:** scan journals for architectural, workflow, or process decisions - often found in reflection sections or explicit decision notes.
 
 ### 4. Activity detection
 
@@ -51,11 +51,11 @@ Determine activity level from the gathered data:
 - **Low-activity:** files exist but only have auto-generated headers (no substantive `## Sessions` entries)
 - **No-activity:** no journal or log file for the day
 
-Report activity level to the caller — skills use this to decide which conditional steps to run (e.g., wrap-up skips reflect on low-activity days).
+Report activity level to the caller - skills use this to decide which conditional steps to run (e.g., wrap-up skips reflect on low-activity days).
 
 ## Notes
 
-- **Preserve all links** — PR URLs, Jira tickets, Confluence pages must appear verbatim in extracted data.
-- **Degrade gracefully** — use logs as fallback when journals are missing; skip days where both are absent.
-- **No KB full-load** — only read specific KB files when needed to clarify journal content.
-- **Session entries are the source of truth** for AI-assisted work — do NOT scan git repos for commits (those include unrelated changes not done via AI).
+- **Preserve all links** - PR URLs, Jira tickets, Confluence pages must appear verbatim in extracted data.
+- **Degrade gracefully** - use logs as fallback when journals are missing; skip days where both are absent.
+- **No KB full-load** - only read specific KB files when needed to clarify journal content.
+- **Session entries are the source of truth** for AI-assisted work - do NOT scan git repos for commits (those include unrelated changes not done via AI).

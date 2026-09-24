@@ -57,11 +57,11 @@ Only read the full cache file when debugging cache corruption.
 
 ### Cache Invalidation
 
-- Entries older than 30 days are considered stale — always re-analyze after fetching, even if the hash still matches
+- Entries older than 30 days are considered stale - always re-analyze after fetching, even if the hash still matches
 - Skills may force-refresh by ignoring the cache (e.g., user passes `--force`)
 - The cache file lives in `workspace/tmp/` and is excluded from backup
 
 ## Skills Using This Pattern
 
-- `/nase:tech-digest` — fetches enough source content to hash, skips deep analysis for unchanged non-stale sources, and refreshes stale cache entries
-- `/nase:onboard` — caches repo CLAUDE.md + key file hashes to skip full re-scan when unchanged
+- `/nase:tech-digest` - fetches enough source content to hash, skips deep analysis for unchanged non-stale sources, and refreshes stale cache entries
+- `/nase:onboard` - caches repo CLAUDE.md + key file hashes to skip full re-scan when unchanged

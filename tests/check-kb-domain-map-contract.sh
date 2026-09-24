@@ -131,15 +131,15 @@ fi
 
 assert_section_contains \
   "staleness Step B knows about retired entries" \
-  "$STALENESS" "Step B — Classify each file" "retired:"
+  "$STALENESS" "Step B - Classify each file" "retired:"
 
 assert_section_contains \
   "staleness Step B carries a Retired tier row" \
-  "$STALENESS" "Step B — Classify each file" "| Retired |"
+  "$STALENESS" "Step B - Classify each file" "| Retired |"
 
 assert_section_contains \
   "staleness Step B points at the field's owning doc" \
-  "$STALENESS" "Step B — Classify each file" "repo-resolution.md"
+  "$STALENESS" "Step B - Classify each file" "repo-resolution.md"
 
 # --- 3. onboard.md excludes retired repos from batch refresh ----------------
 

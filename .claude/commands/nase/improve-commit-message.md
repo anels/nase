@@ -5,11 +5,11 @@ argument-hint: "[--auto-accept] [--repo <abs-path>]"
 category: Git workflow
 ---
 
-Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why — without opening the diff.
+Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why - without opening the diff.
 
-**Input:** $ARGUMENTS — optional flags (see below)
+**Input:** $ARGUMENTS - optional flags (see below)
 
-## Step 0 — Language preflight (MUST run first, non-negotiable)
+## Step 0 - Language preflight (MUST run first, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and prompts; use `output:` for the rewritten commit message.
 
@@ -20,7 +20,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 <investigate_before_acting>
 Always verify git state (current branch, remote refs, commit history) before taking action.
-Never assume repository state — check it with git commands first.
+Never assume repository state - check it with git commands first.
 </investigate_before_acting>
 
 ## Steps
@@ -41,7 +41,7 @@ Read `branch` and `is_protected` alongside `push_state`. `is_protected` is true 
 
 If `is_protected` is true, `--auto-accept` is disabled for this run regardless of `push_state`. Go to Step 6 and name the branch in the question text so the user can see which protected branch the amend would rewrite.
 
-From `commitlint.candidates`, take the config CI actually loads — multiple may exist and the first found is not automatically the winner. Confirm against the `configFile:` line in the commitlint CI job log when a run exists. JSON candidates arrive pre-parsed under `rules`; a non-JSON candidate that CI loads still needs a direct Read. Extract:
+From `commitlint.candidates`, take the config CI actually loads - multiple may exist and the first found is not automatically the winner. Confirm against the `configFile:` line in the commitlint CI job log when a run exists. JSON candidates arrive pre-parsed under `rules`; a non-JSON candidate that CI loads still needs a direct Read. Extract:
 - `header-max-length` (validation limit; display target is always **80 chars**)
 - `type-enum` (allowed types)
 - `subject-case` (0 = disabled, 2 = enforced)
@@ -53,7 +53,7 @@ If no config is found (`commitlint.found: false`), use defaults: max 72, lowerca
 
 The helper already refreshed every configured remote head before deciding whether HEAD is published.
 
-- If `is_merge` is true (>1 parent): abort — do not amend merge commits.
+- If `is_merge` is true (>1 parent): abort - do not amend merge commits.
 - `is_pushed` is `true` when `push_state` is `pushed` or `unknown`; only a successful refresh followed by no containing remote branch yields `false`. This fail-closed value determines the Step 6 branch.
 
 ### 3. Analyze changes (diff-first strategy)
@@ -69,6 +69,8 @@ Read the diff first. Only read full source files when the 5-line context is insu
 Pick the commit **type** from the project's `type-enum` (or standard list):
 `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
+Try jev first (`jev-judgment-points.md` point `improve-commit-message.type`); confidence < 0.9 or unavailable → fall back to the list above.
+
 Pick an optional **scope** from the primary module/component affected (e.g., `auth`, `api`, `ui`, `db`, `deps`).
 
 ### 5. Generate improved message
@@ -76,7 +78,7 @@ Pick an optional **scope** from the primary module/component affected (e.g., `au
 Format: `type(scope): concise subject`
 
 Rules:
-- **Summary line target: `min(header-max-length, 80)` characters** — take the smaller of the configured `header-max-length` (default 72) and 80. The 80-char ceiling exists because GitHub PR titles, `git log --oneline`, and terminal UIs truncate beyond 80; a project may pick a stricter limit but never a looser one. Examples: `header-max-length=72` → use 72; `header-max-length=100` → still use 80. Overflow detail belongs in the commit body.
+- **Summary line target: `min(header-max-length, 80)` characters** - take the smaller of the configured `header-max-length` (default 72) and 80. The 80-char ceiling exists because GitHub PR titles, `git log --oneline`, and terminal UIs truncate beyond 80; a project may pick a stricter limit but never a looser one. Examples: `header-max-length=72` → use 72; `header-max-length=100` → still use 80. Overflow detail belongs in the commit body.
 - Imperative mood: "add" not "added"
 - No period at end (unless `subject-full-stop` allows it)
 - Respect project's `subject-case` rule
@@ -172,7 +174,7 @@ fix(auth): handle null tokens from expired sessions
 <error_handling>
 
 - **Pushed or freshness unknown**: after the mandatory remote refresh, either a containing remote branch or a refresh failure sets `is_pushed: true`. Step 6 always requires exact immediate approval for the final HEAD and message, including in `--auto-accept` mode. Skill never pushes itself.
-- **Merge commit**: Skip — do not amend
+- **Merge commit**: Skip - do not amend
 - **No parent** (initial commit): Use `git -C {repo} show HEAD --format="" --patch` (as in Step 3)
 - **Multiple scopes**: Use the most significant scope; mention others in body
 - **Config parse error**: Fall back to defaults with a warning

@@ -60,12 +60,12 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - AI attribution: `.claude/docs/ai-attribution.md`; commits/PRs follow `.local-paths` per-repo config. Inline review comments and Slack drafts stay AI-clean.
 
 ### Core Skills
-See [README.md — Available commands](README.md#available-commands). Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
+See [README.md - Available commands](README.md#available-commands). Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
 
 ### Model Routing (subagents)
 Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
 Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`verifier`/`architect` model/tool routing.
-When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist — `lookup` and `verifier` are read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
+When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist - `lookup` and `verifier` are read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
 Delegate a survey - a read sweep whose answer is a conclusion, not the file contents - and delegate it in ad hoc work, not only in a named skill phase. A subagent's reads never enter this conversation, so the sweep costs a brief plus a short report instead of several file dumps. Keep a read inline when you already know the file and the line, when the raw text is the deliverable, or when you must edit what you just read.
 
 ### Bash / Path Rules
@@ -126,7 +126,7 @@ When the user corrects wording/tone on an external draft I produced (Slack, PR d
 
 ## Code Quality Standards
 
-- **Minimal changes**: write the minimum code needed — do not add unrequested features or refactor surrounding code
+- **Minimal changes**: write the minimum code needed - do not add unrequested features or refactor surrounding code
 - **"While we're at it" disclosure**: per the user's global CLAUDE.md, fix failing lint, failing tests, flaky tests, and broken-looking UI even when unrelated to the assigned task; name each such fix in the handoff and the PR description (filename + one-line description). Everything else you noticed, such as a refactor, rename, or unrequested feature, stays a follow-up note.
 - **No comments by default**: unless the user asks or the logic is genuinely non-obvious; `.claude/docs/code-comment-policy.md` owns when one is warranted and its shape
 - **Check dependencies first**: verify in the project's dependency file before using a library
@@ -136,4 +136,4 @@ When the user corrects wording/tone on an external draft I produced (Slack, PR d
 
 ## Skill Output Discipline
 
-Canonical rules live in `.claude/docs/skill-contract.md`. Summary: full artifact → file; chat → pointer + ≤ 5-line summary; `--verbose` opt-in for inline dump; batch `AskUserQuestion` calls; redact secrets before any command, output, or artifact reaches chat or a draft. New skills inherit automatically — do not re-document per skill.
+Canonical rules live in `.claude/docs/skill-contract.md`. Summary: full artifact → file; chat → pointer + ≤ 5-line summary; `--verbose` opt-in for inline dump; batch `AskUserQuestion` calls; redact secrets before any command, output, or artifact reaches chat or a draft. New skills inherit automatically - do not re-document per skill.

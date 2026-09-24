@@ -5,7 +5,7 @@ Audit sanity pass spawned by `/nase:tech-debt-audit`.
 Read this file together with `.claude/docs/review-modes.md`, which owns the spawn
 shape, output handling, error handling, and the notes that apply to every mode.
 
-### Mode: `tech-debt-review` — audit sanity pass
+### Mode: `tech-debt-review` - audit sanity pass
 
 Used by `/nase:tech-debt-audit` before writing the final KB artifact. Goal: catch missing high-ROI debt, AI verification-debt gaps, false positives, and priority mistakes in the draft audit.
 

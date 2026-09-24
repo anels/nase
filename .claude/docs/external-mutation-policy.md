@@ -1,4 +1,4 @@
-# External Mutation Policy — Shared Reference
+# External Mutation Policy - Shared Reference
 
 ## Contents
 
@@ -23,13 +23,13 @@ Canonical rule for skills that change state in systems outside the local workspa
 | System | Hard rule |
 |--------|-----------|
 | **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. |
-| **Jira** | Drafting comments, creating issues, transitioning status — all require `AskUserQuestion` before the call. "Open" / "In Progress" transitions are mutations too — they notify watchers and may auto-assign. |
+| **Jira** | Drafting comments, creating issues, transitioning status - all require `AskUserQuestion` before the call. "Open" / "In Progress" transitions are mutations too - they notify watchers and may auto-assign. |
 | **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, prompt user, only then call the create/update tool. Never publish silently. Tool names differ by MCP generation: `createConfluenceContent` / `updateConfluenceContent` on the current server, `createConfluencePage` / `updateConfluencePage` on the older one. |
 | **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, which has no named tool and is gated on its own payload by that same hook - body format `markdown`/`html`, non-empty body under 4096 bytes, and exactly one addressing shape (`parentCommentId` reply, or `contentId` plus `commentType` `footer`/`inline`, inline needing `inlineSelection.selectedText`). The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead before posting. For anything else, use the named tool, or show the user the operation and inputs and let them run it. `discover` and `executeRead` are read-only and fine. |
-| **GitHub PR** | Opening a PR, merging, editing description, adding labels, requesting reviewers, posting review comments — `AskUserQuestion` before. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
-| **ADO pipeline** | Triggering a build = action-taking. `AskUserQuestion` before the trigger with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` — never `curl` with `$ADO_PAT`; see `feedback_ado-az-cli-only.md`). |
-| **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` — anything that mutates infrastructure requires explicit user confirmation. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
-| **git push** | Push to feature branch is OK after the standard commit sequence. Push to `main` / `master` / `develop` / `release/*` is BLOCKED by `block-dangerous-git.sh` hook — do not bypass. Force-push: only with `--force-with-lease` and only when the user has been warned. |
+| **GitHub PR** | Opening a PR, merging, editing description, adding labels, requesting reviewers, posting review comments - `AskUserQuestion` before. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
+| **ADO pipeline** | Triggering a build = action-taking. `AskUserQuestion` before the trigger with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` - never `curl` with `$ADO_PAT`; see `feedback_ado-az-cli-only.md`). |
+| **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` - anything that mutates infrastructure requires explicit user confirmation. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
+| **git push** | Push to feature branch is OK after the standard commit sequence. Push to `main` / `master` / `develop` / `release/*` is BLOCKED by `block-dangerous-git.sh` hook - do not bypass. Force-push: only with `--force-with-lease` and only when the user has been warned. |
 
 ## CLI mutation action contract
 
@@ -203,7 +203,7 @@ missing, it blocks the mutation instead of guessing.
 
 When one `AskUserQuestion` approves a batch of mutations across several tickets
 (e.g. cancel N incidents, each needing a transition + a comment), a single-shot
-token per call is wasteful — every call re-derives a payload sha. Write one
+token per call is wasteful - every call re-derives a payload sha. Write one
 **batch token** instead, after the approval that showed the per-ticket plan:
 
 ```json
@@ -243,16 +243,16 @@ token.
 
 Size the op budget to cover the planned calls (e.g. 4 tickets × [transition +
 comment + close transition] = 12). The token authorizes mutation *count*, not
-exact text — show the per-ticket disposition in the `AskUserQuestion` so the
+exact text - show the per-ticket disposition in the `AskUserQuestion` so the
 user approves the substance, not just a number.
 
 ---
 
 ## What this policy is NOT
 
-- Not a license to ask permission for every read (`gh pr view`, `az pipelines runs show`, MCP `getJiraIssue` — all fine, run them directly).
+- Not a license to ask permission for every read (`gh pr view`, `az pipelines runs show`, MCP `getJiraIssue` - all fine, run them directly).
 - Not a substitute for verifying side effects. After a mutation, confirm the change landed (e.g., re-fetch the Jira issue, re-check Slack draft was created, parse `gh pr create` response for URL).
-- Not a substitute for the `slack_send_message_draft` rule — that is stricter and absolute. Slack never gets a direct send.
+- Not a substitute for the `slack_send_message_draft` rule - that is stricter and absolute. Slack never gets a direct send.
 
 ---
 
@@ -262,10 +262,10 @@ When authoring or reviewing a skill that touches an external system, ask:
 
 1. Does it mutate? (write, create, transition, trigger, publish, push)
 2. If yes: is there a draft-first path? (Slack draft, Confluence draft page, draft PR, `workspace/tmp/{name}.md`)
-3. If draft-first isn't available: is there an explicit `AskUserQuestion` gate immediately before the mutation call? (not a generic "should we proceed?" earlier in the flow — the gate must be the last step before the side-effect)
+3. If draft-first isn't available: is there an explicit `AskUserQuestion` gate immediately before the mutation call? (not a generic "should we proceed?" earlier in the flow - the gate must be the last step before the side-effect)
 4. Does the gate show the user the *concrete payload* (Jira transition, Confluence page diff, ADO templateParameters, PR title+body)?
 
-If any answer is no, the skill is non-compliant — fix before merging.
+If any answer is no, the skill is non-compliant - fix before merging.
 
 ---
 
@@ -308,9 +308,9 @@ Skills that should reference this guard: `address-comments`, `prep-merge`, `requ
 
 ## Related memories
 
-- `feedback_no-address-comments-others-pr.md` — never mutate someone else's PR without permission
-- `feedback_ado-az-cli-only.md` — never `curl` with `$ADO_PAT` (use `az` CLI; same auth boundary as user)
-- `feedback_gh-auth-active-account-flips.md` — the multi-account `gh auth switch` non-durability that motivates the guard above
+- `feedback_no-address-comments-others-pr.md` - never mutate someone else's PR without permission
+- `feedback_ado-az-cli-only.md` - never `curl` with `$ADO_PAT` (use `az` CLI; same auth boundary as user)
+- `feedback_gh-auth-active-account-flips.md` - the multi-account `gh auth switch` non-durability that motivates the guard above
 
 ## Reference from skills
 

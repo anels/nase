@@ -7,13 +7,13 @@ category: Security & maintenance
 
 Scan skill files for security risks before they can cause damage. Returns PASS/WARN/FAIL per file with specific findings.
 
-**Input:** $ARGUMENTS — one of:
+**Input:** $ARGUMENTS - one of:
 - A file path: scan that single file
 - A directory path: scan all `.md` files in it
 - `all`: scan `workspace/skills/` + `.claude/commands/nase/` + `.claude/commands/nase/workspace/`
 - Empty: same as `all`
 
-## Step 0 — Language preflight (MUST run first, non-negotiable)
+## Step 0 - Language preflight (MUST run first, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Fixed severity labels (`PASS`, `WARN`, `FAIL`) stay English.
 
@@ -102,6 +102,6 @@ Read `.claude/docs/skill-permission-profiles.md` when a Category 7 finding needs
 ## Notes
 
 - This scan is pattern-based, not a full static analysis. It catches obvious threats but can miss obfuscated attacks.
-- False positives are possible — a skill teaching about security might mention `rm -rf` as an example. Use judgment: is the pattern in a code block meant to be executed, or in explanatory text?
+- False positives are possible - a skill teaching about security might mention `rm -rf` as an example. Use judgment: is the pattern in a code block meant to be executed, or in explanatory text?
 - When called from `/nase:kb-merge`, FAIL files are blocked from import. WARN files are flagged but importable after user confirmation.
 - Run periodically as hygiene: `/nase:skill-audit all`

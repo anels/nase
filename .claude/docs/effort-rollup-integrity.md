@@ -158,6 +158,14 @@ deterministic validation, citation validation, and required visual checks pass.
 Never overwrite an existing valid recap on failure. `coverage=partial` requires
 a visible gap list and explicit user acceptance before promotion.
 
+Right after the Markdown lands at `workspace/recaps/effort-rollup-{MONTH}.md`,
+persist the citation-validator JSON already captured in *Render and validate*
+as `workspace/recaps/effort-rollup-{MONTH}.md.receipt.json`, per
+`.claude/docs/citation-validator.md → Persist the receipt`. The HTML edition
+repeats the Markdown's citations verbatim (see *Render and validate* above), so
+one receipt covers both promoted files - do not run the gate a second time
+against the HTML just to produce a second receipt.
+
 Use `complete-for-declared-sources` only when every declared repo/account search
 and candidate PR view completed within the recorded cap and retry contract. It
 does not claim GitHub search-index exhaustiveness. Historical comparison requires

@@ -5,17 +5,17 @@ argument-hint: "<query>"
 category: Knowledge base
 ---
 
-Search the knowledge base for relevant entries — read-only, never writes.
+Search the knowledge base for relevant entries - read-only, never writes.
 
-**Input:** $ARGUMENTS — search query with optional filters:
-- `{query}` — plain text search across all KB files
-- `{query} in:general` / `in:projects` / `in:ops` / `in:cross-project` — restrict to one domain
-- `{query} tag:{tag}` — filter by tag (e.g. `tag:gotcha`, `tag:api-contract`)
-- `{query} since:{YYYY-MM-DD}` — entries dated on or after this date
-- `{query} confidence:low` / `confidence:medium` / `confidence:high` — filter by confidence level
-- `mentions:{path}` — entries that literally reference this file or folder path (e.g. `mentions:src/auth/handler.ts`, `mentions:src/checkout/`). Works without a query — answers "which KB entries reference this code path before I edit it?"
-- `--full` — show complete matching entries instead of capped previews
-- `--max-entry-lines N` — preview up to N lines per entry (default 24)
+**Input:** $ARGUMENTS - search query with optional filters:
+- `{query}` - plain text search across all KB files
+- `{query} in:general` / `in:projects` / `in:ops` / `in:cross-project` - restrict to one domain
+- `{query} tag:{tag}` - filter by tag (e.g. `tag:gotcha`, `tag:api-contract`)
+- `{query} since:{YYYY-MM-DD}` - entries dated on or after this date
+- `{query} confidence:low` / `confidence:medium` / `confidence:high` - filter by confidence level
+- `mentions:{path}` - entries that literally reference this file or folder path (e.g. `mentions:src/auth/handler.ts`, `mentions:src/checkout/`). Works without a query - answers "which KB entries reference this code path before I edit it?"
+- `--full` - show complete matching entries instead of capped previews
+- `--max-entry-lines N` - preview up to N lines per entry (default 24)
 
 ## Steps
 
@@ -37,7 +37,7 @@ If $ARGUMENTS is empty, print usage and stop:
 Usage: /nase:kb-search <query> [in:general|projects|ops|cross-project] [tag:<tag>] [since:YYYY-MM-DD] [confidence:low|medium|high] [mentions:<path>] [--full] [--max-entry-lines N]
 ```
 
-If $ARGUMENTS contains only `mentions:<path>` (no other query terms), the path itself is used as the search query — typical "before-touch" workflow before editing the code path.
+If $ARGUMENTS contains only `mentions:<path>` (no other query terms), the path itself is used as the search query - typical "before-touch" workflow before editing the code path.
 
 ### Steps 2–3: Search using script
 
@@ -92,8 +92,8 @@ Suggestions:
 
 After presenting primary results, collect related KB files from **two sources** for each matched file:
 
-1. **Frontmatter `related:` list** — read the YAML block at the top of the file; extract domain keys from `related:`; resolve each to a file path via `workspace/kb/.domain-map.md`
-2. **Body `> See also:` links** — scan the file body for `> See also:` lines; extract linked paths
+1. **Frontmatter `related:` list** - read the YAML block at the top of the file; extract domain keys from `related:`; resolve each to a file path via `workspace/kb/.domain-map.md`
+2. **Body `> See also:` links** - scan the file body for `> See also:` lines; extract linked paths
 
 Merge both source lists, deduplicate, and remove any files already in the primary results.
 
@@ -109,21 +109,39 @@ If any remain, append a "Related" section after the last result:
 
 Limit to 3 related files. If multiple matched files point to the same target, show it once and note all source files. Skip this section entirely if no related files are found.
 
+### Step 4c: Related terminology
+
+If `workspace/kb/terminology/_index.md` exists, check whether the query terms
+or the primary results' matched text hit a `Term`/`Alias` there (same
+hyphen/space/underscore split as the fuzzy fallback). For each hit, append
+after Step 4b's Related section (or directly after results if 4b found
+nothing):
+
+```
+### Related terminology
+- **{Term}** ({scope list}) - {first scope's `**Definition:**` first sentence}. Run `/nase:terminology {term}` for every scoped sense.
+(showing up to 3 terms)
+```
+
+Cap at 3 terms. Skip entirely if `_index.md` is missing or nothing matches.
+This is a pointer, not a substitute for `/nase:terminology` - it never
+expands the KB search scope to include `workspace/kb/terminology/`.
+
 ### Step 5: Offer next actions
 
 After displaying results (when results exist), print:
 
 ```
-Actions: open a file to read in full, or run /nase:kb-update / /nase:learn to add related knowledge.
+Actions: open a file to read in full, run /nase:kb-update / /nase:learn to add related knowledge, or /nase:terminology <term> to look up a definition.
 ```
 
-No interactive prompt — keep this skill fast and non-blocking.
+No interactive prompt - keep this skill fast and non-blocking.
 
 ## Notes
 
-- This skill is **read-only** — it never writes to the KB
-- **Fuzzy fallback** splits on hyphens, spaces, underscores. Activates only when exact search returns 0 results — never mixes with exact results
+- This skill is **read-only** - it never writes to the KB
+- **Fuzzy fallback** splits on hyphens, spaces, underscores. Activates only when exact search returns 0 results - never mixes with exact results
 - For fuzzy matching, use multiple short keywords rather than long phrases
 - Entries without `**Tags:**` or `**Confidence:**` fields are included in all unfiltered searches; the metadata fields are optional
-- The `in:` filter is fastest — use it when you know the domain
+- The `in:` filter is fastest - use it when you know the domain
 - For full-text discovery across lessons (not just KB), search `workspace/tasks/lessons.md` directly with Grep

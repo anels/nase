@@ -13,7 +13,7 @@
 
 Used by `/nase:onboard` → `## Single repo` and `## Batch refresh` to keep the per-repo KBs consistent with each other and with the cross-project tracker.
 
-The goal is to catch drift — a claim in one repo's KB that contradicts another's reality — and surface it to the user. **Read-only by default.** Never auto-mutates KB content; produces a diff report and asks before writing.
+The goal is to catch drift - a claim in one repo's KB that contradicts another's reality - and surface it to the user. **Read-only by default.** Never auto-mutates KB content; produces a diff report and asks before writing.
 
 The three checks below are independent. Skip any that the user opts out of. In batch mode, run all three once at the end (not per-repo) so the inputs are fresh.
 
@@ -28,7 +28,7 @@ The three checks below are independent. Skip any that the user opts out of. In b
 
 Resolve repo paths via `.claude/docs/repo-resolution.md`. Pre-filter the repo list once against `.local-paths` before any git operations; repos without a local path are noted as 🟦 in the report and skipped for git-backed checks (don't discover the gap mid-loop).
 
-**Shared KB map**: read all `workspace/kb/projects/*.md` files once into a parsed structure `{repo → {ownership, inbound, outbound, related, deployment}}` and pass that structure to 6a / 6b / 6c. The three checks read overlapping fields — re-reading per check triples I/O on a 20-repo workspace.
+**Shared KB map**: read all `workspace/kb/projects/*.md` files once into a parsed structure `{repo → {ownership, inbound, outbound, related, deployment}}` and pass that structure to 6a / 6b / 6c. The three checks read overlapping fields - re-reading per check triples I/O on a 20-repo workspace.
 
 ---
 
@@ -42,9 +42,9 @@ Verify that each repo's `## Ownership Map` (derived from git log in Step 3g) doe
 2. Read `workspace/context.md` → `## Team` section. Extract `(person, declared_focus_areas)` mappings.
 3. For each repo's Primary Owner, check whether the declared focus in `context.md` mentions this repo (by name) or its domain.
 4. Flag mismatches in three classes:
-   - **Undeclared owner** — person is Primary Owner per git log but `context.md` does not list this repo in their focus.
-   - **Phantom focus** — person's `context.md` focus lists this repo but they have 0 commits in last 6 months.
-   - **Dormant primary** — declared Primary Owner has not committed to the area in 6+ months (loss of context risk).
+   - **Undeclared owner** - person is Primary Owner per git log but `context.md` does not list this repo in their focus.
+   - **Phantom focus** - person's `context.md` focus lists this repo but they have 0 commits in last 6 months.
+   - **Dormant primary** - declared Primary Owner has not committed to the area in 6+ months (loss of context risk).
 
 ### Output format
 
@@ -75,7 +75,7 @@ Show the report. If non-empty, prompt the user with `AskUserQuestion`:
 - Update the offending repo's `## Ownership Map` to align with `context.md` (if git log is misleading)
 - Skip (false positive, e.g. recent role change not yet reflected)
 
-Never silently update either file — the user owns the truth-source.
+Never silently update either file - the user owns the truth-source.
 
 ---
 
@@ -114,10 +114,10 @@ If applied, update `<!-- Last updated: ... -->` on the tracker.
 
 ### Constraints
 
-- Preserve any section in the tracker that has `<!-- manual: keep -->` directly above it — do not rewrite.
+- Preserve any section in the tracker that has `<!-- manual: keep -->` directly above it - do not rewrite.
 - Preserve external links and prose commentary that don't appear in per-repo KBs.
 - If the tracker has no `## Master Matrix` heading, skip the auto-update silently (tracker is freeform; user-owned).
-- **No symmetry-from-a-shared-flag.** Every per-repo behavioral cell/contrast row must be HEAD-grounded in *that* repo's own source (a `path:line`), not inferred by analogy from a shared config/flag name that the repos happen to have in common (e.g. all three declaring `Warehouse:UseKeyPairAuth` does not mean one fails fast while others fall back). If a per-repo value is unverifiable, record only the shared fact and mark the per-repo behavior `unverified` — never write an A-vs-B contrast you did not confirm in each repo.
+- **No symmetry-from-a-shared-flag.** Every per-repo behavioral cell/contrast row must be HEAD-grounded in *that* repo's own source (a `path:line`), not inferred by analogy from a shared config/flag name that the repos happen to have in common (e.g. all three declaring `Warehouse:UseKeyPairAuth` does not mean one fails fast while others fall back). If a per-repo value is unverifiable, record only the shared fact and mark the per-repo behavior `unverified` - never write an A-vs-B contrast you did not confirm in each repo.
 
 ---
 
@@ -127,7 +127,7 @@ For each repo KB's outbound calls (Step 3b → `## Outbound Calls`), verify the 
 
 ### Algorithm
 
-0. **Early-exit guard** — count KBs that contain a non-empty `## Outbound Calls` table (rows beyond the header). If zero, emit one line and skip the rest of 6c:
+0. **Early-exit guard** - count KBs that contain a non-empty `## Outbound Calls` table (rows beyond the header). If zero, emit one line and skip the rest of 6c:
    ```
    ## Contract consistency
    - skipped — no repos have populated `## Outbound Calls` tables yet. Re-onboard repos to populate (the new schema is in `.claude/docs/kb-template.md`).
@@ -140,10 +140,10 @@ For each repo KB's outbound calls (Step 3b → `## Outbound Calls`), verify the 
    - **Auth match**: target's auth column matches the source's claim (e.g. both say JWT, or both say MSI).
    - **Payload shape**: target documents a request schema that's compatible with what source sends.
 4. Classify each outbound claim:
-   - ✅ **Verified** — target advertises matching endpoint with compatible auth + payload.
-   - ⚠️ **Partial match** — endpoint exists but auth or payload differs.
-   - ❌ **Drift** — target has no matching endpoint.
-   - 🟦 **Unknown** — target repo has no KB or no `## Inbound Endpoints` section.
+   - ✅ **Verified** - target advertises matching endpoint with compatible auth + payload.
+   - ⚠️ **Partial match** - endpoint exists but auth or payload differs.
+   - ❌ **Drift** - target has no matching endpoint.
+   - 🟦 **Unknown** - target repo has no KB or no `## Inbound Endpoints` section.
 
 ### Output format
 
@@ -181,7 +181,7 @@ Never auto-fix. The whole point is to catch drift the LLM can't safely resolve w
 
 All three checks read KB files only (from the shared map built in Inputs) plus run a few `git log` queries (Step 6a only). Total cost on a 20-repo workspace: < 30s when all repos have current KBs. Add a `--skip-cross-validation` flag for users who want to bypass.
 
-In batch mode, dispatch 6a / 6b / 6c **in parallel** — their inputs are independent. Buffer outputs and render the final report in fixed `6a → 6b → 6c` order so the user reads it top-to-bottom.
+In batch mode, dispatch 6a / 6b / 6c **in parallel** - their inputs are independent. Buffer outputs and render the final report in fixed `6a → 6b → 6c` order so the user reads it top-to-bottom.
 
 Cross-validation summaries are report receipts. Do not write a date/status footer
 into every KB file. If a check finds a durable contract or ownership delta, route
@@ -192,9 +192,9 @@ contract`; otherwise keep the KB byte-identical.
 
 ## Failure modes & graceful degradation
 
-- **KB missing for a referenced repo** — note as 🟦 Unknown, do not block.
-- **`context.md` has no `## Team` section** — skip 6a, print one-line warning.
-- **No cross-project tracker exists yet** — skip 6b silently.
-- **No `## Outbound Calls` in any KB** — skip 6c silently (most repos haven't been re-scanned with the deeper schema yet; it'll populate over time).
+- **KB missing for a referenced repo** - note as 🟦 Unknown, do not block.
+- **`context.md` has no `## Team` section** - skip 6a, print one-line warning.
+- **No cross-project tracker exists yet** - skip 6b silently.
+- **No `## Outbound Calls` in any KB** - skip 6c silently (most repos haven't been re-scanned with the deeper schema yet; it'll populate over time).
 
-Always emit the report header even if all sections are empty — gives the user proof the check ran.
+Always emit the report header even if all sections are empty - gives the user proof the check ran.

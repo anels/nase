@@ -48,8 +48,8 @@ Initial lifecycle:
 - [ ] Deployed (if applicable)
 ```
 
-When the design plans more than one deliverable — any `Target PR count` above 1, or a
-phased/SE-numbered plan — add one unchecked row per planned PR (and per no-PR
+When the design plans more than one deliverable - any `Target PR count` above 1, or a
+phased/SE-numbered plan - add one unchecked row per planned PR (and per no-PR
 investigation) right after `PR opened`, naming what each covers. Those rows are what
 keeps a half-delivered plan out of `done/`; see `effort-model.md →
 Multi-Deliverable Efforts`.

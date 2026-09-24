@@ -1,4 +1,4 @@
-# GitHub Queries — Shared Reference
+# GitHub Queries - Shared Reference
 
 ## Contents
 
@@ -26,7 +26,7 @@ Standard field sets for `gh pr view`. Skills reference these instead of inlining
 
 ### Full variant (fsd, prep-merge)
 
-Use when you need commit history, review state, and branch info — typically for skills that modify the PR or create new ones.
+Use when you need commit history, review state, and branch info - typically for skills that modify the PR or create new ones.
 
 ```bash
 gh pr view {pr_number} --repo {owner}/{repo} \
@@ -35,7 +35,7 @@ gh pr view {pr_number} --repo {owner}/{repo} \
 
 ### Light variant (discuss-pr, request-review)
 
-Use for read-only analysis — reviewing, ownership lookup, or discussion.
+Use for read-only analysis - reviewing, ownership lookup, or discussion.
 
 ```bash
 gh pr view {pr_number} --repo {owner}/{repo} \
@@ -136,7 +136,7 @@ Notes:
 
 Two mutation shapes share one throttle rule. Pick the shape by call pattern; both go through the same `resolveReviewThread` GraphQL mutation. Both are GitHub writes: create a payload file, prepare the exact action manifest, show it with the thread IDs, obtain the immediate `AskUserQuestion` approval, then authorize and execute. Do not run raw `gh api graphql` mutations.
 
-### Shape A — Single-thread (address-comments Phase 9)
+### Shape A - Single-thread (address-comments Phase 9)
 
 Use when each `resolveReviewThread` follows a per-thread reply, so calls must be sequenced one at a time per thread.
 
@@ -157,10 +157,10 @@ python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
 Notes:
-- `threadId` is the GraphQL opaque string `id` from `reviewThreads.nodes[].id` — **not** the integer `databaseId`.
-- For `decline` threads: reply only, **do NOT resolve** — the reviewer may want to respond.
+- `threadId` is the GraphQL opaque string `id` from `reviewThreads.nodes[].id` - **not** the integer `databaseId`.
+- For `decline` threads: reply only, **do NOT resolve** - the reviewer may want to respond.
 
-### Shape B — Batched aliased (prep-merge Phase 2a)
+### Shape B - Batched aliased (prep-merge Phase 2a)
 
 Use when you have N threads to resolve with no per-thread reply (e.g. auto-resolving bot-declined threads). One round-trip resolves all of them via GraphQL aliases.
 
@@ -185,10 +185,10 @@ python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 
 GitHub's abuse detector treats high-rate review-thread mutations as suspicious. Throttle whenever the total number of mutations in this run exceeds 30:
 
-1. **Chunk by 30** — split the call list into batches of ≤30. Shape B can batch all 30 into one round-trip via aliases; Shape A must still call sequentially.
+1. **Chunk by 30** - split the call list into batches of ≤30. Shape B can batch all 30 into one round-trip via aliases; Shape A must still call sequentially.
 2. **Sleep 4 seconds between calls (Shape A) or between batches (Shape B).**
 3. **On HTTP 422** with body `{"resource":"PullRequestReview","code":"abuse"}`: pause 60 seconds, retry the same call once, then treat as a hard failure.
 
-Reference incident (do not re-anchor in skills): sanitized pattern with 50+ review-thread mutations where GitHub returned HTTP 422 around call 30 — this is what motivated the 30-call threshold.
+Reference incident (do not re-anchor in skills): sanitized pattern with 50+ review-thread mutations where GitHub returned HTTP 422 around call 30 - this is what motivated the 30-call threshold.
 
-For Shape B specifically: if the alias batch itself contains > 30 sub-mutations, chunk the batch — GitHub treats each aliased sub-mutation as a separate call against the abuse counter.
+For Shape B specifically: if the alias batch itself contains > 30 sub-mutations, chunk the batch - GitHub treats each aliased sub-mutation as a separate call against the abuse counter.

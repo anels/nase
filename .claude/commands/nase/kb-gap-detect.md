@@ -7,13 +7,13 @@ category: Knowledge base
 
 Detect knowledge-base gaps by mining daily logs + lessons for repeated questions and learnings that aren't yet captured in the KB.
 
-**Input:** $ARGUMENTS — optional flags:
-- `--days N` (default `14`) — scan logs from the last N days
-- `--since YYYY-MM-DD` / `--until YYYY-MM-DD` — explicit date range (overrides `--days`)
-- `--min-recurrence N` (default `2`) — minimum hit count per topic to flag as gap
-- `--repo NAME` — restrict scan to logs containing this repo name
-- `--auto` — write proposed KB drafts directly without prompting
-- `--verbose` — also dump full report inline in chat
+**Input:** $ARGUMENTS - optional flags:
+- `--days N` (default `14`) - scan logs from the last N days
+- `--since YYYY-MM-DD` / `--until YYYY-MM-DD` - explicit date range (overrides `--days`)
+- `--min-recurrence N` (default `2`) - minimum hit count per topic to flag as gap
+- `--repo NAME` - restrict scan to logs containing this repo name
+- `--auto` - write proposed KB drafts directly without prompting
+- `--verbose` - also dump full report inline in chat
 
 Follows `.claude/docs/kb-write-routing.md -> Shared admission contract` and `.claude/docs/workspace-write-guard.md` for applied KB drafts and daily-log apply-count updates. Auto-write modes only skip human confirmation; they never skip final drift checks. They also preserve the verification triad, current-state reconciliation, and target staging. `--auto` skips only the prompt, not admission or `workspace-write-guard.py apply`.
 
@@ -27,7 +27,7 @@ With `--verbose`: also dump the full report inline below the summary.
 
 ## Steps
 
-### Preflight — Language (MUST run before Step 1, non-negotiable)
+### Preflight - Language (MUST run before Step 1, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. The report file `workspace/tmp/kb-gaps-{date}.md` follows `conversation:`; quoted KB content keeps its source language.
 
@@ -43,7 +43,7 @@ END=${RANGE##* }
 
 ### Step 2: Run pre-filter scan (deterministic)
 
-Invoke the regex pre-filter — zero-token deterministic stage:
+Invoke the regex pre-filter - zero-token deterministic stage:
 
 ```bash
 bash .claude/scripts/kb-gap-scan.sh \
@@ -57,10 +57,10 @@ If exit 2 (no hits): emit `No knowledge gaps detected in {range}` and stop. No r
 ### Step 3: Cluster hits by topic
 
 Group raw hits into topic clusters. For each cluster, infer:
-- **Topic key** — short noun phrase (≤8 words; e.g., "EF Core OrderBy + Skip ordering")
-- **Recurrence** — count of *distinct days* (one log file = one day) the topic appears in
-- **Marker mix** — set of marker types triggering it (e.g., `{sme_teach, post_error}`)
-- **Evidence** — up to 5 entries: `{file}:{line} — {snippet}`
+- **Topic key** - short noun phrase (≤8 words; e.g., "EF Core OrderBy + Skip ordering")
+- **Recurrence** - count of *distinct days* (one log file = one day) the topic appears in
+- **Marker mix** - set of marker types triggering it (e.g., `{sme_teach, post_error}`)
+- **Evidence** - up to 5 entries: `{file}:{line} - {snippet}`
 
 Drop clusters where `recurrence < min-recurrence` (default 2). One-shot signals are ignored unless the user passes `--min-recurrence 1`.
 
@@ -77,7 +77,7 @@ bash .claude/scripts/kb-search.sh --with-score "{topic key}"
 ```
 
 - Exit 2 (no hits) **OR** top score `< 2` → confirmed gap
-- Top score `≥ 2` → already covered; drop, or mark "thin coverage" (lower priority — include in report only if the matching entry is `> 90 days` old)
+- Top score `≥ 2` → already covered; drop, or mark "thin coverage" (lower priority - include in report only if the matching entry is `> 90 days` old)
 
 Read the top score from the first `**Score:** N` line. If the score line is missing, treat the result as `thin coverage` rather than confirmed coverage.
 
@@ -89,9 +89,9 @@ For each confirmed gap:
 - Ops / runbook topic → closest existing `ops/*.md`; fallback `workspace/kb/ops/_inbox.md`
 
 Confidence:
-- `high` — marker mix includes `sme_teach` OR `post_error`
-- `medium` — `uncertainty + lookup` mix
-- `low` — `lookup`-only or `first_time`-only
+- `high` - marker mix includes `sme_teach` OR `post_error`
+- `medium` - `uncertainty + lookup` mix
+- `low` - `lookup`-only or `first_time`-only
 
 ### Step 6: Draft entries
 
@@ -130,7 +130,7 @@ section per gap, `---` separated:
 {draft block from Step 6}
 ```
 
-After the file is saved, hold off on chat output — the bounded summary in Step 9 is the single source of chat content.
+After the file is saved, hold off on chat output - the bounded summary in Step 9 is the single source of chat content.
 
 ### Step 8: Daily log + approval
 
@@ -178,5 +178,5 @@ If `--verbose`, also dump the full report inline below the summary.
 - **Gap ≠ stale.** This skill finds *missing* topics. For stale, duplicate, or orphaned entries use `/nase:kb-review`.
 - **Recurrence threshold matters.** Default `--min-recurrence 2` filters one-off events. Drop to `1` for first-pass discovery; raise to `3+` for high-precision flagging.
 - **No automatic writes** unless `--auto` is passed. Default flow is propose-then-confirm.
-- **False-positive watch:** `lookup`-only clusters and `first_time`-only clusters are noisy by nature — sanity-check before applying. The current marker set deliberately excludes the broad Chinese "原来" because of its "originally" sense.
+- **False-positive watch:** `lookup`-only clusters and `first_time`-only clusters are noisy by nature - sanity-check before applying. The current marker set deliberately excludes the broad Chinese "原来" because of its "originally" sense.
 - **Integration:** `/nase:wrap-up` may invoke `/nase:kb-gap-detect --days 7` weekly as a hygiene complement to `/nase:kb-review`.
