@@ -7,7 +7,7 @@ category: Reporting
 
 Publish a finished local `.md`/`.html` artifact as a Confluence page, preserving structure and rendering charts that Confluence cannot express. Triggers: "publish to Confluence", "share this report on the wiki", "put this doc on Confluence", or a path to a local report.
 
-**Input:** `$ARGUMENTS` - an absolute path to a local `.md` or `.html` file. Optional: `--title`, `--space`, `--parent`, `--rasterize-only <class>`, `--no-rasterize`, `--rasterize <selector>`.
+**Input:** `$ARGUMENTS` - an absolute path to a local `.md` or `.html` file. Optional: `--title`, `--rasterize-only <class>`, `--no-rasterize`, `--rasterize <selector>`, all of which pass straight through to `confluence-publish.py plan`. Two more are consumed here rather than by the script: `--space KEY` and `--parent ID` pin the destination, so the targeting ladder skips its search rungs and the confirm presents that space and parent as the only candidate.
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/external-mutation-policy.md` - every Confluence write goes through draft-first plus an `AskUserQuestion` showing the concrete payload. Conversion rules live in `.claude/docs/confluence-publish-conversion.md`; format selection and ADF mechanics in `.claude/docs/confluence-adf-pattern.md`; the ledger write follows `.claude/docs/workspace-write-guard.md` (append-only exception).
 
@@ -17,12 +17,18 @@ If `$ARGUMENTS` has no readable file path, use `AskUserQuestion` to collect one.
 
 ## Step 2 - Pre-publish gates (all block)
 
+Run the two gates separately and branch on each exit code. The two use opposite conventions - `gitleaks` is clean on 0, `grep -l` is clean on 1 - so a single compound call cannot tell a finding from a clean run. Branch on `command -v` explicitly too, because `&&` collapses a missing binary onto the same exit code as a finding.
+
 ```bash
-gitleaks detect --no-git --source "{source}" --redact --no-banner
-grep -l '\[CONFIDENTIAL' "{source}"
+if command -v gitleaks >/dev/null; then
+  gitleaks detect --no-git --source "{source}" --redact --no-banner; echo "gitleaks exit=$?"
+else
+  echo "gitleaks exit=absent"
+fi
+grep -l '\[CONFIDENTIAL' "{source}"; echo "confidential exit=$?"
 ```
 
-A `gitleaks` finding or a `[CONFIDENTIAL]` marker stops the run. Report the redacted rule and line, never the value.
+`gitleaks` exit 0 is clean and 1 is a finding that stops the run; a **missing** `gitleaks` is neither, so say in the confirm that the source was not scanned rather than reporting it clean or treating the absence as a finding. For the marker, exit 0 means `[CONFIDENTIAL]` was found and stops the run, while exit 1 is the clean case. Report the redacted rule and line, never the value.
 
 **Say plainly in the confirm that the scan is partial.** Verified: `gitleaks` flags `ghp_*` and `xoxb-*` but missed a SQL connection-string password in the same fixture. It is a lead, not a clean bill.
 
@@ -33,7 +39,7 @@ python3 .claude/scripts/confluence-publish.py plan \
   --source "{source}" --out-dir "workspace/tmp/confluence-{slug}"
 ```
 
-**Scope what becomes an image.** With no flags, `plan` rasterizes every class the source lays out with `display: grid`, which cannot tell a bar chart from a grid-laid-out incident card - and an imaged card loses full-text search, copy-paste, and its inline links. Read the source's `<style>`, and when the grid classes include prose blocks, pass `--rasterize-only <class>` (repeatable) naming just the chart containers so everything else converts to ordinary HTML. Report in the confirm how many visuals each choice produces.
+**Scope what becomes an image.** With no flags, `plan` rasterizes every class the source lays out with `display: grid`, which cannot tell a bar chart from a grid-laid-out incident card - and an imaged card loses full-text search, copy-paste, and its inline links. Read the source's `<style>` and decide per grid class whether it is a chart container. Try jev first for that call (`jev-judgment-points.md` point `publish-confluence.is-chart-container`, `--type Noul`, yes = rasterize this class / no = convert it as HTML; state = the class name, its CSS rule, and the first 200 characters of one matching element's text content); confidence < 0.9 or unavailable → judge it yourself, where text content means prose and an `<svg>` or canvas means a chart. Pass `--rasterize-only <class>` (repeatable) naming just the chart containers so everything else converts to ordinary HTML. Report in the confirm how many visuals each choice produces.
 
 Exit 3 = a single block exceeds the cap; exit 4 = a nesting construct Confluence rejects. Both name the cause - relay it and stop; do not restructure the user's document.
 
@@ -45,31 +51,13 @@ Exit 5 = a captured chart holds an `<svg>` that draws nothing, so it would publi
 
 Read `plan.json` for `title`, `pages[]`, `split_differs_without_visuals`, and `warnings` - `plan` flags a captured block that draws nothing (prose about to become an image), a `--rasterize-only` class that matched nothing (a typo that images nothing at all), and in-page links dropped because their target is a paragraph anchor rather than a heading. Relay any of them in the confirm; all three otherwise look like a clean plan.
 
-## Step 4 - Find the target (before asking anything)
+## Steps 4-5 - Find the target, then confirm once
 
-Work this ladder, then ask once:
-
-1. **Ledger** - `python3 .claude/scripts/confluence-publish.py ledger-lookup --source "{source}" --pages {N}`. Per-page `create`/`update`, `orphans`, and the prior month's page family.
-2. **cloudId** - `workspace/config.md` `## Jira → cloudId` (same site), confirmed with `getAccessibleAtlassianResources`.
-3. **KB** - resolve a Confluence-map file through `workspace/kb/.domain-map.md` for a topical parent. Skip silently if the domain map has no such entry; this rung is an optimisation, not a requirement.
-4. **CQL by title** - `title ~ "{stem}" AND type = page`. Also pre-empts the title conflict in Step 6.
-5. **CQL by author** - `creator = currentUser() AND type = page ORDER BY lastmodified DESC`, limit 10.
-6. **Spaces** - `getConfluenceSpaces` as the fallback list.
-
-For every `update` candidate, fetch `getConfluencePage(contentFormat:"html")` and compare against the ledger's `published_body_sha256`.
-
-## Step 5 - One confirmation
-
-A single batched `AskUserQuestion` presenting a decision-ready brief - never the draft body:
-
-| Question | Content |
-|---|---|
-| Target | ranked candidates as `{space key} · {space name}` so the audience is explicit; recommended first with its evidence |
-| Create or update | for an update, quote the page id, title and `lastModified`. If the page is **not** in the ledger, or its body hash differs, say *this replaces content this skill did not publish* |
-| Page structure | measured byte counts. When the ledger holds one page and this run splits, add *content moves to {M} children, so inbound links land on page 1 of N* |
-| Visuals | `{K}` charts → PNG + placeholders. When `split_differs_without_visuals` is set, state the page count each answer produces. `adjust selectors` re-runs Step 3 and re-shows this confirm |
-
-State that space permissions were **not** verified - the MCP exposes no permission field - and that the secret scan is partial. The audience call stays with the user.
+Work `.claude/docs/confluence-publish-targeting.md`: the six-rung ladder that resolves the destination
+page, and the single batched `AskUserQuestion` that presents target, create-or-update, page structure,
+and visuals. Run the ladder to completion before asking - an early rung producing a candidate does not
+stop it, because the confirm ranks all candidates and shows the runner-up. Do not publish anything
+until that confirm returns.
 
 ## Step 6 - Publish
 
@@ -121,7 +109,7 @@ Append a daily-log line per `.claude/docs/daily-log-format.md`.
 
 - Report any visual whose `status` is not `attached`; its placeholder panel is still on the page naming the PNG, so the reader is not left with a silent gap.
 - A rasterized subtree leaves no text duplicate on the page; the image carries its own labels. That is why the Step 3 scope matters - whatever gets imaged stops being searchable.
-- `updateConfluencePage` replaces the whole body; this skill does not merge sections, and the confirm says so.
+- `updateConfluenceContent` replaces the whole body; this skill does not merge sections, and the confirm says so.
 - Markdown passthrough cannot express panels, expands, or inline cards, and is never rasterized. Use an HTML source when charts or those constructs matter.
 
 ## Portability
@@ -129,7 +117,7 @@ Append a daily-log line per `.claude/docs/daily-log-format.md`.
 Nothing here is pinned to one person or one organisation, so the skill can be shared as-is:
 
 - The Atlassian host comes from `workspace/config.md`, never a hard-coded tenant.
-- Step 4's KB rung resolves through `.domain-map.md` and is skipped when absent.
+- The targeting ladder's KB rung resolves through `.domain-map.md` and is skipped when absent.
 - The credential is read from the keychain or the environment; none is stored in the repo.
 - `tests/scripts/test-confluence-publish.sh` is fixture-driven and needs no credentials, no network, and no `workspace/`.
 - Chrome and `gitleaks` are optional: without Chrome a visual reports `skipped:no-renderer` and keeps its placeholder; without `gitleaks` say so in the confirm rather than claiming the source was scanned.

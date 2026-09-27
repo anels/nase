@@ -61,7 +61,6 @@ roles:
       - Security review, threat modeling
       - Design decisions, architecture trade-offs
       - Complex cross-repo analysis
-      - Tech debt audit
 
 # Where named skill phases actually dispatch. A spawn that names no role inherits the
 # session model, so on an Opus session every unrouted fan-out bills at Opus for work
@@ -81,7 +80,8 @@ roles:
 #   address-comments   Phase 2 dossier collection                    verifier
 #   address-comments   Phase 7.5 resolution gate                     verifier
 #   fsd                Phase 6.4 candidate review                    verifier
-#   fsd                Phase 4 implementation (Team mode)            worker
+#   fsd                phase-isolation subagents                     worker
+#                      (fsd-phase-decomposition.md Step 5)
 #   wrap-up            log / stats / effort scans                    (nase-workspace-state-scanner, haiku)
 #   simplify           Step 5-6 anti-slop pass                       (code-simplifier plugin agent)
 #   tech-debt-audit    Step 7 tech-debt-review sanity pass           verifier
@@ -118,8 +118,15 @@ roles:
 #   routing is correct (a cheaper misroute is silently wrong).
 #
 # Tool whitelist enforcement:
-#   When spawning a subagent via Agent(), pass `tools=` matching the role's
-#   `tools:` list. lookup and verifier MUST NOT receive Edit/Write — they are read-only roles.
+#   When spawning a subagent via Agent() against a ROLE from this file, pass `tools=`
+#   matching that role's `tools:` list. lookup and verifier MUST NOT receive Edit/Write,
+#   because they are read-only roles.
+#   A spawn that names a persisted agent from `.claude/agents/` instead passes NO `tools=`,
+#   because that agent pins its own whitelist in frontmatter. All five are `Read, Grep, Glob` with
+#   no Bash, which `tests/scripts/test-workspace-skill-p1-fixes.sh` asserts, so they are
+#   NARROWER than `lookup`. A spawn site that needs `gh`, `git log`, or any shell probe
+#   runs it in the main thread and pastes the result into the agent's prompt. Never widen
+#   an agent to close that gap.
 #   Borrowed from affaan-m/ECC agent frontmatter pattern: explicit tools array
 #   prevents role drift (lookup agent silently doing Write work).
 #

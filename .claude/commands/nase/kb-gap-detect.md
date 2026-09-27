@@ -1,7 +1,7 @@
 ---
 name: nase:kb-gap-detect
 description: "Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries."
-argument-hint: "[days/topic]"
+argument-hint: "[--days N] [--since D] [--until D] [--repo NAME] [--auto]"
 category: Knowledge base
 ---
 
@@ -27,30 +27,25 @@ With `--verbose`: also dump the full report inline below the summary.
 
 ## Steps
 
-### Preflight - Language (MUST run before Step 1, non-negotiable)
+### Preflight - Language (MUST run before Steps 1-2, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. The report file `workspace/tmp/kb-gaps-{date}.md` follows `conversation:`; quoted KB content keeps its source language.
 
-### Step 1: Resolve date range
+### Steps 1-2: Resolve the range, then run the pre-filter scan
 
-Parse `$ARGUMENTS`. If `--since` / `--until` not given, derive from `--days N` (default 14):
+Parse `$ARGUMENTS`. If `--since` / `--until` are not given, derive the range from `--days N`, defaulting `N` to `14`. Substitute the parsed values yourself; `date-resolve.py` answers an unrecognized spec with a stderr warning and **exit 0**, silently returning a 7-day window, so an unsubstituted `${N}` produces the wrong range without failing.
+
+Shell variables do not survive between Bash calls, so resolve and scan in one call:
 
 ```bash
+N=14                  # or the parsed --days value
 RANGE=$(python3 .claude/scripts/date-resolve.py "${N}d")
 START=${RANGE%% *}
 END=${RANGE##* }
+bash .claude/scripts/kb-gap-scan.sh --since "$START" --until "$END"   # add --repo "$REPO" when filtering
 ```
 
-### Step 2: Run pre-filter scan (deterministic)
-
-Invoke the regex pre-filter - zero-token deterministic stage:
-
-```bash
-bash .claude/scripts/kb-gap-scan.sh \
-  --since "$START" --until "$END" [--repo "$REPO"]
-```
-
-Output is TSV: `marker_type<TAB>file<TAB>line<TAB>snippet`. Capture stdout.
+Output is TSV: `marker_type<TAB>file<TAB>line<TAB>snippet`. Capture stdout along with `$START` and `$END`, which later steps quote into the report and the log line.
 
 If exit 2 (no hits): emit `No knowledge gaps detected in {range}` and stop. No report file.
 
@@ -70,16 +65,12 @@ Heuristics:
 
 ### Step 4: KB cross-check
 
-For each surviving cluster, run:
+For each surviving cluster, run the shared coverage check in `.claude/docs/kb-write-routing.md -> Shared admission contract` step 2, which owns the command, the term-derivation rule, the score scale, and the cut. Use the topic key as the derived term, and read the top score from the first `**Score:** N` line.
 
-```bash
-bash .claude/scripts/kb-search.sh --with-score "{topic key}"
-```
+- Below the contract's cut, or exit 2 → confirmed gap
+- At or above it → already covered; drop, or mark "thin coverage" (lower priority - include in report only if the matching entry is `> 90 days` old, measured from its `### YYYY-MM-DD` entry header, not the file's `last-updated:`)
 
-- Exit 2 (no hits) **OR** top score `< 2` → confirmed gap
-- Top score `≥ 2` → already covered; drop, or mark "thin coverage" (lower priority - include in report only if the matching entry is `> 90 days` old)
-
-Read the top score from the first `**Score:** N` line. If the score line is missing, treat the result as `thin coverage` rather than confirmed coverage.
+If the score line is missing, treat the result as `thin coverage` rather than confirmed coverage.
 
 ### Step 5: Route each gap to a KB target
 
@@ -88,7 +79,9 @@ For each confirmed gap:
 - Cross-repo / general pattern → pick the closest existing `general/*.md` from `.domain-map.md`; fallback `workspace/kb/general/_inbox.md` (create if missing)
 - Ops / runbook topic → closest existing `ops/*.md`; fallback `workspace/kb/ops/_inbox.md`
 
-Confidence:
+Try jev first for the three-way routing above (`jev-judgment-points.md` point `kb-gap-detect.route-target`, `--type Choice`, options `projects` / `general` / `ops`; state = the topic key plus its evidence snippets); confidence < 0.9 or unavailable → route it yourself with the three rules above.
+
+Confidence is a lookup on the marker mix, not a judgment, so it takes no jev point:
 - `high` - marker mix includes `sme_teach` OR `post_error`
 - `medium` - `uncertainty + lookup` mix
 - `low` - `lookup`-only or `first_time`-only
@@ -134,9 +127,9 @@ After the file is saved, hold off on chat output - the bounded summary in Step 9
 
 ### Step 8: Daily log + approval
 
-Append to today's daily log following `.claude/docs/daily-log-format.md` (tag: `kb-gap-detect`):
+Append to today's daily log following `.claude/docs/daily-log-format.md`, using the full entry shape that its `## Sessions` parser accepts:
 ```
-({START}..{END}) — {G} gaps detected, {none-yet|N applied}
+- {HH:MM} | kb-gap-detect: ({START}..{END}) {G} gaps detected, {none-yet|N applied}
 ```
 Write the line **before** prompting so it lands regardless of the user's next choice.
 
@@ -149,7 +142,7 @@ header: "KB Gap Detection"
 options:
   - label: "Apply all"      , description: "Append every draft to its proposed target file"
   - label: "Pick subset"    , description: "Show numbered list, accept comma-separated picks"
-  - label: "Just the report", description: "Skip writes — report stays in workspace/tmp/"
+  - label: "Just the report", description: "Skip writes - report stays in workspace/tmp/"
 ```
 
 For each applied gap:
@@ -162,13 +155,13 @@ For each applied gap:
 Print to chat:
 
 ```
-## KB Gap Detection — {today}
+## KB Gap Detection - {today}
 Range: {START}..{END} ({D} log days)
 Hits: {M} | Clusters: {K} | Gaps: {G} | Thin: {T}
 Top 3:
   {n}. {topic}  - markers: {mix}, recurrence {N}
 Report: workspace/tmp/kb-gaps-{today}.md
-Applied: {N}  (or "skipped — report only")
+Applied: {N}  (or "skipped - report only")
 ```
 
 If `--verbose`, also dump the full report inline below the summary.

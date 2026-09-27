@@ -17,7 +17,24 @@ Usage:
 
 Output (stdout, always valid JSON, always exit 0):
   {"available": true,  "answer": <choice str | score num | bool>, "confidence": <float|null>}
-  {"available": false, "reason": "no_api_key|disabled|timeout|http_error:<code>|invalid_response|exception:<msg>"}
+  {"available": false, "reason": "<one of the reasons below>"}
+
+Reasons, grouped by what the caller should do about them. This list is the whole
+set; `.claude/docs/jev-judgment-points.md` carries the same one.
+  Configured off, no call attempted:
+    no_api_key               no TYPESAFE_API_KEY in the environment
+    disabled                 NASE_JEV=off, the kill switch
+  The call was never made because the invocation is wrong (fix the call site):
+    invalid_config:<msg>     NASE_JEV_TIMEOUT_MS / NASE_JEV_EXCERPT_CHARS not an int
+    invalid_endpoint_scheme  NASE_JEV_ENDPOINT is not http(s)
+    exception:bad_json:<msg> --criteria or --state is not parseable JSON
+  The call was made and failed:
+    http_error:<code>        the API rejected the request; a contract bug
+    timeout                  the deadline expired
+    net_error:<class>        the connection failed; <class> is an exception class
+                             name such as ConnectionRefusedError, never a message
+    invalid_response[:<msg>] the body was not the documented answer shape
+    exception:<msg>          any other client-side failure
 """
 
 import argparse
@@ -30,7 +47,7 @@ import urllib.request
 from typing import NoReturn
 
 DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
-DEFAULT_TIMEOUT_MS = 250
+DEFAULT_TIMEOUT_MS = 2500
 DEFAULT_EXCERPT_CHARS = 200
 JEV_MODEL = "jev-latest"
 
@@ -57,13 +74,18 @@ def main():
     parser.add_argument("--criteria", required=True, help="JSON object: label -> description")
     parser.add_argument("--state", required=True, help="JSON object: the bounded input to judge")
     parser.add_argument("--instructions", default=None)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the request body that would be POSTed and exit; no key needed, no network",
+    )
     args = parser.parse_args()
 
     if os.environ.get("NASE_JEV", "").strip().lower() == "off":
         unavailable("disabled")
 
     api_key = os.environ.get("TYPESAFE_API_KEY")
-    if not api_key:
+    if not api_key and not args.dry_run:
         unavailable("no_api_key")
 
     try:
@@ -81,7 +103,9 @@ def main():
     if urllib.parse.urlparse(endpoint).scheme not in ("http", "https"):
         unavailable("invalid_endpoint_scheme")
 
-    question_def = {"type": args.type, "criteria": bound_excerpts(criteria, excerpt_chars)}
+    # The API's ChoiceQuestion/ScoreQuestion/NoulQuestion schemas pin "type" to the
+    # lowercase const; sending the CLI's capitalized spelling is rejected with HTTP 400.
+    question_def = {"type": args.type.lower(), "criteria": bound_excerpts(criteria, excerpt_chars)}
     if args.instructions:
         question_def["instructions"] = args.instructions[:excerpt_chars]
 
@@ -92,6 +116,10 @@ def main():
             "model": JEV_MODEL,
         }
     ).encode("utf-8")
+
+    if args.dry_run:
+        print(body.decode("utf-8"))
+        sys.exit(0)
 
     request = urllib.request.Request(  # noqa: S310 - scheme validated above
         endpoint,
@@ -108,8 +136,16 @@ def main():
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         unavailable(f"http_error:{exc.code}")
-    except (urllib.error.URLError, TimeoutError):
+    except TimeoutError:
         unavailable("timeout")
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            unavailable("timeout")
+        # The class name, not `str(reason)`, whose errno text and resolved host
+        # differ between machines and so cannot be matched on downstream.
+        reason = exc.reason
+        name = type(reason if isinstance(reason, BaseException) else exc).__name__
+        unavailable(f"net_error:{name}")
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         unavailable(f"invalid_response:{exc}")
     except Exception as exc:  # any client failure must degrade, not crash the caller

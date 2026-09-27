@@ -262,6 +262,85 @@ VERDICTS
 
 assert_cmd "validator never requests a shell" bash -c '! grep -Eq "shell[[:space:]]*=[[:space:]]*True" "$1"' _ "$SCRIPT"
 
+# --- exit-code separation --------------------------------------------------
+#
+# The documented gate turns UNKNOWN (exit 2) into "continue behind an unverified
+# banner", so a run that never happened must not share that code. Exit 3 is the
+# never-ran class and exit 4 the withheld-output one.
+
+expect_rc() {
+  # expect_rc <name> <expected-rc> <command...>
+  local name="$1" expected="$2" rc
+  shift 2
+  set +e
+  "$@" >/dev/null 2>&1
+  rc=$?
+  set -e
+  if [[ "$rc" -eq "$expected" ]]; then
+    pass "$name"
+  else
+    fail "$name (expected rc $expected, got $rc)"
+  fi
+}
+
+write_artifact "$TMPDIR_TEST/one/artifact.md" 'A real `one:src/file.py:1` citation.'
+
+expect_rc "a missing artifact does not run and exits 3" 3 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/no-such-artifact.md" \
+  --root "one=$TMPDIR_TEST/one" --format json
+
+expect_rc "an unusable root does not run and exits 3" 3 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" \
+  --root "one=$TMPDIR_TEST/one/no-such-root" --format json
+
+expect_rc "a malformed root argument does not run and exits 3" 3 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" \
+  --root "no-equals-sign" --format json
+
+expect_rc "a duplicate root alias does not run and exits 3" 3 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" \
+  --root "one=$TMPDIR_TEST/one" --repo-root "one=$TMPDIR_TEST/two" --format json
+
+expect_rc "a non-positive timeout does not run and exits 3" 3 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" \
+  --root "one=$TMPDIR_TEST/one" --timeout-seconds 0 --format json
+
+expect_rc "a clean artifact still exits 0" 0 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" \
+  --root "one=$TMPDIR_TEST/one" --format json
+
+write_artifact "$TMPDIR_TEST/one/artifact.md" 'Unresolvable `missing:src/file.py:1`.'
+expect_rc "a genuine UNKNOWN still exits 2" 2 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" \
+  --root "one=$TMPDIR_TEST/one" --format json
+
+expect_rc "a rejected argument exits did-not-run, not unknown" 3 \
+  "$PYTHON_BIN" "$SCRIPT" --bogus-flag
+
+expect_rc "a missing required argument exits did-not-run, not unknown" 3 \
+  "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md"
+
+expect_rc "--help still exits 0" 0 \
+  "$PYTHON_BIN" "$SCRIPT" --help
+
+assert_cmd "exit codes are distinct and named" "$PYTHON_BIN" - "$SCRIPT" <<'CODES'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("citation_validator", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+codes = {
+    "EXIT_OK": module.EXIT_OK,
+    "EXIT_BROKEN": module.EXIT_BROKEN,
+    "EXIT_UNKNOWN": module.EXIT_UNKNOWN,
+    "EXIT_DID_NOT_RUN": module.EXIT_DID_NOT_RUN,
+    "EXIT_OUTPUT_WITHHELD": module.EXIT_OUTPUT_WITHHELD,
+}
+assert len(set(codes.values())) == len(codes), codes
+assert (codes["EXIT_OK"], codes["EXIT_BROKEN"], codes["EXIT_UNKNOWN"]) == (0, 1, 2), codes
+CODES
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\ncitation-validator tests passed.\n'
   exit 0

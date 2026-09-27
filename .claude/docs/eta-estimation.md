@@ -23,7 +23,7 @@ Break the task into concrete subtasks, then tag each with its **dominant lane** 
 
 A subtask may touch several lanes; pick the one that dominates its time. Apply the AI-leverage compression **only** to the 🤖 lane - the other three lanes do not speed up because codegen got faster.
 
-Try jev first (`jev-judgment-points.md` point `estimate-eta.lane`); confidence < 0.9 or unavailable → fall back to the table above.
+Try jev first (`jev-judgment-points.md` point `estimate-eta.lane`, `--type Choice` over `AI` / `Env` / `Human` / `Verify`; state = the one-line subtask description, criteria = the four Covers cells above); confidence < 0.9 or unavailable → fall back to the table above.
 
 ## Size Scale
 Rough buckets, no hour-precision:
@@ -52,8 +52,8 @@ Roll the subtasks into three rough numbers:
 The gap *is* the risk signal. On AI-heavy tasks the spread should **widen, not narrow** - AI raises outcome variance (different prompts → wildly different results; higher churn/rework). A wide spread means unresolved unknowns worth naming as risks.
 
 ## Calibration Anchor (optional)
-A consumer that wants `/nase:wrap-up` to compare estimate vs actual appends one line to `workspace/logs/{YYYY-MM-DD}.md`:
+A consumer that wants `/nase:wrap-up` to compare estimate vs actual appends one line under `## Sessions` in `workspace/logs/{YYYY-MM-DD}.md`, in the shape `.claude/docs/daily-log-format.md` mandates:
 ```
-- ETA estimate: {task name} — {realistic estimate} ({scope})
+- {HH:MM} | estimate: {task name} - {realistic estimate} ({scope})
 ```
 `/nase:wrap-up` later diffs this against actual completion time and writes a calibration note to `workspace/tasks/lessons.md` on significant divergence - see `.claude/docs/lessons-format.md`.

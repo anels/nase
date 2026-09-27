@@ -38,6 +38,8 @@ List 1-3 candidates with one-line descriptions. Prioritize the intervention-gap 
 Every candidate must pass all three checks. There is no numeric score: a weighted rubric
 with no calibration source only dresses the same judgment up as arithmetic.
 
+Try jev first, one call per check (`.claude/docs/jev-judgment-points.md` points `extract-skills.reusable`, `extract-skills.non-obvious`, `extract-skills.self-contained`, each `--type Noul`; state = the candidate's one-line description plus the check's own pass/fail examples below); confidence < 0.9 or unavailable → judge the check yourself against those examples.
+
 - **Reusable** - will this come up again in future sessions, across different repos or tasks? A pattern that only applies to one specific codebase isn't worth extracting.
   - ✅ Pass: "How to resolve a diverged git worktree before onboarding" - could happen in any repo
   - ❌ Fail: "How to fix the ADF pipeline for the Mercy tenant" - specific to one customer/env
@@ -56,8 +58,10 @@ If zero candidates pass all three checks: report "No extractable skills found in
 
 Skip entirely if no candidates passed Step 2's quality bar.
 
-Read every `workspace/skills/*.md` and list the ones whose `extracted:` date is more than
-six months old. Age alone is not evidence a pattern went bad, so report them as
+Get the `extracted:` date for every `workspace/skills/*.md` with one
+`grep -H '^extracted:' workspace/skills/*.md` rather than reading the files - the answer is one
+scalar per file, not their contents - and list the ones more than six months old. A file with no
+`extracted:` line predates the format; treat it as a candidate too. Age alone is not evidence a pattern went bad, so report them as
 re-validation candidates rather than pruning them, and say what would settle it: whether
 the workflow still exists, and whether the skill has been invoked since.
 
@@ -67,7 +71,7 @@ new skill.
 ### 3. Check for duplicates
 
 For each remaining candidate:
-- Scan `.claude/commands/nase/` and `workspace/skills/` file names for similar skills
+- Compare against name **and** description, not file names: `python3 .claude/scripts/command_catalog.py` for `.claude/commands/nase/`, plus the Step 2.5 frontmatter sweep for `workspace/skills/`. Two skills with unlike filenames and the same trigger are the duplicate that matters
 - If a near-duplicate exists: propose updating that file instead of creating a new one
 
 ### 4. Propose to the user
@@ -87,9 +91,9 @@ Otherwise confirm using AskUserQuestion:
 question: "Create these skills?"
 header: "Confirm Skills"
 options:
-  - label: "Yes — create all"  , description: "Write skill files to workspace/skills/"
+  - label: "Yes - create all"  , description: "Write skill files to workspace/skills/"
   - label: "Edit"               , description: "Adjust before creating"
-  - label: "No — skip"          , description: "Nothing is written"
+  - label: "No - skip"          , description: "Nothing is written"
 ```
 - **Yes**: proceed to Step 5
 - **Edit**: ask what to change, then re-propose
@@ -97,20 +101,20 @@ options:
 
 ### 5. Write the skill file(s)
 
-For each approved skill, stage the raw skill file and wrapper under `workspace/tmp/`, show the diff or first 40 lines for new files, then re-check target mtime/hash before writing. Create `workspace/skills/{name}.md` for each approved skill:
+For each approved skill, stage the raw skill file under `workspace/tmp/` together with the wrapper Step 6b specifies (build it to that template now; staging it here and defining it two steps later is how a run stages an empty file), show the diff or first 40 lines for new files, then re-check target mtime/hash before writing. Create `workspace/skills/{name}.md` for each approved skill:
 
 ```markdown
 ---
 extracted: {YYYY-MM-DD}
 ---
 
-{One-sentence description — what this skill does and when to reach for it.}
+{One-sentence description - what this skill does and when to reach for it.}
 
 **Input:** $ARGUMENTS (describe expected input, or "no input required")
 
 ## When to use
 
-{1-2 sentences describing the trigger — what situation or symptom tells you this skill is the right tool.}
+{1-2 sentences describing the trigger - what situation or symptom tells you this skill is the right tool.}
 
 ## Steps
 
@@ -147,17 +151,23 @@ If the extracted skill captures a hard-won lesson (not just a procedural templat
 
 ### 6b. Generate thin wrapper for immediate invocation
 
-For each new skill created in `workspace/skills/{name}.md`, also generate the thin wrapper command file at `.claude/commands/nase/workspace/{name}.md` so the skill is immediately invocable without restarting the session:
+For each new skill created in `workspace/skills/{name}.md`, also generate the thin wrapper command file at `.claude/commands/nase/workspace/{name}.md` so the skill is immediately invocable without restarting the session. `session-start.sh` regenerates these wrappers every session and `workspace-skill-integrity.py check` validates them, so this template must stay byte-identical to what that hook emits - if they disagree, the hook wins and this is the copy to fix:
 ```
 ---
 name: nase:workspace:{name}
-description: "{first non-empty content line from the skill file}"
+description: "{the skill's frontmatter `description`, else its first non-empty body line, compacted and YAML-escaped}"
+{argument-hint, when_to_use, model, effort, context, agent, allowed-tools, disallowed-tools, disable-model-invocation - in that order, each carried over only when the source skill declares it}
 ---
-Read and follow `workspace/skills/{name}.md`
+
+Read `workspace/skills/{name}.md` and follow every step exactly as written.
+
+$ARGUMENTS
 ```
 
-### 7. Report
+### 7. Report and log
 
 List skills created (with file paths), skills updated (with what changed), and skills skipped (with reason).
+
+Then append one line under `## Sessions` in `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-format.md`, tag `extract-skills`.
 
 </workflow>

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Regression tests for .claude/scripts/nase_git.py, nase_fs.py and nase_gh.py
+# Regression tests for .claude/scripts/nase_git.py, nase_fs.py, nase_gh.py and
+# nase_time.py
 #
 # These modules hold the single copy of a policy every consumer depends on. What has
 # to hold: every git call is bounded and a timeout is distinguishable from a failure; the
 # environment is merged rather than replaced; a streaming read always reaps its process;
-# the durable write is actually durable and leaves nothing behind; and a failed `gh`
-# read is classified the same way for every caller.
+# the durable write is actually durable and leaves nothing behind; a failed `gh`
+# read is classified the same way for every caller; and an instant is never silently
+# compared against a calendar day.
 #
 # Run from repo root:  bash tests/scripts/test-nase-shared-modules.sh
 
@@ -41,7 +43,7 @@ run_case() {
 PRELUDE='
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path("'"$ROOT"'") / ".claude" / "scripts"))
-import nase_git, nase_fs, nase_gh
+import nase_git, nase_fs, nase_gh, nase_time
 '
 
 # --- nase_git.run ---------------------------------------------------------
@@ -293,6 +295,36 @@ with tempfile.TemporaryDirectory() as tmp:
     assert list(directory.iterdir()) == [], list(directory.iterdir())
 '
 
+run_case "atomic_write preserves the mode of the file it replaces" "$PRELUDE"'
+import os, stat, tempfile, pathlib
+# mkstemp creates at 0600 and os.replace carries that onto the target, so a 0644
+# wrapper or manifest that loses its read bit is broken for every reader but one.
+with tempfile.TemporaryDirectory() as tmp:
+    for name, mode in (("kept.md", 0o644), ("hook.sh", 0o755), ("secret.json", 0o600)):
+        target = pathlib.Path(tmp) / name
+        target.write_bytes(b"old")
+        os.chmod(target, mode)
+        nase_fs.atomic_write(target, b"new")
+        actual = stat.S_IMODE(target.stat().st_mode)
+        assert target.read_bytes() == b"new", target.read_bytes()
+        assert actual == mode, (name, oct(actual), oct(mode))
+'
+
+run_case "atomic_write on a new file follows the umask, not mkstemp 0600" "$PRELUDE"'
+import os, stat, tempfile, pathlib
+# With no existing file there is no mode to carry over, but a brand new durable
+# file must not land owner-only either or the next reader cannot open it.
+previous = os.umask(0o022)
+try:
+    with tempfile.TemporaryDirectory() as tmp:
+        fresh = pathlib.Path(tmp) / "fresh.md"
+        nase_fs.atomic_write(fresh, b"hello")
+        actual = stat.S_IMODE(fresh.stat().st_mode)
+        assert actual == 0o644, oct(actual)
+finally:
+    os.umask(previous)
+'
+
 run_case "fsync_dir flushes a real directory without error" "$PRELUDE"'
 import tempfile
 with tempfile.TemporaryDirectory() as tmp:
@@ -355,6 +387,60 @@ category, wait = nase_gh.failure_category("API rate limit exceeded")
 assert (category, wait) == ("rate-limited", None), (category, wait)
 '
 
+run_case "a long retry-after is reported in full, not truncated" "$PRELUDE"'
+# A four-digit cap reads "retry-after 12345" as 1234 and retries an order of
+# magnitude early, which deepens the limit rather than clearing it.
+for stderr, expected in {
+    "secondary rate limit; retry-after 12345": 12345,
+    "secondary rate limit; retry-after 3600": 3600,
+    "secondary rate limit; retry-after 86400": 86400,
+}.items():
+    category, wait = nase_gh.failure_category(stderr)
+    assert (category, wait) == ("rate-limited", expected), (stderr, category, wait)
+'
+
+run_case "a word merely starting with auth is not an auth failure" "$PRELUDE"'
+# "author", which gh prints routinely, must not classify as auth-failed:
+# citation-validator maps auth-failed to UNKNOWN and lets the artifact through
+# behind a banner, while not-found is BROKEN and stops it.
+for stderr, expected in {
+    "HTTP 404: Not Found (author unknown)": "not-found",
+    "pull request not found; author was deleted": "not-found",
+    "GraphQL: author field is not present": "command-failed",
+    "authorship could not be determined": "command-failed",
+}.items():
+    actual, _ = nase_gh.failure_category(stderr)
+    assert actual == expected, (stderr, actual, expected)
+'
+
+run_case "real auth failures still classify as auth-failed" "$PRELUDE"'
+for stderr in (
+    "gh auth login required",
+    "authentication required",
+    "HTTP 401: Bad credentials",
+    "You are not authorized to perform this action",
+    "HTTP 403: Forbidden",
+):
+    actual, _ = nase_gh.failure_category(stderr)
+    assert actual == "auth-failed", (stderr, actual)
+'
+
+run_case "gh inflections of a token still classify" "$PRELUDE"'
+# gh does not print these tokens in one fixed form. An exact-word match reads every
+# line below as command-failed, which drops a retryable rate limit and a real auth
+# failure on the floor.
+for stderr, expected in {
+    "ssh: Could not resolve hostname github.com": "transient-network",
+    "You have exceeded rate limits. Please wait 60 seconds": "rate-limited",
+    "gh api: rate limiting in effect, retry after 3600": "rate-limited",
+    "error refreshing OAuth token": "auth-failed",
+    "unable to reauthenticate: token invalid": "auth-failed",
+    "requested resource was unauthorised": "auth-failed",
+}.items():
+    actual, _ = nase_gh.failure_category(stderr)
+    assert actual == expected, (stderr, actual, expected)
+'
+
 run_case "a transient failure outranks a not-found phrase in the same stderr" "$PRELUDE"'
 # The module documents this precedence, and only a caller that retries acts on the
 # difference. A wrong not-found there turns a recoverable blip into a permanent
@@ -380,6 +466,96 @@ assert done.stderr, "a missing binary must say why"
 run_case "run captures both streams and preserves the exit code" "$PRELUDE"'
 done = nase_gh.run(["sh", "-c", "echo out; echo err >&2; exit 3"])
 assert (done.returncode, done.stdout.strip(), done.stderr.strip()) == (3, "out", "err"), done
+'
+
+# --- nase_time ------------------------------------------------------------
+#
+# An instant and a calendar day are not the same kind of value, and mixing them is
+# off by one for part of every day at a non-zero offset, always as a plausible number
+# rather than an error. Every case pins a non-UTC zone so a machine running in UTC
+# cannot pass vacuously.
+
+run_case "parse_ts reads a Z suffix as UTC" "$PRELUDE"'
+from datetime import datetime, timezone
+got = nase_time.parse_ts("2026-09-26T16:54:49Z")
+assert got == datetime(2026, 9, 26, 16, 54, 49, tzinfo=timezone.utc), got
+assert got.tzinfo == timezone.utc, got.tzinfo
+'
+
+run_case "parse_ts reads a missing offset as UTC, not local" "$PRELUDE"'
+from datetime import datetime, timezone
+# Everything this repo writes stamps UTC, so a bare timestamp is an omission.
+got = nase_time.parse_ts("2026-09-26T16:54:49")
+assert got == datetime(2026, 9, 26, 16, 54, 49, tzinfo=timezone.utc), got
+'
+
+run_case "parse_ts normalizes a non-UTC offset onto UTC" "$PRELUDE"'
+from datetime import datetime, timedelta, timezone
+got = nase_time.parse_ts("2026-09-26T18:54:49+02:00")
+assert got == datetime(2026, 9, 26, 16, 54, 49, tzinfo=timezone.utc), got
+# The equality above compares instants, so it holds for a value still carrying +02:00.
+# The fields are what prove the normalization happened.
+assert (got.hour, got.minute) == (16, 54), got
+assert got.utcoffset() == timedelta(0), got.utcoffset()
+'
+
+run_case "parse_ts returns None for an unreadable value instead of raising" "$PRELUDE"'
+for bad in ("", "not-a-timestamp", "2026-13-45T99:99:99Z", None, 17, []):
+    assert nase_time.parse_ts(bad) is None, bad
+'
+
+run_case "local_today is the user calendar day, not the UTC one" "$PRELUDE"'
+import os, time
+# Kiritimati is UTC+14 and Niue is UTC-11, so the two are 25 hours apart and their
+# calendar dates differ at every instant. A local_today reading the UTC clock would
+# return the same date under both and land on 0, which is the failure this pins down.
+# The gap is 1 day for 23 hours out of 24 and 2 for the hour the 25th spills into,
+# so both are correct and only 0 is not.
+os.environ["TZ"] = "Pacific/Kiritimati"
+time.tzset()
+east = nase_time.local_today()
+os.environ["TZ"] = "Pacific/Niue"
+time.tzset()
+west = nase_time.local_today()
+assert (east - west).days in (1, 2), (east, west)
+'
+
+run_case "calendar_day reads YYYY-MM-DD as local midnight" "$PRELUDE"'
+import os, time
+os.environ["TZ"] = "Asia/Shanghai"
+time.tzset()
+got = nase_time.calendar_day("2026-09-26")
+assert (got.year, got.month, got.day) == (2026, 9, 26), got
+assert (got.hour, got.minute, got.second) == (0, 0, 0), got
+assert got.tzinfo is not None, "a calendar day must come back timezone-aware"
+assert got.utcoffset().total_seconds() == 8 * 3600, got.utcoffset()
+'
+
+run_case "calendar_day raises ValueError on a malformed date" "$PRELUDE"'
+for bad in ("26/09/2026", "", "2026-09-26T00:00:00", "not-a-date", "2026-13-01"):
+    try:
+        nase_time.calendar_day(bad)
+    except ValueError:
+        continue
+    raise AssertionError(bad)
+# strptime accepts an unpadded month or day, and the docstring promises strptime
+# behavior rather than a stricter one, so this is contract, not a gap.
+assert nase_time.calendar_day("2026-9-26").month == 9
+'
+
+run_case "local_now is timezone-aware and agrees with local_today" "$PRELUDE"'
+import os, time
+os.environ["TZ"] = "America/Los_Angeles"
+time.tzset()
+now = nase_time.local_now()
+today = nase_time.local_today()
+if today != now.date():
+    # Two separate clock reads straddled local midnight. A second crossing in the
+    # microseconds between these calls is not possible, so one resample settles it.
+    now = nase_time.local_now()
+    today = nase_time.local_today()
+assert now.tzinfo is not None, "local_now must be aware so it can be compared"
+assert now.date() == today, (now, today)
 '
 
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"

@@ -91,21 +91,39 @@ def unquote(value: str) -> str:
     return value
 
 
+# Matches `frontmatter_scalar.py`, the other reader of these same blocks: `\s*`
+# absorbs a CRLF so neither it nor a BOM is misreported as missing frontmatter.
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
+
+
 def parse_frontmatter(path: Path) -> dict[str, str]:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    text = path.read_text(encoding="utf-8-sig", errors="replace")
+    match = _FRONTMATTER_RE.match(text)
     if not match:
         raise ValueError(f"{path}: missing YAML frontmatter")
 
     fields: dict[str, str] = {}
-    for lineno, raw_line in enumerate(match.group(1).splitlines(), 2):
+    # Derive the body's first line number rather than assuming 2: `\s*` after the
+    # opening `---` absorbs blank lines, which would shift every reported line.
+    first_line = text.count("\n", 0, match.start(1)) + 1
+    for lineno, raw_line in enumerate(match.group(1).splitlines(), first_line):
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if ":" not in line:
             raise ValueError(f"{path}:{lineno}: frontmatter line has no ':'")
         key, value = line.split(":", 1)
-        fields[key.strip()] = unquote(value)
+        key = key.strip()
+        # Fail closed as `frontmatter_scalar.extract_frontmatter_scalar` does, and
+        # case-insensitively for the same reason it matches that way: `name` and
+        # `Name` are one key to the reader, and last-wins would render a README
+        # from a value the author never chose.
+        if key.casefold() in fields:
+            raise ValueError(
+                f"{path}:{lineno}: duplicate frontmatter key {key!r}; "
+                "remove one so the value is unambiguous"
+            )
+        fields[key.casefold()] = unquote(value)
     return fields
 
 

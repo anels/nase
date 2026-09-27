@@ -31,6 +31,7 @@ import datetime
 import glob
 import os
 import sys
+from pathlib import Path
 
 from nase_time import local_today
 
@@ -127,8 +128,9 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
 
     # All time
     if s == "all":
-        # script lives at <workspace_root>/.claude/scripts/date-resolve.py
-        workspace_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # script lives at <workspace_root>/.claude/scripts/date-resolve.py, and
+        # `.resolve()` follows a symlink so the walk up starts in the real tree.
+        workspace_root = str(Path(__file__).resolve().parents[2])
         return find_earliest_log(workspace_root), today
 
     # Try parsing as a bare date

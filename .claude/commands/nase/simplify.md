@@ -33,7 +33,7 @@ The helper matches `$ARGUMENTS` case-insensitively, in this order, and returns t
 FILES=$(bash .claude/scripts/scope-files.sh "$ARGUMENTS")
 ```
 
-Add a repo path as a second argument (`... "$ARGUMENTS" /abs/path/to/repo`) to scope another checkout; paths come back relative to it.
+Add a repo path as a second argument (`... "$ARGUMENTS" /abs/path/to/repo`) to scope another checkout; paths come back relative to it. When you do, carry that repo path into Step 6 and state it in the dispatch prompt - `$FILES` is relative, and a subagent given bare relative paths resolves them against this workspace instead of the target checkout.
 
 If `$FILES` is empty → output `No modified files in scope. Nothing to simplify.` and stop.
 
@@ -64,9 +64,9 @@ Skip formatting-only churn, broad rewrites, new dependencies, public API renames
 
 ### 4. Review mode
 
-If `--review` is present in `$ARGUMENTS`, do not edit files.
+If `--review` is present in `$ARGUMENTS`, do not edit files. `--review` wins over `--dry-run` when both are passed, so it short-circuits here and Steps 5-9 never run. This step's report is the whole output.
 
-Review the scoped files, current diff, and verification evidence. Return:
+Review the scoped files, current diff, and verification evidence. Write the report to `workspace/tmp/simplify-review-{YYYY-MM-DD}.md` and return the pointer plus the verdict and the top leftovers, per `.claude/docs/skill-contract.md` rules 1-2; `--verbose` dumps it inline as well. The report holds:
 - Verdict: `pass`, `needs cleanup`, or `risky`.
 - Concrete leftovers: dead code, duplication, needless wrappers, boundary leaks, weak tests, or likely accidental behavior changes.
 - Required follow-ups, ordered by safest deletion first.
@@ -96,7 +96,7 @@ Otherwise continue to Step 6.
 ### 6. Dispatch subagent
 
 Launch the `$SIMPLIFIER_AGENT` subagent resolved in Step 5 via the Agent tool. Pass:
-- The deduplicated file list from `$FILES` (Step 1)
+- The deduplicated file list from `$FILES` (Step 1), plus the repo root they are relative to whenever Step 1 was given a second argument
 - Instruction:
   - Refine each file for clarity, consistency, maintainability, and anti-slop cleanup following the project's CLAUDE.md conventions.
   - Preserve behavior exactly. Do not change features, outputs, public APIs, persistence formats, permissions, side effects, ordering, timing, or error semantics.

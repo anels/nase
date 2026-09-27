@@ -39,6 +39,11 @@ for file layout, index shape, conflict check, and retrieve/list rules.
      ("add a term ... meaning ... in scope ...") -> **Define**
    - `update {term} scope:{label} = {definition}` -> **Update**
 
+   Try jev first for this classification (`.claude/docs/jev-judgment-points.md`,
+   point `terminology.action-parse`, `--type Choice`, criteria = the four
+   actions above; state = the raw `$ARGUMENTS` string). Confidence < 0.9,
+   missing, or unavailable -> match the patterns above yourself.
+
    Extract `{term}` (required), `scope:{label}` (freeform, defaults to
    `general` when a define/update omits it - never guess a more specific
    label), and `{definition}` (everything after `=`, or the
@@ -75,24 +80,35 @@ for file layout, index shape, conflict check, and retrieve/list rules.
    ---
    Related terms: {up to 5 other terms whose own `**See also:**` link points back to this file} — omit this whole block if none
    ```
-   Fuzzy fallback with candidates found: show up to 5 and ask which one,
-   instead of guessing - do not research yet, a near-hit needs a human
-   pick first.
-   No match at all (no exact hit, no fuzzy candidate): go to Step 3a
-   instead of reporting failure.
+   A **fuzzy candidate** is an `_index.md` row whose slug contains the
+   query as a substring, whose `Aliases` cell matches it exactly
+   (case-insensitively), or whose slug is within edit distance 2 of it.
+   That rule decides the branch, and the two branches do very different
+   things, so apply it before choosing.
+   Fuzzy candidates found: show up to 5 and ask which one, instead of
+   guessing - do not research yet, a near-hit needs a human pick first.
+   No match at all (no exact hit, no fuzzy candidate by that rule): go to
+   Step 3a instead of reporting failure.
 
 ### Research (auto, only on a genuine no-match)
 
 3a. The term is missing, not merely unindexed - look it up instead of
     telling the user to define it themselves. Search in this order,
     stopping as soon as a source gives a clear, attributable definition:
-    1. Onboarded repo KB (`workspace/kb/`, via `.domain-map.md`).
+    1. Onboarded repo KB (`workspace/kb/`, via `.domain-map.md`) -
+       delegate to `nase-context-kb-researcher`.
     2. Local repos on disk, via `.local-paths` - grep source, docs, and
-       README for the term.
+       README for the term. Delegate to a **lookup** agent
+       (`model=haiku`, `effort=low`, `tools=[Read, Grep, Glob, Bash]`).
     3. Confluence/Jira/Slack, if those MCPs are configured - search for
-       the term.
+       the term. These stay in the main thread; they need live connector
+       context.
     4. WebSearch/WebFetch for public/vendor documentation, as a last
        resort.
+
+    Sources 1 and 2 are sweeps whose answer is one sourced definition,
+    not the files they read, so they go to subagents; run them in
+    parallel and stop as soon as either returns a citable hit.
 
     Every candidate definition needs a citable source (file path, page
     URL, or message link) - per the global evidence rule, an unsourced
@@ -115,8 +131,12 @@ for file layout, index shape, conflict check, and retrieve/list rules.
 ### Define
 
 4. Follow `.claude/docs/terminology-schema.md` Part 3. If it surfaces a
-   fuzzy/alias collision, stop and ask that question before drafting
-   anything.
+   fuzzy/alias collision, fold that question into the Step 6
+   `AskUserQuestion` as a second entry in the same `questions` array
+   rather than asking it on its own - `.claude/docs/skill-contract.md`
+   rule 4 wants one batched ask, and the collision is a drafting choice,
+   not a mutation gate that has to fire on its own. Draft both readings
+   so the batch can present either.
 5. Build the proposed complete target file under `workspace/tmp/`:
    - **New term:** full file content (frontmatter + `# {term}` +
      `<!-- Last updated -->` + one `## Scope:` section), plus the
@@ -171,6 +191,4 @@ for file layout, index shape, conflict check, and retrieve/list rules.
 
 If a Define/Update write's drift check fails (target changed since
 staging), stop and report the staged file path per
-`.claude/docs/workspace-write-guard.md`; do not retry automatically. If
-`.domain-map.md`-style routing is not needed here (terminology has no
-per-repo domain to resolve), skip straight to Step 4/7's conflict check.
+`.claude/docs/workspace-write-guard.md`; do not retry automatically.

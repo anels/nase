@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
 from command_catalog import load_catalog, render_help_compact, render_readme
@@ -126,7 +127,9 @@ def main() -> int:
     try:
         commands = load_catalog(root)
     except ValueError as exc:
-        print(exc)
+        # stderr, not stdout: this script's stdout is the body of `/nase:help`, so a
+        # catalog error printed there is read as help content rather than as a failure.
+        print(exc, file=sys.stderr)
         return 1
 
     print("# nase help")

@@ -158,7 +158,7 @@ fi
 # ---------- W1: mutation skills reference policy doc -----------------------
 section "W1: mutation skills reference external-mutation-policy.md"
 # Keywords that indicate the skill performs an external mutation
-MUTATION_RE='((update|create)Confluence(Page|Content)|transitionJiraIssue|createJiraIssue|editJiraIssue|addCommentToJiraIssue|addOrEditJiraIssueComment|execute(Write|Destructive)|slack_send_message($|[^_])|slack_schedule_message|gh pr create|gh pr edit|gh pr ready|--add-reviewer|pulls/\{pr_number\}/comments|resolveReviewThread|az pipelines run [^a-z]|az pipelines runs cancel|az pipelines runs update|az rest --method (post|put|patch|delete))'
+MUTATION_RE='((update|create)Confluence(Page|Content)|transitionJiraIssue|createJiraIssue|editJiraIssue|addCommentToJiraIssue|addOrEditJiraIssueComment|execute(Write|Destructive)|slack_send_message($|[^_])|slack_schedule_message|slack_(create|update)_canvas|gh pr create|gh pr edit|gh pr ready|--add-reviewer|pulls/\{pr_number\}/comments|resolveReviewThread|az pipelines run [^a-z]|az pipelines runs cancel|az pipelines runs update|az rest --method (post|put|patch|delete))'
 w1_hits=""
 while IFS= read -r f; do
   case "$f" in
@@ -337,10 +337,15 @@ write_verb = re.compile(
     r"\b(write|append|create|update|save|persist|prepend|overwrite|replace|move|delete|remove|promote|mark|register|check off|add to|sync)\b",
     re.I,
 )
-read_only = re.compile(
-    r"\b(read|scan|search|list|surface|show|report|flag|follow-up|will later|never writes?|read-only|do not write|does not write|without writing)\b",
+# A phrase that denies writing at all governs the whole line, wherever it sits.
+no_write = re.compile(
+    r"\b(never writes?|read-only|do not write|does not write|without writing|will later|follow-up)\b",
     re.I,
 )
+# A read verb only governs the clause it is in, so "read back the last entry" cannot
+# cancel an append named in the clause before it.
+read_verb = re.compile(r"\b(read|scan|search|list|surface|show|report|flag)\b", re.I)
+clause_split = re.compile(r"(?<=[.!?])\s+|\s+[-–]\s+|,\s+")
 exempt = {
     "init.md",      # bootstrap creates the first workspace skeleton
     "restore.md",   # restore owns archive safety and replaces workspace by design
@@ -365,8 +370,24 @@ for path in sorted(Path(".claude/commands/nase").glob("*.md")):
             continue
         if in_code:
             continue
-        if durable_path.search(line) and write_verb.search(line) and not read_only.search(line):
-            hits.append(f"  {path}:{lineno}: {line.strip()}")
+        if no_write.search(line):
+            continue
+        # The whole line first, then each clause of it, because either granularity
+        # alone has a blind spot. An incidental read verb elsewhere in the line
+        # ("read back the last entry") cancels the line-level test, and a path and
+        # its write verb sitting in different clauses defeat the clause-level one.
+        offender = next(
+            (
+                s
+                for s in [line] + clause_split.split(line)
+                if durable_path.search(s)
+                and write_verb.search(s)
+                and not read_verb.search(s)
+            ),
+            None,
+        )
+        if offender:
+            hits.append(f"  {path}:{lineno}: {offender.strip()}")
             break
 
 print("\n".join(hits))
@@ -426,13 +447,15 @@ root_guidance = Path("CLAUDE.md").read_text(encoding="utf-8")
 
 hits = []
 try:
-    step4c = text.split("### 4c. Need Attention scan + action menu", 1)[1]
-    step4c = step4c.split("### 4d. Closing block", 1)[0]
+    # Match the section by its title, not its number, so renumbering the
+    # workflow does not silently turn this gate into a no-op.
+    after_heading = re.split(r"^### [\w.]+\. Need Attention scan \+ action menu$", text, flags=re.M)[1]
+    need_attention = re.split(r"^### [\w.]+\. Closing block$", after_heading, flags=re.M)[0]
 except IndexError:
-    hits.append(f"  {path}: missing Step 4c or Step 4d anchor")
+    hits.append(f"  {path}: missing the Need Attention or Closing block section heading")
 else:
-    if re.search(r"tech[- ]digest", step4c, re.IGNORECASE):
-        hits.append(f"  {path}: Step 4c mentions tech-digest; keep it out of Need Attention/action menu")
+    if re.search(r"tech[- ]digest", need_attention, re.IGNORECASE):
+        hits.append(f"  {path}: Need Attention mentions tech-digest; keep it out of the action menu")
 
 expected_optional_note = chr(96) + "/nase:tech-digest" + chr(96) + " is optional"
 if expected_optional_note not in text:

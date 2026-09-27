@@ -7,7 +7,10 @@ The API shape and degrade philosophy are carried over from this same product's O
 ## Contract
 
 - No `TYPESAFE_API_KEY` set, or `NASE_JEV=off` → the script prints `{"available": false, ...}` immediately, zero HTTP calls, zero egress.
-- Any HTTP, timeout, or malformed-response failure → same `{"available": false, "reason": "..."}` shape, never a crash, never a hang past `NASE_JEV_TIMEOUT_MS` (default 250ms).
+- `--dry-run` is the one path that runs without a key. It prints the request body that would be POSTed and exits before building the request, so it is still zero HTTP calls and zero egress. `NASE_JEV=off` is checked first and still wins, so the kill switch is never bypassed, and with it set `--dry-run` prints `{"reason": "disabled"}` rather than a body.
+- Any HTTP, timeout, or malformed-response failure → same `{"available": false, "reason": "..."}` shape, never a crash, never a hang past `NASE_JEV_TIMEOUT_MS` (default 2500ms).
+- `reason` distinguishes the failure kinds that need different responses: `http_error:<code>` is the API rejecting the request (a contract bug - fix the call), `timeout` is the deadline expiring, `net_error:<class>` is the connection failing. Collapsing these hides contract bugs behind what looks like a flaky network. `<class>` is an exception class name such as `ConnectionRefusedError`, never a message, so it can be matched on.
+- Three more reasons mean the call was never attempted because the invocation itself is wrong, and they are fixed at the call site rather than retried: `invalid_config:<msg>` (`NASE_JEV_TIMEOUT_MS` or `NASE_JEV_EXCERPT_CHARS` is not an integer), `invalid_endpoint_scheme` (`NASE_JEV_ENDPOINT` is not http(s)), and `exception:bad_json:<msg>` (`--criteria` or `--state` is not parseable JSON). Two more are catch-alls: `invalid_response[:<msg>]` for a body that is not the documented answer shape, and `exception:<msg>` for any other client-side failure. The script's module docstring is the sole enumeration, and `tests/scripts/test-jev-judge.sh` asserts every reason above appears in it.
 - Success with `confidence >= 0.9` → trust the answer, skip the point's own full judgment.
 - Success with `confidence < 0.9`, or `confidence` missing → still `"available": true`, but judge the point yourself using the same criteria; treat the jev answer only as a hint, never as the decision.
 - **The fallback in every case is: do exactly what the skill instructed before this script existed.** Adding a jev call must never change behavior for a user with no `TYPESAFE_API_KEY` configured.
@@ -18,7 +21,7 @@ The API shape and degrade philosophy are carried over from this same product's O
 |---|---|---|
 | `TYPESAFE_API_KEY` | unset | presence enables Jev; absence is the normal, zero-egress state |
 | `NASE_JEV=off` | unset | master kill switch, overrides key presence |
-| `NASE_JEV_TIMEOUT_MS` | 250 | per-call timeout |
+| `NASE_JEV_TIMEOUT_MS` | 2500 | per-call timeout. A healthy call measures ~1100ms, so a budget under that turns every success into a reported `timeout`. |
 | `NASE_JEV_EXCERPT_CHARS` | 200 | max chars of any string sent in state/criteria (never whole files) |
 | `NASE_JEV_ENDPOINT` | `https://api.typesafe.ai/v1/systemone` | override for testing |
 
@@ -26,7 +29,7 @@ The API shape and degrade philosophy are carried over from this same product's O
 
 ```bash
 python3 .claude/scripts/jev-judge.py \
-  --point <point-name-from-the-registry-below> \
+  --point <skill-name>.<step-name> \
   --type Choice \
   --criteria '{"label": "one-line description", ...}' \
   --state '{"finding_text": "<the bounded text being judged>"}'
@@ -34,27 +37,15 @@ python3 .claude/scripts/jev-judge.py \
 
 Read the single line of JSON on stdout. `available: false`, or `confidence` under 0.9 or missing, means fall back to the skill's own judgment for that point.
 
-## Registry
+`--type` takes the capitalized spelling (`Choice` / `Score` / `Noul`); the script lowercases it on the wire, because the API pins each question schema's `type` to a lowercase const and rejects anything else with HTTP 400.
 
-One row per judgment point. The `criteria`/`state` columns are the canonical shapes for that point - keep them in sync with the actual call site when either changes, per this doc's own reuse rule (shared doc + consuming command move together).
+`--dry-run` prints the request body and exits without a key and without a network call. Use it to check a new call site's shape, and note that `tests/scripts/test-jev-judge.sh` asserts the wire casing through it.
 
-| Point | Skill file | Type | Criteria (label → meaning) | State |
-|---|---|---|---|---|
-| `discuss-pr.kind` | `.claude/commands/nase/discuss-pr.md` | Choice | issue / suggestion / nit / question | finding text + surrounding evidence |
-| `discuss-pr.disposition` | `.claude/commands/nase/discuss-pr.md` | Choice | blocking / non-blocking / needs-answer | finding text + its `kind` |
-| `estimate-eta.lane` | `.claude/commands/nase/estimate-eta.md` | Choice | 🤖AI / 🔌Env / 🧠Human / ✅Verify | subtask description |
-| `improve-commit-message.type` | `.claude/commands/nase/improve-commit-message.md` | Choice | feat / fix / docs / style / refactor / perf / test / build / ci / chore / revert | diff summary |
-| `kb-update.classify` | `.claude/commands/nase/kb-update.md` | Choice | current-state-fact / durable-dated-event / no-op-status-fact / unknown-or-follow-up | the knowledge being written |
-| `learn.input-type` | `.claude/commands/nase/learn.md` | Choice | url / repository / direct-tip / topic | `$ARGUMENTS` |
-| `request-review.complexity` | `.claude/commands/nase/request-review.md` | Choice | simple / complex | file count, diff line count, "clearly mechanical" note |
-| `request-review.cherry-pick-group` | `.claude/commands/nase/request-review.md` | Noul | is-same-group | two PR titles + commit trailers |
-| `tech-digest.relevance` | `.claude/commands/nase/tech-digest.md` | Noul | is-relevant | item summary + workspace topic list |
-| `agent-introspection.failure-mode` | `workspace/skills/agent-introspection.md` | Choice | wrong-mental-model / stale-context / tool-misuse / scope-drift / context-burn / duplicate-question / env-mismatch / external-dependency-hang | captured agent state |
-| `appinsights-deep-triage.telemetry-route` | `workspace/skills/appinsights-deep-triage.md` | Choice | initializer-ownership / deploy-provenance / both-missing | aggregate auto/manual telemetry counts |
-| `handle-support-question.question-type` | `workspace/skills/handle-support-question.md` | Choice | how-to / bug / data-discrepancy / feature-request / access | question text |
-| `handle-support-question.audience` | `workspace/skills/handle-support-question.md` | Choice | internal / customer-facing | channel name + message content |
-| `investigate-sre-jira.intake-route` | `workspace/skills/investigate-sre-jira.md` | Choice | sre-alert / customer-issue | ticket text |
-| `sync-skill-docs.ref-action` | `workspace/skills/sync-skill-docs.md` | Choice | edit / fix-example / skip | matched reference + local context |
+## Where a point's definition lives
+
+Each judgment point is documented once, inline at its own `Try jev first (...)` call site - in the skill/command file that uses it, or in the shared doc that file routes the step to, but never in both and never in a second table here. That sentence names the point, its `state` (the bounded text/JSON sent), and points at the labels/options already written a few lines above or below it in the same file (that list doubles as the point's `criteria`). Keeping the definition next to the call site means there's only one place to update when either changes.
+
+To find every point currently wired up: `grep -rn "jev-judgment-points.md" .claude/commands/nase .claude/docs workspace/skills`. `.claude/docs` is not optional - `discuss-pr.kind` and `discuss-pr.disposition` live only in `.claude/docs/discuss-pr-analysis.md`.
 
 ## Provenance
 

@@ -39,8 +39,29 @@ Every active KB write, including writes initiated by other skills, keeps the
 initiating skill's workflow but applies the same admission rules before the
 guarded write:
 
-1. Resolve the target through `.domain-map.md` and read the current section.
-2. Search for semantic duplicates across `workspace/kb/`.
+1. Resolve the target through `.domain-map.md` and read the current section. A read
+   that fails because the file is missing is not the same as a target that is absent
+   from it; stop and report the missing map rather than routing the write anywhere.
+2. Search for semantic duplicates across `workspace/kb/` with one shared coverage
+   check, not a hand-rolled grep per caller:
+   `bash .claude/scripts/kb-search.sh "{derived key terms}" --with-score`. Derive the
+   terms from the content being written; never pass a whole multi-word argument string
+   as one literal. Exit 2 means no result.
+
+   The score is the unbounded non-negative integer `header_hits * 2 + body_hits`
+   (`.claude/scripts/kb-search.sh:293`), not a 0-1 ratio. Treat a top score **at or
+   above 2** as "already covered" and reconcile in place instead of appending; below
+   that, admit as new. 2 is the smallest score that means either one header hit or two
+   body hits, so a single incidental body mention cannot suppress a real write.
+
+   Two cautions, both of which silently corrupt the check rather than failing it:
+   `kb-search.sh` reserves the `in:` / `tag:` / `since:` / `confidence:` / `mentions:`
+   prefixes, so a derived term that starts with one is reinterpreted as a filter; and
+   it exits 0 with results, 2 with none, and 1 on a usage error, so a caller that reads any
+   nonzero as "no results" turns a malformed query into a false all-clear and admits a
+   duplicate.
+
+   `/nase:kb-update`, `/nase:learn`, and `/nase:kb-gap-detect` all use this rule.
 3. Classify the delta as current state, a durable dated event, no-op/status, or
    unknown/follow-up. Reconcile current state in place. Do not persist no-op or
    unknown content.

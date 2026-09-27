@@ -143,7 +143,7 @@ python3 .claude/scripts/citation-validator.py "{drafts_file}" \
   --root nase="$NASE_ROOT" --repo-root {alias}="{repo_path}" --format json
 ```
 
-Exit `1` means a cited `path:line`, PR URL, or Jira key does not resolve: re-anchor or drop that draft, never post it. Exit `2` is `UNKNOWN` (Confluence needs MCP) - a private-source citation should not have been in a GitHub-bound draft anyway, so treat it as a prompt to cut the citation.
+Exit `1` means a cited `path:line`, PR URL, or Jira key does not resolve: re-anchor or drop that draft, never post it. Exit `2` is `UNKNOWN` (Confluence needs MCP) - a private-source citation should not have been in a GitHub-bound draft anyway, so treat it as a prompt to cut the citation. Exit `3` or `4` means nothing was validated; fix the invocation and rerun rather than posting unchecked drafts. Full contract: `.claude/docs/citation-validator.md → Result and exit semantics`.
 
 ```
 Question: "Draft inline comments now?"

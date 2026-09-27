@@ -1,18 +1,23 @@
-# KB Teamshare - File Processing Pipeline (Step 4)
+# KB Teamshare - File Processing Pipeline
+
+Callers cite these sections by name, not by number, because `/nase:kb-teamshare` and
+`/nase:kb-merge` number their own workflows differently.
 
 ## Contents
 
-- 4a: Strip Local Absolute Paths
-- 4b: Fix Internal KB Links
-- 4c: Privacy Classification
+- Strip Local Absolute Paths
+- Fix Internal KB Links
+- Privacy Classification
 - Privacy Review: {filename}
-- 4d: Translate to Output Language
+- Translate to Output Language
 
-Apply these four transformations in order to every selected file.
+Apply these four transformations in order to every selected file. `/nase:kb-merge` applies
+the inverse of the first two on import: it rewrites incoming links back to local KB paths
+and records provenance rather than stripping it.
 
 ---
 
-## 4a - Strip Local Absolute Paths
+## Strip Local Absolute Paths
 
 Replace any absolute path patterns that are machine-specific.
 
@@ -28,11 +33,11 @@ Apply by scanning each line for these path prefixes and substituting. If a path 
 
 ---
 
-## 4b - Fix Internal KB Links
+## Fix Internal KB Links
 
 Internal KB cross-references use the form `workspace/kb/category/file.md`. These break when the files are exported to a different directory. Fix them as follows:
 
-After Step 3.5 cascade, almost every reference should resolve to a file in the export. The remaining cases are edge cases (cycles broken by the depth cap, or files the user chose to exclude in cascade).
+By the time this transformation runs, almost every reference should resolve to a file in the export set. The rest are edge cases: cycles broken by a depth cap, or files the user chose to leave out.
 
 - **If the linked file IS in the export set:** rewrite the link to a relative path within the export directory.
   - `workspace/kb/general/dotnet.md` → `general/dotnet.md`
@@ -45,7 +50,7 @@ After Step 3.5 cascade, almost every reference should resolve to a file in the e
 
 ---
 
-## 4c - Privacy Classification
+## Privacy Classification
 
 After path-stripping, do a structured pass across all selected files together. Classify every potentially sensitive item into one of three buckets:
 
@@ -90,11 +95,11 @@ options:
 
 If "Decide item by item" is chosen, loop through each flagged item in that file with a focused AskUserQuestion showing the exact snippet.
 
-Apply the user's decisions before writing the file in Step 5.
+Apply the user's decisions before the caller stages the file.
 
 ---
 
-## 4d - Translate to Output Language
+## Translate to Output Language
 
 After privacy decisions are applied, check whether the file's content language matches the `output:` language loaded in Step 0.
 

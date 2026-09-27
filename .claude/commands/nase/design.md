@@ -13,7 +13,7 @@ Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md
 
 1. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for the effort doc.
 2. Apply `.claude/docs/design-principles.md`. Choose the simplest high-quality long-term shape. Development cost informs ETA, not design selection.
-3. Default to one PR. Split into multiple PRs only when a repo, compatibility/rollout, mechanical-noise, 1500-line review, or distinct-owner boundary makes one PR harder to review safely.
+3. Default to one PR. Split into multiple PRs only when a repo, compatibility/rollout, mechanical-noise, 1500-changed-line (the `git diff --stat` total for the PR), or distinct-owner boundary makes one PR harder to review safely.
 4. Record `Target PR count`, dependency order for a split, `Reviewability`, and `Validation - how to get the real number`.
 5. Ask only questions that code, KB, docs, history, telemetry, or official sources cannot answer. Batch genuine human decisions.
 
@@ -22,7 +22,7 @@ Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md
 Strip the first matching flag and route in this order:
 
 - `--grill`: read `.claude/docs/design-grill-mode.md`.
-- `--review`, or an existing effort slug: read `.claude/docs/design-review-mode.md`.
+- `--review`, or an argument that exactly names an active `workspace/efforts/{arg}.md` (not `done/`, not `archive/`): read `.claude/docs/design-review-mode.md`. A partial or fuzzy name is a new request, not a slug.
 - `--interactive`: follow the workflow below with one approach-choice checkpoint.
 - `--auto`, or no flag: read `.claude/docs/design-auto-mode.md`.
 
@@ -32,17 +32,18 @@ If `$ARGUMENTS` is empty, ask for the request. Resolve repo and KB context befor
 
 Read `.claude/docs/design-research.md` for external research, plan gates, and implementation readiness. Read `.claude/docs/eta-estimation.md` for the ETA section.
 
-For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-state-scanner`, and `nase-workspace-state-scanner` in parallel. The main thread owns design synthesis and workspace writes. Reconcile conflicting evidence before presenting options.
+For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-state-scanner`, and `nase-workspace-state-scanner` in parallel. They hold `Read, Grep, Glob` and deliberately no `Bash`, so any CLI-derived fact this step needs - git history, commit lists, `gh` output - is run by the main thread and passed into the agent's prompt. The main thread owns design synthesis and workspace writes. Reconcile conflicting evidence before presenting options.
 
 1. Resolve the repo with `.claude/docs/repo-resolution.md`. Load relevant KB, repo `CLAUDE.md`/README/docs, code paths, callers, tests, history, active efforts, and primary external sources.
 2. Prove applicable reproduction, root cause, scale/usage, coverage, rollout, and observability assumptions. Mark missing evidence as a gap that cannot support another claim.
 3. Map entry points, changed functions/types, downstream callers, tests, and operational surfaces. Do not invent paths.
 4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. Quick fixes may use two one-line options.
 5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
-6. Self-review up to three times against the quality criteria below. Research fixable gaps before asking the user.
+6. Self-review up to three times against the quality criteria below, scoring each round with a **verifier** subagent (`Agent(model="sonnet", tools=[Read, Grep, Glob, Bash])`, the role `.claude/roles.yaml` assigns to draft scoring) so the pass is read-only and independent. Research fixable gaps before asking the user.
 7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Run `citation-validator.py` and `effort-state.py --evaluate-transition` against the staged content first, as `.claude/docs/design-auto-mode.md → 5a` specifies. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
 8. Optional Jira creation: read `.claude/docs/external-mutation-policy.md`, then use a fresh payload-bound token and a concrete approval immediately before the write. Skip this step, and that read, when no Jira issue is being created.
 9. Stop after saving. Chat returns the file path and a short decision summary.
+10. Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-format.md` with tag `design`. The three mode documents each own their own log entry; this is the one for the interactive mode.
 
 ## Quality criteria
 

@@ -39,7 +39,8 @@ tell whether a missing value is a skipped step or a dropped one.
 | 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `total_lines_changed`, `bundle_sha256` |
 | 6.4 | Read `.claude/docs/fsd-candidate-review.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
 | 7 | This entrypoint plus `commit-push-pattern.md`. | - |
-| 8, 8.5, 8c | Read `.claude/docs/fsd-pr-delivery.md` at Phase 8; skip it entirely when `open_pr = false`. | `pr_url` |
+| 8, 8.5 | Read `.claude/docs/fsd-pr-delivery.md` at Phase 8; skip both when `open_pr = false`. | `pr_url` |
+| 8c | `fsd-pr-delivery.md -> Phase 8c`, read on **every** run. | - |
 | 8b | `effort-transitions.md -> FSD Update`. | - |
 | 9-10 | This entrypoint owns Phase 9 worktree quarantine; `.claude/docs/fsd-closeout.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. | `worktree_report` |
 
@@ -61,22 +62,24 @@ At Phase 6.4, read `.claude/docs/fsd-candidate-review.md`. It owns the single fr
 
 ## Phase 7: Commit & Push
 
-Before committing, conform the commit subject to `gate_profile.commit_format` per `.claude/docs/pr-gates-consumption.md` §3 (documented `type`/`scope` set, no `fixup!`/`squash!`). Invoke it as `/nase:improve-commit-message --auto-accept --repo {work_root}`; `--repo` is required because the skill defaults it to the current directory and Bash resets `cwd` between calls, so an unqualified call can amend a different checkout's HEAD. That skill polishes prose but does not know this repo's scope/type rules, so verify the resulting subject against `gate_profile.commit_format` after it runs, per that section's verify-after branch.
-
 Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`. Deviation: use `push -u origin {branch_name}` on first push (sets upstream tracking).
 
+At its Step 4, conform the commit subject per `.claude/docs/fsd-commit-message-conformance.md`.
+
 Both assertions below bind `approved_candidate_tree_oid`. When `review_outcome = not-run` no action set it, so bind `tested_candidate_tree_oid` from Phase 6.1 instead and read "reviewed tree" as "gated tree" throughout - the assertions are unchanged and still have to match exactly, because what the skipped review costs is a judgment on the tree, not the guarantee that the tree which ships is the tree the gates ran against.
+
+Substitute the literal 40-character OID into both commands below. Shell variables do not survive between Bash calls, so `$approved_candidate_tree_oid` would compare the tree against an empty string - a gate that fails for the wrong reason, or passes off a stale export. `{work_root}` is the Phase 1-3.7 state name for the checkout being committed.
 
 After its explicit-file staging step and before commit, assert the real index matches the reviewed tree:
 
 ```bash
-test "$(git -C {worktree_or_repo} write-tree)" = "$approved_candidate_tree_oid"
+test "$(git -C {work_root} write-tree)" = "{approved_candidate_tree_oid}"
 ```
 
 After the initial commit and again after `/nase:improve-commit-message`, assert:
 
 ```bash
-test "$(git -C {worktree_or_repo} rev-parse 'HEAD^{tree}')" = "$approved_candidate_tree_oid"
+test "$(git -C {work_root} rev-parse 'HEAD^{tree}')" = "{approved_candidate_tree_oid}"
 ```
 
 Any mismatch invalidates `review_action` and the bound tree. Do not push. Restart at Phase 6 and repeat the deterministic gates plus a fresh review.
@@ -106,6 +109,9 @@ implementation discoveries before cleanup. Keep any team-mode research artifact
 with a retained worktree; delete it at the start of Phase 10 when no worktree
 was created.
 
+This phase runs on **every** FSD run, including `open_pr = false`. On a no-PR run, read
+only that document's Phase 8c section.
+
 ## Phase 9: Worktree Quarantine (if worktree = Yes)
 
 Follow `.claude/docs/worktree-pattern.md -> Cleanup` with remote `origin`, remote
@@ -123,6 +129,8 @@ Set `worktree_report` for Phase 10 from the actual outcome:
 
 - no worktree flow: `n/a`
 - return `3`: `retained at {exact returned worktree path}`
+- return `2`: `n/a (stopped at invalid)` - set it before stopping, so the terminal error
+  handler reports a value rather than a missing one
 
 ---
 
