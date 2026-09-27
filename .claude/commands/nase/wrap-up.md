@@ -13,17 +13,29 @@ Two former steps are gone on purpose. Log compaction had no trigger, no owner, a
 
 Steps 6, 7, and 9 each read a shared doc that a typical day does not need. Run the one-line predicate named in the step first and read the doc only when it is true.
 
-1. Gather today's sanitized activity with `.claude/docs/workspace-data-gathering.md`. Exclude confidential sessions from reflection, learning, KB, style, and journal synthesis.
-2. Run `/nase:reflect` only when meaningful completed or failed work produced a lesson.
-3. Run `/nase:learn` only for a verified cross-project insight with usable sources.
-4. Run `/nase:extract-skills` only when a repeated non-obvious workflow lacks an existing owner.
+1. Gather today's sanitized activity with `.claude/docs/workspace-data-gathering.md`, delegating the log/task/effort reads to `nase-workspace-state-scanner` - the answer is a day summary, not the file contents. Exclude confidential sessions from reflection, learning, KB, style, and journal synthesis.
+2. Run `/nase:reflect` only when Step 1 surfaced a task that reached a terminal state today - completed, abandoned, or failed - **and** something about how it went was not already obvious from its diff. No terminal task, no reflect.
+3. Run `/nase:learn` only for an insight that (a) came up today, (b) applies to a repo other than the one it came from, and (c) has a citable source - file path, PR, or URL. All three, or skip.
+4. Run `/nase:extract-skills` only when Step 1 shows the same non-obvious workflow performed at least twice and `grep -ril "<workflow keyword>" .claude/commands/nase workspace/skills` returns no owner. A hit means the workflow has a home already; extend that skill instead.
 5. Run the automatic KB update only for durable, evidence-backed repo knowledge. Auto-write modes only skip human confirmation; they never skip final drift checks.
-6. Compare estimates with actual outcomes when evidence exists. The anchor is the `- ETA estimate:` line `.claude/docs/eta-estimation.md → Calibration Anchor` defines, so gate on `grep -c '^- ETA estimate:' workspace/logs/{today}.md || true`. Only when that is non-zero and the task actually completed, read `.claude/docs/lessons-format.md` and append calibration lessons at the threshold documented there.
+6. Compare estimates with actual outcomes when evidence exists. The anchor is the `estimate:` log line `.claude/docs/eta-estimation.md → Calibration Anchor` defines, so gate on `grep -c '^- [0-9][0-9]:[0-9][0-9] | estimate:' workspace/logs/{today}.md || true`. Only when that is non-zero and the task actually completed, read `.claude/docs/lessons-format.md` and append calibration lessons at the threshold documented there.
 7. Reconcile Jira status. Skip the step silently - and skip the doc read - when `workspace/config.md` has no `cloudId` or the Atlassian MCP is unavailable; otherwise follow `.claude/docs/jira-lifecycle.md`. Jira writes are opt-in and require the exact transition/comment payload plus a fresh token.
-8. Run `.claude/scripts/today-stats.py` for skill/activity counts. Missing telemetry is `no data`, not zero work.
+8. Run `python3 .claude/scripts/today-stats.py --date {today}` for skill/activity counts. The `python3` prefix is required - the script is mode 644, so invoking it directly is a permission error. Missing telemetry is `no data`, not zero work.
 9. Consolidate pending style deltas. Count them first with `grep -c '\[STYLE-DELTA\]' workspace/logs/{today}.md || true` - `grep -c` exits 1 on zero matches and 2 on a missing file, so without the `|| true` the predicate reads as a command failure rather than as "no deltas". On zero (or no log file), record `style-delta=skipped-no-deltas` and move on without reading the doc. Otherwise follow `.claude/docs/style-delta-capture.md`; never write the style profile from inference.
 10. Build the journal with outcomes, reflection, lessons, KB/style changes, blockers, and stats. Render the final card from `.claude/docs/closing-block.md` at the end of the journal file.
-11. Stage the complete journal with `python3 .claude/scripts/workspace-write-guard.py stage`, show the diff, then run `workspace-write-guard.py apply` with recorded mtime/hash/staged hash. The main thread owns the write.
+11. Stage, diff, and apply the complete journal per `.claude/docs/workspace-write-guard.md`. All three subcommands take required arguments; a bare `stage` exits 2:
+
+```bash
+python3 .claude/scripts/workspace-write-guard.py stage \
+  --target workspace/journals/{today}.md --content-file workspace/tmp/journal-{today}.md --skill wrap-up
+python3 .claude/scripts/workspace-write-guard.py diff \
+  --target workspace/journals/{today}.md --staged {staged path from stage}
+python3 .claude/scripts/workspace-write-guard.py apply \
+  --target workspace/journals/{today}.md --staged {staged path} \
+  --expected-mtime-ns {from stage} --expected-sha256 {from stage} --expected-staged-sha256 {from stage}
+```
+
+Take every `--expected-*` value from the `stage` output, never from a fresh read. The main thread owns the write.
 12. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, and the closing card as the final visible block - echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
 
 Chained skill failures are recorded once and do not erase successful sibling steps. Never convert a skipped conditional step into a completion claim.

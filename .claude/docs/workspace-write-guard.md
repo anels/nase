@@ -132,8 +132,12 @@ Allowed targets are durable workspace paths under `workspace/kb/`,
 `workspace/tasks/`, `workspace/skills/`, `workspace/efforts/`,
 `workspace/journals/`, `workspace/logs/`, `workspace/recaps/`,
 `workspace/stats/`, `workspace/context.md`,
-`workspace/communication-style.md`, and generated workspace skill wrappers
+`workspace/communication-style.md`, `workspace/confluence-publications.jsonl`,
+and generated workspace skill wrappers
 under `.claude/commands/nase/workspace/`.
+`workspace/confluence-publications.jsonl` is append-only in practice (see
+*Append-Only Exceptions*), but it is an allowed target like any other and the
+helper's `ALLOWED_FILES` carries it.
 `workspace/recaps/` and `workspace/stats/` are here because
 `.claude/docs/skill-contract.md` names them as artifact destinations; a skill
 writing there gets the same staging, diff and drift check as any other durable

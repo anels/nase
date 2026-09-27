@@ -27,15 +27,16 @@ Default question order:
 
 Treat "more elegant" as actionable only when the alternative is concretely simpler, safer, easier to test, or a better fit with existing patterns.
 
-Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. Prefer compact script output before spawning agents.
+Stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. That is the fan-out threshold. Prefer compact script output before spawning agents. When the threshold trips, route per `.claude/roles.yaml`: code traces to **worker** (`tools=[Read, Edit, Write, Grep, Glob, Bash]`), the doubt pass to **verifier** (`tools=[Read, Grep, Glob, Bash]`), PR metadata to the persisted `nase-pr-metadata-reader`. That agent is `Read, Grep, Glob` with no Bash, so run every `gh` query in the main thread and hand it the output to read. An unrouted spawn inherits the session model.
 
 ## Standing invariants
 
-- Analysis (Steps 1-6.5) is investigation-only and auto-runs deep-dive traces without asking. The only external mutations this command performs are the review submission and any batched reactions/replies the user explicitly approves at Step 7-8. Every GitHub write goes through a payload-bound `external-write-action.py` manifest the user authorizes; never run a raw `gh api` mutation.
+- Steps 1-5.7, plus the Step 6.5 additional deep dives, are investigation-only and auto-run traces without asking. The only external mutations this command performs are the review submission and any batched reactions/replies the user explicitly approves at Step 7-8. Every GitHub write goes through a payload-bound `external-write-action.py` manifest the user authorizes; never run a raw `gh api` mutation.
 - Keep findings anchored to the stated PR intent and changed code. Drop unrelated pre-existing issues.
 - Fetch existing human and bot comments once, then de-duplicate every candidate against them before presenting.
 - Preserve the KB lookup shape `mentions:<path>` for core changed files.
 - Keep `confidence` (evidence certainty), `severity` (impact), `kind` (`issue | suggestion | nit | question`), and `disposition` (`blocking | non-blocking | needs-answer`) independent. High confidence never makes a nit severe or blocking.
+- Try jev first for `kind` and for `disposition`. `.claude/docs/discuss-pr-analysis.md` is the single definition point for both - it owns the `--type`, the option list, and the bounded state, so do not restate them here. Confidence < 0.9 or unavailable → classify it yourself against the labels above.
 - Every GitHub-bound inline draft must pass the private outgoing-comment research gate. Keep private or sensitive evidence out of GitHub text.
 - A nit may be drafted only when it is high-confidence, PR-introduced, changed-line anchored, not formatter-detectable, and supported by repo authority or a concrete maintainability benefit. Nits are always non-blocking.
 - Diff-first investigation and the trace-shape self-check must run at the actual investigation and classification call sites.

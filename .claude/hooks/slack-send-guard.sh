@@ -27,6 +27,12 @@ INPUT=$(cat)
 if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
   block "could not parse tool input JSON"
 fi
+# Empty stdin parses as nothing at all, and an empty name matches none of the patterns
+# below. The guard only runs on a matched Slack write tool, so reaching here without a
+# name means the invocation cannot be classified.
+if [[ -z "$TOOL" ]]; then
+  block "no tool_name in the hook payload"
+fi
 
 if [[ "$TOOL" == *__slack_send_message ]]; then
   block "slack_send_message is forbidden"
@@ -34,6 +40,10 @@ fi
 
 if [[ "$TOOL" == *__slack_schedule_message ]]; then
   block "slack_schedule_message is forbidden; a scheduled send is still a send"
+fi
+
+if [[ "$TOOL" == *__slack_create_canvas || "$TOOL" == *__slack_update_canvas ]]; then
+  block "${TOOL##*__} writes to Slack with no draft path"
 fi
 
 exit 0

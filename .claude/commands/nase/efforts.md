@@ -1,7 +1,7 @@
 ---
 name: nase:efforts
 description: "Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on."
-argument-hint: "[--by-scope|--by-repo] [--full] [--closed]"
+argument-hint: "[--by-scope|--by-repo] [--verbose] [--closed]"
 category: Reporting
 ---
 
@@ -17,7 +17,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspa
 
 ## Mode routing
 
-`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip the workflow below. Nothing else re-reads those docs, so a wrong record there survives indefinitely - and because `/nase:effort-rollup` drops `status: wontfix` from the delivery record, an effort whose code shipped but whose verdict was dropped takes its merged PRs out of the impact report with it. Run it on the `/nase:kb-review` cadence rather than every session; the default run stays active-only and fast.
+`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip Steps 1-4 below. It still owes Step 5's report - same `workspace/stats/effort-status-{YYYY-MM-DD}.md` path, sections replaced by that document's finding buckets - and Step 6's log line, with `closed audit` in place of the active counts. Nothing else re-reads those docs, so a wrong record there survives indefinitely - and because `/nase:effort-rollup` drops `status: wontfix` from the delivery record, an effort whose code shipped but whose verdict was dropped takes its merged PRs out of the impact report with it. Run it on the `/nase:kb-review` cadence rather than every session; the default run stays active-only and fast.
 
 Every other flag runs the workflow below.
 
@@ -86,7 +86,7 @@ Count **after** the Step 3 transitions so active/`done/` totals reflect post-syn
 Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run overwrites). Structure:
 
 ```markdown
-# Effort Status — {YYYY-MM-DD}
+# Effort Status - {YYYY-MM-DD}
 
 ## Counts
 | Stage | Count |  + by-status table, active/done/archive/transitioned/stalled totals
@@ -98,17 +98,17 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 - {effort} - L{line}: `{old label}` -> `PR opened` for {owner/repo#n} ({live state}){; prose fixed}{; transition fired}
 
 ## Held back - no open delivery PR, but deliverables still owed   ← omit section if none
-- {effort} — stays `{status}`; {N} unchecked Lifecycle row(s):
+- {effort} - stays `{status}`; {N} unchecked Lifecycle row(s):
   - L{line}: {row text}
 
 ## Doc drift - needs a human edit   ← omit section if none
 - {effort} - L{line}: {what is wrong} → {the edit to make}
 
 ## Attention
-- {effort} — {stalled, awaiting-deploy, or unresolved-read reason} → {recommended action}
+- {effort} - {stalled, awaiting-deploy, or unresolved-read reason} → {recommended action}
 
 ## Blocked            ← omit section if none
-- {effort} — blocked-by {referent} ({unresolved reason})
+- {effort} - blocked-by {referent} ({unresolved reason})
 
 ## Active efforts          ← full per-effort table ALWAYS in the file
 | Effort | Stage | Status | Blocked-by | Last updated | Repo | PR |
@@ -120,7 +120,7 @@ Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
 Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M} · archive/: {A}
 Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Rows ticked: {T} · PRs relabelled: {L} · Held back: {H} · Stalled: {S} · Doc drift: {X}
 ```
-With `--full`, also echo the per-effort table inline (otherwise it lives only in the file).
+With `--verbose`, also echo the per-effort table inline (otherwise it lives only in the file).
 
 ### Step 6: Log
 
@@ -134,6 +134,8 @@ Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-
 ## Notes
 
 Two things auto-write: the Drift Auto-Sync transition (`/nase:today` applies the same rule) and the `likely-delivery` relabel. Everything else is reported for a human. The dividing line is not how risky the edit is but **whether the live reads determined the repair or someone still has to decide what the row means** - guessing the second kind from prose is what this skill must not do unsupervised.
+
+Run this before `/nase:effort-rollup` in any session that runs both: this skill repairs effort docs and that one reports from them read-only, so the reverse order publishes a report built on half-synced docs.
 
 Effort docs get edited by other sessions while this runs. Use exact-string edits for row repairs rather than staging a whole file, re-`stat` before any guarded write, and if the active count moved mid-run, say so in the report instead of publishing a count that was true at Step 1.
 

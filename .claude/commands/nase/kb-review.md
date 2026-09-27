@@ -12,7 +12,7 @@ Content rules live in `.claude/docs/kb-lifecycle-layers.md`. This file owns scop
 ## Scope and mode
 
 1. Default to the full `workspace/` health review. A path argument narrows the content review, but full-scope trust checks still cover credentials, task and effort indexes, backup metadata, and the writers that can corrupt durable state. Reject paths outside the repository.
-   - `--kb-only` is the fast maintenance path. Restrict content, structure, relationship, searchability, usage, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited.
+   - `--kb-only` is the fast maintenance path. Restrict content, structure, relationship, searchability, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Usage is not re-derived here: run `python3 .claude/scripts/kb-usage-report.py` and cite its unread and unobserved counts, the same numbers `/nase:kb-usage` reports. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited.
 2. Run in one of three modes.
 
    | Invocation | Behavior |
@@ -22,7 +22,7 @@ Content rules live in `.claude/docs/kb-lifecycle-layers.md`. This file owns scop
    | `--repair` | Adds one late approval checkpoint that also covers judgment-bearing rewrites. |
 
    Mode MUST NOT narrow discovery. A narrower mode changes what gets written, never what gets looked at.
-3. `workspace/` is git-ignored, so the undo path is the backup, not git. Read the newest good backup before the first write and record its name and timestamp in the report frontmatter and the chat summary. A backup older than a deletion target's mtime does not cover that target, so that deletion drops to judgment-bearing. When no backup exists, degrade to `--report-only` and say so.
+3. `workspace/` is git-ignored, so the undo path is the backup, not git. Read the newest good backup before the first write and record its name and timestamp in the report frontmatter and the chat summary. A backup older than a deletion target's mtime does not cover that target, so that deletion drops to judgment-bearing. The degrade is per target, not per run: a stale backup demotes only the deletions it fails to cover, while **no** backup at all degrades the whole run to `--report-only`. Say which happened.
 4. For broad reviews, dispatch read-only `nase-context-kb-researcher` slices for disjoint KB domains. The main thread owns KB edits and report writes, security triage, state reconciliation, and every mutation.
 5. When the reviewed root must remain untouched, store machine-readable before and after SHA-256 manifests outside that root and require them to match.
 
@@ -34,41 +34,29 @@ Capture results under `workspace/tmp/`; never paste full scanner output into cha
 2. Run `python3 .claude/scripts/kb-hygiene-scan.py --workspace-scan --root . --json`, then scan each in-scope project KB against its repository `HEAD` where the repo is available. Record the helper path and explicit root override used.
 3. Run `bash tests/check-local-sensitive-artifacts.sh --workspace`. This full ignored-workspace pass reports only path, line, and secret kind. Classify a match only through bounded local inspection whose output is redacted before it reaches a tool result, report, or chat. Never quote, copy, diff, or store the matched value.
 4. Take the counts in `.claude/docs/kb-lifecycle-layers.md → Over-breadth needs a count`. It is not a judgment call.
-5. Run the normal workspace validation and relevant focused tests. Record command, exit status, and the shortest decisive output.
+5. Run `bash .claude/scripts/validate-workspace.sh` plus the focused tests for whatever the scans flagged, typically `bash tests/check-effort-pointer-integrity.sh`. Record each command, its exit status, and the shortest decisive output.
 
 ## Deep review
 
-### Content and relationships
+Work `.claude/docs/kb-review-deep-scan.md` top to bottom. It carries the content-and-relationship
+inventory, the security-and-propagation triage, the authoritative-state checks, and the operational
+contract checks, each with the shared doc it applies. Discovery is mode-independent: run every check
+there even under `--report-only`.
 
-- Index headings, explicit links, domain-map entries, age, size, lesson candidates, effort references, and todo entries.
-- Classify contradictions, duplicates, healthy overlaps, missing cross-references, stale content, orphans, sparse files, temporary artifacts, one-sided entries, low-signal platitudes, layer mixing, and lesson-promotion candidates.
-- Use `.claude/docs/kb-relationship-graph.md`, `.claude/docs/kb-staleness.md`, and `.claude/docs/kb-template.md → Verification triad`. Age alone is not evidence that a fact is obsolete. Separate broken Markdown links from inert code-span references.
-- Apply `.claude/docs/kb-lifecycle-layers.md` in full; every rule it states produces findings here.
-
-### Security and propagation
-
-- Treat every credential-like match as P0 until disproved without rendering the value. Trace whether its file enters backups, staged outbound payloads, logs, reports, or already-published comments. Remote checks are read-only.
-- A secret in a backup or external comment is a propagation incident, not one local finding. Report each surface separately and name rotation or removal as a gated action.
-
-### Authoritative state
-
-- Validate active, done, and archived effort frontmatter against `.claude/docs/effort-model.md → Status Vocabulary` and file location.
-- `workspace/efforts/` is authoritative for initiatives. `workspace/tasks/todo.md` contains independent open work only, with no checked or dropped items, no duplicate initiative state, and no unresolved effort pointer. `bash tests/check-effort-pointer-integrity.sh` enforces this both ways, so run it and repair exactly what it names rather than re-deriving the reconciliation by hand.
-- Check durable indexes and manifests for unique keys, referential integrity, and atomic publication. Exercise writers, optimizers, backup, and restore helpers against a copy fixture so duplicate identifiers or a failed second write cannot delete or split state.
-
-### Operational contracts
-
-- Verify each documented command from its exact documented working directory in a fixture or dry-run, including required arguments and claimed output scope.
-- Compare recovery claims with what the restore code actually writes. Compare version pins and targets across runbooks, deploy scripts, and live configuration evidence when available.
-- Inventory backups by count, logical bytes, recent creation rate, and bounded recent content hashes. Verify content deduplication plus count or size retention; a time-only retention window does not bound repeated Stop-hook backups. Exercise unchanged content, changed content within the same timestamp granularity, and concurrent runs; archive names must be collision-safe.
-- Inventory `workspace/tmp/` by producer, age, size, and recoverability. Do not classify a file as disposable until its producer and restore path are known.
-- When both journal and daily log exist, compare freshness and flag lost post-wrap-up entries instead of assuming one source is complete.
+Two of its checks are non-negotiable and stated here so they cannot be lost in a pointer. Verify every
+documented command from its exact documented working directory in a fixture or dry-run before reporting
+it as working; reading the command is not evidence it runs. And when exercising the backup writer against
+unchanged content, changed content inside one timestamp granularity, and concurrent runs,
+archive names must be collision-safe, because a collision silently replaces the undo path this command
+depends on.
 
 ## Repair classes
 
+Try jev first for the class assignment (`jev-judgment-points.md` point `kb-review.repair-class`, `--type Choice`, options `decided` / `judgment-bearing` / `separately-gated` / `never-automatic`; state = the finding, its target path, and whether a credential or an out-of-`workspace/` path is involved); confidence < 0.9 or unavailable → classify it yourself against the four class definitions below.
+
 ### Decided - apply without asking
 
-Every condition holds, or the repair drops to the next class. Target inside `workspace/`, correct value fixed by a scanner finding plus your own re-read of the source, no credential involved, backup from `## Scope and mode` step 3 named. This class writes only under the default mode; under `--report-only` list every qualifying item as a finding instead of applying it.
+Every condition holds, or the repair drops to the next class. Target inside `workspace/`, correct value fixed by a scanner finding plus your own re-read of the source, no credential involved, backup from `## Scope and mode` step 3 named. This class writes under the default mode and under `--repair`, which only *adds* a checkpoint for the judgment-bearing class; under `--report-only` list every qualifying item as a finding instead of applying it.
 
 - Broken link whose new target is verified to exist.
 - Domain-map gap, meaning an entry pointing at a missing file. Remove it, or repoint it to a verified path.
@@ -120,7 +108,7 @@ known_stale:
 
 Body carries, per finding, severity, evidence path and line, impact, root cause, layer, repair class, verification, and status.
 
-`coverage` keeps batching honest. Review a file over roughly 600 lines in ranges and record each range. **MUST NOT report a file as reviewed when only part of it was read.** A non-empty `coverage.unreviewed` is where the next run starts.
+`coverage` keeps batching honest. Review a file over roughly 600 lines in ranges and record each range. **MUST NOT report a file as reviewed when only part of it was read.** A non-empty `coverage.unreviewed` is where the next run starts: read the prior report's frontmatter first and resume from those ranges rather than restarting the file, unless the file's mtime moved since that report, which invalidates the ranges and forces a full re-read.
 
 ## Verification and output
 

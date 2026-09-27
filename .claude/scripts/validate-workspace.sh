@@ -161,7 +161,8 @@ guarded_tool_names = [
                                   "createConfluencePage", "createConfluenceContent")),
     ("jira-write-guard.sh", ("addCommentToJiraIssue", "addOrEditJiraIssueComment",
                              "transitionJiraIssue", "editJiraIssue", "createJiraIssue")),
-    ("slack-send-guard.sh", ("slack_send_message", "slack_schedule_message")),
+    ("slack-send-guard.sh", ("slack_send_message", "slack_schedule_message",
+                             "slack_create_canvas", "slack_update_canvas")),
     ("atlassian-generic-write-guard.sh", ("executeWrite", "executeDestructive")),
 ]
 for script, tool_names in guarded_tool_names:

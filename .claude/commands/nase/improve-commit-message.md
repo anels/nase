@@ -15,13 +15,8 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ## Flags
 
-- `--auto-accept` - skip confirmation and amend immediately only when `push_state: not-pushed` **and** `is_protected: false`. A pushed HEAD, a HEAD whose remote freshness cannot be established, or a HEAD sitting on a protected branch still requires the exact approval in Step 6. If the current message is already well-formed and the proposed message is identical, skip the amend entirely.
+- `--auto-accept` - skip the confirmation prompt. Step 6 owns the conditions under which it actually applies and the three approval branches it cannot bypass.
 - `--repo <abs-path>` - the checkout holding the commit to inspect and amend. Bash resets `cwd` between calls, so a caller working in a worktree must pass this; without it the skill reads whatever directory it happens to land in and can amend the wrong repository's HEAD.
-
-<investigate_before_acting>
-Always verify git state (current branch, remote refs, commit history) before taking action.
-Never assume repository state - check it with git commands first.
-</investigate_before_acting>
 
 ## Steps
 
@@ -41,13 +36,13 @@ Read `branch` and `is_protected` alongside `push_state`. `is_protected` is true 
 
 If `is_protected` is true, `--auto-accept` is disabled for this run regardless of `push_state`. Go to Step 6 and name the branch in the question text so the user can see which protected branch the amend would rewrite.
 
-From `commitlint.candidates`, take the config CI actually loads - multiple may exist and the first found is not automatically the winner. Confirm against the `configFile:` line in the commitlint CI job log when a run exists. JSON candidates arrive pre-parsed under `rules`; a non-JSON candidate that CI loads still needs a direct Read. Extract:
-- `header-max-length` (validation limit; display target is always **80 chars**)
+From `commitlint.candidates`, take the config CI actually loads - multiple may exist and the first found is not automatically the winner. When a CI run exists, confirm against the `configFile:` line in its commitlint job log. Get the run with `gh run list --branch {branch} --limit 1 --json databaseId`, then `gh run view {id} --log | grep -m1 configFile`. JSON candidates arrive pre-parsed under `rules`; a non-JSON candidate that CI loads still needs a direct Read. Extract:
+- `header-max-length` (validation limit; Step 5 turns it into the display target)
 - `type-enum` (allowed types)
 - `subject-case` (0 = disabled, 2 = enforced)
 - `subject-full-stop`
 
-If no config is found (`commitlint.found: false`), use defaults: max 72, lowercase, no period, standard types.
+If no config is found (`commitlint.found: false`), or a found candidate fails to parse, use defaults: max 72, lowercase, no period, standard types. Say which of the two happened; a parse failure means CI may still enforce rules these defaults do not.
 
 ### 2. Check safety
 
@@ -69,7 +64,7 @@ Read the diff first. Only read full source files when the 5-line context is insu
 Pick the commit **type** from the project's `type-enum` (or standard list):
 `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
-Try jev first (`jev-judgment-points.md` point `improve-commit-message.type`); confidence < 0.9 or unavailable → fall back to the list above.
+Try jev first (`.claude/docs/jev-judgment-points.md` point `improve-commit-message.type`, `--type Choice` over the project's `type-enum` or the standard list above; state = diff summary); confidence < 0.9 or unavailable → pick from the list above.
 
 Pick an optional **scope** from the primary module/component affected (e.g., `auth`, `api`, `ui`, `db`, `deps`).
 
@@ -120,11 +115,12 @@ When `is_protected: true`, `--auto-accept` does not authorize the amend either, 
 question: "HEAD is on protected branch {branch}. Approve amending it from exactly:\n{current full message}\n\nto exactly:\n{proposed full message}"
 header: "Protected Branch Amend"
 options:
+  - label: "Move to a branch first"       , description: "Recommended - branch off {branch}, then amend there"
   - label: "Approve exact amend"          , description: "Amend this exact HEAD on {branch}"
   - label: "Skip"                         , description: "Keep the original message"
 ```
 
-If "Skip", output "Keeping original message (HEAD is on protected branch {branch})." and stop. If "Approve exact amend", run the amend immediately with no intervening prompt.
+"Move to a branch first" is the default the repo's git rules point at: never rewrite `main`, `master`, `develop`, or `release/*` in place. On that choice, report the exact `git -C {repo} switch -c {suggested-branch}` the user should run and stop without amending - this skill does not move branches on its own. If "Skip", output "Keeping original message (HEAD is on protected branch {branch})." and stop. If "Approve exact amend", run the amend immediately with no intervening prompt.
 
 When `push_state: not-pushed` and `is_protected: false` and `--auto-accept` is present, display the current vs proposed message, amend immediately, and stop.
 
@@ -161,7 +157,7 @@ feat(auth): add typed JWT token decoding interface
 
 ### Bug fix
 **Original**: "fix bug"
-**Diff**: Added `if (null === null)` guard in `validateUserToken()` before `token.decode()`
+**Diff**: Added `if (token === null)` guard in `validateUserToken()` before `token.decode()`
 **Improved**:
 ```
 fix(auth): handle null tokens from expired sessions
@@ -183,6 +179,5 @@ fix(auth): handle null tokens from expired sessions
 
 ## Config Priority
 
-1. `.commitlintrc.json` in repo root
-2. `.commitlintrc.js`, `.commitlintrc.yml`, `commitlint.config.js`, `commitlint.config.mjs`, `commitlint.config.cjs`, `commitlint.config.ts`
-3. Standard conventional commits defaults
+`git-commit-context.py` enumerates every commitlint config candidate and returns them under
+`commitlint.candidates`. Discovery order is not precedence - Step 1 picks the one CI loads.

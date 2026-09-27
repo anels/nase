@@ -118,7 +118,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*__slack_(send|schedule)_message$",
+        "matcher": "mcp__.*__(slack_(send|schedule)_message|slack_(create|update)_canvas)$",
         "hooks": [
           {
             "type": "command",

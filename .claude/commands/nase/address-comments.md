@@ -28,15 +28,17 @@ Follow `.claude/docs/pr-input-guard.md`. On empty input, ask for one PR URL with
 - Preserve KB lookup via `mentions:<path>` for review-thread files.
 - GraphQL thread `id` is for resolve; integer `databaseId` is for REST reply. Never interchange them.
 - The final post-Phase-4 dossier/action map is the only category source for delivery.
-- Every `accept` thread must produce the planned code diff and adequate test evidence. A no-diff accept blocks delivery.
+- Every `accept` thread must produce the planned code diff plus the test evidence `.claude/docs/fsd-implementation-loop.md → Engineering Excellence Bar` requires for the changed paths. A no-diff accept blocks delivery.
 - `decline` threads receive a reply but stay unresolved. `accept` and `reply-only` threads reply first, then resolve.
-- PR Gates are skipped. Do not run `gh pr checks`, poll CI, or claim PR gates are green. A post-push CI failure surfaces on the PR like any other; the user runs another round or fixes it directly.
+- PR Gates are skipped. Do not poll CI or claim PR gates are green. Do report a failing check that is already present in PR data this run fetched for another reason - a known-red check is a finding, not something to withhold. A post-push CI failure otherwise surfaces on the PR like any other; the user runs another round or fixes it directly.
 - Slack messages are drafts only. This command never sends them.
 - Never force-push and never weaken tests to make them pass.
 
 ## State contract
 
-Preserve `owner`, `repo`, `number`, `repo_path`, `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `pr_head_ref`, `gate_profile`, `module_inventory`, the PR-unique dossier path, each thread's `id` and `databaseId`, the final dossier/action map, `execution_mode`, `worktree_path`, `pr_branch`, and `no_commit`.
+Phases 1-4 produce and must return: `owner`, `repo`, `number`, `repo_path`, `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `pr_head_ref`, `gate_profile`, `module_inventory`, the PR-unique dossier path, each thread's `id` and `databaseId`, and the final dossier/action map.
+
+`worktree_path`, `pr_branch`, and `no_commit` are set inside `.claude/docs/address-comments-delivery.md` and stay live from there on. A Phase 1-4 return that omits them is complete, not truncated.
 
 ## Phase map
 
@@ -50,7 +52,7 @@ Preserve `owner`, `repo`, `number`, `repo_path`, `baseRefName`, `headRefName`, `
 
 Read `.claude/docs/address-comments-analysis.md` once. Execute repo resolution, bounded dossier collection, diff-first verification, classification, and both user checkpoints. Do not load the delivery document or perform external writes before confirmation.
 
-The analysis document must return the state contract above and an explicit final per-thread dossier/action map.
+The analysis document must return the Phases 1-4 names above and an explicit final per-thread dossier/action map. It does not set the delivery-phase names.
 
 ## Phases 5-12: Deliver
 

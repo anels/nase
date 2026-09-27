@@ -1,7 +1,7 @@
 ---
 name: nase:onboard
 description: "Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL."
-argument-hint: "[repo-path-or-url|--force|--no-curate]"
+argument-hint: "[repo|url] [--group N] [--all-groups] [--force] [--no-curate]"
 category: Knowledge base
 ---
 
@@ -9,15 +9,17 @@ Build or refresh compact repo knowledge without dumping the repository into cont
 
 ## Mode
 
-- No repo argument: batch-refresh every valid repo in `workspace/context.md`. **Valid** excludes any repo whose domain-map
+- No repo argument: batch-refresh the valid repos in `workspace/context.md` **that the group prompt below selects** - never
+  the whole map by default. **Valid** excludes any repo whose domain-map
   entry carries `retired:` per `.claude/docs/repo-resolution.md -> Retired entries`; report those under a separate retired
   count rather than as skips, so a permanent exclusion never reads as a transient failure.
 - `--group <name>`: scope the batch to one project group from `.claude/docs/repo-resolution.md -> Project groups`. Accepts a
   repeated flag or a comma-separated list. Match group names case-insensitively; an unknown name is an error that lists the
   available groups, never a silent full run.
 - No repo argument and no `--group`: before enumerating, offer the groups through `AskUserQuestion` (multi-select, plus an
-  all-groups option) so a routine refresh does not default to the whole map. Skip the prompt when the caller is
-  non-interactive or already passed `--group`.
+  all-groups option) so a routine refresh does not default to the whole map. Skip the prompt only when the caller passed
+  `--group` or `--all-groups`; `--all-groups` is the explicit way to say "every group" without being asked. There is no
+  implicit non-interactive detection - absent one of those two flags, ask.
 - Path or GitHub URL: resolve one repo through `.claude/docs/repo-resolution.md`.
 - `--no-curate`: skip the curation pass in `.claude/docs/kb-hygiene.md -> Curation`. Hygiene, drift, and admission gates
   still run. Use it when a refresh must touch nothing but the facts it verified.
@@ -38,7 +40,13 @@ python3 .claude/scripts/tool-availability.py --group baseline --group repo --gro
 ```
 
 Use available tools per `.claude/docs/cli-tooling.md`, and never write this machine-local availability into the repo KB.
-4. Run `.claude/scripts/kb-hygiene-scan.py` before updating an existing entry, then classify each finding with `.claude/docs/kb-hygiene.md`. That doc owns which facts this command may auto-fix from repo `HEAD`, which must be reported instead of rewritten, and which stale, duplicated, or low-value sections to refresh, merge, or remove; a scanner finding is not by itself permission to edit.
+4. Before updating an existing entry, run the hygiene scanner - it is mode `644`, so it needs the `python3` prefix and an explicit target:
+
+```bash
+python3 .claude/scripts/kb-hygiene-scan.py --kb-file "{target-kb}" --repo-root "{repo}" --json
+```
+
+   Then classify each finding with `.claude/docs/kb-hygiene.md`. That doc owns which facts this command may auto-fix from repo `HEAD`, which must be reported instead of rewritten, and which stale, duplicated, or low-value sections to refresh, merge, or remove; a scanner finding is not by itself permission to edit.
 5. Compute the content hash per `.claude/docs/content-hash-cache.md`; skip unchanged repos unless forced. When the repository yields no durable knowledge change, keep every KB target file byte-identical even under `--force`. Curation is driven by the state of the KB file, not by repo movement, so a repo that skips the knowledge refresh still gets its curation pass; with no candidates that pass is byte-identical too.
 
 ## Single repo
@@ -53,6 +61,8 @@ Use available tools per `.claude/docs/cli-tooling.md`, and never write this mach
 
 ## Batch refresh
 
-Resolve all configured repos first, apply the group scope when one is set, then process independent clean repos in bounded parallel slices. Skip missing, inaccessible, or dirty repos with explicit reasons. A repo whose content hash is unchanged skips the knowledge refresh but still gets its curation pass, so report it as curated-only rather than as a skip. Each repo keeps an independent staged diff and drift check; one failure does not invalidate successful siblings.
+Resolve all configured repos first, apply the group scope when one is set, then process independent clean repos in parallel slices of **at most four at a time**. Each slice is a survey whose answer is a per-repo conclusion, so dispatch `nase-repo-state-scanner` per repo. That agent is `tools: Read, Grep, Glob` with no Bash, so split the work: the main thread runs the git-state read per repo (branch, upstream, `HEAD`, dirtiness) and passes the result into the scanner's prompt, and the scanner reads the structure, docs, manifests, and CI config it can reach with Read and Grep. Never ask it to run `git`, `gh`, or any shell command. KB drafting, staging, and apply stay on the main thread. Skip missing, inaccessible, or dirty repos with explicit reasons. A repo whose content hash is unchanged skips the knowledge refresh but still gets its curation pass, so report it as curated-only rather than as a skip. Each repo keeps an independent staged diff and drift check; one failure does not invalidate successful siblings.
 
-Finish with refreshed/skipped/retired/failed counts, changed KB paths, evidence gaps, and the next scheduled refresh. Report curation as its own four counts - refreshed, merged, removed, regrouped sections - plus any candidates deferred by the line budget, so a cleanup is never read as a knowledge change. Name the group scope and the groups left untouched, so a partial refresh is never mistaken for a full one. Append the daily-log entry.
+Write the full batch report to `workspace/tmp/onboard-{YYYY-MM-DD}.md`: refreshed/skipped/retired/failed counts, changed KB paths, evidence gaps, the next scheduled refresh, curation as its own four counts - refreshed, merged, removed, regrouped sections - plus any candidates deferred by the line budget, so a cleanup is never read as a knowledge change, and the group scope alongside the groups left untouched, so a partial refresh is never mistaken for a full one.
+
+Per `.claude/docs/skill-contract.md`, chat gets the report path plus at most five lines: the four headline counts, the group scope, and any failure. Append the daily-log entry per `.claude/docs/daily-log-format.md`.

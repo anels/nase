@@ -10,9 +10,7 @@ category: Reporting
 **Step 0 - Language preflight (MUST run first):** follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 
 ## Input Guard
-If $ARGUMENTS is empty or blank:
-- Output: `Usage: /nase:estimate-eta <task description>  (e.g. /nase:estimate-eta Add caching to the alerts API)`
-- Stop immediately - do not proceed.
+If $ARGUMENTS is empty or blank, ask for the task with `AskUserQuestion` rather than printing a usage string. Include one example in the question text (e.g. "Add caching to the alerts API"). Stop until the answer arrives.
 
 ## Estimation Principles
 Apply the principles and confidence-range format in `.claude/docs/eta-estimation.md`.
@@ -22,21 +20,21 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
 <workflow>
 
 1. Parse the task description from $ARGUMENTS carefully
-2. Read `workspace/context.md` to identify the relevant repo(s). Follow `.claude/docs/repo-resolution.md` Part 1 + Part 2 to resolve the path and load the KB file. If the task could span multiple repos and the target is ambiguous, ask the user which repo to focus on. Then explore the codebase to understand:
+2. Read `workspace/context.md` to identify the relevant repo(s). Follow `.claude/docs/repo-resolution.md` Part 1 + Part 2 to resolve the path and load the KB file. If the task could span multiple repos, resolve the target from `workspace/context.md` and the KB first; only a genuinely unanswerable target becomes a question, and it is carried into the single batched ask rather than raised here. Then explore the codebase to understand:
    - Relevant existing files and components that would be touched
    - Current complexity and test coverage
    - Any dependencies or integrations involved
 3. Read `workspace/tasks/lessons.md` if it exists - look for similar past tasks and how long they took
    - Also check the resolved project KB for verified complexity constraints and prior gotchas. Use lessons or completed effort evidence for historical duration; do not infer team velocity from an active project KB unless it contains an explicit measured series with provenance.
 4. Read `workspace/tasks/todo.md` to understand current workload and what's in flight
-5. Break the task into concrete subtasks. Tag each with its **dominant lane** (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) per `.claude/docs/eta-estimation.md` → Lane Classification - ask "what is this step blocked on?"
-6. Size each subtask with the rough bucket scale (S / M / L / XL / XXL). Apply AI-leverage compression only to 🤖 lane subtasks; 🔌 / 🧠 / ✅ do not speed up because codegen got faster
+5. Break the task into concrete subtasks. Tag each with its **dominant lane** (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) per `.claude/docs/eta-estimation.md` → Lane Classification - ask "what is this step blocked on?" That section owns the `estimate-eta.lane` jev call and its fallback; do not restate them here.
+6. Size each subtask with the rough bucket scale (S / M / L / XL / XXL). Try jev first (point `estimate-eta.size`, `--type Choice` over those five buckets; state = subtask description + its lane); confidence < 0.9 or unavailable → size it yourself against `.claude/docs/eta-estimation.md` → Size Scale. Apply AI-leverage compression only to 🤖 lane subtasks; 🔌 / 🧠 / ✅ do not speed up because codegen got faster
 
-7. Persist the estimate - append to `workspace/logs/{YYYY-MM-DD}.md`:
+7. Persist the estimate - append under `## Sessions` in `workspace/logs/{YYYY-MM-DD}.md`, in the shape `.claude/docs/daily-log-format.md` mandates, using this skill's canonical tag `estimate`:
    ```
-   - ETA estimate: {task name} — {realistic estimate} ({scope})
+   - {HH:MM} | estimate: {task name} - {realistic estimate} ({scope})
    ```
-   This line is the calibration anchor: `/nase:wrap-up` will later compare it against actual completion time and write a calibration note to `workspace/tasks/lessons.md` if the divergence is significant. See `.claude/docs/lessons-format.md` for the format.
+   This line is the calibration anchor. `/nase:wrap-up` later compares it against actual completion time and write a calibration note to `workspace/tasks/lessons.md` if the divergence is significant (that write follows `.claude/docs/workspace-write-guard.md`). See `.claude/docs/lessons-format.md` for the format.
 
 </workflow>
 

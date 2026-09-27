@@ -17,10 +17,10 @@ Report each item as pass, warning, or fail with one concrete remediation.
 4. Validate `workspace/config.md`, `backup-target`, retention, language fields, and the target directory. Never mutate backup settings.
 5. Read the latest backup status and distinguish missing, stale, and failed backups.
 6. Check required workspace directories and important stubs without creating them.
-7. Probe required tools (`git`, `gh`, `jq`, `python3`, archive tool) and baseline optional tools through `.claude/scripts/tool-availability.py`. Follow `.claude/docs/cli-tooling.md`; `--deep` adds all optional groups.
+7. Probe required tools (`git`, `gh`, `jq`, `python3`, archive tool) and baseline optional tools with `python3 .claude/scripts/tool-availability.py --group baseline --format json`. Follow `.claude/docs/cli-tooling.md`; `--deep` swaps `--group baseline` for `--all`.
 8. Validate command frontmatter, generated workspace wrappers, and local manifest with `.claude/scripts/workspace-skill-integrity.py check`. Confirm no legacy generated native mirror remains.
 9. With `--deep`, run `python3 .claude/scripts/kb-hygiene-scan.py --workspace-scan --root . --json` and apply `.claude/docs/kb-staleness.md` to report KB structure, content, and access-staleness findings. This check is read-only and does not update timestamps.
-10. Run the narrow JSON, hook-wiring, and command-catalog checks available in this checkout. Do not claim full health unless `bash tests/check-all.sh` ran.
+10. Run the narrow checks that exist in this checkout: `bash tests/hooks/test-claude-native-hooks.sh` for hook wiring, `bash tests/scripts/test-command-skill-size-budget.sh` for the command catalog, and `bash tests/check-canonical-pointers.sh` for pointer JSON. Do not claim full health unless `bash tests/check-all.sh` ran.
 11. Check Claude project state and flag missing local configuration or inaccessible optional integrations separately from repo defects.
 
 ## Output

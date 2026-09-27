@@ -190,7 +190,7 @@ python3 .claude/scripts/citation-validator.py "{staged_path}" \
 python3 .claude/scripts/effort-state.py --file "{staged_path}" --evaluate-transition
 ```
 
-`citation-validator.py` is the mechanical half of the Grounding criterion and of `design-research.md`'s *Cite or gap* rule: exit `1` means a cited PR, Jira key, or `path:line` does not resolve - fix or `gap`-mark it before applying. Exit `2` is `UNKNOWN` (Confluence needs MCP); record it, do not treat it as a pass. `effort-state.py` failing to classify the doc means its structure is wrong, not that the classifier is.
+`citation-validator.py` is the mechanical half of the Grounding criterion and of `design-research.md`'s *Cite or gap* rule: exit `1` means a cited PR, Jira key, or `path:line` does not resolve - fix or `gap`-mark it before applying. Exit `2` is `UNKNOWN` (Confluence needs MCP); record it, do not treat it as a pass. Exit `3` or `4` means the validator checked nothing at all, so there is no verdict to record; fix the invocation and rerun. Full contract: `.claude/docs/citation-validator.md → Result and exit semantics`. `effort-state.py` failing to classify the doc means its structure is wrong, not that the classifier is.
 
 ### 5b. Append `## Human Input Required`
 

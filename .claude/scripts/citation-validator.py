@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Validate report citations against local roots and read-only authorities."""
+"""Validate report citations against local roots and read-only authorities.
+
+Exit codes, per `.claude/docs/citation-validator.md → Result and exit semantics`:
+  0  every discovered reference is OK, or there were none
+  1  at least one reference is BROKEN
+  2  no reference is BROKEN and at least one is UNKNOWN
+  3  the validator did not run: bad arguments, unreadable artifact, unusable root
+  4  the validator ran but withheld its output because it carries sensitive data
+"""
 
 from __future__ import annotations
 
@@ -22,6 +30,12 @@ from nase_gh import (
     failure_category,
 )
 from nase_gh import run as nase_gh_run
+
+EXIT_OK = 0
+EXIT_BROKEN = 1
+EXIT_UNKNOWN = 2
+EXIT_DID_NOT_RUN = 3
+EXIT_OUTPUT_WITHHELD = 4
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 ALIAS_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -465,7 +479,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo-root", action="append", default=[])
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument("--timeout-seconds", type=int, default=15)
-    return parser.parse_args()
+    try:
+        return parser.parse_args()
+    except SystemExit as exc:
+        # argparse rejects an argument with its own exit 2, which this CLI reserves
+        # for "every reference was checked and some are UNKNOWN". A rejected argument
+        # checked nothing, so it belongs in the did-not-run class. `--help` stays 0.
+        raise SystemExit(EXIT_OK if not exc.code else EXIT_DID_NOT_RUN) from None
 
 
 def main() -> int:
@@ -488,7 +508,7 @@ def main() -> int:
         )
     except (OSError, UnicodeDecodeError, ValidationError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_DID_NOT_RUN
 
     summary = {
         "ok": sum(item["status"] == "OK" for item in results),
@@ -504,7 +524,7 @@ def main() -> int:
     }
     if secret_kind(json.dumps(payload, sort_keys=True).encode()):
         print("ERROR: validation output contains sensitive data", file=sys.stderr)
-        return 2
+        return EXIT_OUTPUT_WITHHELD
     if args.format == "json":
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -514,10 +534,10 @@ def main() -> int:
         for item in results:
             print(f"{item['status']} {item['kind']} {item['ref']} {item['detail']}")
     if summary["broken"]:
-        return 1
+        return EXIT_BROKEN
     if summary["unknown"]:
-        return 2
-    return 0
+        return EXIT_UNKNOWN
+    return EXIT_OK
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # FSD PR Delivery
 
-This reference owns the `/nase:fsd` phases that only run when `open_pr = true`: the pull request itself, the verification matrix posted on it, and the KB update that follows. Load it at Phase 8; a PR = No run never needs it.
+This reference owns three `/nase:fsd` phases. Phases 8 and 8.5 - the pull request itself and the verification matrix posted on it - only run when `open_pr = true`. Phase 8c, the KB update, runs on every FSD run, so a PR = No run loads this document for that section alone.
 
 ## Contents
 

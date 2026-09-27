@@ -2,7 +2,7 @@
 
 ## Contents
 
-- Accepted write formats: `adf`, `html`, `markdown`
+- Accepted write formats by MCP generation
 - Update vs Create
 - Full Body Requirement
 - Jira Links: always `inlineCard`
@@ -18,17 +18,17 @@ Shared rules for reading and writing Confluence pages via Atlassian MCP. Referen
 
 ---
 
-## Accepted write formats: `adf`, `html`, `markdown`
+## Accepted write formats by MCP generation
 
-Every `createConfluencePage` / `updateConfluencePage` body must be sent as one of `contentFormat: "adf"`, `"html"`, or `"markdown"`. All three go through the MCP's own converter. `adf` and `html` are lossless for `inlineCard` Jira links, panels, tables, expands, and attachment references; **`markdown` is not** - measured on the round-trip, it cannot express any of those, and a markdown Jira link stays a plain `<a href>`. Pick by what you are holding:
+Which formats a page body may carry depends on the MCP generation you are on - see *The current MCP generation* below. The current `createConfluenceContent` / `updateConfluenceContent` pair takes `html` or `markdown`; the older `createConfluencePage` / `updateConfluencePage` pair also takes `adf`. All of them go through the MCP's own converter. `adf` and `html` are lossless for `inlineCard` Jira links, panels, tables, expands, and attachment references; **`markdown` is not** - measured on the round-trip, it cannot express any of those, and a markdown Jira link stays a plain `<a href>`. Pick by what you are holding:
 
 | You are | Use | Why |
 |---|---|---|
-| Editing a page you fetched as ADF | `adf` | Modify the fetched tree in memory and send it back; no conversion in either direction. |
-| Publishing converted HTML | `html` (Confluence HTML+) | The source is already HTML, and HTML+ is exactly what `getConfluencePage(contentFormat:"html")` returns, so it is the server's own shape. It is also far more compact than ADF for the same content, which matters against the size cap below. |
+| Editing a page you fetched as ADF, on the older MCP | `adf` | Modify the fetched tree in memory and send it back; no conversion in either direction. On the current MCP, fetch and send `html` instead. |
+| Publishing converted HTML | `html` (Confluence HTML+) | The source is already HTML, and HTML+ is exactly what `getConfluenceContent(contentFormat:"html")` returns, so it is the server's own shape. It is also far more compact than ADF for the same content, which matters against the size cap below. |
 | Publishing a Markdown document | `markdown` | Passthrough, no local converter. Lossy: no panels, expands, or inline cards - use `html` when those matter. Markdown is also terser than the other two, so it expands further into storage format; split well below the cap. |
 
-`.claude/hooks/confluence-size-guard.sh` enforces the set - it blocks a page write whose `contentFormat` is unset, `storage`, or anything outside those three. If a page genuinely cannot be expressed in one of them, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
+`.claude/hooks/confluence-size-guard.sh` enforces the set - it matches both generations and blocks a page write whose `contentFormat` is unset, `storage`, or anything outside the enum that generation accepts. The same hook caps a body at 70000 bytes, which is the size cap referred to throughout this document. If a page genuinely cannot be expressed in one of them, save a draft to `workspace/tmp/` and ask the user to paste it manually rather than downgrading the format.
 
 ### The current MCP generation: `*ConfluenceContent`
 
@@ -42,7 +42,7 @@ The Atlassian MCP renamed these tools and changed the body shape. Read the live 
 | Other formats | none | `svg` (whiteboard), `csv` (database), `url` (embed / smart link / synced folder) |
 | Concurrency | no version field | `snapshotToken` from a prior `getConfluenceContent` is required for doc-body updates |
 
-The guard matches both generations and applies each one's own format enum, so an `adf` body sent to `updateConfluenceContent` is blocked. On the current MCP, use `html` wherever this doc says `adf`: it is the server's own shape and round-trips `inlineCard`, panels, tables, and attachments. The ADF mechanics below still apply to the older MCP and to anyone hand-building an ADF tree.
+The guard matches both generations and applies each one's own format enum, so an `adf` body sent to `updateConfluenceContent` is blocked. On the current MCP, use `html` wherever this doc says `adf`, because it is the server's own shape and round-trips `inlineCard`, panels, tables, and attachments. The ADF node recipes below are written as ADF JSON, so they apply to the older MCP and to anyone hand-building a tree; on the current MCP, fetch the page as `html` and edit the markup the server already returned for that node rather than translating the JSON by hand.
 
 `updateConfluenceContent` also accepts granular `edits` instead of a whole body, and a title-only or width-only update with neither. Those carry no format to gate; the guard still applies the size cap to whatever they send.
 
@@ -54,18 +54,18 @@ This is the **opposite** of Jira, where bodies must be `markdown` (see `.claude/
 
 ## Update vs Create
 
-- **Existing page**: use `updateConfluencePage` - always fetch the current page first, then send the full modified body back.
-- **New page**: use `createConfluencePage`. Ask the user to confirm the target parent page URL or space key before creating.
+- **Existing page**: use `updateConfluenceContent` - always fetch the current page first, then send the full modified body back.
+- **New page**: use `createConfluenceContent`. Ask the user to confirm the target parent page URL or space key before creating.
 
 ---
 
 ## Full Body Requirement
 
-`updateConfluencePage` requires the **entire** page body - no partial updates. Always:
+`updateConfluenceContent` requires the **entire** page body - no partial updates. Always:
 
-1. `getConfluencePage(pageId)` - fetch current ADF body and version number
+1. `getConfluenceContent(pageId)` - fetch the current body in the format you intend to send back, plus the `snapshotToken` the update needs
 2. Modify only the target sections in memory
-3. Send the full modified body + incremented version back
+3. Send the full modified body back with the fetched `snapshotToken` and no `version` field - see *Draft Pages*
 
 Never reconstruct the body from scratch - you will lose screenshots, custom formatting, and manually added content.
 
@@ -111,7 +111,7 @@ Only `type` and `attrs.id` are required. Resolve the account ID with `lookupJira
 
 ## Draft Pages
 
-If a page has never been published (draft), pass `status: "draft"` on every `updateConfluencePage` call:
+If a page has never been published (draft), pass `status: "draft"` on every `updateConfluenceContent` call:
 
 ```json
 {"status": "draft", ...}
@@ -119,7 +119,7 @@ If a page has never been published (draft), pass `status: "draft"` on every `upd
 
 Without it the API auto-increments to version 2 and returns `400: "Version number must be 1 when publishing a page for the first time"`. Draft pages stay at version 1 until explicitly published.
 
-**Do not send a `version` field.** The current `updateConfluencePage` tool schema has no `version` parameter - the MCP manages versioning itself. An earlier revision of this doc showed `{"status": "draft", "version": {"number": 1}}`; the `version` half no longer corresponds to anything the tool accepts. Likewise, `getConfluencePage` returns `lastModified` (e.g. `"Jul 31, 2026"`) and no version number, so quote that when a skill needs to show the user which revision it is about to replace.
+**Do not send a `version` field.** The current `updateConfluenceContent` tool schema has no `version` parameter - the MCP manages versioning itself. An earlier revision of this doc showed `{"status": "draft", "version": {"number": 1}}`; the `version` half no longer corresponds to anything the tool accepts. Likewise, `getConfluenceContent` returns `lastModified` (e.g. `"Jul 31, 2026"`) and no version number, so quote that when a skill needs to show the user which revision it is about to replace.
 
 ---
 
@@ -133,7 +133,7 @@ Without it the API auto-increments to version 2 and returns `400: "Version numbe
 
 ## Batch All Changes
 
-Each `updateConfluencePage` call requires a full fetch + send cycle. Accumulate all pending changes (new rows, cell appends, section edits) and apply them in a single call - never make multiple sequential updates to the same page.
+Each `updateConfluenceContent` call requires a full fetch + send cycle. Accumulate all pending changes (new rows, cell appends, section edits) and apply them in a single call - never make multiple sequential updates to the same page.
 
 ---
 
@@ -142,7 +142,7 @@ Each `updateConfluencePage` call requires a full fetch + send cycle. Accumulate 
 When searching for a runbook by alert name, use noun fragments rather than the full hyphenated rule name:
 
 ```
-searchConfluenceUsingCql: text ~ "<noun1>" AND text ~ "<noun2>" AND space = "RPAAP"
+searchConfluence: text ~ "<noun1>" AND text ~ "<noun2>" AND space = "RPAAP"
 ```
 
 Also check the oncall handoff tree: `ancestor = 2921399304 AND text ~ "<alert keyword>"`.

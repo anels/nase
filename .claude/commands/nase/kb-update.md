@@ -28,18 +28,14 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - General stack patterns → `workspace/kb/general/{domain}.md`
    - Project-specific → `workspace/kb/projects/{repo}.md`
    - Cross-project (spans multiple repos) → `workspace/kb/cross-project/{topic}.md`
-   Create the file with a minimal header, add to `.domain-map.md`, then proceed.
+
+   Try jev first for that four-way pick (`jev-judgment-points.md` point `kb-update.route-domain`, `--type Choice`, options `ops` / `general` / `projects` / `cross-project`; state = the topic name and the repos it touches); confidence < 0.9 or unavailable → pick it yourself from the four rules above. Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
 2. Read the target KB file to understand current state.
 
-2a. **Conflict check** - before writing, search for similar content:
-   - Extract 2–3 key terms from what you're about to add (domain names, function names, error messages, pattern keywords)
-   - Grep the entire `workspace/kb/` directory for those terms, case-insensitive, excluding `.domain-map.md`:
-     ```bash
-     rg -n -i -g '*.md' -g '!.domain-map.md' -e '{term1}' -e '{term2}' workspace/kb/
-     ```
-   - **Hits in other KB files:** show the matching snippets and ask - "Similar content exists in `{file}` - duplicate, update, or distinct pattern?"
-   - **Hits only in the target file:** update the existing current-state section instead of appending a duplicate; surface the existing entry to the user before proceeding
+2a. **Conflict check** - run the shared coverage check in `.claude/docs/kb-write-routing.md -> Shared admission contract` step 2, which owns the command, the term-derivation rule, and the score threshold. Keep its hit set; step 7 reuses it instead of re-searching the same terms.
+   - **Hits in other KB files:** record the file, the matched entry, and your read of whether it is a duplicate, an update to that entry, or a distinct pattern. Do **not** stop to ask here - carry the finding into the single step 9 gate, where the staged diff makes the question answerable in one pass.
+   - **Hits only in the target file:** update the existing current-state section instead of appending a duplicate, and show that entry in the step 9 diff
    - **No hits:** proceed silently
 
 3. Determine what to add:
@@ -53,7 +49,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - **Durable dated event:** append only when the date matters to a decision, incident, migration, or gotcha.
    - **No-op/status fact:** for unchanged HEAD, commit counts, scan status, or routine hygiene, write nothing.
    - **Unknown or follow-up:** omit it from the KB or route actionable work to `workspace/tasks/` or `workspace/efforts/`. Never write placeholders such as `FILL_IN`, `TBD`, or `TO_BE_FILLED`.
-   - Try jev first (`jev-judgment-points.md` point `kb-update.classify`); confidence < 0.9 or unavailable → fall back to the four labels above.
+   - Try jev first (`jev-judgment-points.md` point `kb-update.classify`, `--type Choice`, options `current-state` / `dated-event` / `no-op` / `follow-up`; state = a one-sentence summary of the knowledge plus whether the target section already covers it - not the entry body, which `jev-judge.py` truncates at 200 characters and would classify from a fragment); confidence < 0.9 or unavailable → fall back to the four labels above.
    - Apply `.claude/docs/kb-template.md -> Verification triad`. V2 and V3 are admission gates. If either fails, keep the evidence in the originating log, recap, report, or effort instead of the active KB.
 
 4. Build the proposed complete target file under `workspace/tmp/`. For current-state facts, edit the existing section in place. Use the dated format below only for durable events whose date is material:
@@ -86,12 +82,22 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
 
 6. **Size check - split if needed:**
 
-   Count the lines in the complete proposed file before applying it.
+   The line budget is owned by `.claude/scripts/kb-hygiene-scan.py`, not by this file, so that `/nase:onboard` and `/nase:kb-review` cannot disagree with it about the same target. Read it rather than restating a number:
 
-   If the file exceeds **400 lines**, evaluate whether a split makes sense:
+   ```bash
+   python3 .claude/scripts/kb-hygiene-scan.py --help | grep -A2 -- '--max-kb-lines'
+   ```
+
+   Run the scanner over the complete proposed file and split only when it reports the
+   budget exceeded. File mode requires both flags; either one alone exits:
+
+   ```bash
+   python3 .claude/scripts/kb-hygiene-scan.py --kb-file {proposed_file} --repo-root {repo_root} --json
+   ```
+
    - Identify top-level `##` sections and their line counts
    - A split is worthwhile when: there are 2+ sections each >150 lines AND they represent distinct sub-domains that would logically be consulted independently (e.g., "alert patterns" vs "runbook procedures" vs "escalation contacts")
-   - If no clean semantic boundary exists, skip splitting
+   - **Default is no split.** Skip it when no clean semantic boundary exists, when only one section is oversized, or when the sub-domain call is close. A split is only worth it when both conditions are plainly true.
 
    **How to split:**
    - Prefer a **subfolder** when the domain will likely grow (e.g., `ops/oncall/` containing `alerts.md`, `procedures.md`, `escalation.md`)
@@ -108,7 +114,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
 7. **Internal links - wire up cross-references:**
 
    After building the proposal (and after any proposed split), check whether the new content references concepts covered in *other* KB files:
-   - Grep `workspace/kb/` for the key terms from the new entry
+   - Reuse the Step 2a hit set; it already searched these terms across `workspace/kb/`. Only run a fresh `kb-search.sh` when the split in Step 6 introduced a term 2a did not cover.
    - If a hit exists in another file and the connection is genuinely useful (not incidental), add a `> See also: [{description}]({relative-path})` line near the relevant section - both in the file you just wrote *and* in the other file
    - Only add links that would actually help a reader navigate - don't link everything to everything
 
@@ -124,7 +130,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - Do not add frontmatter solely for KB metadata. Preserve existing frontmatter unless the target file already defines its own local metadata contract.
    - Do not write read/access timestamps into `.domain-map.md`; usage telemetry owns access history.
 
-9. Stage every complete changed file separately with `python3 .claude/scripts/workspace-write-guard.py stage --target {target} --content-file {proposed} --skill kb-update`. Show each helper diff and apply only after the gate or documented auto path. Apply KB content files first and `.domain-map.md` last, so metadata never claims a content change that did not land. Then confirm what was added, where, whether the file was split, and what links were added.
+9. Stage every complete changed file separately with `python3 .claude/scripts/workspace-write-guard.py stage --target {target} --content-file {proposed} --skill kb-update`. Show each helper diff, then gate the run with **one** `AskUserQuestion` carrying every decision at once: any Step 2a conflict (duplicate / update that entry / distinct pattern), the proposed split if Step 6 produced one, and approval to apply. Apply only after that gate or the documented auto path. Apply KB content files first and `.domain-map.md` last, so metadata never claims a content change that did not land. Then confirm what was added, where, whether the file was split, and what links were added.
 
 ## Error Handling
 

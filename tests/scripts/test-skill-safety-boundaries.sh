@@ -86,7 +86,12 @@ check_contains "FSD uses candidate review gate guard" .claude/commands/nase/fsd.
 check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-pr-delivery.md "external-write-action.py"
 check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-pr-delivery.md "trap 'rm -rf \"\$PR_BODY_DIR\"' EXIT"
 check_contains "address-comments cleans private PR body files" .claude/docs/address-comments-delivery.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
-check_contains "prep-merge cleans private PR body files" .claude/commands/nase/prep-merge.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
+# prep-merge's body file must outlive the Bash call that writes it: Gate 9 waits for the
+# user, Gate 10 binds it into the manifest as --body-file, Gate 11 reads it back. So its
+# cleanup is Gate 12's explicit delete, not a trap, and the file is created under umask 077.
+check_contains "prep-merge restricts the private PR body file" .claude/commands/nase/prep-merge.md "umask 077"
+check_contains "prep-merge cleans private PR body files" .claude/commands/nase/prep-merge.md "delete \`workspace/tmp/prep-merge/pr-{number}-body.md\`"
+check_absent "prep-merge does not trap-delete a body a later gate still needs" .claude/commands/nase/prep-merge.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 
 discuss=".claude/commands/nase/discuss-pr.md"
 discuss_out=".claude/docs/discuss-pr-output.md"

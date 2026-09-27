@@ -150,7 +150,11 @@ Keep these independent:
 - `kind`: `issue | suggestion | nit | question`.
 - `disposition`: `blocking | non-blocking | needs-answer`.
 
-Try jev first for `kind` and `disposition` (`jev-judgment-points.md` points `discuss-pr.kind`, `discuss-pr.disposition`); jev confidence < 0.9 or unavailable → fall back above. Classify `severity` yourself always - weighing impact isn't a bounded jev call.
+Try jev first for `kind` and `disposition`, per `jev-judgment-points.md`. This is the single definition of both points; the `/nase:discuss-pr` entrypoint only routes here.
+- `discuss-pr.kind`: `--type Choice` over `issue` / `suggestion` / `nit` / `question`; state = the one-sentence finding claim plus its `path:line`, no diff body.
+- `discuss-pr.disposition`: `--type Choice` over `blocking` / `non-blocking` / `needs-answer`; state = the resolved `kind` plus the one-sentence claim.
+
+Both criteria are the label lists directly above. jev confidence < 0.9 or unavailable → fall back above. Classify `severity` yourself always - weighing impact isn't a bounded jev call.
 
 High confidence does not raise severity. A confidence-95 nit is still low-severity and non-blocking. Only `issue` may be blocking.
 

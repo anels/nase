@@ -9,7 +9,7 @@ Produce an evidence-backed audit without editing the target repository. Follow `
 
 ## Workflow
 
-1. Resolve the repo with `.claude/docs/repo-resolution.md`; load its CLAUDE.md, README/docs, KB, dependency manifests, CI, tests, and recent history.
+1. Resolve the repo with `.claude/docs/repo-resolution.md`. With no `$ARGUMENTS`, resolve the current checkout and name it back to the user before scanning; ask only when resolution is ambiguous. Then load its CLAUDE.md, README/docs, KB, dependency manifests, CI, tests, and recent history. Delegate the file-reading half of that orientation pass to `nase-repo-state-scanner`, which is read-only and returns the structure summary rather than the file dumps. It is `Read, Grep, Glob` with no Bash by design, so run the history reads (`git -C {repo} log`, tags, churn) in the main thread and pass the output into its prompt as supplied evidence, exactly as `.claude/agents/nase-repo-state-scanner.md` states. Do not widen the agent.
 2. Establish scope, languages, generated/vendor exclusions, and required build/test commands. Reject an invalid or unreadable target.
 3. Run an Optional scanner seed pass after probing:
 
@@ -18,10 +18,10 @@ python3 .claude/scripts/tool-availability.py --group repo --group security --gro
 ```
 
 Use installed tools only. Typical seeds include `semgrep`, `trivy`, `actionlint`, `shellcheck`, and language-native analyzers. Scanner output is a lead, never a finding by itself.
-4. Inspect architecture boundaries, duplication, obsolete dependencies, unsafe defaults, reliability/observability gaps, testability, operational toil, and modernization opportunities.
+4. Inspect architecture boundaries, duplication, obsolete dependencies, unsafe defaults, reliability/observability gaps, testability, operational toil, and modernization opportunities. This is the audit's breadth sweep and its answer is a candidate list, so split it by concern and fan out to read-only **verifier** agents (`model=sonnet`, `effort=medium`, `tools=[Read, Grep, Glob, Bash]`). Keep ranking and the write-up in the main thread.
 5. Apply `.claude/docs/ai-code-verification-debt.md` to AI-shaped or weakly verified code. Do not attribute authorship without evidence.
 6. For every candidate, trace callers/config/runtime impact and collect `path:line`, command, test, or source evidence. Drop unverified candidates.
-7. Run the `tech-debt-review` sanity pass from `.claude/docs/review-mode-tech-debt.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`). A pass that re-reads the candidates without the audit's own reasoning is what catches a candidate the audit talked itself into.
+7. Run the `tech-debt-review` sanity pass from `.claude/docs/review-mode-tech-debt.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`: `model=sonnet`, `effort=medium`, `tools=[Read, Grep, Glob, Bash]`, prompt prefixed with that role's `prompt_prefix`). Pass the tool list explicitly - an ad hoc spawn inherits nothing, and a verifier that can Write is no longer a verifier. A pass that re-reads the candidates without the audit's own reasoning is what catches a candidate the audit talked itself into.
 8. Validate report citations with `.claude/docs/citation-validator.md`. Rank only confirmed issues by impact, breadth, recurrence, and remediation sequence. Keep the `--format json` payload for step 9.
 9. Write the full audit to `workspace/recaps/tech-debt-{repo}-{YYYY-MM-DD}.md`; chat returns the pointer and top findings. Then persist the payload from step 8 as `workspace/recaps/tech-debt-{repo}-{YYYY-MM-DD}.md.receipt.json` per `.claude/docs/citation-validator.md → Persist the receipt`.
 10. Any proposed KB update is separate, previewed, and applied through `.claude/docs/workspace-write-guard.md`.

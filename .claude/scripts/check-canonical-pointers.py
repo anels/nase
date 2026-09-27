@@ -15,6 +15,8 @@ from pathlib import Path
 
 SOURCE_DOC = Path(".claude/docs/language-config.md")
 BLOCK_NAME = "language-preflight"
+# Short enough to occur by accident means the substring test proves nothing.
+MIN_POINTER_CHARS = 20
 
 # Inline restatements of the preflight rules: a second copy that drifts.
 RESTATEMENTS = (
@@ -71,6 +73,20 @@ def main() -> int:
     body = canonical.rstrip(".")
     if "`" in body:
         body = body[body.index("`") :]
+
+    # The check below is a substring test, so a body short enough to occur by
+    # accident passes the whole corpus without verifying anything. An empty block
+    # matches every file; so does a lone backtick. The real pointer runs past 40
+    # characters, so anything under this bound is a broken declaration.
+    if len(body.strip()) < MIN_POINTER_CHARS:
+        print(
+            f"DEGENERATE_CANONICAL_BLOCK {source_doc}: the <canonical-block "
+            f'name="{BLOCK_NAME}"> section carries {len(body.strip())} characters, '
+            f"under the {MIN_POINTER_CHARS} a pointer needs to be distinctive. "
+            "Put the canonical pointer sentence inside it.",
+            file=sys.stderr,
+        )
+        return 1
 
     failures: list[str] = []
     for path in targets(root):

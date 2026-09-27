@@ -82,6 +82,61 @@ else
   fail "missing canonical block fails [rc=$rc]"
 fi
 
+# 6. An empty canonical block fails instead of passing vacuously: the gate matches
+#    the canonical body as a substring, and every file contains the empty string.
+empty="$TMP/empty"
+fixture "$empty" 'Follow `.claude/docs/language-config.md` → Minimum Step 0 block.'
+printf '# Language Config\n\n## Canonical pointer\n\n<canonical-block name="language-preflight">\n\n</canonical-block>\n' \
+  > "$empty/.claude/docs/language-config.md"
+out=$(python3 "$GATE" --root "$empty" 2>&1) && rc=0 || rc=$?
+if [[ "$rc" -eq 1 ]] && grep -q "DEGENERATE_CANONICAL_BLOCK" <<<"$out"; then
+  pass "empty canonical block fails"
+else
+  printf '%s\n' "$out" >&2
+  fail "empty canonical block fails [rc=$rc]"
+fi
+
+# 7. A block holding only whitespace is the same defect wearing a space.
+blank="$TMP/blank"
+fixture "$blank" 'Follow `.claude/docs/language-config.md` → Minimum Step 0 block.'
+printf '# Language Config\n\n## Canonical pointer\n\n<canonical-block name="language-preflight">\n   \n</canonical-block>\n' \
+  > "$blank/.claude/docs/language-config.md"
+out=$(python3 "$GATE" --root "$blank" 2>&1) && rc=0 || rc=$?
+if [[ "$rc" -eq 1 ]] && grep -q "DEGENERATE_CANONICAL_BLOCK" <<<"$out"; then
+  pass "whitespace-only canonical block fails"
+else
+  printf '%s\n' "$out" >&2
+  fail "whitespace-only canonical block fails [rc=$rc]"
+fi
+
+# 7b. A body too short to be distinctive is the same defect once more. A lone
+#     backtick survives the strip and then matches every file that has one.
+tick="$TMP/tick"
+fixture "$tick" 'Follow `.claude/docs/language-config.md` → Minimum Step 0 block.'
+printf '# Language Config\n\n## Canonical pointer\n\n<canonical-block name="language-preflight">\n`\n</canonical-block>\n' \
+  > "$tick/.claude/docs/language-config.md"
+out=$(python3 "$GATE" --root "$tick" 2>&1) && rc=0 || rc=$?
+if [[ "$rc" -eq 1 ]] && grep -q "DEGENERATE_CANONICAL_BLOCK" <<<"$out"; then
+  pass "a one-character canonical block fails"
+else
+  printf '%s\n' "$out" >&2
+  fail "a one-character canonical block fails [rc=$rc]"
+fi
+
+# 8. A block with no backtick still carries real wording: the gate must compare
+#    it as written rather than fall through to the empty-string match.
+notick="$TMP/notick"
+fixture "$notick" 'Some unrelated skill body with no pointer at all.'
+printf '# Language Config\n\n## Canonical pointer\n\n<canonical-block name="language-preflight">\nFollow the language preflight before anything else.\n</canonical-block>\n' \
+  > "$notick/.claude/docs/language-config.md"
+out=$(python3 "$GATE" --root "$notick" 2>&1) && rc=0 || rc=$?
+if [[ "$rc" -eq 1 ]] && grep -q "DRIFT" <<<"$out"; then
+  pass "backtick-free canonical wording is still enforced"
+else
+  printf '%s\n' "$out" >&2
+  fail "backtick-free canonical wording is still enforced [rc=$rc]"
+fi
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nAll canonical-pointer tests passed.\n'
   exit 0

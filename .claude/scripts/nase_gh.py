@@ -25,13 +25,30 @@ GH_TIMEOUT_SECONDS = 30
 TIMEOUT_RETURNCODE = 124
 MISSING_BINARY_RETURNCODE = 127
 
+
+def _tokens(*alternatives: str) -> re.Pattern[str]:
+    return re.compile("|".join(alternatives))
+
+
 # Ordered most-actionable first. `transient-network` deliberately outranks
 # `not-found`: the only caller that acts on the difference is one that retries, and
 # there a wrong `not-found` turns a recoverable blip into a permanent failure, while a
 # wrong `transient-network` costs one wasted retry.
-_RATE_LIMIT_TOKENS = ("rate limit", "secondary rate")
-_AUTH_TOKENS = ("auth", "login", "unauthorized", "forbidden")
-_NETWORK_TOKENS = (
+_RATE_LIMIT_RE = _tokens("rate limit", "secondary rate")
+# `auth` carries a carve-out because as a bare substring it also matched the `author`
+# that gh prints routinely, turning a not-found into the `auth-failed` that
+# `citation-validator.py` reads as UNKNOWN. It excludes `author`/`authored`/`authorship`
+# and keeps `oauth`, `reauthenticate`, `authoriz*`, `authoris*`. The other tokens stay
+# plain substrings because gh inflects them freely ("rate limits", "resolve hostname").
+_AUTH_RE = _tokens(
+    r"auth(?!or(?!i[sz]))",
+    "forbidden",
+    "login",
+    "log in",
+    "bad credentials",
+    "permission denied",
+)
+_NETWORK_RE = _tokens(
     "network",
     "connection",
     "resolve host",
@@ -39,10 +56,12 @@ _NETWORK_TOKENS = (
     "timed out",
     "timeout",
 )
-_NOT_FOUND_TOKENS = ("not found", "could not resolve to")
+_NOT_FOUND_RE = _tokens("not found", "could not resolve to")
 
 _HTTP_STATUS_RE = re.compile(r"\bhttp[\s:]+(\d{3})\b")
-_RETRY_AFTER_RE = re.compile(r"(?:retry[- ]after|wait)\D{0,10}([0-9]{1,4})")
+# Nine digits, not four: GitHub's secondary-limit backoff regularly runs to five, and
+# truncating it retries an order of magnitude early and deepens the limit.
+_RETRY_AFTER_RE = re.compile(r"(?:retry[- ]after|wait)\D{0,10}([0-9]{1,9})")
 
 
 def failure_category(stderr: str) -> tuple[str, int | None]:
@@ -57,15 +76,13 @@ def failure_category(stderr: str) -> tuple[str, int | None]:
     wait_match = _RETRY_AFTER_RE.search(lowered)
     wait = int(wait_match.group(1)) if wait_match else None
 
-    if 429 in statuses or any(token in lowered for token in _RATE_LIMIT_TOKENS):
+    if 429 in statuses or _RATE_LIMIT_RE.search(lowered):
         return "rate-limited", wait
-    if statuses & {401, 403} or any(token in lowered for token in _AUTH_TOKENS):
+    if statuses & {401, 403} or _AUTH_RE.search(lowered):
         return "auth-failed", None
-    if any(code >= 500 for code in statuses) or any(
-        token in lowered for token in _NETWORK_TOKENS
-    ):
+    if any(code >= 500 for code in statuses) or _NETWORK_RE.search(lowered):
         return "transient-network", None
-    if statuses & {404, 410} or any(token in lowered for token in _NOT_FOUND_TOKENS):
+    if statuses & {404, 410} or _NOT_FOUND_RE.search(lowered):
         return "not-found", None
     return "command-failed", None
 

@@ -5,14 +5,14 @@ argument-hint: "<YYYY-MM> [--repo <name>] [--md-only]"
 category: Reporting
 ---
 
-Generate an evidence-backed monthly delivery report. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md`.
+Generate an evidence-backed monthly delivery report. Follow `.claude/docs/language-config.md` → Minimum Step 0 block, then `.claude/docs/skill-contract.md`. The Step 7 promotion into `workspace/recaps/` is a durable workspace write: stage, diff, and drift-check it per `.claude/docs/workspace-write-guard.md`.
 
 Read `.claude/docs/effort-rollup-integrity.md` before the workflow and follow its
 collector, validation, coverage, staging, publishing, and promotion gates exactly.
 
 ## Workflow
 
-1. Resolve `YYYY-MM`; default to the previous calendar month. Reject invalid or future-only ranges, `--scope`, and unknown arguments.
+1. Resolve `YYYY-MM`; default to the previous calendar month. `.claude/docs/effort-rollup-integrity.md` owns the argument contract, including which flags are accepted (`--repo <context-alias>`, `--md-only`) and which are rejected; do not re-derive it here.
 
    **Lead with `efforts completed in the month`, not merged PRs.** After the stat strip, list efforts delivered and moved to `workspace/efforts/done/` that month. Count a row only when its canonical PR URL and live `mergedAt` resolve; include live Jira state when linked and accessible, otherwise mark the access gap. Use two counted buckets plus one process-gap list:
    - **delivered, code merged in-month** - the month's real code output;
@@ -23,10 +23,10 @@ collector, validation, coverage, staging, publishing, and promotion gates exactl
 
    **Except `partial_delivery: true`**: count `partial_delivery_prs` under a `shipped, closed early` line (`.claude/docs/effort-doc-audit.md`).
 
-   **Exclude `tracking_only: true` efforts from every delivered bucket and the merged-PR count** - someone else owns that code, which is why they close into `workspace/efforts/archive/{YYYY}/` instead of `done/`. List them only under an uncounted `tracked, delivered by {owner}` line.
+   **Exclude `tracking_only: true` efforts from every delivered bucket and the merged-PR count**, per `.claude/docs/effort-model.md → Terminal Destination`. List them only under an uncounted `tracked, delivered by {owner}` line.
 
    Merged-PR volume is supporting evidence below this section, never the headline.
-2. Use the collector's full active, `done/`, and `archive/{YYYY}/` inventory. Its `month-efforts.sh` capture is a discovery aid only; canonical `mergedAt` and structured effort membership decide the month boundary.
+2. Use the collector (`.claude/scripts/effort-rollup-evidence.py`, invoked as the integrity doc specifies) for the full active, `done/`, and `archive/{YYYY}/` inventory. Its `month-efforts.sh` capture is a discovery aid only; canonical `mergedAt` and structured effort membership decide the month boundary.
 3. Read effort metadata and ownership from canonical `evidence.json`, which applies `.claude/docs/effort-model.md → Terminal Destination`, including `tracking_only`.
 4. Use the collector's per-PR `gh pr view` captures for actual state and `mergedAt`. Search results are gap candidates only. Keep delivery, report-only, dependency, context-only, and untracked-candidate roles separate.
 5. Reconcile linked Jira issues when access exists. Record access gaps; never infer Jira state from stale effort text.
@@ -48,12 +48,12 @@ collector, validation, coverage, staging, publishing, and promotion gates exactl
 7. Write the fresh Markdown and HTML inside the transient bundle first. Promote them to `workspace/recaps/effort-rollup-{YYYY-MM}.{md,html}` only through the count-critical integrity gate above. Unless `--md-only`, the HTML remains self-contained with the same facts and no remote assets.
 
    **The HTML must be VISUAL - charts, not converted tables.** Converting the Markdown yields a table dump and drops every chart. `.claude/docs/effort-rollup-integrity.md → HTML edition` owns the chart, scaling, status-color, theme-token, and render-check rules; follow it rather than improvising a layout.
-8. **Classify then narrate - the report is not just bookkeeping tables.** Bucket every delivered effort by work type, reading `scope:` frontmatter + the linked Jira issuetype + the merged PRs' conventional-commit prefix (`feat`/`fix`/`perf`/`test`/`ci`/`chore`) + any `SRE-*` / customer-escalation reference. Then render every section that has content (skip an empty one, but never silently drop a populated one):
-   - **`Measured impact — before → after`** - the Step-6 metric pairs grouped by category (query perf, coverage, CI/CD, cost, …); each row `metric · from → to · delta · confidence-label · PR link`.
+8. **Classify then narrate - the report is not just bookkeeping tables.** Bucket every delivered effort by work type, reading `scope:` frontmatter + the linked Jira issuetype + the merged PRs' conventional-commit prefix (`feat`/`fix`/`perf`/`test`/`ci`/`chore`) + any `SRE-*` / customer-escalation reference. Try jev first (point `effort-rollup.work-type`, `--type Choice` over incident / feature / perf / coverage / security / CI-CD / docs; state = those four signals); confidence < 0.9 or unavailable → bucket it yourself from the same signals. Then render every section that has content (skip an empty one, but never silently drop a populated one):
+   - **`Measured impact - before → after`** - the Step-6 metric pairs grouped by category (query perf, coverage, CI/CD, cost, …); each row `metric · from → to · delta · confidence-label · PR link`.
    - **`Production incidents resolved`** - one card per `SRE-*` / customer-escalation effort with **Problem → Root cause → Fix**, live Jira status, PR(s). Highest-signal section for on-call/customer work; mine the doc's RCA and fix narrative, never a table row.
    - **`New features & capabilities`** - efforts scoped `feature` or led by `feat()` PRs, one line each: what shipped + user-facing effect + PR.
    - **`What shipped, by theme`** - a grouped index (incident resolution, features, perf, coverage, security, CI/CD, docs, …) with effort names + PR shorthands, so the month's shape reads at a glance.
-   - **`PR appendix — merged in {month}`** - the full reconciled list of in-month merged PRs, **grouped by repo** (collapsible `<details>` per repo in HTML), each row: PR number (linked), state, `mergedAt` date, title. Auditable backing for the counts above; every PR the report leans on is a clickable link here.
+   - **`PR appendix - merged in {month}`** - the full reconciled list of in-month merged PRs, **grouped by repo** (collapsible `<details>` per repo in HTML), each row: PR number (linked), state, `mergedAt` date, title. Auditable backing for the counts above; every PR the report leans on is a clickable link here.
    - Bookkeeping: **delivery totals**, **active carryover**, **verification gaps**, **per-effort source links**.
 
    Order the narrative sections (impact, incidents, features, themes) above the bookkeeping tables - a reader scanning the top should see *what changed and what it was worth*, not raw PR counts.
@@ -61,4 +61,4 @@ collector, validation, coverage, staging, publishing, and promotion gates exactl
    **Every PR and Jira reference is a clickable link.** Never emit a bare `#4664` or `IN-13355` as plain text - render PRs as `https://github.com/{owner}/{repo}/pull/{n}` and Jira keys as `{baseUrl}/browse/{KEY}` (baseUrl from `workspace/config.md`), in **both** the Markdown and the HTML. The report is a navigation surface: a reader clicks straight through to the PR diff or the Jira ticket. The PR appendix guarantees full PR coverage; inline mentions in impact/incident/feature rows link too.
 9. After successful promotion, append the daily-log entry using `.claude/docs/daily-log-format.md` and return only the artifact pointer plus up to five highlights.
 
-Do not mutate effort lifecycle, PRs, Jira, or GitHub. A PR merged outside the month stays outside the in-month merged-PR count. An effort completed during the month may still appear under `delivered, code merged earlier` after its PR and Jira evidence are reconciled.
+Do not mutate effort lifecycle, PRs, Jira, or GitHub. Run `/nase:efforts` first in any session that runs both, so this read-only report is built on synced docs rather than mid-repair ones. A PR merged outside the month stays outside the in-month merged-PR count. An effort completed during the month may still appear under `delivered, code merged earlier` after its PR and Jira evidence are reconciled.

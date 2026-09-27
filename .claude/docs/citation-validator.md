@@ -44,7 +44,19 @@ supplied absolute root paths.
 - Exit `0`: every discovered reference is `OK`, or no eligible references exist.
 - Exit `1`: at least one reference is `BROKEN`.
 - Exit `2`: no reference is `BROKEN`, but at least one is `UNKNOWN`.
+- Exit `3`: the validator did not run, so nothing was checked. Bad arguments, an
+  unreadable or out-of-root artifact, a root that is not a real directory, a
+  duplicate root alias, or a non-positive timeout.
+- Exit `4`: the validator ran but withheld its output because the payload carries
+  sensitive data.
 - When `BROKEN` and `UNKNOWN` coexist, exit `1` and retain both in JSON.
+
+Exit `2` and exit `3` are opposite instructions and must never be collapsed. Exit
+`2` means every reference was checked and some authority was unreachable, so the
+*Failure gates* below let the artifact through behind an explicit banner. Exit `3`
+means no reference was checked at all, so there is nothing to put a banner on. A
+caller that reads any non-zero, non-one code as "some unknowns" will promote a
+report whose citations were never validated.
 
 `BROKEN` means the named authority proved a missing or invalid target, including
 not-found PRs or tickets, path escape, symlink escape, missing files, or a line
@@ -67,6 +79,16 @@ For `UNKNOWN`, retry with the matching read-only MCP authority when available.
 Otherwise abort or continue only with an explicit unverified banner. A real MCP
 page read is a separate timestamped authority record. It never mutates or
 overwrites the base validator JSON.
+
+For exit `3` there is no banner to write and no receipt to persist, because no
+reference was examined. Read the `ERROR:` line on stderr, correct the artifact
+path, root, alias or timeout it names, and run the gate again. Do not promote the
+artifact, do not update the daily log, and do not record a citation-accuracy
+decision: there is no finding to accept.
+
+For exit `4` the run completed but the payload is unsafe to write down. Do not
+persist the receipt and do not paste the output into chat or a draft. Redact the
+offending value at its source in the artifact, then rerun.
 
 ## Persist the receipt
 
@@ -108,6 +130,8 @@ uses the same failure gate as `BROKEN`.
 - reporting skills that produce shared artifacts
 - `/nase:onboard` only for new Jira, PR, or Confluence references not already
   covered by its existing live local-path checks
+- `/nase:discuss-pr` per `.claude/docs/discuss-pr-output.md`
+- `/nase:design` auto mode per `.claude/docs/design-auto-mode.md → 5a`
 
 Every caller above that promotes its artifact to `workspace/recaps/` also
 follows *Persist the receipt*. `/nase:onboard` does not promote a recap-style

@@ -49,11 +49,13 @@ bash .claude/scripts/kb-search.sh "<query>" [in:<domain>] [tag:<tag>] [since:<YY
 
 Pass through the filters parsed in Step 1. The script owns scoping, per-entry filtering, relevance and freshness ranking, the fuzzy fallback, and the result cap; read it rather than this file if you need those rules.
 
-Capture stdout. If the script exits 2 (no results), proceed to Step 4 with empty results.
+Capture stdout. Treat **any** nonzero exit as empty results and proceed to Step 4: 2 is the documented no-results code, and the multi-`mentions:` branch exits 1 when the sweep found rows but no path section rendered.
 
 ### Step 4: Present results
 
-The script already ranks (relevance desc, freshness desc, file asc) and emits each match. Default output is capped per entry; keep the cap marker if present so the user knows to rerun with `--full` for complete text. Re-format each result for display:
+The script already ranks (relevance desc, freshness desc, file asc) and emits each match. Default output is capped per entry; keep the cap marker if present so the user knows to rerun with `--full` for complete text.
+
+The script emits `**File:**` followed by the raw entry body, so the display fields below are derived, not copied. Map them this way and never invent one: `{topic}` and `{date}` come from the entry's own `### YYYY-MM-DD — {topic}` header, falling back to the file's first `#` heading and no date when the entry has no dated header; `**Tags:**` and `**Confidence:**` are copied verbatim when the entry carries them; the two quoted lines are the entry's `**What:**` line and the first line of `**Details:**`. Re-format each result for display:
 
 Present up to 10 results. If the script's header line says "partial match(es)", use the alternate header:
 
@@ -112,8 +114,10 @@ Limit to 3 related files. If multiple matched files point to the same target, sh
 ### Step 4c: Related terminology
 
 If `workspace/kb/terminology/_index.md` exists, check whether the query terms
-or the primary results' matched text hit a `Term`/`Alias` there (same
-hyphen/space/underscore split as the fuzzy fallback). For each hit, append
+or the primary results' matched text hit a `Term`/`Alias` there. Apply the same
+hyphen/space/underscore split the fuzzy fallback uses, and apply it **every
+run**, not only when the fallback fired: the split is a matching rule here, not
+a fallback trigger. For each hit, append
 after Step 4b's Related section (or directly after results if 4b found
 nothing):
 

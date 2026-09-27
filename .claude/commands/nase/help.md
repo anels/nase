@@ -15,19 +15,10 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Translate eve
 
 ## Steps
 
-1. Locate the workspace root:
+1. Read `$ARGUMENTS`. Empty runs the compact helper; exactly `--verbose` runs the verbose helper; anything else is an error - reply `Usage: /nase:help [--verbose]` and stop without running the helper. Decide this before the Bash call: a shell `exit 1` only ends that subshell and does not stop the workflow.
+2. Run the helper in **one** Bash call - shell variables do not survive between calls, so the root must be resolved and consumed in the same fence. Append ` --verbose` to the command only for the verbose branch:
    ```bash
-   ROOT=$(git rev-parse --show-toplevel)
-   ```
-2. Parse the supported flags and run the helper:
-   ```bash
-   ARGS=()
-   case "${ARGUMENTS:-}" in
-     "") ;;
-     "--verbose") ARGS+=(--verbose) ;;
-     *) echo "Usage: /nase:help [--verbose]" >&2; exit 1 ;;
-   esac
-   python3 "$ROOT/.claude/scripts/help-summary.py" --root "$ROOT" "${ARGS[@]}"
+   ROOT=$(git rev-parse --show-toplevel) && python3 "$ROOT/.claude/scripts/help-summary.py" --root "$ROOT"
    ```
 3. Render the helper output in the configured conversation language. Do not re-read `README.md` unless the helper fails.
 

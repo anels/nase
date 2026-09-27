@@ -31,23 +31,25 @@ Do not mechanically repeat the Category 1-6 regex scan. The scanner is a lead ge
 
 ### Step 1: Run the deterministic scanner
 
+Substitute the resolved target **literally** into the command below. `$ARGUMENTS` is a prompt-template placeholder, not an exported shell variable, so a construct like `${ARGUMENTS:-all}` always expands to `all` and silently discards a file or directory argument:
+
 ```bash
 mkdir -p workspace/tmp
-target=${ARGUMENTS:-all}
 scan_status=0
-python3 .claude/scripts/skill-audit-scan.py --format json "$target" > workspace/tmp/skill-audit.json || scan_status=$?
-if [ "$scan_status" -gt 1 ]; then
-  exit "$scan_status"
-fi
+python3 .claude/scripts/skill-audit-scan.py --format json "{resolved target}" > workspace/tmp/skill-audit.json || scan_status=$?
+echo "scan_status=$scan_status"
 ```
 
-The scanner resolves a file, a directory recursively, or `all` using the paths in **Input**. Exit `1` means one or more deterministic FAIL leads were emitted; it is audit data, not a scanner error. Exit `2` is an invocation error.
+The scanner resolves a file, a directory recursively, or `all` using the paths in **Input**. Exit `1` means one or more deterministic FAIL leads were emitted; it is audit data, not a scanner error. Exit `2` is an invocation error, so stop here and report it rather than continuing to Step 2. A shell `exit` inside that fence only ends the Bash call, so it cannot stop this workflow for you.
 
 ### Step 2: Verify leads and semantic gaps
 
 Read `workspace/tmp/skill-audit.json` and every target file once. The deterministic scanner produces reproducible leads; a clean scanner result does not prove absence.
 
+**Delegate this sweep when the target is `all`** (about 70 files). What comes back is a verdict per file, not the file text, so the reads do not belong in the main thread. Split the file list into disjoint batches and give each to a **verifier** agent (`model=sonnet`, `effort=medium`, `tools=[Read, Grep, Glob, Bash]`, prompt prefixed with the `verifier` `prompt_prefix` from `.claude/roles.yaml`). Read-only is the point, because an audit must not edit what it audits. Each agent returns confirmed findings with `file`, `line`, `category`, `severity`, `reason`, plus its dismissals and their reasons; the main thread does Step 3 and Step 4 over those returns. A single file or a small directory stays inline.
+
 - For emitted leads, read the surrounding section needed to confirm or dismiss the finding. Preserve the scanner's file, line, category, severity, pattern, and reason fields for confirmed leads.
+  - Try jev first for the dismiss decision (`.claude/docs/jev-judgment-points.md`, point `skill-audit.lead-dismiss`, `--type Noul`; state = the lead's `pattern`, `category`, and the matched line plus the few lines around it). The question is "is this lead a true finding?", and the five dismissal grounds listed below are its criteria: quoted text, explanatory text, non-executable, placeholder data, or protected by an explicit user-confirmation step. Confidence < 0.9, missing, or unavailable → judge the lead yourself exactly as this step already describes.
 - For every file, semantically inspect executable fences and instructions involving shell/subprocess execution, file mutation, network sends, package installation, credentials, or permission boundaries. Check equivalent quoted, split-line, absolute-path, and indirect forms instead of hand-running the scanner's regexes again.
 - A source-line semantic check may confirm a Category 1-6 finding that the scanner did not emit. Record it as `manual semantic check`, with the exact line or section and reason.
 - Evaluate Category 7 for every file, including scanner-clean files, against the documented deny-rule, sandbox, and hook boundaries.
@@ -65,6 +67,10 @@ Use `semgrep` when available for executable snippets or referenced helper script
 - **FAIL** - at least one confirmed FAIL finding
 
 ### Step 4: Report
+
+Write the full report to `workspace/tmp/skill-audit-{YYYY-MM-DD}.md` and return the pointer plus the PASS/WARN/FAIL counts and the FAIL filenames, per `.claude/docs/skill-contract.md` rules 1-2. An `all` run is ~90 table rows; that is an artifact, not a chat reply. Dump it inline only with `--verbose`.
+
+Report body:
 
 ```text
 ## Skill Security Audit - {YYYY-MM-DD}

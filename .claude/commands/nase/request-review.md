@@ -1,7 +1,7 @@
 ---
 name: nase:request-review
 description: "Find appropriate PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, request approval, notify reviewers, or ping code owners."
-argument-hint: "<pr-url> [reviewers] [--mode re-review-ping]"
+argument-hint: "<pr-url>... [--mode re-review-ping]"
 category: Git workflow
 ---
 
@@ -19,11 +19,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversa
 
 ## Mode: re-review-ping
 
-`/nase:address-comments` Phase 9b hands off here with the handles already filtered (bots, PR author, declined) and already chosen. Run Steps 1, 4, 7, 9. Skip 2, 3, 5, 6, and Step 8's Question 1 - it re-asks what the caller answered, and its confirmed list is the caller's handles. Step 8's Question 2 still runs: preview-and-stage is the only gate before a draft is written. Still apply Step 3c's alumni exclusion.
-
-Load what the skipped steps carried: the repo KB via `.claude/docs/repo-resolution.md` (Step 3's preamble - alumni exclusion and handle mappings both need it), `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with `surface=slack-dm` (Step 6), and Step 4's second name source, `gh api users/{login} --jq .name`. Handle-guessing is the last resort.
-
-Step 7's ask becomes a re-review opener - `Pushed fixes for your comments on the PR - ready for another look when you get a minute.`, or `Responded to ...` when `no_commit=true`. Report each as `Slack DM draft staged for @{login} (Slack: {slack_handle}) - review + send manually.`
+Read `.claude/docs/request-review-reping-mode.md` and follow it. It names which steps run, what the skipped steps carried, and the opener and report shape.
 
 ## Step 1 - Parse inputs
 
@@ -39,7 +35,7 @@ python3 .claude/scripts/pr-github-helper.py metadata "$PR_URL" --variant light
 
 Save: title, url, base branch, changed file paths, additions/deletions count, body.
 
-For multiple PRs, cherry-pick batches, or large diffs, dispatch `nase-pr-metadata-reader` once per PR in the same turn.
+For multiple PRs, cherry-pick batches, or large diffs, run the helper above once per PR first, then dispatch `nase-pr-metadata-reader` once per PR in the same turn with that PR's helper output pasted into the prompt. The agent has no Bash and cannot call `gh` or the helper itself; give it the metadata or it returns `blocked`.
 It returns title/body/base/head/changed-file/signals only. The main thread merges those rows before owner resolution.
 
 ## Step 3 - Resolve code owners
@@ -48,7 +44,7 @@ Use this priority order to generate candidates. Always reach the KB before going
 Resolve each repo and its KB path via `.claude/docs/repo-resolution.md` before reading ownership signals; do not assume `workspace/kb/projects/<repo-name>.md` exists until resolution succeeds.
 
 When the changed-file list spans multiple areas, dispatch `nase-reviewer-owner-scanner` per repo or per PR after Step 2.
-It may read KB ownership, CODEOWNERS, and git history, but it must not resolve Slack users or stage drafts.
+It has no Bash, so run the scoped `git log` and any CODEOWNERS fetch in the main thread first and paste both into its prompt. It reads KB ownership and local files directly, and it must not resolve Slack users or stage drafts.
 The main thread owns Slack lookup, recipient confirmation, and draft staging.
 
 **3a. Read project KB**
@@ -65,7 +61,9 @@ If the KB yields confident owners for all changed areas, keep them as primary ca
 
 Use this to validate KB candidates and fill gaps. Check if the repo is cloned locally (look in `.local-paths` for the local path). If yes, read the file directly: `cat {repo_path}/CODEOWNERS 2>/dev/null || cat {repo_path}/.github/CODEOWNERS 2>/dev/null`. Otherwise fetch via:
 ```bash
-gh api "repos/{owner}/{repo}/contents/CODEOWNERS" --jq '.content' | base64 --decode
+gh api "repos/{owner}/{repo}/contents/CODEOWNERS" --jq '.content' 2>/dev/null \
+  || gh api "repos/{owner}/{repo}/contents/.github/CODEOWNERS" --jq '.content'
+# pipe whichever succeeded through: base64 --decode
 ```
 (Use `--decode` long form - works on both macOS and Linux; `base64 -d` fails on macOS.)
 
@@ -103,7 +101,7 @@ For each GitHub handle:
 
 **Complex PR** (ask for *review*): multiple source files with logic changes, large diffs, architectural impact, or unclear scope.
 
-When in doubt, lean towards "review." Try jev first (`jev-judgment-points.md` point `request-review.complexity`); confidence < 0.9 or unavailable → fall back to the rule above.
+When in doubt, lean towards "review." Try jev first (`jev-judgment-points.md` point `request-review.complexity`, `--type Choice` over `simple` / `complex`; state = file count, diff line count, "clearly mechanical" note); confidence < 0.9 or unavailable → fall back to the rule above.
 
 ## Step 6 - Detect cherry-pick groups
 
@@ -112,7 +110,7 @@ Cherry-picks share the same intent across different base branches. Group PRs as 
 - Or commits share the same `Cherry-picked from commit {sha}` trailer in the commit body (more reliable than title matching)
 - Or the user explicitly called them cherry-picks
 
-Try jev first (`jev-judgment-points.md` point `request-review.cherry-pick-group`); confidence < 0.9 or unavailable → fall back to the rules above.
+Try jev first (`jev-judgment-points.md` point `request-review.cherry-pick-group`, `--type Noul` "same cherry-pick group"; state = two PR titles + commit trailers); confidence < 0.9 or unavailable → fall back to the rules above.
 
 Cherry-pick group → **one combined DM** per person listing all PR links.
 Unrelated PRs → **separate DMs** per PR per person.
@@ -168,7 +166,7 @@ Use two `AskUserQuestion` calls:
 
 Present each resolved person as a selectable option, pre-selected, labelled with their real name and a brief reason (`Alice Smith` - "14 commits to changed files"). List unresolved handles in the question text, not as options. The "Other" free-text option lets the user add someone not on the list.
 
-**Question 2 - message preview** (single-select, only if question 1 returned selections):
+**Question 2 - message preview** (single-select, only if the recipient list is non-empty - question 1's selections, or the caller's handles when question 1 was skipped):
 
 Show the drafted message and ask "Stage Slack DM drafts for the selected people?"
 - `Stage drafts` - proceed
@@ -176,7 +174,7 @@ Show the drafted message and ask "Stage Slack DM drafts for the selected people?
 
 **Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__plugin_slack_slack__slack_search_users`) and add them to the draft list. If the search is ambiguous, surface the candidates and ask the user to clarify before staging drafts.
 
-Only stage drafts for the people the user confirmed in question 1.
+Only stage drafts for the people the user confirmed in question 1, or for the caller's handles when question 1 was skipped.
 
 ## Step 9 - Stage DM drafts (parallel)
 

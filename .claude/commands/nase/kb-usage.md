@@ -22,7 +22,9 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Command names
 
 ## Run
 
-Treat `$ARGUMENTS` as command input, not shell source. Accept only the flags documented above and forward each recognized flag and value as a separately shell-quoted argument to the existing Python helper. Never interpolate the raw argument string into a shell command. Let `kb-usage-report.py` parse and validate those arguments.
+Treat `$ARGUMENTS` as command input, not shell source. Accept only the flags documented above and forward each recognized flag and value as a separately shell-quoted argument to the existing Python helper. Never interpolate the raw argument string into a shell command. Let `kb-usage-report.py` parse and validate those arguments. The `$(date +%F)` substitution below is skill-owned, not user input, which is why it may appear unquoted in the recipe; every value that came from `$ARGUMENTS` is quoted individually.
+
+Do **not** forward `--verbose`: the helper already prints the whole report to stdout when it sees that flag, so forwarding it and then echoing the body emits the report twice. `--verbose` is consumed here, in the Output section below.
 
 Append `--output "workspace/stats/kb-usage-$(date +%F).md"` and run the resulting command. For example, the default invocation is:
 
@@ -37,12 +39,12 @@ For `--window 7 --top 5 --verbose`, invoke:
 ```bash
 today=$(date +%F)
 report="workspace/stats/kb-usage-${today}.md"
-python3 .claude/scripts/kb-usage-report.py --window "7" --top "5" --verbose --output "$report"
+python3 .claude/scripts/kb-usage-report.py --window "7" --top "5" --output "$report"
 ```
 
 ## Output
 
-Return the script summary in chat:
+Relay the script's own summary; it is the source of truth for these fields, and the list below describes what it prints rather than a second format to reconstruct.
 
 - unique KB files accessed, directly read, and surfaced by resolve/search
 - skills accessing KB
@@ -51,4 +53,4 @@ Return the script summary in chat:
 - top skills
 - report path
 
-If `--verbose` is present, include the report body after the summary. Treat `resolve` and `search-result` as discovery, not proof that a fact influenced the workflow. Do not edit `workspace/kb/.domain-map.md`; this command is read-only except for the report artifact under `workspace/stats/`.
+If the user passed `--verbose`, read the written report back and dump it inline after the summary. Treat `resolve` and `search-result` as discovery, not proof that a fact influenced the workflow. Do not edit `workspace/kb/.domain-map.md`; this command is read-only except for the report artifact under `workspace/stats/`.

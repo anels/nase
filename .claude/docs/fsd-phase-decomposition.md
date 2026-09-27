@@ -69,7 +69,10 @@ Show decomposition to user. Present 3 options via AskUserQuestion:
 - **Cancel → Direct mode** → abort isolation, continue with standard Phase 4 as Direct
 
 **Step 5 - Sequential subagent execution (after Proceed):**
-For each phase, invoke `Agent` tool sequentially (wait for completion before next). Prompt template:
+For each phase, invoke `Agent` sequentially (wait for completion before the next). Route every spawn
+through the `worker` role in `.claude/roles.yaml`, passing that role's `model`, `effort`, and
+`tools` list as written there rather than a copy of it. An unrouted spawn inherits the session
+model and bills every phase at it. Prompt template:
 
 ```
 You are implementing Phase {X}: {phase_name} of a multi-phase feature.

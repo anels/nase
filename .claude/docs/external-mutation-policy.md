@@ -22,9 +22,9 @@ Canonical rule for skills that change state in systems outside the local workspa
 
 | System | Hard rule |
 |--------|-----------|
-| **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. |
+| **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. A canvas is a write too. `slack_create_canvas` and `slack_update_canvas` publish into the workspace with no draft path, so `slack-send-guard.sh` blocks both. Put the canvas body in `workspace/tmp/{name}.md`, get explicit approval, and have the user create it. |
 | **Jira** | Drafting comments, creating issues, transitioning status - all require `AskUserQuestion` before the call. "Open" / "In Progress" transitions are mutations too - they notify watchers and may auto-assign. |
-| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, prompt user, only then call the create/update tool. Never publish silently. Tool names differ by MCP generation: `createConfluenceContent` / `updateConfluenceContent` on the current server, `createConfluencePage` / `updateConfluencePage` on the older one. |
+| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, prompt user, only then call the create/update tool. Never publish silently. Tool names differ by MCP generation, so cite this row rather than hardcoding one. Current server: `createConfluenceContent`, `updateConfluenceContent`, `getConfluenceContent`, `searchConfluence`. Older server: `createConfluencePage`, `updateConfluencePage`, `getConfluencePage`, `searchConfluenceUsingCql`. Use the current names; if a call reports an unknown tool, check the live tool list for the other generation before substituting. `getConfluenceSpaces` exists in neither generation - reach spaces through `searchConfluence` or `discover` plus `executeRead`. |
 | **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, which has no named tool and is gated on its own payload by that same hook - body format `markdown`/`html`, non-empty body under 4096 bytes, and exactly one addressing shape (`parentCommentId` reply, or `contentId` plus `commentType` `footer`/`inline`, inline needing `inlineSelection.selectedText`). The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead before posting. For anything else, use the named tool, or show the user the operation and inputs and let them run it. `discover` and `executeRead` are read-only and fine. |
 | **GitHub PR** | Opening a PR, merging, editing description, adding labels, requesting reviewers, posting review comments - `AskUserQuestion` before. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
 | **ADO pipeline** | Triggering a build = action-taking. `AskUserQuestion` before the trigger with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` - never `curl` with `$ADO_PAT`; see `feedback_ado-az-cli-only.md`). |
@@ -108,12 +108,13 @@ highest-risk rules even when a future skill forgets the prompt contract:
 
 | Hook | Blocks |
 |------|--------|
-| `slack-send-guard.sh` | direct `slack_send_message` and `slack_schedule_message`; use `slack_send_message_draft` |
+| `slack-send-guard.sh` | direct `slack_send_message`, `slack_schedule_message`, `slack_create_canvas`, and `slack_update_canvas`; use `slack_send_message_draft` |
 | `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
 | `confluence-size-guard.sh` | Confluence bodies over 70 KB; writes with an unset or unaccepted body format (see `.claude/docs/confluence-adf-pattern.md`) |
 | `atlassian-generic-write-guard.sh` | `executeWrite` and `executeDestructive`, whose opaque payload no named Atlassian gate can read; `createConfluenceComment` under `executeWrite` is the one allowed operation, and only when its body format, body size, and addressing fields all pass this hook's own checks |
 | `block-dangerous-git.sh` | destructive or protected-branch git commands |
 | `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
+| `prose-lint-guard.sh` | Slack draft bodies that fail `prose-lint.py`; it fails open when the linter is unavailable, because a quality check must not block a write on its own breakage. `gh` payload prose goes through `external-write-action.py`'s own `prose_gate_findings` instead |
 
 These guards select by tool name, so an upstream rename silently turns one off:
 the matcher stops matching and the guard exits 0 on every call. Each guarded name
