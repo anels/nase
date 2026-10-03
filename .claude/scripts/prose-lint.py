@@ -55,6 +55,8 @@ EMOJI_RANGES = (
     f"{chr(0x1F1E6)}-{chr(0x1F1FF)}"
 )
 BULLET = r"[-*•]"
+BULLET_LINE_RE = re.compile(rf"^\s*({BULLET}|\d+\.)\s+")
+CONTINUATION_RE = re.compile(r"^[ \t]+\S")
 
 VERDICTS = (
     (
@@ -141,8 +143,9 @@ class Document:
 # authored sentences, while offsets stay exact.
 # Quoted prose from someone else is NOT masked - read the hits before acting.
 
+FENCE_RE = re.compile(r"^(```|~~~).*?^\1", re.DOTALL | re.MULTILINE)
 _MASK_PATTERNS = (
-    re.compile(r"^(```|~~~).*?^\1", re.DOTALL | re.MULTILINE),
+    FENCE_RE,
     re.compile(r"`[^`\n]+`"),
     re.compile(r"<?https?://[^\s>|]+>?"),
     re.compile(r"\A---\n.*?\n---[ \t]*\n?", re.DOTALL),
@@ -344,6 +347,40 @@ def check_trailing_url(doc: Document, rule: Rule) -> list[Finding]:
         if re.search(r"https?://\S+\s*$", line) and following.strip():
             findings.append(doc.finding(rule, offset, line.strip()[-60:]))
         offset += len(line) + 1
+    return findings
+
+
+def check_bullet_tail(doc: Document, rule: Rule) -> list[Finding]:
+    """Flag the first prose line that follows a bullet block.
+
+    Neither separator survives the draft conversion. A blank line after the block is
+    dropped, and a text line directly after it loses its newline and is concatenated
+    onto the last bullet. Both cases are flagged at the offending prose line, because
+    the remedy is the same either way: another `- item`, or move the prose above the
+    block. At most one blank line is crossed, so two blank lines still end the scan
+    and an unrelated later section is not attributed to the list.
+    """
+    # Blank only code fences, so a `- old` diff line is not a bullet. The full mask
+    # would also blank inline code and URLs, hiding prose that starts with them.
+    # Blank-line checks read the raw text, so a fence right after the block is a tail.
+    raw = doc.text.split("\n")
+    lines = FENCE_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), doc.text).split("\n")
+    findings: list[Finding] = []
+    idx = 0
+    while idx < len(lines):
+        if not BULLET_LINE_RE.match(lines[idx]):
+            idx += 1
+            continue
+        idx += 1
+        # An indented line with no marker is a hard-wrapped continuation of the bullet.
+        while idx < len(lines) and (BULLET_LINE_RE.match(lines[idx]) or CONTINUATION_RE.match(lines[idx])):
+            idx += 1
+        tail = idx
+        if tail < len(lines) and not raw[tail].strip():
+            tail += 1
+        if tail < len(lines) and raw[tail].strip() and not BULLET_LINE_RE.match(lines[tail]):
+            findings.append(doc.finding(rule, doc.line_starts[tail], raw[tail].strip()[:60]))
+        idx = tail
     return findings
 
 
@@ -607,6 +644,15 @@ RULES: list[Rule] = [
         "literal bullet character; it is plain text and never renders as a list",
         "write `- item`, per slack-draft-style.md Formatting Mechanics",
         re.compile(r"^\s*•", re.MULTILINE),
+    ),
+    Rule(
+        "SLK-BULLETTAIL",
+        "gate",
+        "",
+        SLACK,
+        "prose after a bullet block; the newline is dropped and Slack glues this onto the last bullet",
+        "make it another `- item`, or move it above the block",
+        checker=check_bullet_tail,
     ),
     Rule(
         "REV-ANCHOR",

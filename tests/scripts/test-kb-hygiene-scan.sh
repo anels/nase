@@ -145,7 +145,7 @@ Entry format: - <key> → <relative path> [last-updated:YYYY-MM-DD]
 -->
 
 ## General
-- duplicate-a → workspace/kb/general/duplicate-a.md [last-updated:2026-05-01]
+- duplicate-a → workspace/kb/general/duplicate-a.md [last-updated:2026-05-01] <!-- inline note -->
 - duplicate-b → workspace/kb/general/duplicate-b.md [last-updated:2026-05-01]
 - sparse → workspace/kb/general/sparse.md [last-updated:2026-05-01]
 - missing → workspace/kb/general/missing.md [last-updated:2026-05-01]
@@ -170,6 +170,10 @@ cat > "$FIXTURE/workspace/kb/general/orphan.md" <<'EOF'
 
 - not mapped
 EOF
+
+mkdir -p "$FIXTURE/workspace/kb/terminology"
+printf '# Terminology Index\n\n| Term | Slug |\n|---|---|\n| Widget | widget |\n' > "$FIXTURE/workspace/kb/terminology/_index.md"
+printf '# Widget\n\n## Scope: demo\n- a thing\n- another line\n' > "$FIXTURE/workspace/kb/terminology/widget.md"
 
 cat > "$FIXTURE/workspace/kb/general/sparse.md" <<'EOF'
 # Sparse
@@ -293,6 +297,22 @@ if [ "$workspace_rc" = 0 ] && printf '%s' "$workspace_json" | python3 -c 'import
 else
   fail=$((fail + 1))
   printf 'FAIL  workspace scan detects duplicate/missing/orphan/sparse issues\n%s\n' "$workspace_json" >&2
+fi
+
+if printf '%s' "$workspace_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert not any(i["category"] == "domain_map_orphan" and i.get("path", "").startswith("workspace/kb/terminology/") for i in data["issues"])'; then
+  pass=$((pass + 1))
+  printf 'PASS  workspace scan leaves the terminology store to its own _index.md\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  workspace scan leaves the terminology store to its own _index.md\n%s\n' "$workspace_json" >&2
+fi
+
+if printf '%s' "$workspace_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert not any(i["category"] == "domain_map_orphan" and i.get("path") == "workspace/kb/general/duplicate-b.md" for i in data["issues"])'; then
+  pass=$((pass + 1))
+  printf 'PASS  workspace scan keeps the row after an inline domain-map comment\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  workspace scan keeps the row after an inline domain-map comment\n%s\n' "$workspace_json" >&2
 fi
 
 if printf '%s' "$workspace_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert not any(i.get("path") in {"<relative", "workspace/kb/general/commented-example.md"} for i in data["issues"])'; then

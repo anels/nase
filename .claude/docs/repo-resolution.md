@@ -7,6 +7,7 @@ Canonical algorithms used across nase skills. Skills with skill-specific deviati
 - [Part 1: Repo Resolution](#part-1-repo-resolution) - resolve a URL or repo name to a local path
 - [Part 2: KB File Loading](#part-2-kb-file-loading) - resolve a repo or domain to its KB file
 - [Retired entries](#retired-entries) - the `retired:` field and what stops acting on the entry
+- [Scope notes](#scope-notes) - what the trailing parenthetical on an entry may hold, and its size cap
 - [Project groups](#project-groups) - the `### <group>` routing label under `## Projects`
 
 ---
@@ -85,6 +86,34 @@ Rules:
 - Both fields are positioned after the KB path, so the existing parsers keep working unchanged: `kb-domain-resolve.sh` takes
   the first whitespace-delimited token after `→`, and `kb-hygiene-scan.py -> domain_map_targets` reads only the path.
 - Retiring is not deleting. Remove a KB file only when its content is wrong or duplicated, never merely because the repo went away.
+
+### Scope notes
+
+An entry may carry a trailing parenthetical:
+
+```
+- <key> → workspace/kb/<area>/<key>.md [last-updated:YYYY-MM-DD] (scope note)
+```
+
+The note answers one question - *is this the file I want?* - and nothing else. It is the only free-form
+field in the map, and it is the one that grows without a reader noticing, because no consumer parses it:
+`kb-domain-resolve.sh` stops at the first token after `→`, `kb-hygiene-scan.py -> domain_map_targets` reads
+only the path, and the manual fallback in Part 2 stops before the parenthetical. Nothing fails when a note
+turns into a changelog, so nothing stops it.
+
+Rules:
+
+- **80 characters, one clause.** Longer means the note is trying to be the KB file.
+- **Scope, not content.** No dated events, PR numbers, commit SHAs, findings, counts, or status. A durable
+  fact belongs in the target KB file, which is where the reader goes next anyway.
+- **Rewrite in place; never append.** A refresh replaces the note. A `+`-prefixed fragment appended to an
+  existing note is the failure mode this rule exists to stop.
+- **Omit it when the key already answers the question.** `insights-tech-debt` needs no note.
+
+The size cap is not cosmetic. `workspace-data-scan.py` reads the whole map into one payload under a
+character cap. Past that cap it drops the header comment, then every scope note, and only then rows,
+naming each dropped key. Unbounded notes push the map toward that last step, where a caller gets a
+partial routing table and has to go back to the file for the rest.
 
 ### Project groups
 

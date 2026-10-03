@@ -201,6 +201,24 @@ extract_scored_blocks() {
       return 0
     }
 
+    # `**Confidence:** high` is the unwritten default, so an entry with no field is high.
+    # Both `**Confidence:**` and `**Confidence**:` spellings occur in the KB.
+    # Compare the first word of the value, so `low` does not match inside "flow".
+    function confidence_matches(text, wanted,   n, i, parts, low, found, rest) {
+      n = split(text, parts, "\n")
+      found = 0
+      for (i = 1; i <= n; i++) {
+        low = tolower(parts[i])
+        if (match(low, /\*\*confidence(:\*\*|\*\*:)/)) {
+          found = 1
+          rest = substr(low, RSTART + RLENGTH)
+          sub(/^[ \t]*/, "", rest)
+          if (match(rest, /^[a-z]+/) && substr(rest, 1, RLENGTH) == tolower(wanted)) return 1
+        }
+      }
+      return !found && tolower(wanted) == "high"
+    }
+
     BEGIN {
       US = sprintf("%c", 31)
       pattern = tolower(ENVIRON["KB_SEARCH_PATTERN"])
@@ -270,7 +288,7 @@ extract_scored_blocks() {
         entry = join_lines(start, end)
 
         if (tag != "" && !field_matches(entry, "**Tags:**", tag)) continue
-        if (confidence != "" && !field_matches(entry, "**Confidence:**", confidence)) continue
+        if (confidence != "" && !confidence_matches(entry, confidence)) continue
         if (mentions_extra != "" && index(entry, mentions_extra) == 0) continue
 
         header_line = tolower(buf[start])

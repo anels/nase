@@ -15,6 +15,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_domain_map import ROW_RE as DOMAIN_MAP_ROW_RE
+from nase_domain_map import strip_comments
+
 NASE_ROOT = Path(__file__).resolve().parents[2]
 LESSON_HEADER_RE = re.compile(r"^## .+ -- (\d{4}-\d{2}-\d{2}) -- .+", re.MULTILINE)
 SIGNAL_RE = re.compile(
@@ -83,6 +88,73 @@ def compact_text(text: str, max_chars: int) -> dict[str, Any]:
         "chars": len(text),
         "excerpt_strategy": "headers, links, signal lines, first/last lines",
     }
+
+
+def strip_scope_note(line: str) -> str:
+    match = DOMAIN_MAP_ROW_RE.match(line)
+    cut = line.find(" (", match.end()) if match else -1
+    return line[:cut] if cut > 0 and line.endswith(")") else line
+
+
+def domain_map_payload(path: Path, root: Path, max_chars: int) -> dict[str, Any]:
+    """Payload for the KB domain map, which is a routing table rather than prose.
+
+    `compact_text` samples lines, and a sampled routing table is a wrong one: a
+    dropped row reads as "no KB for that repo" and the caller stops looking. So
+    shed in the order a reader can afford, and never silently:
+      1. the header comment - explanation, not routing data;
+      2. the scope notes - free-form, and no consumer parses them;
+      3. rows, last, naming every key that was dropped.
+    """
+    if not path.is_file():
+        return {"path": rel(path, root), "exists": False}
+
+    text = read_text(path)
+    body = strip_comments(text).splitlines()
+    rows_total = sum(1 for line in body if DOMAIN_MAP_ROW_RE.match(line))
+    base: dict[str, Any] = {
+        "path": rel(path, root),
+        "exists": True,
+        "chars": len(text),
+        "rows_total": rows_total,
+    }
+    if len(text) <= max_chars:
+        return {**base, "content": text, "truncated": False, "rows_included": rows_total}
+
+    shed = ["header comment"]
+    if len("\n".join(body)) > max_chars:
+        body = [strip_scope_note(line) for line in body]
+        shed.append("scope notes")
+
+    kept: list[str] = []
+    dropped: list[str] = []
+    used = -1  # the first kept line carries no leading newline
+    for line in body:
+        if used + len(line) + 1 > max_chars:
+            match = DOMAIN_MAP_ROW_RE.match(line)
+            if match:
+                dropped.append(match.group(1))
+            continue
+        kept.append(line)
+        used += len(line) + 1
+    if len(kept) < len(body):
+        shed.append("rows")
+
+    payload = {
+        **base,
+        "content": "\n".join(kept),
+        "truncated": True,
+        "rows_included": rows_total - len(dropped),
+        "rows_dropped": dropped,
+        "shed": shed,
+    }
+    if dropped:
+        payload["warning"] = (
+            f"{len(dropped)} of {rows_total} domain-map rows did not fit in "
+            f"{max_chars} chars. Those keys are absent from this payload but "
+            f"present in the map: treat them as unknown, not unmapped."
+        )
+    return payload
 
 
 def file_payload(path: Path, root: Path, max_chars: int) -> dict[str, Any]:
@@ -191,7 +263,7 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "todo_md": file_payload(tasks / "todo.md", root, args.max_state_chars),
             "domain_map_md": (
-                file_payload(kb / ".domain-map.md", root, args.max_state_chars)
+                domain_map_payload(kb / ".domain-map.md", root, args.max_domain_map_chars)
                 if include_broad_state
                 else skipped_payload(kb / ".domain-map.md", root, "scope=day")
             ),
@@ -214,6 +286,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--root", help="nase repo root")
     parser.add_argument("--scope", choices=("day", "range"), default="range")
     parser.add_argument("--max-state-chars", type=int, default=8000)
+    # Sized to hold the whole map with room to grow; see domain_map_payload.
+    parser.add_argument("--max-domain-map-chars", type=int, default=32000)
     parser.add_argument("--max-day-chars", type=int, default=12000)
     parser.add_argument("--max-lesson-section-chars", type=int, default=4000)
     parser.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")

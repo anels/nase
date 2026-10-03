@@ -69,7 +69,8 @@ guarded write:
    admission gates, including for `--auto` flows and imported content.
 5. Build every complete proposed file, evaluate size and links, then stage and
    apply each through `workspace-write-guard.py` with its final drift check.
-   Apply KB content before its domain-map metadata update.
+   Apply KB content before its domain-map metadata update. A domain-map scope note is
+   rewritten in place under `.claude/docs/repo-resolution.md -> Scope notes`, never appended to.
 
 The initiating skill may still decide when to write, which evidence to gather,
 and whether confirmation is required. This contract only standardizes what is

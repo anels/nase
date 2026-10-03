@@ -154,6 +154,7 @@ JIR-SECTIONS
 REV-VAGUE
 REV-YOU
 SLK-BULLET
+SLK-BULLETTAIL
 SLK-EMBED
 SLK-TRAILURL
 EOF
@@ -182,6 +183,24 @@ printf -- '- fix in `a.py:8` moves the check\n- rerun at 09:20 finished green\n'
 run slack-channel "$TMP/dashbullets.md" "$TMP/dashbullets.json" >/dev/null
 n=$(jq_count "$TMP/dashbullets.json" SLK-BULLET)
 if [ "$n" = "0" ]; then pass "dash bullets are the correct Slack syntax"; else fail "dash bullets are the correct Slack syntax"; fi
+
+# --- prose after a bullet block is gated ------------------------------------
+# A text line directly after the block and a text line after one blank line are
+# both glued onto the last bullet. The clean fixture ends on its block and passes.
+
+rc=$(run slack-channel "$FIXTURES/slack-bullettail.md" "$TMP/bullettail.json")
+n=$(jq_count "$TMP/bullettail.json" SLK-BULLETTAIL)
+if [ "$rc" != "0" ] && [ "$n" = "2" ]; then pass "SLK-BULLETTAIL gates both trailing-prose shapes"; else fail "SLK-BULLETTAIL gates both trailing-prose shapes (rc=$rc, n=$n)"; fi
+n=$(jq_count "$TMP/clean.json" SLK-BULLETTAIL)
+if [ "$n" = "0" ]; then pass "a draft that ends on its bullet block passes SLK-BULLETTAIL"; else fail "a draft that ends on its bullet block passes SLK-BULLETTAIL"; fi
+printf 'Timeout bump for the staging ring:\n\n```\n- timeout: 30\n+ timeout: 60\n```\n\n- a rollout that wraps\n  onto a second line\n- a second item\n' >"$TMP/bullettail-ok.md"
+run slack-channel "$TMP/bullettail-ok.md" "$TMP/bullettail-ok.json" >/dev/null
+n=$(jq_count "$TMP/bullettail-ok.json" SLK-BULLETTAIL)
+printf -- '- a\n- b\n`deploy.yaml` was bumped.\n\n- c\n- d\nhttps://example.com/x\n\n- e\n- f\n```\nlog\n```\n' >"$TMP/bullettail-code.md"
+run slack-channel "$TMP/bullettail-code.md" "$TMP/bullettail-code.json" >/dev/null
+m=$(jq_count "$TMP/bullettail-code.json" SLK-BULLETTAIL)
+if [ "$m" = "3" ]; then pass "SLK-BULLETTAIL still sees inline code, a URL, or a fence after the block"; else fail "SLK-BULLETTAIL still sees inline code, a URL, or a fence after the block (n=$m)"; fi
+if [ "$n" = "0" ]; then pass "SLK-BULLETTAIL ignores fenced diffs and wrapped bullet lines"; else fail "SLK-BULLETTAIL ignores fenced diffs and wrapped bullet lines (n=$n)"; fi
 
 # --- a bare URL followed by a blank line is a valid boundary ---------------
 

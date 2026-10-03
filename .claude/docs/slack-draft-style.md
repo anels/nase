@@ -7,7 +7,7 @@ Before finalizing any Slack draft, follow `.claude/docs/voice-profile-routing.md
 
 After the user corrects a draft, follow `.claude/docs/style-delta-capture.md`. Log a `[STYLE-DELTA]` line when the correction implies a generalizable rule; `/nase:wrap-up` Step 9 batches pending deltas into approved style-doc edits.
 
-`.claude/hooks/prose-lint-guard.sh` enforces three Formatting Mechanics rules below (`- item` bullets, no `<url|label>` embed, no bare URL ending a line whose next line is non-empty) on every `slack_send_message_draft` call. **This doc stays their source of truth**: if `prose-lint.py` and Formatting Mechanics ever disagree, fix the linter.
+`.claude/hooks/prose-lint-guard.sh` enforces four Formatting Mechanics rules below (`- item` bullets, no `<url|label>` embed, no bare URL ending a line whose next line is non-empty, nothing but bullets after a bullet block) on every `slack_send_message_draft` call. **This doc stays their source of truth**: if `prose-lint.py` and Formatting Mechanics ever disagree, fix the linter.
 
 ## Formatting Mechanics
 
@@ -31,9 +31,17 @@ it.
   `Parent https://example.com/a covers sections 0-3` / `Merged in https://example.com/b - fixed.`
   A blank line after the URL is also a valid boundary and survives, but only outside a bullet
   block - see the next rule.
-- **Do not rely on a blank line after a bullet block for separation.** A blank line immediately
-  after a bullet block is dropped by the current draft conversion, so the next section runs into
-  the list. Separate sections with a non-empty text line instead.
+- **Nothing separates a bullet block from prose that follows it. End the message on the block, or
+  keep going in bullets.** Two separators were tried and both fail.
+  A blank line immediately after a bullet block is dropped, so the next section runs into the
+  list. A non-empty text line directly
+  after the block loses its newline too, and Slack concatenates it onto the last bullet: a draft
+  ending `on every run` followed by `Staging only, no prod impact.` rendered as
+  `on every runStaging only, no prod impact.` in `#dev-orchestrator` on 2026-09-28. Earlier
+  revisions of this rule prescribed that second shape, which is how that message shipped broken.
+  The safe shapes are a bullet block with nothing after it, a following section written as more
+  `- item` bullets, or the prose moved above the block. Prose before a block, and a blank line
+  between two prose paragraphs, both survive. `prose-lint.py` gates this as `SLK-BULLETTAIL`, but it looks past one blank line only, so prose after two blank lines passes the linter and is still unsafe.
 - **Keep bare URLs.** The workspace style rejects destination-hiding labels; Slack also
   auto-links direct URLs.
 
@@ -48,6 +56,7 @@ Apply before presenting the draft to the user:
 
 - [ ] Bullets are `- item`, not a literal `•` (see Formatting Mechanics - a literal `•` never indents)
 - [ ] No line ends with a bare URL while the next line is non-empty (bullet *or* prose) - put content after the URL on the same line
+- [ ] Nothing follows a bullet block except more bullets - neither a blank line nor a text line separates it, so a trailing paragraph gets glued onto the last bullet
 - [ ] No opening greeting ("Hi", "Hello", "Hope you're well") - jump straight to content
 - [ ] No AI filler words ("certainly", "absolutely", "I'd be happy to", "I wanted to reach out") - delete
 - [ ] Technical content: use bullets, not prose paragraphs
