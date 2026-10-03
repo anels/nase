@@ -65,7 +65,7 @@ Every condition holds, or the repair drops to the next class. Target inside `wor
 - Anything `check-effort-pointer-integrity.sh` names, repaired the way it names.
 - Missing or drifted `last-updated:` where the correct date is derivable.
 - A status claim that verification resolved. Write the measured value.
-- `**Confidence:** high` stripped per the over-breadth thresholds.
+- `**Confidence:** high` (or `**Confidence**: high`) stripped, with any parenthetical evidence moved into the entry's `Verified:` line per `.claude/docs/kb-lifecycle-layers.md`.
 - Layer mixing whose correct destination is unambiguous, including a dated gotcha promotion whose re-verification passed. A promotion replaces the dated block's gotcha text with a one-line `Promoted -> ...` pointer; it is an edit, not a deletion, and does not count toward the deletion disclosure below.
 - Accretion blocks per `.claude/docs/kb-staleness.md → Step D2`, and temp artifacts whose producer and restore path are both known.
 

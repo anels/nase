@@ -76,6 +76,10 @@ is the only writer; create the file on the first `define` write (via
 `workspace-write-guard.py`, same as any other durable target) if it does not
 exist yet. Retrieve/List treat a missing index as zero terms, not an error.
 
+`_index.md` is this store's registry, so term files never get a
+`workspace/kb/.domain-map.md` entry. `kb-hygiene-scan.py --workspace-scan`
+skips `workspace/kb/terminology/` in its domain-map orphan check.
+
 ---
 
 ## Part 3: Conflict & Alias Check (before writing)

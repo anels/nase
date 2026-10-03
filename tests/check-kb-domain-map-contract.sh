@@ -246,6 +246,32 @@ assert_section_contains \
   "group scope narrows repos, not gates" \
   "$ONBOARD" "Mode" "never narrows the gates"
 
+# --- Contract C: the scope note is capped -----------------------------------
+#
+# The trailing parenthetical on an entry is the map's only free-form field and
+# the only one no consumer parses, so nothing fails when it grows. It grew to
+# 87% of the file once already, which pushed `workspace-data-scan.py` past its
+# character cap: the scan kept 1 of 89 entries and every caller read that as the
+# whole KB. The cap is what makes the map a routing table instead of a digest.
+
+assert_section_contains \
+  "repo-resolution caps the scope note" \
+  "$RESOLUTION" "Scope notes" "80 characters, one clause"
+
+assert_section_contains \
+  "repo-resolution forbids appending to a scope note" \
+  "$RESOLUTION" "Scope notes" "never append"
+
+assert_section_contains \
+  "repo-resolution names the truncation consequence" \
+  "$RESOLUTION" "Scope notes" "workspace-data-scan.py"
+
+if grep -Fq 'Scope notes' "$ONBOARD"; then
+  pass "onboard routes domain-map notes through the Scope notes contract"
+else
+  fail "$ONBOARD must point a domain-map edit at repo-resolution.md -> Scope notes"
+fi
+
 # End-to-end: every Projects entry in the live map sits under exactly one group.
 MAP=workspace/kb/.domain-map.md
 if [ -f "$MAP" ]; then
@@ -262,6 +288,28 @@ if [ -f "$MAP" ]; then
     pass "every Projects entry in the live map sits under a group heading"
   else
     fail "ungrouped Projects entries in $MAP: $(printf '%s' "$ungrouped" | tr '\n' ' ')"
+  fi
+
+  # Report the key and the note's length, not the note: an over-long note is
+  # usually pasted findings, and echoing it into CI output reprints whatever it
+  # picked up.
+  oversized=$(PYTHONPATH=.claude/scripts python3 - "$MAP" <<'PY'
+import sys
+from pathlib import Path
+
+from nase_domain_map import ROW_RE, strip_comments
+
+for line in strip_comments(Path(sys.argv[1]).read_text(encoding="utf-8")).splitlines():
+    match = ROW_RE.match(line)
+    cut = line.find(" (", match.end()) if match else -1
+    if cut > 0 and line.endswith(")") and len(line) - cut - 3 > 80:
+        print(f"{match.group(1)}({len(line) - cut - 3})", end=" ")
+PY
+)
+  if [ -z "$oversized" ]; then
+    pass "every live scope note is within the 80-character cap"
+  else
+    fail "scope notes over 80 chars in $MAP: $oversized"
   fi
 else
   printf 'SKIP  live domain map not present (%s)\n' "$MAP"

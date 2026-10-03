@@ -125,6 +125,86 @@ assert data["workspace_state"]["todo_md"]["exists"] is True
 assert data["workspace_state"]["lessons_md"]["matching_sections"]
 PY
 
+# --- domain map sheds in order and names what it drops ----------------------
+#
+# The map is a routing table: a dropped row is indistinguishable from a key that
+# was never mapped, so a caller reads the gap as "no KB for that repo". Prose
+# sampling produced exactly that once - 1 of 89 rows returned under a boolean
+# `truncated` flag. Shed the header, then the notes, and only then rows, naming
+# each dropped key.
+
+map_fixture=$(mktemp -d)
+mkdir -p "$map_fixture/workspace/kb"
+{
+  printf '# Domain Map\n<!--\n'
+  # Header comment padded past any row budget, so shedding it must come first.
+  for i in $(seq 1 120); do printf 'explanatory prose line %d, not routing data\n' "$i"; done
+  printf -- '-->\n\n## Projects\n\n### Group\n'
+  for i in $(seq 1 40); do
+    printf -- '- key-%02d \xe2\x86\x92 workspace/kb/projects/key-%02d.md [last-updated:2026-06-05] (a scope note that costs real characters)\n' "$i" "$i"
+  done
+} > "$map_fixture/workspace/kb/.domain-map.md"
+
+assert_cmd "domain map sheds header and notes before rows, and names dropped keys" python3 - "$SCRIPT" "$map_fixture" <<'PYMAP'
+import importlib.util
+import pathlib
+import sys
+
+spec = importlib.util.spec_from_file_location("scan", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+root = pathlib.Path(sys.argv[2])
+path = root / "workspace/kb/.domain-map.md"
+
+full = mod.domain_map_payload(path, root, 10_000_000)
+assert full["truncated"] is False, full
+assert full["rows_total"] == 40, full["rows_total"]
+assert full["rows_included"] == 40, full
+
+# A cap that only the header overflows must cost no row and no note.
+rows_only = len("\n".join(
+    line for line in path.read_text().splitlines() if line.startswith("- ")
+))
+header_shed = mod.domain_map_payload(path, root, rows_only + 400)
+assert header_shed["truncated"] is True, header_shed
+assert header_shed["shed"] == ["header comment"], header_shed["shed"]
+assert header_shed["rows_included"] == 40, header_shed
+assert header_shed["rows_dropped"] == [], header_shed
+assert "a scope note" in header_shed["content"], "notes shed too early"
+
+# Tighter: notes go before any row does.
+notes_shed = mod.domain_map_payload(path, root, 3200)
+assert notes_shed["shed"] == ["header comment", "scope notes"], notes_shed["shed"]
+assert notes_shed["rows_included"] == 40, notes_shed
+assert notes_shed["rows_dropped"] == [], notes_shed
+assert "a scope note" not in notes_shed["content"], notes_shed["content"][:200]
+
+# Tighter still: rows go last, and each dropped key is named.
+rows_shed = mod.domain_map_payload(path, root, 1200)
+assert "rows" in rows_shed["shed"], rows_shed["shed"]
+assert rows_shed["rows_dropped"], rows_shed
+assert rows_shed["rows_included"] == 40 - len(rows_shed["rows_dropped"]), rows_shed
+for key in rows_shed["rows_dropped"]:
+    assert key not in rows_shed["content"], key
+assert "not unmapped" in rows_shed["warning"], rows_shed["warning"]
+PYMAP
+
+rm -rf "$map_fixture"
+
+# The live map must fit whole at the shipped default, or every caller of the
+# scan silently reads a partial KB.
+if [ -f "$ROOT/workspace/kb/.domain-map.md" ]; then
+  assert_cmd "live domain map fits the shipped default cap without shedding" python3 -c '
+import json, sys
+payload = json.load(sys.stdin)["workspace_state"]["domain_map_md"]
+assert payload["truncated"] is False, (payload["chars"], payload.get("shed"), payload.get("rows_dropped"))
+assert payload["rows_included"] == payload["rows_total"], payload
+' < <(python3 "$SCRIPT" --root "$ROOT" 2026-01-01 2026-01-01)
+else
+  printf 'SKIP  live domain map not present\n'
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

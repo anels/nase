@@ -219,6 +219,41 @@ assert_exit "T12: a query plus several paths is refused" 1 "$rc"
 assert_contains "T12: the refusal says what to do" "$out" 'drop the separate query'
 rm -f "$FIXTURE/workspace/kb/general/multi.md"
 
+# T13: `high` is the unwritten default, so confidence:high matches an entry with no field
+# and confidence:medium does not.
+cat > "$FIXTURE/workspace/kb/general/confidence.md" <<'EOF'
+# Confidence fixture
+
+### 2026-06-03 Default confidence entry
+**Tags:** confidence
+defaultconf has no Confidence field.
+
+### 2026-06-04 Medium confidence entry
+**Tags:** confidence
+**Confidence:** medium
+defaultconf is only medium here.
+
+### 2026-06-05 Outside-colon medium entry
+**Tags:** confidence
+**Confidence**: medium (spelled with the colon outside the bold)
+defaultconf is medium in the other spelling.
+
+### 2026-06-06 Flow medium entry
+**Tags:** confidence
+**Confidence:** medium for the onboarding-flow narrative
+defaultconf is medium, and its note contains the word flow.
+EOF
+
+out=$(bash "$SCRIPT" "defaultconf" confidence:high 2>&1)
+assert_contains "T13: confidence:high matches an entry with no Confidence field" "$out" "Default confidence entry"
+assert_not_contains "T13: confidence:high skips a medium entry" "$out" "Medium confidence entry"
+assert_not_contains "T13: confidence:high skips a **Confidence**: medium entry" "$out" "Outside-colon medium entry"
+out=$(bash "$SCRIPT" "defaultconf" confidence:medium 2>&1)
+assert_not_contains "T13: confidence:medium skips the default entry" "$out" "Default confidence entry"
+assert_contains "T13: confidence:medium finds the **Confidence**: spelling" "$out" "Outside-colon medium entry"
+out=$(bash "$SCRIPT" "defaultconf" confidence:low 2>&1)
+assert_not_contains "T13: confidence:low does not match low inside flow" "$out" "Flow medium entry"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

@@ -12,6 +12,12 @@ workspace/logs/{YYYY-MM-DD}.md
 
 Use today's date, meaning the local calendar day (`.claude/scripts/nase_time.py: local_today()`), never UTC. Create the file with a `# Work Log — {YYYY-MM-DD}` header and `## Sessions` section if it doesn't exist.
 
+Append with the helper rather than by hand, because it owns the date, header, section placement, and entry shape:
+
+```bash
+python3 .claude/scripts/daily-log-append.py {skill-tag} "{one-line summary}"
+```
+
 ## Entry Format
 
 Append under `## Sessions`:

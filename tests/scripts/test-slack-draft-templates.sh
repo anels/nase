@@ -108,6 +108,15 @@ if offenders:
     sys.exit(1)
 PY
 
+# The prose is what a drafter reads. An earlier revision told drafters to separate sections with a
+# non-empty text line, and that shape is what glued "Staging only" onto the last bullet in
+# #dev-orchestrator on 2026-09-28. Pin the corrected wording so it cannot quietly return;
+# test-prose-lint.sh runs the gate itself.
+assert_cmd "slack-draft-style forbids prose after a bullet block" \
+  grep -Eqi 'Nothing separates a bullet block from prose' "$STYLE_DOC"
+assert_cmd "slack-draft-style names the SLK-BULLETTAIL gate" \
+  grep -q 'SLK-BULLETTAIL' "$STYLE_DOC"
+
 # Consuming surfaces must point at the shared doc rather than restating a partial version.
 for consumer in ".claude/commands/nase/request-review.md" "workspace/skills/handle-support-question.md"; do
   if [[ -f "$consumer" ]]; then

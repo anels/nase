@@ -99,14 +99,14 @@ Over-breadth is invisible without counting, because a term reads as normal regar
 
 Counts, from `grep` so no new dependency is introduced:
 
-- `grep -rc '\*\*Confidence:\*\* high' workspace/kb/` against the total entry count per file. Do not anchor the pattern to line start; the marker also appears mid-line.
+- `grep -rnE '\*\*Confidence(:\*\*|\*\*:) *high' workspace/kb/` to find every site to strip, in both the `**Confidence:**` and `**Confidence**:` spellings. Do not anchor the pattern to line start; the marker also appears mid-line.
 - Per domain-map section, the occurrence count of each `topics:` term against that section's entry count.
 
 Thresholds:
 
 - A `topics:` term on more than 30% of its domain-map section's entries carries no retrieval value. Drop it from the entries, or promote it to the section name.
 - A term on one or two entries is the valuable kind. Keep it.
-- `**Confidence:** high` is the default in `.claude/docs/kb-template.md → V1`. A default carries no information, so it MUST NOT be written. Strip it when it exceeds 80% of a file's entries and keep only `medium` and `low`.
+- `**Confidence:** high` is the default in `.claude/docs/kb-template.md → V1`. A default carries no information, so it MUST NOT be written. Strip every occurrence and keep only `medium` and `low`. When the marker carries its evidence in parentheses, move that evidence into the entry's `Verified: <YYYY-MM-DD> via <method>` line (see Critical entries above) instead of dropping it.
 
 ## Writing rules
 
@@ -123,6 +123,6 @@ These govern repair proposals and rule text. KB prose itself follows `.claude/do
 
 Inferred when this doc was written, not carried over from an existing shared doc. Confirm or correct them in use.
 
-- The 30% `topics:` and 80% `**Confidence:** high` thresholds. Both come from the inverse-document-frequency argument, not from counts taken on this workspace.
+- The 30% `topics:` threshold. It comes from the inverse-document-frequency argument, not from counts taken on this workspace.
 - `.claude/docs/kb-template.md` defines the `Decision` page shape but carries no ADR immutability rule and no `Superseded by` format. Both live here instead, one file away from the other writing-side rules.
 - Whether `kb-hygiene-scan.py` can produce the over-breadth counts directly. The `grep` path is the no-new-dependency fallback.

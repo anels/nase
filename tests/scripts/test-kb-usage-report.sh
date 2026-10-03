@@ -11,6 +11,10 @@ trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/workspace/kb/projects" "$FIXTURE/workspace/kb/general" "$FIXTURE/workspace/kb/ops" "$FIXTURE/workspace/stats"
 cat > "$FIXTURE/workspace/kb/.domain-map.md" <<'EOF'
 # Domain map
+<!-- Single-line comment naming workspace/kb/ops/single-comment.md is not an entry. -->
+<!--
+Grouping never changes workspace/kb/projects/<name>.md on disk.
+-->
 
 - project-a → workspace/kb/projects/a.md
 - general-b → workspace/kb/general/b.sql
@@ -100,6 +104,8 @@ assert_contains "T2: unread search-only file is listed" "$body" "workspace/kb/ge
 assert_contains "T2: unobserved mapped file is listed" "$body" "workspace/kb/ops/unused.md"
 assert_contains "T2: report explains unread versus unobserved semantics" "$body" "absence of a read event means unread, while absence of any event means unobserved"
 assert_not_contains "T2: old event outside window is excluded" "$body" "workspace/kb/projects/old.md"
+assert_not_contains "T2: path inside a multi-line domain-map comment is not mapped" "$body" "workspace/kb/projects/<name>.md"
+assert_not_contains "T2: path inside a single-line domain-map comment is not mapped" "$body" "workspace/kb/ops/single-comment.md"
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

@@ -30,7 +30,7 @@ From $ARGUMENTS, extract:
 - **Domain filter** (`in:`): restrict to `workspace/kb/{domain}/`; if absent, search all
 - **Tag filter** (`tag:`): only entries whose `**Tags:**` line contains this value
 - **Date filter** (`since:`): only entries with `### YYYY-MM-DD` header ≥ this date
-- **Confidence filter** (`confidence:`): only entries with matching `**Confidence:**` value
+- **Confidence filter** (`confidence:`): only entries with matching `**Confidence:**` value; an entry with no field is `high`, the unwritten default
 
 If $ARGUMENTS is empty, print usage and stop:
 ```

@@ -14,6 +14,7 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+from nase_domain_map import strip_comments
 from nase_git import resolve_root
 from nase_time import parse_ts
 
@@ -101,7 +102,8 @@ def load_mapped_files(root: pathlib.Path) -> set[str]:
         return set()
     mapped: set[str] = set()
     pattern = re.compile(r"workspace/kb/[^\s`)]+?\.(?:md|sql)\b")
-    for line in path.read_text(encoding="utf-8").splitlines():
+    text = strip_comments(path.read_text(encoding="utf-8"))
+    for line in text.splitlines():
         for match in pattern.findall(line):
             normalized = normalize_kb_file(match)
             if normalized:

@@ -21,6 +21,8 @@ from typing import Any
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import nase_git
+from nase_domain_map import ROW_RE as DOMAIN_MAP_ROW_RE
+from nase_domain_map import strip_comments
 from nase_time import calendar_day, local_today
 
 SOURCE_EXTS = {
@@ -126,7 +128,6 @@ LAST_UPDATED_RE = re.compile(r"Last updated:\s*(20[0-9]{2}-[0-9]{2}-[0-9]{2})", 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 DATED_HEADING_RE = re.compile(r"^###\s+(20[0-9]{2}-[0-9]{2}-[0-9]{2})\s+[—-]\s+(.+?)\s*$")
-DOMAIN_MAP_TARGET_RE = re.compile(r"^\s*-\s+.+?→\s+([^ \t\[]+)")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 WORKSPACE_REF_PREFIXES = (
     "workspace/",
@@ -317,20 +318,10 @@ def domain_map_targets(root: pathlib.Path) -> set[str]:
     if not domain_map.is_file():
         return set()
     targets: set[str] = set()
-    in_comment = False
-    for line in domain_map.read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if in_comment:
-            if "-->" in stripped:
-                in_comment = False
-            continue
-        if stripped.startswith("<!--"):
-            if "-->" not in stripped:
-                in_comment = True
-            continue
-        match = DOMAIN_MAP_TARGET_RE.match(line)
+    for line in strip_comments(domain_map.read_text(encoding="utf-8", errors="replace")).splitlines():
+        match = DOMAIN_MAP_ROW_RE.match(line)
         if match:
-            targets.add(match.group(1).strip().removeprefix("./"))
+            targets.add(match.group(2).strip().removeprefix("./"))
     return targets
 
 
@@ -393,7 +384,8 @@ def workspace_scan(root: pathlib.Path) -> dict[str, Any]:
     mapped = {path for path in targets if path.startswith("workspace/kb/")}
     for file_path in files:
         rel = file_path.relative_to(root).as_posix()
-        if rel not in mapped:
+        # /nase:terminology registers its files in terminology/_index.md, not the domain map.
+        if rel not in mapped and not rel.startswith("workspace/kb/terminology/"):
             issues.append(
                 workspace_issue(
                     "domain_map_orphan",
