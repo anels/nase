@@ -725,5 +725,29 @@ rc=$?
 assert_exit "invalid throttle interval falls back to the default" 0 "$rc" "$out"
 assert_exit "invalid throttle interval did not disable throttling" 1 "$(count_archives "$target")" "$out"
 
+# A concurrent owner creates the lock dir before it writes its pid. A run that lands in
+# that window must treat the lock as held, not delete it as stale and race the owner.
+repo="$fixture/lock-window-repo"
+target="$fixture/lock-window-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+mkdir -p "$target/.backup-lock"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "fresh lock without a pid skips the run" 0 "$rc" "$out"
+assert_contains "fresh lock without a pid is reported as in progress" "$out" "another backup is already in progress"
+lock_present=no
+[ -d "$target/.backup-lock" ] && lock_present=yes
+assert_contains "fresh lock without a pid is left in place" "$lock_present" "yes"
+assert_exit "fresh lock without a pid publishes no archive" 0 "$(count_archives "$target")" "$out"
+
+# The same lock dir left behind by a run that died before writing its pid is stale.
+touch -t "$(date -v-5M +%Y%m%d%H%M.%S 2>/dev/null || date -d '-5 minutes' +%Y%m%d%H%M.%S)" "$target/.backup-lock"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "old lock without a pid is recovered" 0 "$rc" "$out"
+assert_contains "old lock without a pid is reported stale" "$out" "removing stale backup lock"
+assert_exit "old lock without a pid lets the backup publish" 1 "$(count_archives "$target")" "$out"
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"
