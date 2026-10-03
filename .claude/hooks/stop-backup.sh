@@ -138,6 +138,14 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
       stale=0
     fi
+  else
+    # The owner creates the lock dir before it writes its pid, so a fresh dir
+    # without a pid file belongs to a run that is still starting.
+    # GNU first: GNU `stat -f` prints filesystem info before failing on `%m`.
+    lock_mtime=$(stat -c %Y "$LOCK_DIR" 2>/dev/null || stat -f %m "$LOCK_DIR" 2>/dev/null || echo 0)
+    if [ $(( $(date +%s) - lock_mtime )) -lt 60 ]; then
+      stale=0
+    fi
   fi
   if [ "$stale" -eq 1 ]; then
     log_status "WARNING" "removing stale backup lock (pid=$(cat "$LOCK_PID" 2>/dev/null || echo unknown))"
