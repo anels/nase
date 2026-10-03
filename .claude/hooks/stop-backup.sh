@@ -141,7 +141,7 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   else
     # The owner creates the lock dir before it writes its pid, so a fresh dir
     # without a pid file belongs to a run that is still starting.
-    # GNU first: GNU `stat -f` prints filesystem info before failing on `%m`.
+    # Try GNU stat first, because GNU `stat -f` prints filesystem info before it fails on `%m`.
     lock_mtime=$(stat -c %Y "$LOCK_DIR" 2>/dev/null || stat -f %m "$LOCK_DIR" 2>/dev/null || echo 0)
     if [ $(( $(date +%s) - lock_mtime )) -lt 60 ]; then
       stale=0
