@@ -65,6 +65,12 @@ spot-check.
 If the test fails at the suggested value, keep the structural improvement but restore the
 original expected value and name the runtime constraint in the reply.
 
+**A fix that narrows or gates an existing guard** so a failing test passes must re-ask the
+question the original guard answered: does the condition it now skips occur in production?
+State the answer in the reply and name the production input that still triggers the guard.
+A gate that disables the guard for the only shape production sends turns a loud failure
+into a silent no-op under a green suite.
+
 ### For decline threads:
 
 Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply`. Draft a direct reply: clear reason, technical context if needed, no defensive tone.
@@ -179,6 +185,8 @@ For each thread, compose the reply body based on its category:
 - **reply-only**: the reply drafted in Phase 6
 
 **Bulk throttle**: apply the shared throttle rule from `.claude/docs/github-queries.md → Resolve Review Threads → Shared throttle rule` whenever the total number of threads to reply to exceeds 30.
+
+Re-query `reviewThreads` live immediately before building the payload. A thread that became resolved, or gained a comment after the Phase 2 dossier, drops out of the payload and is reported to the user as changed.
 
 Before making any GitHub reply or resolve API call, show the concrete per-thread payload:
 

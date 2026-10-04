@@ -330,5 +330,14 @@ fi
 assert_equals "unchanged wrapper mode is repaired" "$(file_mode "$wrapper")" "644"
 assert_json_reload "mode-only repair does not reload skills" "$out" false
 
+cat > "$repo/workspace/logs/.backup-status" <<'STATUS'
+2026-05-28T10:00:00 [OK] created nase-backup-20260528-100000.zip (1M)
+2026-05-28T11:00:00 [OK] workspace unchanged since last archive - skipped (nase-backup-20260528-100000.zip retained)
+2026-05-28T12:00:00 [OK] last archive is 5s old - throttled (backup_min_interval_minutes: 30)
+2026-05-28T12:00:01 [OK] retention cleanup: removed 1 old backup(s) (policy: days:30)
+STATUS
+out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+assert_contains "throttle and retention lines are not a good backup" "$out" "last good backup: 2026-05-28T11:00:00"
+
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

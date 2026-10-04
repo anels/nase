@@ -148,7 +148,10 @@ skill_body_without_frontmatter() {
       echo "[session-start] WARNING: last backup had an issue — $LAST"
       echo "[session-start] Check .local-paths config or run /restore to verify data"
     fi
-    LAST_OK=$(awk '/\[OK\]/{last=$1} END{print last}' "$STATUS_FILE")
+    # Only these stop-backup.sh lines mean an archive covers the workspace; the
+    # throttle and retention-cleanup lines are [OK] too but prove nothing.
+    # `synced` is the legacy wording still present in older status files.
+    LAST_OK=$(awk '/\[OK\] (created |synced |workspace unchanged since last archive)/{last=$1} END{print last}' "$STATUS_FILE")
     if [ -n "$LAST_OK" ]; then
       echo "[session-start] last good backup: $LAST_OK"
     else
