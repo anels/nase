@@ -22,7 +22,7 @@ Content rules live in `.claude/docs/kb-lifecycle-layers.md`. This file owns scop
    | `--repair` | Adds one late approval checkpoint that also covers judgment-bearing rewrites. |
 
    Mode MUST NOT narrow discovery. A narrower mode changes what gets written, never what gets looked at.
-3. `workspace/` is git-ignored, so the undo path is the backup, not git. Read the newest good backup before the first write and record its name and timestamp in the report frontmatter and the chat summary. A backup older than a deletion target's mtime does not cover that target, so that deletion drops to judgment-bearing. The degrade is per target, not per run: a stale backup demotes only the deletions it fails to cover, while **no** backup at all degrades the whole run to `--report-only`. Say which happened.
+3. `workspace/` is git-ignored, so the undo path is the backup, not git. Read the newest good backup before the first write and record its name and timestamp in the report frontmatter and the chat summary. A backup older than a deletion target's mtime does not cover that target, so that deletion drops to judgment-bearing. The `workspace/tmp/` prune is exempt because no backup ever covers it (see `## Repair classes`). The degrade is per target, not per run: a stale backup demotes only the deletions it fails to cover, while **no** backup at all degrades the whole run to `--report-only`. Say which happened.
 4. For broad reviews, dispatch read-only `nase-context-kb-researcher` slices for disjoint KB domains. The main thread owns KB edits and report writes, security triage, state reconciliation, and every mutation.
 5. When the reviewed root must remain untouched, store machine-readable before and after SHA-256 manifests outside that root and require them to match.
 
@@ -67,9 +67,10 @@ Every condition holds, or the repair drops to the next class. Target inside `wor
 - A status claim that verification resolved. Write the measured value.
 - `**Confidence:** high` (or `**Confidence**: high`) stripped, with any parenthetical evidence moved into the entry's `Verified:` line per `.claude/docs/kb-lifecycle-layers.md`.
 - Layer mixing whose correct destination is unambiguous, including a dated gotcha promotion whose re-verification passed. A promotion replaces the dated block's gotcha text with a one-line `Promoted -> ...` pointer; it is an edit, not a deletion, and does not count toward the deletion disclosure below.
-- Accretion blocks per `.claude/docs/kb-staleness.md → Step D2`, and temp artifacts whose producer and restore path are both known.
+- Accretion blocks per `.claude/docs/kb-staleness.md → Step D2`.
+- Stale `workspace/tmp/` entries, pruned by `python3 .claude/scripts/tmp-prune.py --apply --manifest workspace/tmp/tmp-prune-{YYYY-MM-DD}.tsv` as the last write of the run. The script's docstring owns which entries it deletes. Under `--report-only`, run `python3 .claude/scripts/tmp-prune.py --json` with no `--manifest` and report `targets`. Skip it under `--kb-only`, when a narrowed `[workspace/path]` excludes `workspace/tmp/`, and when the reviewed root must stay untouched.
 
-Deletion is in this class because the backup is the undo path. **Every deleted path MUST be listed individually in the report and the chat summary, with its line count and its restore route.** An aggregate count is not a disclosure.
+Deletion is in this class because the backup is the undo path. **Every deleted path MUST be listed individually in the report and the chat summary, with its line count and its restore route.** An aggregate count is not a disclosure. The one exception is the `workspace/tmp/` prune. Backups exclude `workspace/tmp/`, so it has no undo path; it is decided only because the script deletes nothing that is recent or referenced. Its manifest lists every deleted path with its size, so the report links the manifest and states the count and bytes, and chat gives only the count and the manifest path.
 
 ### Judgment-bearing - one late checkpoint
 
@@ -114,7 +115,7 @@ Body carries, per finding, severity, evidence path and line, impact, root cause,
 
 Before marking an applied repair or an exact proposal repair-ready, re-run every deterministic preflight command and focused regression test against the modified target or disposable copy. A green re-run does not close a finding that is still open.
 
-The complete report is the canonical artifact. Chat returns its path and at most five short lines carrying the highest-severity findings, the backup relied on, every deleted path, and the approval boundary.
+The complete report is the canonical artifact. Chat returns its path and at most five short lines carrying the highest-severity findings, the backup relied on, every deleted path (the tmp prune as count plus manifest path, per above), and the approval boundary.
 
 Preserve provenance, project boundaries, and confidential markers.
 

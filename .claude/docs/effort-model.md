@@ -151,6 +151,10 @@ and explicit status rows beginning with `Post-deploy`, `Verified`, `Validated`,
 **outside** every `## Lifecycle` section are implementation-plan steps that
 authors routinely leave unticked after the work lands, so they are ignored entirely.
 
+When ticking `Deployed`, add an unchecked `- [ ] Post-deploy validation` row in the same
+edit. A checked `Deployed` with no pending post-deploy row closes the effort on the next
+`/nase:efforts` run, even if the validation has not happened or failed.
+
 A trailing clause on a *checked* row (`PR opened - PR-1 #173; PR-1b + PR-2 still
 pending`) is also honoured, since older docs record outstanding work that way. Prefer
 separate rows - the clause match only covers a few phrasings ("still pending", "not

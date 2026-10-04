@@ -50,10 +50,10 @@ assert_not_contains() {
   fi
 }
 
-ADO=workspace/skills/ado-pipeline-secret-audit.md
-ULTRA=workspace/skills/ultrareview-ci.md
+ADO=workspace/skills/scripts/ado-pipeline-secret-fetch.sh
+ULTRA=workspace/skills/scripts/ultrareview-run.sh
 SONAR=workspace/skills/satisfy-sonar-new-coverage.md
-SYNC=workspace/skills/sync-skill-docs.md
+SYNC=workspace/skills/scripts/sync-skill-docs-detect.sh
 
 assert_contains "ADO validates numeric definition IDs" "$ADO" 'case "$definition_id" in'
 assert_contains "ADO rejects invalid definition IDs" "$ADO" "*[!0-9]*"
@@ -61,7 +61,7 @@ assert_contains "ADO uses a private temporary directory" "$ADO" 'mktemp -d'
 assert_not_contains "ADO has no interpolated temp directory template" "$ADO" 'ado-secret-audit-{definition_id}'
 
 assert_contains "ultrareview initializes target" "$ULTRA" 'TARGET=""'
-assert_contains "ultrareview removes timeout before target resolution" "$ULTRA" 'TARGET_ARGS='
+assert_contains "ultrareview parses timeout apart from the target" "$ULTRA" '--timeout=*) TIMEOUT_MIN='
 
 assert_contains "Sonar starts with diagnostics" "$SONAR" 'diagnose before changing code or coverage configuration'
 assert_contains "Sonar requires a concrete exclusion rationale" "$SONAR" 'Do not add an exclusion solely to clear the gate.'

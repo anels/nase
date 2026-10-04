@@ -30,5 +30,5 @@
 - Verify each documented command from its exact documented working directory in a fixture or dry-run, including required arguments and claimed output scope.
 - Compare recovery claims with what the restore code actually writes. Compare version pins and targets across runbooks, deploy scripts, and live configuration evidence when available.
 - Inventory backups by count, logical bytes, recent creation rate, and bounded recent content hashes. Verify content deduplication plus count or size retention; a time-only retention window does not bound repeated Stop-hook backups. Exercise unchanged content, changed content within the same timestamp granularity, and concurrent runs; archive names must be collision-safe.
-- Inventory `workspace/tmp/` by producer, age, size, and recoverability. Do not classify a file as disposable until its producer and restore path are known.
+- Inventory `workspace/tmp/` with a `python3 .claude/scripts/tmp-prune.py --json` dry-run. It counts kept top-level entries under `kept` (`never`, `referenced`, `recent`) and lists the deletable ones in `target_paths`. Treat an entry as disposable only when the script does. Backups exclude `workspace/tmp/`, so a pruned entry has no restore route.
 - When both journal and daily log exist, compare freshness and flag lost post-wrap-up entries instead of assuming one source is complete.

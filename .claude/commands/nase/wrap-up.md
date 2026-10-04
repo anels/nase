@@ -36,6 +36,13 @@ python3 .claude/scripts/workspace-write-guard.py apply \
 ```
 
 Take every `--expected-*` value from the `stage` output, never from a fresh read. The main thread owns the write.
-12. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, and the closing card as the final visible block - echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
+12. Prune `workspace/tmp/`. Run it after Step 11 so a prune problem can never block the journal write:
+
+```bash
+python3 .claude/scripts/tmp-prune.py --apply --manifest workspace/tmp/tmp-prune-{today}.tsv
+```
+
+The script's docstring owns which entries it deletes. Deletion is permanent: backups exclude `workspace/tmp/`, so the manifest is the only record. Report the removed count, the MB freed, and the manifest path; never list the paths in chat. A prune failure is recorded and does not fail the wrap-up.
+13. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, the prune line from Step 12, and the closing card as the final visible block - echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
 
 Chained skill failures are recorded once and do not erase successful sibling steps. Never convert a skipped conditional step into a completion claim.
