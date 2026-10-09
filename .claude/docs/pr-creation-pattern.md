@@ -49,6 +49,9 @@ If found, read it. Strip HTML comments (`<!-- ... -->`) - these are instructions
 
 ## Changes
 {brief list of key files/areas modified}
+
+## Merge risk
+{only for risky merges: whether it can be rolled back, and the blast radius, in one line; drop this heading otherwise}
 ```
 
 ### 2a. No local-only path references

@@ -29,6 +29,8 @@ Append under `## Sessions`:
 Only the `## Sessions` section is parsed as the canonical daily-log stream.
 Other sections may exist, but they are not counted as skill/session activity.
 
+`.claude/hooks/daily-log-format-guard.sh` blocks Edit, Write and MultiEdit calls that add a `- HH:MM ...` line in any other shape to a dated log. A shell append such as `echo >>` is not checked, so use the helper for every real-time entry.
+
 ### Skill Tags (canonical)
 
 Renames only - i.e. tags where the form differs from the command name. Every other `/nase:*` skill uses the command name with the `/nase:` prefix stripped (e.g. `wrap-up`, `today`, `tech-digest`, `reflect`, `kb-update`, `kb-gap-detect`).

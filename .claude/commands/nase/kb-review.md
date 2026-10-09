@@ -117,6 +117,10 @@ Before marking an applied repair or an exact proposal repair-ready, re-run every
 
 The complete report is the canonical artifact. Chat returns its path and at most five short lines carrying the highest-severity findings, the backup relied on, every deleted path (the tmp prune as count plus manifest path, per above), and the approval boundary.
 
+### Next-step prompt
+
+When `counts` shows any `checkpointed`, `gated`, or `open` finding, end with one batched `AskUserQuestion` (skill-contract rule 4). Skip it under `--report-only` or when all three are 0. Explain each option first (finding IDs, files, class). Options: apply the judgment batch (default mode only, `--repair` already asked), apply a subset, start a gated fix via the branch flow, or later. No option approves a gated item, and "later" writes nothing.
+
 Preserve provenance, project boundaries, and confidential markers.
 
 ## Unvalidated rules

@@ -141,6 +141,7 @@ requirements = [
     ("PreToolUse", "atlassian-generic-write-guard.sh", "execute"),
     ("PreToolUse", "jira-write-guard.sh", "JiraIssue"),
     ("PreToolUse", "confluence-size-guard.sh", "Confluence"),
+    ("PreToolUse", "daily-log-format-guard.sh", "Edit|Write"),
     ("PostToolUse", "track-kb-read.sh", "Read"),
     ("PostToolUse", "track-skill.sh", "Skill"),
     ("PostToolUse", "post-edit-shellcheck.sh", "Edit|Write"),

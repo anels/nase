@@ -42,7 +42,7 @@ Proceed through git commands, file reads, and data gathering without asking perm
 Engineering commands fall into three categories:
 - **Data gathering** (doctor, stats): collect all data first, then present - execute deterministically.
 - **Interactive** (kb-update, onboard): gather context automatically, then pause at marked checkpoints for user input.
-- **One-pass** (wrap-up): runs non-Jira/non-style-delta-gate steps without pausing - reflect -> learn -> extract-skills -> kb-update -> style-delta -> journal entry, writes output to `workspace/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
+- **One-pass** (wrap-up): runs non-Jira/non-style-delta-gate steps without pausing - reflect -> learn -> kb-update -> style-delta -> journal entry, writes output to `workspace/journals/YYYY-MM-DD.md` (overwrites if exists); edit the file afterward as needed.
 In both cases, start executing immediately. Reserve deliberation for synthesis steps (writing summaries, identifying patterns).
 
 **Concurrency rule**: independent sub-tasks MUST be dispatched in a single message with multiple Agent/tool calls - never serialized. Sequential execution is only valid when step B's input depends on step A's output.
