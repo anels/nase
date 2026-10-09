@@ -28,6 +28,7 @@ If `$ARGUMENTS` contains `--auto-accept`, used by `/nase:wrap-up`, then exactly 
    - **What would I do differently?** - if starting fresh
    - **What pattern or rule can I extract?** - generalizable to future tasks
    - **Any new tool/technique discovered?** - worth remembering
+   - **Could a check have caught it?** - a test, lint rule, or hook that fails on this mistake. If yes, the fix is that check, not a lesson.
 
    Focus on the question with the strongest signal - not every question needs a deep answer every time.
 
@@ -51,7 +52,7 @@ python3 .claude/scripts/workspace-write-guard.py stage \
 
 4a. A reusable rule also belongs in the auto-memory directory, which sits **outside** `workspace/` and outside this repo. Name the exact target path in chat and get explicit approval for that one file before writing it; `--auto-accept` never covers this write, because the user's standing approval is scoped to the workspace. Skipping it is fine - the lessons entry is the durable record.
 
-5. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes). If `--auto-accept` is active, skip CLAUDE.md update proposals (wrap-up handles these separately).
+5. A mechanical violation gets a deterministic check (test, lint, hook) before it gets a rule in `CLAUDE.md`; reserve rules for judgement calls. If the repo has no guardrail for it, name that gap. If patterns suggest a process improvement, propose a concrete update to `CLAUDE.md` (core rules) or `.claude/docs/reference.md` (architecture notes). If `--auto-accept` is active, skip CLAUDE.md update proposals (wrap-up handles these separately).
 
 6. Per `.claude/docs/skill-contract.md`, the lessons entry is the artifact and chat gets a pointer plus the short block below; do not restate the full step 2 answers inline. To capture reusable patterns from this reflection, suggest `/nase:extract-skills`.
 

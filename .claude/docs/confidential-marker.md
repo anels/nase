@@ -6,7 +6,7 @@ encryption.
 
 ## When to write the marker
 
-Prefix a daily-log line with `[CONFIDENTIAL]` when it includes:
+Mark a daily-log line with `[CONFIDENTIAL]` when it includes:
 
 - pre-announcement org or staffing changes
 - compensation, leveling, legal, or HR-sensitive material
@@ -17,7 +17,7 @@ Prefix a daily-log line with `[CONFIDENTIAL]` when it includes:
 Format:
 
 ```markdown
-- HH:MM [CONFIDENTIAL] short description
+- HH:MM | {skill-tag}: [CONFIDENTIAL] short description
 ```
 
 ## Skill-side guard
@@ -35,7 +35,7 @@ fi
 ## Disposition by skill
 
 - `/nase:wrap-up`: build a sanitized session set first. Use it for reflection,
-  learning, skill extraction, journal prose, highlights, and closing text. If
+  learning, journal prose, highlights, and closing text. If
   today's log contains `[CONFIDENTIAL]`, skip automatic KB update from the log
   unless the user explicitly provides a safe summary.
 - `/nase:recap`: exclude marked lines. If a marked line is the only signal for a

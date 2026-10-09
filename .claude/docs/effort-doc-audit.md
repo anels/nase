@@ -210,7 +210,7 @@ Append one line to `workspace/logs/{YYYY-MM-DD}.md` per
 `.claude/docs/daily-log-format.md`:
 
 ```
-- {HH:MM} | efforts --closed: {T} terminal docs, {D} defects, {R} repaired, {N} PRs recovered for the delivery record
+- {HH:MM} | efforts: closed pass, {T} terminal docs, {D} defects, {R} repaired, {N} PRs recovered for the delivery record
 ```
 
 ### What this pass does not do

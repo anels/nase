@@ -155,7 +155,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 ### Your daily workflow
 
 - `/nase:today` syncs PR/Jira status and plans focus; `/nase:wrap-up` captures learnings.
-- `/nase:reflect` extracts fresh task lessons; wrap-up rolls them into KB updates and reusable skills.
+- `/nase:reflect` extracts fresh task lessons; wrap-up rolls them into KB updates.
 - Hooks create daily logs and append commit summaries; `/nase:recap` turns them into reports.
 
 ```
@@ -164,7 +164,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
   focused work                  # implement, review PRs, debug — whatever's on the list
 /nase:reflect                  # after completing a task: extract learnings while fresh
   ... more work ...
-/nase:wrap-up                  # evening: reflect → learn → extract-skills → kb-update → journal
+/nase:wrap-up                  # evening: reflect → learn → kb-update → journal
 ```
 
 ### Implement a feature or fix
