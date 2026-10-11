@@ -37,7 +37,7 @@ If `$ARGUMENTS` contains `--auto-accept`, used by `/nase:wrap-up`, then exactly 
    - Efficiency (unnecessary steps taken?) 1-5
    - Code quality (clean, simple, correct?) 1-5
 
-   Try jev first, one call per dimension (`jev-judgment-points.md` points `reflect.score-accuracy`, `reflect.score-efficiency`, `reflect.score-quality`, each `--type Score` on the 1-5 scale above; state = the step 2 answers plus the task name); confidence < 0.9 or unavailable → score it yourself against the same three definitions.
+   Try jev first via `.claude/scripts/jev-judge.py`, one call per dimension (`jev-judgment-points.md` points `reflect.score-accuracy`, `reflect.score-efficiency`, `reflect.score-quality`, each `--type Score` on the 1-5 scale above; state = the step 2 answers plus the task name); confidence < 0.9 or unavailable → score it yourself against the same three definitions.
 
    Scores are a calibration tool, not a grade. They help detect patterns over time - if efficiency is consistently low, it signals a workflow issue worth addressing.
 

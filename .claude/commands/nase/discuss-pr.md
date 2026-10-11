@@ -36,7 +36,7 @@ Stay main-thread unless the request spans multiple repos, more than 20 files, mo
 - Fetch existing human and bot comments once, then de-duplicate every candidate against them before presenting.
 - Preserve the KB lookup shape `mentions:<path>` for core changed files.
 - Keep `confidence` (evidence certainty), `severity` (impact), `kind` (`issue | suggestion | nit | question`), and `disposition` (`blocking | non-blocking | needs-answer`) independent. High confidence never makes a nit severe or blocking.
-- Try jev first for `kind` and for `disposition`. `.claude/docs/discuss-pr-analysis.md` is the single definition point for both - it owns the `--type`, the option list, and the bounded state, so do not restate them here. Confidence < 0.9 or unavailable → classify it yourself against the labels above.
+- Try jev first via `.claude/scripts/jev-judge.py` for `kind` and for `disposition`. `.claude/docs/discuss-pr-analysis.md` is the single definition point for both - it owns the `--type`, the option list, and the bounded state, so do not restate them here. Confidence < 0.9 or unavailable → classify it yourself against the labels above.
 - Every GitHub-bound inline draft must pass the private outgoing-comment research gate. Keep private or sensitive evidence out of GitHub text.
 - A nit may be drafted only when it is high-confidence, PR-introduced, changed-line anchored, not formatter-detectable, and supported by repo authority or a concrete maintainability benefit. Nits are always non-blocking.
 - Diff-first investigation and the trace-shape self-check must run at the actual investigation and classification call sites.

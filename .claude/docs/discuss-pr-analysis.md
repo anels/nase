@@ -150,7 +150,7 @@ Keep these independent:
 - `kind`: `issue | suggestion | nit | question`.
 - `disposition`: `blocking | non-blocking | needs-answer`.
 
-Try jev first for `kind` and `disposition`, per `jev-judgment-points.md`. This is the single definition of both points; the `/nase:discuss-pr` entrypoint only routes here.
+Try jev first via `.claude/scripts/jev-judge.py` for `kind` and `disposition`, per `jev-judgment-points.md`. This is the single definition of both points; the `/nase:discuss-pr` entrypoint only routes here.
 - `discuss-pr.kind`: `--type Choice` over `issue` / `suggestion` / `nit` / `question`; state = the one-sentence finding claim plus its `path:line`, no diff body.
 - `discuss-pr.disposition`: `--type Choice` over `blocking` / `non-blocking` / `needs-answer`; state = the resolved `kind` plus the one-sentence claim.
 

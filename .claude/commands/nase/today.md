@@ -1,6 +1,6 @@
 ---
 name: nase:today
-description: "Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context. Use for today, morning kickoff, daily plan, standup, or what should I work on."
+description: "Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todo items. Use for today, morning kickoff, daily plan, standup, or what should I work on."
 argument-hint: "[date or focus]"
 category: Learning & reflection
 ---
@@ -49,20 +49,28 @@ Slack/Jira MCP queries stay in the main thread because they depend on live conne
 
 Rank confirmed blockers, requested reviews, failing CI, direct replies, Jira actions, stale decisions, and due maintenance. Ties break in that order: something blocking another person outranks failing CI, which outranks a direct reply owed, which outranks Jira and stale decisions, which outrank due maintenance. Within one class, older first.
 
-Re-check live state before presenting an action. Rank a Slack item by its resolved thread state, not by the top-level message: read the whole thread, and suppress it when anyone answered and the asker acknowledged - not only when the reply was yours. A top-level-only read promotes closed items and buries open ones. Try jev first for that suppression call (`.claude/docs/jev-judgment-points.md`, point `today.slack-thread-resolved`, `--type Noul`; state = the thread's messages trimmed to author plus first line each). The question is "is this thread resolved?", and its criteria are the two conditions just stated: someone answered, and the asker acknowledged. Confidence < 0.9, missing, or unavailable → judge the thread yourself the same way. Include a direct URL for every external item and never manufacture an empty-queue claim when connector coverage is partial.
+Re-check live state before presenting an action. Rank a Slack item by its resolved thread state, not by the top-level message: read the whole thread, and suppress it when anyone answered and the asker acknowledged - not only when the reply was yours. A top-level-only read promotes closed items and buries open ones. Try jev first via `.claude/scripts/jev-judge.py` for that suppression call (`.claude/docs/jev-judgment-points.md`, point `today.slack-thread-resolved`, `--type Noul`; state = the thread's messages trimmed to author plus first line each). The question is "is this thread resolved?", and its criteria are the two conditions just stated: someone answered, and the asker acknowledged. Confidence < 0.9, missing, or unavailable → judge the thread yourself the same way. Include a direct URL for every external item and never manufacture an empty-queue claim when connector coverage is partial.
 
 Offer only actions supported by the gathered evidence. External mutations remain draft-first or explicitly gated under `.claude/docs/external-mutation-policy.md`.
 
 ### 5. Closing block
 
-Render the compact TLDR/tint card from `.claude/docs/closing-block.md`.
+First run `python3 .claude/scripts/todo-staleness-scan.py`, which reads dates and costs nothing, and put the result in the plan as one prose line such as "Todo: 5 items, 2 due", because nothing may follow the card. If the scan exits non-zero, say the todo file could not be read and skip Step 7. Then render the compact TLDR/tint card from `.claude/docs/closing-block.md`.
 
 ### 6. Output
 
 Return focus, need-attention items, PR/Jira pulse, maintenance, and up to three concrete next actions. Keep raw query output and full tables out of chat.
 
-### 7. Self-log
+### 7. Todo review
 
-Append one bounded daily-log line using `.claude/docs/daily-log-format.md`. Do not rewrite the log.
+Runs after the plan is shown, so the plan never waits on the questions. With `due=0` in the Step 5 scan, go to Step 8. Otherwise follow `.claude/docs/todo-review.md` for the `due` items. Its `AskUserQuestion` prompts come after the card as interaction, not card content. Effort-backed pointers stay with Step 1.
+
+### 8. Self-log
+
+Append one bounded daily-log line using `.claude/docs/daily-log-format.md`. Include the todo review counts per verdict when Step 7 ran. Do not rewrite the log.
 
 `/nase:tech-digest` is optional and runs only when the user asks for tech news or a refresh.
+
+## Notes
+
+Step 7 asks one `AskUserQuestion` per item and applies the answers together. That departs from `.claude/docs/skill-contract.md` rule 4 because the user reads one item's evidence at a time. `.claude/docs/todo-review.md` has the rest.

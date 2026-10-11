@@ -64,7 +64,7 @@ Read the diff first. Only read full source files when the 5-line context is insu
 Pick the commit **type** from the project's `type-enum` (or standard list):
 `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
-Try jev first (`.claude/docs/jev-judgment-points.md` point `improve-commit-message.type`, `--type Choice` over the project's `type-enum` or the standard list above; state = diff summary); confidence < 0.9 or unavailable → pick from the list above.
+Try jev first via `.claude/scripts/jev-judge.py` (`.claude/docs/jev-judgment-points.md` point `improve-commit-message.type`, `--type Choice` over the project's `type-enum` or the standard list above; state = diff summary); confidence < 0.9 or unavailable → pick from the list above.
 
 Pick an optional **scope** from the primary module/component affected (e.g., `auth`, `api`, `ui`, `db`, `deps`).
 

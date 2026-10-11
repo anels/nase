@@ -85,6 +85,7 @@ roles:
 #   wrap-up            log / stats / effort scans                    (nase-workspace-state-scanner, haiku)
 #   simplify           Step 5-6 anti-slop pass                       (code-simplifier plugin agent)
 #   tech-debt-audit    Step 7 tech-debt-review sanity pass           verifier
+#   today              Step 7 todo-review item re-checks             verifier
 #   kb-review          broad review, disjoint KB domains             (nase-context-kb-researcher, haiku)
 #
 # Ad hoc work is the larger share of sweeping: most repo reading in this workspace

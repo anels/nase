@@ -42,8 +42,10 @@ final drift rejection.
 
 ## Helper Usage
 
-Prepare the proposed complete target file for an allowed workspace target first,
-then run:
+Prepare the proposed complete target file for an allowed workspace target first.
+Keep that file under the repository root (`--root`, default the current directory),
+for example in `workspace/tmp/`, because `stage` rejects a content file outside it
+with `content file is outside workspace root`. Then run:
 
 ```bash
 python3 .claude/scripts/workspace-write-guard.py stage \

@@ -23,7 +23,7 @@ Break the task into concrete subtasks, then tag each with its **dominant lane** 
 
 A subtask may touch several lanes; pick the one that dominates its time. Apply the AI-leverage compression **only** to the 🤖 lane - the other three lanes do not speed up because codegen got faster.
 
-Try jev first (`jev-judgment-points.md` point `estimate-eta.lane`, `--type Choice` over `AI` / `Env` / `Human` / `Verify`; state = the one-line subtask description, criteria = the four Covers cells above); confidence < 0.9 or unavailable → fall back to the table above.
+Try jev first via `.claude/scripts/jev-judge.py` (`jev-judgment-points.md` point `estimate-eta.lane`, `--type Choice` over `AI` / `Env` / `Human` / `Verify`; state = the one-line subtask description, criteria = the four Covers cells above); confidence < 0.9 or unavailable → fall back to the table above.
 
 ## Size Scale
 Rough buckets, no hour-precision:

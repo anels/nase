@@ -29,7 +29,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - Project-specific → `workspace/kb/projects/{repo}.md`
    - Cross-project (spans multiple repos) → `workspace/kb/cross-project/{topic}.md`
 
-   Try jev first for that four-way pick (`jev-judgment-points.md` point `kb-update.route-domain`, `--type Choice`, options `ops` / `general` / `projects` / `cross-project`; state = the topic name and the repos it touches); confidence < 0.9 or unavailable → pick it yourself from the four rules above. Create the file with a minimal header, add to `.domain-map.md`, then proceed.
+   Try jev first via `.claude/scripts/jev-judge.py` for that four-way pick (`jev-judgment-points.md` point `kb-update.route-domain`, `--type Choice`, options `ops` / `general` / `projects` / `cross-project`; state = the topic name and the repos it touches); confidence < 0.9 or unavailable → pick it yourself from the four rules above. Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
 2. Read the target KB file to understand current state.
 
@@ -49,7 +49,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - **Durable dated event:** append only when the date matters to a decision, incident, migration, or gotcha.
    - **No-op/status fact:** for unchanged HEAD, commit counts, scan status, or routine hygiene, write nothing.
    - **Unknown or follow-up:** omit it from the KB or route actionable work to `workspace/tasks/` or `workspace/efforts/`. Never write placeholders such as `FILL_IN`, `TBD`, or `TO_BE_FILLED`.
-   - Try jev first (`jev-judgment-points.md` point `kb-update.classify`, `--type Choice`, options `current-state` / `dated-event` / `no-op` / `follow-up`; state = a one-sentence summary of the knowledge plus whether the target section already covers it - not the entry body, which `jev-judge.py` truncates at 200 characters and would classify from a fragment); confidence < 0.9 or unavailable → fall back to the four labels above.
+   - Try jev first via `.claude/scripts/jev-judge.py` (`jev-judgment-points.md` point `kb-update.classify`, `--type Choice`, options `current-state` / `dated-event` / `no-op` / `follow-up`; state = a one-sentence summary of the knowledge plus whether the target section already covers it - not the entry body, which `jev-judge.py` truncates at 200 characters and would classify from a fragment); confidence < 0.9 or unavailable → fall back to the four labels above.
    - Apply `.claude/docs/kb-template.md -> Verification triad`. V2 and V3 are admission gates. If either fails, keep the evidence in the originating log, recap, report, or effort instead of the active KB.
 
 4. Build the proposed complete target file under `workspace/tmp/`. For current-state facts, edit the existing section in place. Use the dated format below only for durable events whose date is material:

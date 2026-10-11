@@ -52,7 +52,7 @@ depends on.
 
 ## Repair classes
 
-Try jev first for the class assignment (`jev-judgment-points.md` point `kb-review.repair-class`, `--type Choice`, options `decided` / `judgment-bearing` / `separately-gated` / `never-automatic`; state = the finding, its target path, and whether a credential or an out-of-`workspace/` path is involved); confidence < 0.9 or unavailable → classify it yourself against the four class definitions below.
+Try jev first via `.claude/scripts/jev-judge.py` for the class (`jev-judgment-points.md` point `kb-review.repair-class`, `--type Choice`, options `decided` / `judgment-bearing` / `separately-gated` / `never-automatic`; state = the finding, its path, and whether a credential or out-of-`workspace/` path is involved); confidence < 0.9 or unavailable → classify it yourself by the four definitions below.
 
 ### Decided - apply without asking
 

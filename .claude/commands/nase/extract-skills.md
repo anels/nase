@@ -38,7 +38,7 @@ List 1-3 candidates with one-line descriptions. Prioritize the intervention-gap 
 Every candidate must pass all three checks. There is no numeric score: a weighted rubric
 with no calibration source only dresses the same judgment up as arithmetic.
 
-Try jev first, one call per check (`.claude/docs/jev-judgment-points.md` points `extract-skills.reusable`, `extract-skills.non-obvious`, `extract-skills.self-contained`, each `--type Noul`; state = the candidate's one-line description plus the check's own pass/fail examples below); confidence < 0.9 or unavailable → judge the check yourself against those examples.
+Try jev first via `.claude/scripts/jev-judge.py`, one call per check (`.claude/docs/jev-judgment-points.md` points `extract-skills.reusable`, `extract-skills.non-obvious`, `extract-skills.self-contained`, each `--type Noul`; state = the candidate's one-line description plus the check's own pass/fail examples below); confidence < 0.9 or unavailable → judge the check yourself against those examples.
 
 - **Reusable** - will this come up again in future sessions, across different repos or tasks? A pattern that only applies to one specific codebase isn't worth extracting.
   - ✅ Pass: "How to resolve a diverged git worktree before onboarding" - could happen in any repo

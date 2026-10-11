@@ -34,7 +34,8 @@ set; `.claude/docs/jev-judgment-points.md` carries the same one.
     net_error:<class>        the connection failed; <class> is an exception class
                              name such as ConnectionRefusedError, never a message
     invalid_response[:<msg>] the body was not the documented answer shape
-    exception:<msg>          any other client-side failure
+    exception:<class>        any other client-side failure; <class> is an exception class
+                             name, never a message, which can quote the Authorization header
 """
 
 import argparse
@@ -100,7 +101,11 @@ def main():
     except ValueError as exc:
         unavailable(f"invalid_config:{exc}")
     endpoint = os.environ.get("NASE_JEV_ENDPOINT", DEFAULT_ENDPOINT)
-    if urllib.parse.urlparse(endpoint).scheme not in ("http", "https"):
+    try:
+        scheme = urllib.parse.urlparse(endpoint).scheme
+    except ValueError:
+        scheme = ""
+    if scheme not in ("http", "https"):
         unavailable("invalid_endpoint_scheme")
 
     # The API's ChoiceQuestion/ScoreQuestion/NoulQuestion schemas pin "type" to the
@@ -149,7 +154,7 @@ def main():
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         unavailable(f"invalid_response:{exc}")
     except Exception as exc:  # any client failure must degrade, not crash the caller
-        unavailable(f"exception:{exc}")
+        unavailable(f"exception:{type(exc).__name__}")
 
     answers = payload.get("answers") if isinstance(payload, dict) else None
     if not isinstance(answers, dict) or args.point not in answers:

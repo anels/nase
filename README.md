@@ -263,7 +263,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | `/nase:extract-skills` | Extract reusable problem-solving patterns from the current session into nase skills. Use after non-trivial work or for extract pattern, save technique, or capture workflow. |
 | `/nase:learn` | Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, deep dive, or article URL. |
 | `/nase:reflect` | Reflect on completed work and extract lessons. Use after a feature, bug fix, or debugging session, or for reflect, what went well, or post-mortem. |
-| `/nase:today` | Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context. Use for today, morning kickoff, daily plan, standup, or what should I work on. |
+| `/nase:today` | Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todo items. Use for today, morning kickoff, daily plan, standup, or what should I work on. |
 | `/nase:wrap-up` | Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, EOD, done for today, closing out, or summarize today. |
 
 ### Design & implementation
