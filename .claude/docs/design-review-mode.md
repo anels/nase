@@ -107,6 +107,8 @@ A doc reaching review has usually been through several edit rounds and carries c
 
 Apply the **same policy as `design-grill-mode.md` → Step 6.5** (auto-remove superseded wording / exact duplicates / session artifacts / dead-duplicate links / resolved `[NEEDS CLARIFICATION]`; list-only for judgment calls; never touch a MUST/constraint/SC/Risk/citation; flag value drifts rather than silently picking). Freshness repairs from Step 2 stay resolved. A separate stale claim with no evidence-backed replacement is a Step 4 issue, not cleanup.
 
+Also run the `Reconcile derived sections` paragraph of `design-grill-mode.md` Step 6.5 whenever an earlier grill or review round rewrote a decision in this doc.
+
 Then run the structural half, which prose cleanup cannot reach:
 
 ```bash

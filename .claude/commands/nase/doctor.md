@@ -22,6 +22,7 @@ Report each item as pass, warning, or fail with one concrete remediation.
 9. With `--deep`, run `python3 .claude/scripts/kb-hygiene-scan.py --workspace-scan --root . --json` and apply `.claude/docs/kb-staleness.md` to report KB structure, content, and access-staleness findings. This check is read-only and does not update timestamps.
 10. Run the narrow checks that exist in this checkout: `bash tests/hooks/test-claude-native-hooks.sh` for hook wiring, `bash tests/scripts/test-command-skill-size-budget.sh` for the command catalog, and `bash tests/check-canonical-pointers.sh` for pointer JSON. Do not claim full health unless `bash tests/check-all.sh` ran.
 11. Check Claude project state and flag missing local configuration or inaccessible optional integrations separately from repo defects.
+12. Report whether skills will route judgment points through Jev (`.claude/docs/jev-judgment-points.md`). Warn when `NASE_JEV=off` or `TYPESAFE_API_KEY` is unset (test with `[ -n "${TYPESAFE_API_KEY:-}" ]`; never print the value) and say that `.claude/scripts/jev-judge.py` then reports unavailable, so skills fall back to their own judgment. With `--deep`, also run one live probe, `python3 .claude/scripts/jev-judge.py --point doctor.probe --type Noul --criteria '{"yes":"the probe text is a test"}' --state '{"probe":"doctor"}'`, and report `available` or its `reason`. The probe state is constant text, so no workspace data leaves the machine.
 
 ## Output
 

@@ -39,7 +39,7 @@ for file layout, index shape, conflict check, and retrieve/list rules.
      ("add a term ... meaning ... in scope ...") -> **Define**
    - `update {term} scope:{label} = {definition}` -> **Update**
 
-   Try jev first for this classification (`.claude/docs/jev-judgment-points.md`,
+   Try jev first via `.claude/scripts/jev-judge.py` for this classification (`.claude/docs/jev-judgment-points.md`,
    point `terminology.action-parse`, `--type Choice`, criteria = the four
    actions above; state = the raw `$ARGUMENTS` string). Confidence < 0.9,
    missing, or unavailable -> match the patterns above yourself.

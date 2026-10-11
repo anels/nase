@@ -54,6 +54,11 @@ rc=$?
 if [ "$rc" = "0" ]; then pass "non-http(s) endpoint: exits 0, does not crash"; else fail "non-http(s) endpoint: exits 0 (got $rc): $out"; fi
 assert_contains "non-http(s) endpoint: reason is invalid_endpoint_scheme" <(printf '%s' "$out") '"reason": "invalid_endpoint_scheme"'
 
+out=$(run TYPESAFE_API_KEY=dummy 'NASE_JEV_ENDPOINT=http://[bad')
+rc=$?
+if [ "$rc" = "0" ]; then pass "unparseable endpoint: exits 0, does not crash"; else fail "unparseable endpoint: exits 0 (got $rc): $out"; fi
+assert_contains "unparseable endpoint: reason is invalid_endpoint_scheme" <(printf '%s' "$out") '"reason": "invalid_endpoint_scheme"'
+
 out=$(env -u TYPESAFE_API_KEY TYPESAFE_API_KEY=dummy python3 "$SCRIPT" \
   --point test.point --type Choice --criteria 'not-json' --state '{"a": "b"}' 2>/dev/null)
 rc=$?
@@ -118,13 +123,30 @@ else
   pass "net_error suffix must not carry errno text or punctuation"
 fi
 
+# A client failure that is not a network error must not quote its message: http.client
+# embeds the whole Authorization header in the text for a key with a control character,
+# and doctor prints this reason. The key below ends in a carriage return to trigger it.
+out=$(env -u NASE_JEV TYPESAFE_API_KEY=$'sk-leak-canary\r' NASE_JEV_ENDPOINT=http://127.0.0.1:1/systemone \
+  python3 "$SCRIPT" --point test.point --type Choice \
+  --criteria '{"a": "b"}' --state '{"a": "b"}')
+if printf '%s' "$out" | grep -q 'sk-leak-canary'; then
+  fail "the reason must not echo the API key (got: $out)"
+else
+  pass "the reason does not echo the API key"
+fi
+if printf '%s' "$out" | grep -Eq '"reason": "exception:[A-Za-z]+"'; then
+  pass "a client failure names an exception class, not a message"
+else
+  fail "a client failure names an exception class, not a message (got: $out)"
+fi
+
 # Every reason the script can emit is listed in its own docstring taxonomy, so a
 # new failure mode cannot ship undocumented. Read the docstring through the parser
 # rather than grepping the file: each reason is also a string literal at its own
 # `unavailable(...)` call site, so a whole-file grep passes with no taxonomy at all.
 docstring=$(python3 -c "import ast,sys;print(ast.get_docstring(ast.parse(open(sys.argv[1],encoding='utf-8').read())) or '')" "$SCRIPT")
 for reason in no_api_key disabled invalid_config invalid_endpoint_scheme \
-  "exception:bad_json" http_error timeout net_error invalid_response "exception:<msg>"; do
+  "exception:bad_json" http_error timeout net_error invalid_response "exception:<class>"; do
   if printf '%s' "$docstring" | grep -qF "$reason"; then
     pass "docstring taxonomy lists $reason"
   else
@@ -139,6 +161,24 @@ if [ -n "$default_timeout" ] && [ "$default_timeout" -ge 1500 ]; then
   pass "default timeout ($default_timeout ms) leaves room for a real call"
 else
   fail "default timeout is ${default_timeout:-unset} ms; a real Jev call takes ~1100 ms"
+fi
+
+# A call site that only names the doc leaves the agent guessing how to run Jev, and
+# a guess like `command -v jev` reports "not installed" for a working setup. Every
+# tracked `Try jev first` line must name `.claude/scripts/jev-judge.py`, and doctor must
+# probe it. The owner doc describes the call-site pattern and is not a call site itself.
+sites=$(git -C "$ROOT" grep -n -i 'try jev first' -- .claude ':!.claude/docs/jev-judgment-points.md')
+sites_rc=$?
+bare=$(printf '%s\n' "$sites" | grep -v -F '.claude/scripts/jev-judge.py' || true)
+if [ "$sites_rc" -eq 0 ] && [ -z "$bare" ]; then
+  pass "every Try jev first call site names jev-judge.py"
+else
+  fail "Try jev first call sites missing jev-judge.py (git grep exit $sites_rc): $(printf '%s' "$bare" | cut -d: -f1,2 | tr '\n' ' ')"
+fi
+if grep -q -F -- '--point doctor.probe' "$ROOT/.claude/commands/nase/doctor.md"; then
+  pass "doctor probes jev-judge.py"
+else
+  fail "doctor probes jev-judge.py"
 fi
 
 if [ "$failures" -gt 0 ]; then

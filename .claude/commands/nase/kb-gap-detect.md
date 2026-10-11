@@ -79,7 +79,7 @@ For each confirmed gap:
 - Cross-repo / general pattern → pick the closest existing `general/*.md` from `.domain-map.md`; fallback `workspace/kb/general/_inbox.md` (create if missing)
 - Ops / runbook topic → closest existing `ops/*.md`; fallback `workspace/kb/ops/_inbox.md`
 
-Try jev first for the three-way routing above (`jev-judgment-points.md` point `kb-gap-detect.route-target`, `--type Choice`, options `projects` / `general` / `ops`; state = the topic key plus its evidence snippets); confidence < 0.9 or unavailable → route it yourself with the three rules above.
+Try jev first via `.claude/scripts/jev-judge.py` for the three-way routing above (`jev-judgment-points.md` point `kb-gap-detect.route-target`, `--type Choice`, options `projects` / `general` / `ops`; state = the topic key plus its evidence snippets); confidence < 0.9 or unavailable → route it yourself with the three rules above.
 
 Confidence is a lookup on the marker mix, not a judgment, so it takes no jev point:
 - `high` - marker mix includes `sme_teach` OR `post_error`
