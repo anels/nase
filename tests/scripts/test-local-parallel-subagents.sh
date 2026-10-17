@@ -61,6 +61,10 @@ do
 done
 
 assert_contains "KB researcher includes lessons source" ".claude/agents/nase-context-kb-researcher.md" "workspace/tasks/lessons.md"
+assert_contains "contract defines fan-out slices" ".claude/docs/subagent-output-contract.md" "## Fan-out slices"
+assert_contains "contract briefs slices for facts only" ".claude/docs/subagent-output-contract.md" "facts only"
+assert_contains "onboard points to fan-out slice rules" ".claude/commands/nase/onboard.md" "Fan-out slices"
+assert_contains "kb-review deep scan points to fan-out slice rules" ".claude/docs/kb-review-deep-scan.md" "Fan-out slices"
 
 assert_contains "design uses KB researcher" ".claude/commands/nase/design.md" "nase-context-kb-researcher"
 assert_contains "design uses repo scanner" ".claude/commands/nase/design.md" "nase-repo-state-scanner"

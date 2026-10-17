@@ -34,6 +34,7 @@ EXECUTE_TIMEOUT_EXIT = 11
 GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 30
 MANIFEST_VERSION = 1
 MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+READ_HTTP_METHODS = {"GET", "HEAD"}
 AZURE_MUTATING_VERBS = {
     "add",
     "apply",
@@ -96,6 +97,36 @@ AZURE_SENSITIVE_READ_RE = re.compile(
     r"passwords?|publishing[-_]?profiles?|secrets?|tokens?"
     r")(?:$|[\s/_.=?&-])"
 )
+AZURE_GLOBAL_NAMES = AZURE_GLOBAL_OPTIONS | AZURE_GLOBAL_FLAGS
+# Per command: (method flags, every flag a read may carry). A flag outside the set, or an
+# abbreviation of one, is not provably a read, so the call needs a manifest.
+AZURE_HTTP_FLAGS = {
+    ("rest",): (
+        ("--method", "-m"),
+        {"--method", "-m", "--url", "--uri", "--resource", "--uri-parameters"}
+        | {"--skip-authorization-header"}
+        | AZURE_GLOBAL_NAMES,
+    ),
+    ("devops", "invoke"): (
+        ("--http-method",),
+        {
+            "--http-method",
+            "--accept-media-type",
+            "--api-version",
+            "--area",
+            "--detect",
+            "--org",
+            "--organization",
+            "--query-parameters",
+            "--resource",
+            "--route-parameters",
+        }
+        | AZURE_GLOBAL_NAMES,
+    ),
+}
+# `secret list` returns names only, so it is the one secret-path read the guard allows.
+AZURE_SECRET_NAME_LISTING = ["keyvault", "secret", "list"]
+AZURE_DATAFACTORY_RUN_RESOURCES = {"pipeline-run", "trigger-run"}
 GITHUB_AUTH_ENV_VARS = {
     "GH_REPO",
     "GH_TOKEN",
@@ -140,6 +171,59 @@ def azure_command_path(words: list[str]) -> list[str]:
             break
         path.append(word)
     return path
+
+
+def azure_http_flags(
+    command_path: list[str],
+) -> tuple[tuple[str, ...], set[str]] | None:
+    """Return (method flags, other read flags) for `az rest` and `az devops invoke`."""
+    for prefix, flags in AZURE_HTTP_FLAGS.items():
+        if tuple(command_path[: len(prefix)]) == prefix:
+            return flags
+    return None
+
+
+def azure_secret_listing_options(words: list[str]) -> list[str]:
+    """Drop the command path and the vault name, which are not secret-bearing options."""
+    options = list(words)
+    for word in AZURE_SECRET_NAME_LISTING:
+        options.remove(word)
+    kept: list[str] = []
+    skip_value = False
+    for word in options:
+        if skip_value:
+            skip_value = False
+        elif word == "--vault-name":
+            skip_value = True
+        elif not word.startswith("--vault-name="):
+            kept.append(word)
+    return kept
+
+
+def azure_http_read_only(
+    argv: list[str], flags: tuple[tuple[str, ...], set[str]]
+) -> bool:
+    """`az rest` and `az devops invoke` send GET unless a method flag says otherwise."""
+    method_flags, allowed = flags
+    names = {token.split("=", 1)[0] for token in argv[1:] if token.startswith("-")}
+    if not names <= allowed:
+        return False
+    methods = option_values(argv[1:], *method_flags)
+    if names & set(method_flags) and not methods:
+        return False
+    return all(method.upper() in READ_HTTP_METHODS for method in methods)
+
+
+def azure_datafactory_read_only(command_path: list[str]) -> bool:
+    """Only run history is readable, because definitions can hold credentials."""
+    return (
+        len(command_path) > 2
+        and command_path[1] in AZURE_DATAFACTORY_RUN_RESOURCES
+        and any(
+            word in AZURE_READ_VERBS or word.startswith("query-by-")
+            for word in command_path[2:]
+        )
+    )
 
 
 def terraform_subcommand(words: list[str]) -> str | None:
@@ -222,10 +306,9 @@ def mutation_system(argv: list[str]) -> str | None:
         if not words:
             return None
         command_path = azure_command_path(words)
-        if command_path and command_path[0] == "rest":
-            method = option_value(argv[2:], "--method")
-            if method and method.upper() in MUTATING_HTTP_METHODS:
-                return "azure"
+        http_flags = azure_http_flags(command_path)
+        if http_flags and not azure_http_read_only(argv, http_flags):
+            return "azure"
         if command_path[:2] == ["pipelines", "run"]:
             return "azure"
         if any(word in AZURE_MUTATING_VERBS for word in command_path):
@@ -1293,7 +1376,7 @@ def known_safe_external_command(argv: list[str]) -> bool:
                 for name in ("-f", "-F", "--raw-field", "--field", "--input")
             )
             return not has_payload and all(
-                method.upper() in {"GET", "HEAD"} for method in methods
+                method.upper() in READ_HTTP_METHODS for method in methods
             )
         return len(words) >= 2 and words[1] in {
             "checks",
@@ -1309,13 +1392,22 @@ def known_safe_external_command(argv: list[str]) -> bool:
             return True
         if not command_path:
             return all(word in AZURE_GLOBAL_FLAGS for word in words)
+        if command_path[0] == "datafactory" and not azure_datafactory_read_only(
+            command_path
+        ):
+            return False
+        if command_path == AZURE_SECRET_NAME_LISTING:
+            options = azure_secret_listing_options(words)
+            return not AZURE_SENSITIVE_READ_RE.search(" ".join(options))
         if AZURE_SENSITIVE_READ_RE.search(" ".join(words)):
             return False
         if command_path[0] == "version":
             return True
-        if command_path[0] == "rest":
-            method = option_value(argv[2:], "--method")
-            return method is not None and method.upper() in {"GET", "HEAD"}
+        http_flags = azure_http_flags(command_path)
+        if http_flags:
+            return azure_http_read_only(argv, http_flags)
+        if command_path[0] == "datafactory":
+            return True
         return command_path[0] in AZURE_SAFE_READ_GROUPS and any(
             word in AZURE_READ_VERBS for word in command_path[1:]
         )

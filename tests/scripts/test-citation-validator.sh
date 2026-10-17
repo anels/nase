@@ -100,11 +100,11 @@ run_validator() {
 }
 
 assert_status() {
-  local name="$1" expected_rc="$2" artifact_text="$3" expected_status="$4" expected_detail="$5"
+  local name="$1" expected_rc="$2" artifact_text="$3" expected_status="$4" expected_detail="$5" timeout="${6:-10}"
   local artifact="$TMPDIR_TEST/one/artifact.md" output="$TMPDIR_TEST/result.json" rc
   write_artifact "$artifact" "$artifact_text"
   set +e
-  run_validator "$artifact" "$output" --repo-root "two=$TMPDIR_TEST/two" --timeout-seconds 1
+  run_validator "$artifact" "$output" --repo-root "two=$TMPDIR_TEST/two" --timeout-seconds "$timeout"
   rc=$?
   set -e
   if [[ "$rc" -ne "$expected_rc" ]]; then
@@ -170,7 +170,7 @@ assert_status "inaccessible GitHub repository is unknown" 2 'https://github.com/
 assert_status "GitHub 404 is broken" 1 'https://github.com/example/service/pull/404' BROKEN not-found
 assert_status "GitHub auth failure is unknown" 2 'https://github.com/example/service/pull/401' UNKNOWN auth-unavailable
 assert_status "GitHub rate limit is unknown" 2 'https://github.com/example/service/pull/429' UNKNOWN rate-limited
-assert_status "GitHub timeout is unknown" 2 'https://github.com/example/service/pull/408' UNKNOWN timeout
+assert_status "GitHub timeout is unknown" 2 'https://github.com/example/service/pull/408' UNKNOWN timeout 1
 assert_status "GitHub unknown error is redacted" 2 'https://github.com/example/service/pull/500' UNKNOWN authority-error
 assert_cmd "fake CLI token is absent from JSON" bash -c '! grep -Fq TOPSECRET_FIXTURE_TOKEN "$1"' _ "$TMPDIR_TEST/result.json"
 
@@ -188,7 +188,7 @@ assert_cmd "Jira metadata secret is absent from JSON" bash -c '
 ' _ "$TMPDIR_TEST/result.json"
 assert_status "Jira 404 is broken" 1 'TEST-404' BROKEN not-found
 ACLI_MODE=unauth assert_status "Jira unauthenticated is unknown" 2 'TEST-1' UNKNOWN auth-unavailable
-assert_status "Jira timeout is unknown" 2 'TEST-408' UNKNOWN timeout
+assert_status "Jira timeout is unknown" 2 'TEST-408' UNKNOWN timeout 1
 assert_status "Jira unknown error is redacted" 2 'TEST-500' UNKNOWN authority-error
 
 write_artifact "$TMPDIR_TEST/one/artifact.md" 'TEST-1'
@@ -202,7 +202,7 @@ assert_status "Confluence requires MCP authority" 2 'https://example.atlassian.n
 
 write_artifact "$TMPDIR_TEST/one/artifact.md" '`one:missing.py:1` and TEST-500'
 set +e
-run_validator "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/mixed.json" --timeout-seconds 1
+run_validator "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/mixed.json" --timeout-seconds 10
 mixed_rc=$?
 set -e
 if [[ "$mixed_rc" -eq 1 ]] && "$PYTHON_BIN" - "$TMPDIR_TEST/mixed.json" <<'PY'

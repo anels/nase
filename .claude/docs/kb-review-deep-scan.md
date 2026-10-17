@@ -6,6 +6,8 @@
 >
 > Mode never narrows discovery. Every check below runs in `--report-only` and `--repair` exactly as
 > it runs by default; only what gets *written* changes.
+>
+> When slices are dispatched for this review, follow `.claude/docs/subagent-output-contract.md → Fan-out slices`: slices return facts, and classification plus claim re-checks stay on the main thread.
 
 ### Content and relationships
 

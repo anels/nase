@@ -1,7 +1,7 @@
 ---
 name: nase:terminology
 description: "Define, update, or look up scope-aware terminology (same term can mean different things per repo/domain), cross-linked. Use for what does X mean, add a term, or glossary entry; use kb-update/learn otherwise."
-argument-hint: "<term>|list [scope:<label>]|define/update <term> scope:<label>=<def>"
+argument-hint: "<term> [source:private]|list [scope:<l>]|define/update <term> scope:<l>=<def>"
 category: Knowledge base
 ---
 
@@ -34,7 +34,7 @@ for file layout, index shape, conflict check, and retrieve/list rules.
 
 1. **Parse $ARGUMENTS into an action:**
    - Empty, or `list [scope:{label}]` -> **List**
-   - `{term}` alone, or `get`/`show {term}` `[scope:{label}]` -> **Retrieve**
+   - `{term}` alone, or `get`/`show {term}` `[scope:{label}]` `[source:private]` -> **Retrieve**
    - `define {term} scope:{label} = {definition}`, or natural language
      ("add a term ... meaning ... in scope ...") -> **Define**
    - `update {term} scope:{label} = {definition}` -> **Update**
@@ -44,7 +44,7 @@ for file layout, index shape, conflict check, and retrieve/list rules.
    actions above; state = the raw `$ARGUMENTS` string). Confidence < 0.9,
    missing, or unavailable -> match the patterns above yourself.
 
-   Extract `{term}` (required), `scope:{label}` (freeform, defaults to
+   The flags `scope:{label}` and `source:private` are trailing tokens. `{term}` is the text before the first flag, so a flag never folds into the term. For define and update, read flags only before `=`; the text after `=` is the definition verbatim. In a natural-language request, treat `source:private` as a flag only when it is the literal token. `source:private` only changes Retrieve research (Step 3a); define and update ignore it. Strip `source:private` before the jev call. Extract `{term}` (required), `scope:{label}` (freeform, defaults to
    `general` when a define/update omits it - never guess a more specific
    label), and `{definition}` (everything after `=`, or the
    natural-language equivalent). If the term or definition can't be
@@ -104,7 +104,9 @@ for file layout, index shape, conflict check, and retrieve/list rules.
        the term. These stay in the main thread; they need live connector
        context.
     4. WebSearch/WebFetch for public/vendor documentation, as a last
-       resort.
+       resort. Skip this step when `source:private` is set (passed by
+       `.claude/docs/terminology-discovery.md`), so an internal name never
+       reaches a public search query.
 
     Sources 1 and 2 are sweeps whose answer is one sourced definition,
     not the files they read, so they go to subagents; run them in
@@ -120,6 +122,7 @@ for file layout, index shape, conflict check, and retrieve/list rules.
       source, rather than one blended definition.
     - Nothing credible turns up anywhere -> fall back to:
       `No term found for "{term}" (checked KB, local repos, Confluence/Slack, and the web). Run /nase:terminology define {term} scope:{label} = {definition} to add it.`
+      Drop "and the web" from that line when `source:private` skipped it.
     - Something credible turns up -> continue into Define Steps 4-6,
       using the researched text as `{definition}` and its source as a
       `**See also:**` link (or a `**Tags:**` note when the source has no

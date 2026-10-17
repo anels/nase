@@ -419,6 +419,42 @@ expect_guard_rc "Azure access-token output is blocked" 10 "az account get-access
 expect_guard_rc "raw Azure login is blocked" 10 "az login"
 expect_guard_rc "raw Azure logout is blocked" 10 "az logout"
 expect_guard_rc "Azure account show remains read-only" 0 "az account show"
+expect_guard_rc "az devops invoke defaults to GET and stays read-only" 0 "az devops invoke --area build --resource timeline --route-parameters project=Analytics buildId=1 --org https://dev.azure.com/example --api-version 7.1"
+expect_guard_rc "az devops invoke explicit GET stays read-only" 0 "az devops invoke --area build --resource logs --http-method get --org https://dev.azure.com/example"
+expect_guard_rc "az devops invoke POST is blocked" 10 "az devops invoke --area build --resource builds --http-method POST --in-file body.json --org https://dev.azure.com/example"
+expect_guard_rc "az devops invoke with a body file is blocked" 10 "az devops invoke --area build --resource builds --in-file body.json --org https://dev.azure.com/example"
+expect_guard_rc "az rest without --method defaults to GET" 0 "az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/example/_apis/build/builds/1"
+expect_guard_rc "az rest short -m PATCH is blocked" 10 "az rest -m patch --url https://example.invalid"
+expect_guard_rc "az rest with a body and no method is blocked" 10 "az rest --url https://example.invalid --body {}"
+expect_guard_rc "az rest global --output json stays read-only" 0 "az rest --url https://example.invalid --output json"
+expect_guard_rc "az rest with a trailing --method and no value is blocked" 10 "az rest --url https://example.invalid --method"
+expect_guard_rc "az rest attached -mPOST is blocked" 10 "az rest --url https://example.invalid -mPOST"
+expect_guard_rc "az rest --method=POST is blocked" 10 "az rest --url https://example.invalid --method=POST"
+expect_guard_rc "az rest short -b body is blocked" 10 "az rest --url https://example.invalid -b {}"
+expect_guard_rc "az rest OPTIONS is blocked" 10 "az rest --url https://example.invalid --method options"
+expect_guard_rc "az rest method-override header is blocked" 10 "az rest --url https://example.invalid --headers X-HTTP-Method-Override=POST"
+expect_guard_rc "az rest any --headers is blocked" 10 "az rest --url https://example.invalid --headers X-HTTP-Method=PUT"
+expect_guard_rc "az devops invoke --http-method=POST is blocked" 10 "az devops invoke --area build --resource builds --http-method=POST"
+expect_guard_rc "az rest --output-file is blocked" 10 "az rest --url https://example.invalid --output-file out.json"
+expect_guard_rc "az devops invoke --out-file is blocked" 10 "az devops invoke --area build --resource builds --out-file out.json"
+expect_guard_rc "az rest abbreviated --metho is blocked" 10 "az rest --url https://example.invalid --metho post --bod {}"
+expect_guard_rc "az rest abbreviated --metho GET is blocked" 10 "az rest --url https://example.invalid --metho get"
+expect_guard_rc "az devops invoke abbreviated flags are blocked" 10 "az devops invoke --area build --resource builds --http-meth post --in-fi body.json"
+expect_guard_rc "Azure Key Vault secret listing (names only) stays read-only" 0 "az keyvault secret list --vault-name example -o table"
+expect_guard_rc "Azure Key Vault secret value download is blocked" 10 "az keyvault secret download --vault-name example --name sample --file out.txt"
+expect_guard_rc "Azure Key Vault secret delete is blocked" 10 "az keyvault secret delete --vault-name example --name sample"
+expect_guard_rc "Azure Data Factory pipeline-run show stays read-only" 0 "az datafactory pipeline-run show --factory-name example -g rg --run-id 1"
+expect_guard_rc "Azure Data Factory pipeline-run query-by-factory stays read-only" 0 "az datafactory pipeline-run query-by-factory --factory-name example -g rg --last-updated-after 2026-01-01 --last-updated-before 2026-01-02"
+expect_guard_rc "Azure Data Factory activity-run output is blocked (can hold fetched secrets)" 10 "az datafactory activity-run query-by-pipeline-run --factory-name example -g rg --run-id 1 --last-updated-after 2026-01-01 --last-updated-before 2026-01-02"
+expect_guard_rc "Azure Data Factory factory list is blocked" 10 "az datafactory list -g rg"
+expect_guard_rc "Azure Data Factory trigger-run rerun is blocked" 10 "az datafactory trigger-run rerun --factory-name example -g rg --trigger-name t --run-id 1"
+expect_guard_rc "Azure Data Factory pipeline definition show is blocked (can hold inline credentials)" 10 "az datafactory pipeline show --factory-name example -g rg -n sample"
+expect_guard_rc "Azure Data Factory linked-service show is blocked (can print connection strings)" 10 "az datafactory linked-service show --factory-name example -g rg -n BlobStore"
+expect_guard_rc "Azure Data Factory pipeline run is blocked" 10 "az datafactory pipeline create-run --factory-name example -g rg -n sample"
+expect_guard_rc "Azure Data Factory pipeline delete is blocked" 10 "az datafactory pipeline delete --factory-name example -g rg -n sample"
+expect_guard_rc "Azure Key Vault secret listing allows a vault named like a secret" 0 "az keyvault secret list --vault-name prod-secrets"
+expect_guard_rc "Azure Key Vault secret listing blocks a sensitive value even when the vault shares its name" 10 "az keyvault secret list --vault-name secrets --query secrets"
+expect_guard_rc "Azure Key Vault secret listing with a sensitive flag is blocked" 10 "az keyvault secret list --vault-name example --query secrets"
 expect_guard_rc "Azure Key Vault secret output is blocked" 10 "az keyvault secret show --vault-name example --name sample"
 expect_guard_rc "Azure storage key output is blocked" 10 "az storage account keys list --account-name example"
 expect_guard_rc "Azure registry credential output is blocked" 10 "az acr credential show --name example"
@@ -686,6 +722,17 @@ expect_rc "terraform output named import stays read-only" 2 \
 
 expect_rc "az acr show stays read-only (not a mutation)" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "read" -- az acr show --name example
+
+expect_rc "az rest short -m PATCH is classified as a mutation" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "write" -- az rest -m patch --url https://example.invalid
+expect_rc "az devops invoke --http-method POST is classified as a mutation" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "write" -- az devops invoke --area build --resource builds --http-method POST
+expect_rc "az rest with a body and no method is classified as a mutation" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "write" -- az rest --url https://example.invalid --body {}
+expect_rc "az rest abbreviated method is classified as a mutation" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "write" -- az rest --url https://example.invalid --metho post
+expect_rc "az rest GET is not a mutation" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "read" -- az rest --url https://example.invalid
 
 manifest=$(prepare_action)
 python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
