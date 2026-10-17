@@ -85,6 +85,8 @@ Example: "The current approach handles X because [reason]. Changing to Y would [
 - design-intent confirmation (`{property} is consumed at {file}:{line}`)
 - planning-doc redirect (`captured as follow-up in {Jira link}`)
 
+A decline rationale ("this is intentional because X") is a claim about a mechanism. Trace X on `origin/{pr_branch}` plus this round's accepted fixes before drafting, and name that ref beside the claim, so the Phase 7.5 gate is the second check, not the first.
+
 One reply per declined thread, ≤3 lines each. Do not batch declines under blanket "out of scope" / "scope-creep" wording.
 
 ### For reply-only threads:
