@@ -177,7 +177,6 @@ COMMIT_HASHES=""
 if [ -n "$REPOS" ]; then
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue
-    git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || continue
     # `%H %s` gives full hash + subject — single git call serves both
     # display (truncated to short hash on output) and dedup fingerprint.
     REPO_LOG=$(git -C "$repo" log --since="midnight" --format='%H %s' --branches 2>/dev/null || true)
@@ -214,18 +213,6 @@ if [ -n "$REPOS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Remind if today's log has no session notes
-# ---------------------------------------------------------------------------
-if [ -f "$COMMIT_LOG" ]; then
-  SESSION_CONTENT=$(awk '/^## Sessions/{found=1; next} /^## /{found=0} found && /[^[:space:]]/{print; exit}' "$COMMIT_LOG")
-  if [ -z "$SESSION_CONTENT" ]; then
-    echo "[stop-backup] WARNING: no session notes in today's log — update workspace/logs/$COMMIT_DATE.md before closing"
-  fi
-else
-  echo "[stop-backup] WARNING: no daily log for today — consider running /nase:wrap-up"
-fi
-
-# ---------------------------------------------------------------------------
 # Minimum-interval throttle
 # Format: backup_min_interval_minutes: N in workspace/config.md. Default: 30.
 # 0 disables the throttle.
@@ -238,7 +225,7 @@ fi
 #
 # Checked before the snapshot so a throttled run skips the entire cost: the
 # live-tree scan, the workspace copy, the manifest, and the archive. The cheap
-# bookkeeping above (commit summary, session-note reminder) still runs.
+# commit summary above still runs.
 #
 # Anchored on the newest surviving archive's filename timestamp rather than on
 # `.nase-backup-state`: if retention has expired or storage has lost every

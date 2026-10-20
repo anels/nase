@@ -81,6 +81,8 @@ ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || true)
 ACTIONLINT_SKIP='SKIP: actionlint is not installed locally; GitHub Actions still runs this gate.'
 RUFF_BIN=$(command -v ruff 2>/dev/null || true)
 RUFF_SKIP='SKIP: ruff is not installed locally (pip install ruff); GitHub Actions still runs this gate.'
+VERMIN_BIN=$(command -v vermin 2>/dev/null || true)
+VERMIN_SKIP='SKIP: vermin is not installed locally (pip install vermin); GitHub Actions still runs this gate.'
 
 # Every tracked shell file. `bash -n` and shellcheck read the same list so a new
 # script cannot land in one gate and miss the other.
@@ -275,7 +277,7 @@ Modes:
 
 Major gate groups:
   syntax: bash hooks/scripts, Python helpers, settings JSON
-  lint: ruff over Python, shellcheck over every shell file, actionlint - each when installed
+  lint: ruff over Python, vermin for the 3.10 floor, shellcheck over every shell file, actionlint - each when installed
   catalog: command_catalog.py --check-readme
   wiring: hook registrations and workspace validation
   docs: shared-doc reference integrity, canonical pointer wording, KB domain-map contract, skill doctrine, and advisory skill trigger overlap
@@ -333,6 +335,19 @@ run_ruff() {
     run_gate "ruff check ${#skill_py[@]} workspace skill script(s)" \
       "$RUFF_BIN" check --no-cache "${skill_py[@]}"
   fi
+}
+
+run_python_floor() {
+  section "python version floor"
+  if [[ -z "$VERMIN_BIN" ]]; then
+    printf '%s\n' "$VERMIN_SKIP"
+    return 0
+  fi
+  # CLAUDE.md documents python3 3.10+. ruff's `target-version` cannot see a stdlib API
+  # that is missing on 3.10 (`hashlib.file_digest`, `datetime.UTC`), so a 3.11-only call
+  # would pass every other gate here and fail on the first 3.10 machine.
+  run_gate "vermin --target=3.10- over shipped Python" \
+    "$VERMIN_BIN" --target=3.10- --violations --no-tips .claude/scripts tests/lib
 }
 
 run_json() {
@@ -604,6 +619,7 @@ run_fast() {
   run_bash_syntax
   run_python_syntax
   run_ruff
+  run_python_floor
   run_json
   run_actionlint
   run_hook_wiring
@@ -623,6 +639,7 @@ run_full() {
   run_bash_syntax
   run_python_syntax
   run_ruff
+  run_python_floor
   run_json
   run_shellcheck_scripts
   run_actionlint

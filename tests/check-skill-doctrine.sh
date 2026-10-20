@@ -655,6 +655,11 @@ allowed = {
     "effort",
     "context",
     "agent",
+    # Claude-native, like the rest: a command that only a human should trigger
+    # (restore, kb-merge, the reporting commands) sets this so its description
+    # stops sitting in every request's context. The skill side has always
+    # allowed it; the command side now matches.
+    "disable-model-invocation",
 }
 
 hits = []

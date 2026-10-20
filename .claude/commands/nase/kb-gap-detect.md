@@ -3,6 +3,7 @@ name: nase:kb-gap-detect
 description: "Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries."
 argument-hint: "[--days N] [--since D] [--until D] [--repo NAME] [--auto]"
 category: Knowledge base
+disable-model-invocation: true
 ---
 
 Detect knowledge-base gaps by mining daily logs + lessons for repeated questions and learnings that aren't yet captured in the KB.

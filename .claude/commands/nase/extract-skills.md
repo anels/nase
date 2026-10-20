@@ -3,6 +3,7 @@ name: nase:extract-skills
 description: "Extract reusable problem-solving patterns from the current session into nase skills. Use after non-trivial work or for extract pattern, save technique, or capture workflow."
 argument-hint: "[session notes or topic]"
 category: Learning & reflection
+disable-model-invocation: true
 ---
 
 Captured patterns make future sessions easier to repeat - don't skip this after non-trivial sessions.

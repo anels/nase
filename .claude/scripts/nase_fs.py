@@ -21,9 +21,16 @@ def sha256_bytes(data: bytes) -> str:
 
 
 def sha256_file(path: pathlib.Path | str) -> str:
-    """Digest a file without loading it whole; archives here reach hundreds of megabytes."""
+    """Digest a file without loading it whole; archives here reach hundreds of megabytes.
+
+    Chunked on purpose: `hashlib.file_digest` needs Python 3.11 and this repo
+    supports 3.10.
+    """
+    digest = hashlib.sha256()
     with open(path, "rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def fsync_dir(path: pathlib.Path | str) -> None:

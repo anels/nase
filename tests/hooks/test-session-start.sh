@@ -69,7 +69,7 @@ mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" "$repo/workspace/logs" \
   "$repo/workspace/skills" "$repo/workspace/kb/general"
 git -C "$repo" init -q
 cp "$HOOK" "$repo/.claude/hooks/session-start.sh"
-stage_scripts "$repo/.claude/scripts" workspace-archive.py
+stage_scripts "$repo/.claude/scripts" workspace-archive.py sync-workspace-skills.py
 printf '%s\n' '2026-05-28T00:00:00 [WARNING] backup target unavailable' > "$repo/workspace/logs/.backup-status"
 printf 'backup-target=%s\n' "$fixture/backups" > "$repo/.local-paths"
 cat > "$repo/workspace/kb/general/tech-trends.md" <<'TRENDS'
@@ -134,6 +134,29 @@ description: Unsupported name.
 This must not generate a wrapper.
 SKILL
 
+cat > "$repo/workspace/skills/listed-tools.md" <<'SKILL'
+---
+description: Skill with two list-valued tool keys.
+allowed-tools:
+  - Read
+  - Bash
+
+disallowed-tools:
+  - Edit
+---
+
+Listed tools.
+SKILL
+
+cat > "$repo/workspace/skills/.hidden-leftover.md" <<'SKILL'
+---
+description: Hidden file, not a skill.
+---
+
+Leftover.
+SKILL
+mkdir -p "$repo/workspace/skills/dir-leftover.md"
+
 mkdir -p "$repo/.claude/commands/nase/workspace"
 mkdir -p "$repo/.claude/skills/playwright-cli" "$repo/.claude/skills/nase-workspace-orphan"
 cat > "$repo/.claude/commands/nase/workspace/long-desc.md" <<'WRAPPER'
@@ -147,6 +170,18 @@ Read `workspace/skills/long-desc.md` and follow every step exactly as written.
 $ARGUMENTS
 WRAPPER
 touch -t 299901010000 "$repo/.claude/commands/nase/workspace/long-desc.md"
+# A wrapper whose source skill no longer exists. The sync removes it, so a
+# command the model can no longer read never keeps a stale entry in the list.
+cat > "$repo/.claude/commands/nase/workspace/ghost.md" <<'WRAPPER'
+---
+name: nase:workspace:ghost
+description: "Wrapper for a source skill that is gone."
+---
+
+Read `workspace/skills/ghost.md` and follow every step exactly as written.
+
+$ARGUMENTS
+WRAPPER
 cat > "$repo/.claude/skills/playwright-cli/SKILL.md" <<'SKILL'
 ---
 description: Hand-written local skill.
@@ -185,6 +220,23 @@ else
   fail=$((fail + 1))
 fi
 
+listed_wrapper="$repo/.claude/commands/nase/workspace/listed-tools.md"
+if [ -f "$listed_wrapper" ]; then
+  assert_equals "list keys are forwarded without a blank line between them" \
+    "$(sed -n '/^allowed-tools:/,/^disallowed-tools:/p' "$listed_wrapper")" \
+    "$(printf 'allowed-tools:\n  - Read\n  - Bash\ndisallowed-tools:')"
+else
+  printf 'FAIL  list-key skill wrapper generated\n' >&2
+  fail=$((fail + 1))
+fi
+
+leftover_ok=1
+for leftover in .hidden-leftover dir-leftover; do
+  [ -e "$repo/.claude/commands/nase/workspace/$leftover.md" ] && leftover_ok=0
+  grep -qF "$leftover" <<<"$out" && leftover_ok=0
+done
+assert_equals "hidden files and directories under skills/ are skipped silently" "$leftover_ok" "1"
+
 wrapper="$repo/.claude/commands/nase/workspace/read-only.md"
 if [ -f "$wrapper" ]; then
   printf 'PASS  workspace wrapper generated\n'
@@ -195,6 +247,9 @@ if [ -f "$wrapper" ]; then
   assert_contains "list disallowed-tools key forwarded" "$content" "disallowed-tools:"
   assert_contains "list disallowed-tools Bash forwarded" "$content" "  - Bash"
   assert_contains "list disallowed-tools Edit forwarded" "$content" "  - Edit"
+  assert_contains "wrapper points back at the source skill" "$content" \
+    'Read `workspace/skills/read-only.md` and follow every step exactly as written.'
+  assert_contains "wrapper forwards the arguments placeholder" "$content" '$ARGUMENTS'
   assert_equals "workspace wrapper mode is readable" "$(file_mode "$wrapper")" "644"
 else
   printf 'FAIL  workspace wrapper generated\n' >&2
@@ -231,6 +286,14 @@ if [ ! -e "$repo/.claude/commands/nase/workspace/Unsafe_Name.md" ]; then
   pass=$((pass + 1))
 else
   printf 'FAIL  unsafe workspace skill name is skipped\n' >&2
+  fail=$((fail + 1))
+fi
+
+if [ ! -e "$repo/.claude/commands/nase/workspace/ghost.md" ]; then
+  printf 'PASS  orphaned wrapper without a source skill is removed\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  orphaned wrapper without a source skill is removed\n' >&2
   fail=$((fail + 1))
 fi
 

@@ -29,6 +29,8 @@ jobs:
           # The gate skips silently when ruff is off PATH, so CI would stay green
           # with the lint never run. Prove the install landed somewhere callable.
           ruff --version
+          pipx install vermin==1.9.2
+          vermin --version
 
       - name: Full local validation gate
         run: bash tests/check-all.sh

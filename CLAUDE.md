@@ -4,7 +4,7 @@
 
 # AI Engineer Operating Manual
 
-**What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere (see `workspace/context.md`).
+**What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere, with their paths in `.local-paths`. Read `workspace/context.md` only for the Workspace Boundary Policy or project context.
 
 **Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. The fsd/address-comments verification gates run one fresh-context read-only verifier subagent; that reviewer is local, so those gates have no availability branch and are never skipped.
 
@@ -42,7 +42,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Put one-off artifacts under `workspace/tmp/`.
 
 ### Session Lifecycle
-- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. A hook line prefixed with its own name (`[session-start]`, `[stop-backup]`, `[pre-compact]`, `[prose-lint-guard]`) is meant for the user: surface it. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
+- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. A hook line prefixed with its own name (`[session-start]`, `[prose-lint-guard]`) is meant for the user: surface it. End-of-turn reminders (`[session-end]`) reach the user directly as a system message, so do not repeat them. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
 
 ### Repo & KB Workflow
 - Before repo work, run `/nase:onboard <path-or-url>` or `/nase:onboard`, then read the repo KB via `workspace/kb/.domain-map.md`. Load only relevant KB files.
@@ -60,7 +60,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - AI attribution: `.claude/docs/ai-attribution.md`; commits/PRs follow `.local-paths` per-repo config. Inline review comments and Slack drafts stay AI-clean.
 
 ### Core Skills
-See [README.md - Available commands](README.md#available-commands). Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
+Run `/nase:help` for the full command list. Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
 
 ### Model Routing (subagents)
 Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
@@ -72,12 +72,12 @@ Delegate a survey - a read sweep whose answer is a conclusion, not the file cont
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
 
 ### CI Pipeline
-- Local gate: `bash tests/check-all.sh` (local `ruff` and `shellcheck` skip if missing; CI still runs both). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
+- Local gate: `bash tests/check-all.sh` (local `ruff`, `vermin` and `shellcheck` skip if missing; CI still runs all three). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
 - Python lint config is `.ruff.toml` at the repo root. Every ignore there carries the reason it is ignored; add a rule to that list only with one, and prefer a scoped `# noqa: RULE - why` at the single site that needs it.
 - `tests/check-boundary-terms.sh` enforces `workspace/context.md → Workspace Boundary Policy` over tracked files from the git-ignored `workspace/boundary-terms.txt`. It skips with a notice when that list is absent, and reports `path:line` with the term redacted. Replace a finding with a generic placeholder; never suppress the gate.
 
 ### Runtime Dependencies
-- Required: `git`, `gh`, `jq`, and `python3`. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.
+- Required: `git`, `gh`, `jq`, and `python3` 3.10+. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.
 - Optional agent tools are warning-only. Use `/nase:doctor` for the baseline set, `/nase:doctor --deep` for the full probe, and `.claude/docs/cli-tooling.md` before adding new tool-dependent skill behavior.
 - `.local-paths` lives at repo root, is not backed up, and stores `backup-target=` plus `RepoName=/absolute/path` entries managed by `/nase:init` and `/nase:onboard`.
 

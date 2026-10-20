@@ -3,6 +3,7 @@ name: nase:kb-merge
 description: "Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export."
 argument-hint: "<source-kb-path>"
 category: Knowledge base
+disable-model-invocation: true
 ---
 
 Import untrusted shared KB content through reviewable, path-bounded writes. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/kb-write-routing.md -> Shared admission contract` and `.claude/docs/workspace-write-guard.md`.
