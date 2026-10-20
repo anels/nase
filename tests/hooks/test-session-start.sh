@@ -134,6 +134,29 @@ description: Unsupported name.
 This must not generate a wrapper.
 SKILL
 
+cat > "$repo/workspace/skills/listed-tools.md" <<'SKILL'
+---
+description: Skill with two list-valued tool keys.
+allowed-tools:
+  - Read
+  - Bash
+
+disallowed-tools:
+  - Edit
+---
+
+Listed tools.
+SKILL
+
+cat > "$repo/workspace/skills/.hidden-leftover.md" <<'SKILL'
+---
+description: Hidden file, not a skill.
+---
+
+Leftover.
+SKILL
+mkdir -p "$repo/workspace/skills/dir-leftover.md"
+
 mkdir -p "$repo/.claude/commands/nase/workspace"
 mkdir -p "$repo/.claude/skills/playwright-cli" "$repo/.claude/skills/nase-workspace-orphan"
 cat > "$repo/.claude/commands/nase/workspace/long-desc.md" <<'WRAPPER'
@@ -196,6 +219,23 @@ else
   printf 'FAIL  manual-only skill wrapper generated\n' >&2
   fail=$((fail + 1))
 fi
+
+listed_wrapper="$repo/.claude/commands/nase/workspace/listed-tools.md"
+if [ -f "$listed_wrapper" ]; then
+  assert_equals "list keys are forwarded without a blank line between them" \
+    "$(sed -n '/^allowed-tools:/,/^disallowed-tools:/p' "$listed_wrapper")" \
+    "$(printf 'allowed-tools:\n  - Read\n  - Bash\ndisallowed-tools:')"
+else
+  printf 'FAIL  list-key skill wrapper generated\n' >&2
+  fail=$((fail + 1))
+fi
+
+leftover_ok=1
+for leftover in .hidden-leftover dir-leftover; do
+  [ -e "$repo/.claude/commands/nase/workspace/$leftover.md" ] && leftover_ok=0
+  grep -qF "$leftover" <<<"$out" && leftover_ok=0
+done
+assert_equals "hidden files and directories under skills/ are skipped silently" "$leftover_ok" "1"
 
 wrapper="$repo/.claude/commands/nase/workspace/read-only.md"
 if [ -f "$wrapper" ]; then

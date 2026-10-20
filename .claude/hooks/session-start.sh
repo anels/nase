@@ -79,8 +79,6 @@ SKILL_SYNC_CHANGED=0
   # Item 6 - sync workspace/skills/ → .claude/commands/nase/workspace/.
   # Do not create hidden native mirrors: they duplicate command discovery and
   # allow the same operational workflow to be model-invoked twice.
-  # The sync runs in one Python pass: the Bash version it replaced spent about
-  # 1.2 seconds of a 1.5 second session start on per-skill process spawns.
   # Exit code 10 means a stub changed, so Claude Code reloads the commands.
   SKILLS_DIR="$NASE_ROOT/workspace/skills"
   if [ -d "$SKILLS_DIR" ]; then
