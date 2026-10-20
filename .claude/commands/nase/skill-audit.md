@@ -3,6 +3,7 @@ name: nase:skill-audit
 description: "Scan skills for injection, exfiltration, unsafe operations, supply-chain, and credential risks. Use for audit skills, skill security, or imported skills."
 argument-hint: "[skill path]"
 category: Security & maintenance
+disable-model-invocation: true
 ---
 
 Scan skill files for security risks before they can cause damage. Returns PASS/WARN/FAIL per file with specific findings.

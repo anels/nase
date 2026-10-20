@@ -3,6 +3,7 @@ name: nase:restore
 description: "Restore workspace/ from a backup. Use after migration or deletion, when local state is out of sync, or for sync workspace, recover workspace, restore backup, or pull backup."
 argument-hint: "[backup path]"
 category: Backup & restore
+disable-model-invocation: true
 ---
 
 Restores from timestamped zip backups. Creates a pre-restore snapshot before overwriting, so you can always roll back.

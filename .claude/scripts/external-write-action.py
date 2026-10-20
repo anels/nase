@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -240,7 +240,7 @@ def sha256(value: Any) -> str:
 
 
 def utc_now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -1378,6 +1378,14 @@ def known_safe_external_command(argv: list[str]) -> bool:
             return not has_payload and all(
                 method.upper() in READ_HTTP_METHODS for method in methods
             )
+        if words[0] == "search":
+            return len(words) >= 2 and words[1] in {
+                "code",
+                "commits",
+                "issues",
+                "prs",
+                "repos",
+            }
         return len(words) >= 2 and words[1] in {
             "checks",
             "diff",
@@ -1479,7 +1487,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     os.chmod(action_dir, 0o700)
     path = (
         action_dir
-        / f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex}.json"
+        / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex}.json"
     )
     manifest = {"version": MANIFEST_VERSION, "created_at": utc_now(), "action": action}
     manifest["action_sha256"] = sha256(action)
@@ -1540,7 +1548,7 @@ def verify_token(token: dict[str, Any], manifest: dict[str, Any]) -> None:
     ttl = token.get("ttl_seconds")
     if not isinstance(ttl, int) or ttl <= 0 or ttl > TOKEN_TTL_SECONDS:
         raise ActionError("external-write token TTL is invalid")
-    age = (datetime.now(UTC) - created_at).total_seconds()
+    age = (datetime.now(timezone.utc) - created_at).total_seconds()
     if age < 0 or age > ttl:
         raise ActionError("external-write token is stale or from the future")
 

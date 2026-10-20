@@ -194,6 +194,8 @@ expect_rc "confluence content read allowed" .claude/hooks/confluence-size-guard.
 
 github_write='{"tool_name":"Bash","tool_input":{"command":"gh pr create --draft --title test"}}'
 github_read='{"tool_name":"Bash","tool_input":{"command":"gh pr view 7"}}'
+github_search_read='{"tool_name":"Bash","tool_input":{"command":"gh search prs MST-12090 --owner example --json number,state"}}'
+github_search_unknown='{"tool_name":"Bash","tool_input":{"command":"gh search future-verb x"}}'
 ado_write='{"tool_name":"Bash","tool_input":{"command":"az rest --method post --uri https://example.invalid"}}'
 azure_group_write='{"tool_name":"Bash","tool_input":{"command":"az group create --name example --location westus"}}'
 azure_role_write='{"tool_name":"Bash","tool_input":{"command":"az role assignment create --assignee example --role Reader"}}'
@@ -215,6 +217,8 @@ azure_read='{"tool_name":"Bash","tool_input":{"command":"az monitor app-insights
 wrapped_action='{"tool_name":"Bash","tool_input":{"command":"python3 .claude/scripts/external-write-action.py execute --manifest workspace/tmp/external-actions/x.json"}}'
 expect_rc "raw GitHub mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_write" 2 "raw external mutation"
 expect_rc "GitHub read allowed" .claude/hooks/external-cli-write-guard.sh "$github_read" 0
+expect_rc "GitHub search read allowed" .claude/hooks/external-cli-write-guard.sh "$github_search_read" 0
+expect_rc "GitHub search unknown verb blocked" .claude/hooks/external-cli-write-guard.sh "$github_search_unknown" 2
 expect_rc "raw ADO mutation blocked" .claude/hooks/external-cli-write-guard.sh "$ado_write" 2 "raw external mutation"
 expect_rc "raw Azure group mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_group_write" 2 "raw external mutation"
 expect_rc "raw Azure role mutation blocked" .claude/hooks/external-cli-write-guard.sh "$azure_role_write" 2 "raw external mutation"

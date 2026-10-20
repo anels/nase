@@ -3,6 +3,7 @@ name: nase:tech-debt-audit
 description: "Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for tech debt audit, architecture review, or modernization."
 argument-hint: "<repo-path>"
 category: Security & maintenance
+disable-model-invocation: true
 ---
 
 Produce an evidence-backed audit without editing the target repository. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.

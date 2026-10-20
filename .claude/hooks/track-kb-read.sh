@@ -12,9 +12,20 @@ HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 
 INPUT=$(cat)
-FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null || true)
+# One jq call for both fields. The values are joined with a NUL byte so a path
+# that contains spaces, backslashes or newlines survives intact; a shell
+# variable cannot hold a NUL, so they are read straight off the pipe.
+FILE_PATH=""
+SESSION_ID=""
+{
+  IFS= read -r -d '' FILE_PATH || true
+  IFS= read -r -d '' SESSION_ID || true
+} < <(
+  printf '%s' "$INPUT" \
+    | jq -j '[.tool_input.file_path // .tool_input.path // "", .session_id // .sessionId // ""] | join("\u0000")' \
+      2>/dev/null || true
+)
 [ -z "$FILE_PATH" ] && exit 0
-SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // .sessionId // empty' 2>/dev/null || true)
 [ -n "$SESSION_ID" ] || SESSION_ID="${CLAUDE_SESSION_ID:-${CLAUDE_SESSIONID:-}}"
 
 ARGS=(record --root "$NASE_ROOT" --file "$FILE_PATH" --access read --source read-hook)

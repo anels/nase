@@ -3,6 +3,7 @@ name: nase:kb-teamshare
 description: "Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, share skills, or package content for /nase:kb-merge."
 argument-hint: "<kb-path-or-skill>"
 category: Knowledge base
+disable-model-invocation: true
 ---
 
 Create a portable, sanitized export without changing source KB or skills. Follow `.claude/docs/language-config.md` → Minimum Step 0 block.

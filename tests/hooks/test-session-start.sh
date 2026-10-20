@@ -69,7 +69,7 @@ mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" "$repo/workspace/logs" \
   "$repo/workspace/skills" "$repo/workspace/kb/general"
 git -C "$repo" init -q
 cp "$HOOK" "$repo/.claude/hooks/session-start.sh"
-stage_scripts "$repo/.claude/scripts" workspace-archive.py
+stage_scripts "$repo/.claude/scripts" workspace-archive.py sync-workspace-skills.py
 printf '%s\n' '2026-05-28T00:00:00 [WARNING] backup target unavailable' > "$repo/workspace/logs/.backup-status"
 printf 'backup-target=%s\n' "$fixture/backups" > "$repo/.local-paths"
 cat > "$repo/workspace/kb/general/tech-trends.md" <<'TRENDS'
@@ -147,6 +147,18 @@ Read `workspace/skills/long-desc.md` and follow every step exactly as written.
 $ARGUMENTS
 WRAPPER
 touch -t 299901010000 "$repo/.claude/commands/nase/workspace/long-desc.md"
+# A wrapper whose source skill no longer exists. The sync removes it, so a
+# command the model can no longer read never keeps a stale entry in the list.
+cat > "$repo/.claude/commands/nase/workspace/ghost.md" <<'WRAPPER'
+---
+name: nase:workspace:ghost
+description: "Wrapper for a source skill that is gone."
+---
+
+Read `workspace/skills/ghost.md` and follow every step exactly as written.
+
+$ARGUMENTS
+WRAPPER
 cat > "$repo/.claude/skills/playwright-cli/SKILL.md" <<'SKILL'
 ---
 description: Hand-written local skill.
@@ -195,6 +207,9 @@ if [ -f "$wrapper" ]; then
   assert_contains "list disallowed-tools key forwarded" "$content" "disallowed-tools:"
   assert_contains "list disallowed-tools Bash forwarded" "$content" "  - Bash"
   assert_contains "list disallowed-tools Edit forwarded" "$content" "  - Edit"
+  assert_contains "wrapper points back at the source skill" "$content" \
+    'Read `workspace/skills/read-only.md` and follow every step exactly as written.'
+  assert_contains "wrapper forwards the arguments placeholder" "$content" '$ARGUMENTS'
   assert_equals "workspace wrapper mode is readable" "$(file_mode "$wrapper")" "644"
 else
   printf 'FAIL  workspace wrapper generated\n' >&2
@@ -231,6 +246,14 @@ if [ ! -e "$repo/.claude/commands/nase/workspace/Unsafe_Name.md" ]; then
   pass=$((pass + 1))
 else
   printf 'FAIL  unsafe workspace skill name is skipped\n' >&2
+  fail=$((fail + 1))
+fi
+
+if [ ! -e "$repo/.claude/commands/nase/workspace/ghost.md" ]; then
+  printf 'PASS  orphaned wrapper without a source skill is removed\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  orphaned wrapper without a source skill is removed\n' >&2
   fail=$((fail + 1))
 fi
 
