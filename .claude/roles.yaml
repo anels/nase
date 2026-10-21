@@ -50,6 +50,16 @@ roles:
       - Scoring a design artifact against explicit criteria
       - Any judgment-heavy check that must be read-only
 
+  checker:
+    model: haiku
+    effort: medium
+    tools: [Read, Grep, Glob, Bash]
+    description: Read-only item-by-item check where every answer is one value from a fixed list
+    prompt_prefix: "This is an independent read-only verification pass. Do not edit files. Report outcomes faithfully: state a failed check as failed with the evidence, name any step you skipped, and do not soften or celebrate incomplete work. A pass is stated plainly; uncertainty is stated as uncertainty."
+    use_when:
+      - Checking each prior bot comment against the PR's current head
+      - Any per-item check whose answer is a state from a closed set, graded against a known answer
+
   architect:
     model: opus
     effort: high
@@ -76,7 +86,7 @@ roles:
 #   discuss-pr         PR metadata / changed files                   (nase-pr-metadata-reader, haiku)
 #   discuss-pr         Step 5b + 6.5 code traces                     worker
 #   discuss-pr         Step 5.7 doubt pass                           verifier
-#   discuss-pr         bot-comment batch-verify                      verifier
+#   discuss-pr         bot-comment batch-verify                      checker
 #   address-comments   Phase 2 dossier collection                    verifier
 #   address-comments   Phase 7.5 resolution gate                     verifier
 #   fsd                Phase 6.4 candidate review                    verifier
@@ -102,6 +112,8 @@ roles:
 #   Never use architect for something lookup can answer.
 #   For lookup dispatches: always include prompt_prefix in the agent prompt.
 #   When a workflow needs read-only judgment, prefer verifier over worker.
+#   checker is for one named spawn site only. Every gate that must not be skipped stays
+#   on verifier, and a new checker site needs its own eval first.
 #   When uncertain between lookup and worker: prefer worker (reasoning > speed).
 #   When uncertain between worker and architect: prefer worker unless the task
 #     involves security, architecture decisions, or an unfamiliar codebase.
@@ -120,8 +132,8 @@ roles:
 #
 # Tool whitelist enforcement:
 #   When spawning a subagent via Agent() against a ROLE from this file, pass `tools=`
-#   matching that role's `tools:` list. lookup and verifier MUST NOT receive Edit/Write,
-#   because they are read-only roles.
+#   matching that role's `tools:` list. lookup, verifier, and checker MUST NOT receive
+#   Edit/Write, because they are read-only roles.
 #   A spawn that names a persisted agent from `.claude/agents/` instead passes NO `tools=`,
 #   because that agent pins its own whitelist in frontmatter. All five are `Read, Grep, Glob` with
 #   no Bash, which `tests/scripts/test-workspace-skill-p1-fixes.sh` asserts, so they are
@@ -140,3 +152,14 @@ roles:
 #   being the new default: run a quality eval first (see the Manual-only note above and
 #   feedback_no-auto-model-downgrade-without-eval). The 1M-native window does not relax
 #   the context-slicing stance — keep slicing before broad reads.
+#
+# Haiku note (Claude Code 2.1.304, 2026-10-21):
+#   The `haiku` alias resolves to Haiku 5.5 on the Anthropic API. On Bedrock, Vertex, and
+#   Foundry it still resolves to Haiku 4.5, so pin `claude-haiku-5-5` or set
+#   ANTHROPIC_DEFAULT_HAIKU_MODEL there. Thinking cannot be turned off in Claude Code,
+#   so lower `effort:` to spend fewer thinking tokens.
+#   checker rests on one A/B. Sonnet 5.5 and Haiku 5.5 gave the same state on 29 of 29
+#   claims from one PR, and on four false claims Haiku never answered CONFIRMED. Haiku
+#   twice answered FIXED where Sonnet answered WRONG, which is harmless here because
+#   neither state is re-reported as a new finding. Two further limits apply. Spend was not
+#   measured, and the sample is one PR. Do not extend checker to a gate on this evidence.

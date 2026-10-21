@@ -196,6 +196,7 @@ Use them when a repeated workflow needs isolated, read-only candidate gathering 
 | `lookup` | `haiku` | `low` | Data gathering, grep/glob, scans. Includes prompt prefix "This is a simple lookup - keep reasoning minimal." |
 | `worker` | `sonnet` | `medium` | Code changes, KB updates, debugging, reviews. Default. |
 | `verifier` | `sonnet` | `medium` | Read-only spec-vs-artifact checks and review-thread verification. |
+| `checker` | `haiku` | `medium` | Read-only per-item checks with a closed answer set. Used only for the bot-comment batch-verify in `/nase:discuss-pr`. |
 | `architect` | `opus` | `high` | Unfamiliar codebases, security, architecture, design. |
 
 Default to `worker`; do not use `architect` for `lookup` work. Each role also carries an `effort:` tier; size it to the task via the Effort scaling rule in `roles.yaml` (drop one tier for trivial/mechanical sub-steps, raise one for complex/ambiguous work - model and effort move independently). Automated effort/model downgrade requires a quality eval gate first.
