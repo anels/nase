@@ -27,13 +27,16 @@ body = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
 
 # Roles are 2-space-indented keys under `roles:`; fields are 4-space-indented.
 blocks = dict(re.findall(r"\n  (\w+):\n((?:    .*\n?)+)", body))
-expected = {"lookup", "worker", "verifier", "architect"}
+expected = {"lookup", "worker", "verifier", "checker", "architect"}
 assert set(blocks) == expected, f"role set drift: {set(blocks)} != {expected}"
 
 valid = {"low", "medium", "high"}
 efforts = {}
+models = {}
 for role, block in blocks.items():
-    assert re.search(r"^    model:\s*\S+", block, re.M), f"{role} missing model"
+    mm = re.search(r"^    model:\s*(\S+)", block, re.M)
+    assert mm, f"{role} missing model"
+    models[role] = mm.group(1)
     assert re.search(r"^    tools:\s*\[", block, re.M), f"{role} missing tools"
     m = re.search(r"^    effort:\s*(\w+)", block, re.M)
     assert m, f"{role} missing effort"
@@ -42,12 +45,20 @@ for role, block in blocks.items():
 
 assert efforts["lookup"] == "low", efforts
 assert efforts["architect"] == "high", efforts
+
+# Gates that must not be skipped stay on sonnet. Moving verifier or worker to haiku
+# needs its own eval, so a silent change here fails the test.
+assert models["verifier"] == "sonnet", models
+assert models["worker"] == "sonnet", models
+assert models["checker"] == "haiku", models
 PY
 
 assert_cmd "roles.yaml documents Effort scaling rule" grep -q "Effort scaling" "$ROLES"
 assert_cmd "roles.yaml gates automated downgrade on eval" grep -qi "eval gate" "$ROLES"
 assert_cmd "architecture.md role table has Effort column" grep -q "| Role | Model | Effort |" "$ARCH"
 assert_cmd "architecture.md documents verifier role" grep -q '| `verifier` | `sonnet` | `medium` |' "$ARCH"
+assert_cmd "architecture.md documents checker role" grep -q '| `checker` | `haiku` | `medium` |' "$ARCH"
+assert_cmd "bot-comment batch-verify routes to checker" grep -q 'role `checker` per `.claude/roles.yaml`' .claude/docs/pr-review-verification.md
 
 if [[ "$failures" -eq 0 ]]; then
   printf '\nroles-schema tests passed.\n'
