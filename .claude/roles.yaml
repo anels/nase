@@ -57,8 +57,7 @@ roles:
     description: Read-only item-by-item check where every answer is one value from a fixed list
     prompt_prefix: "This is an independent read-only verification pass. Do not edit files. Report outcomes faithfully: state a failed check as failed with the evidence, name any step you skipped, and do not soften or celebrate incomplete work. A pass is stated plainly; uncertainty is stated as uncertainty."
     use_when:
-      - Checking each prior bot comment against the PR's current head
-      - Any per-item check whose answer is a state from a closed set, graded against a known answer
+      - Checking each prior bot comment against the PR's current head (the /nase:discuss-pr batch-verify, the only checker site)
 
   architect:
     model: opus
@@ -159,7 +158,9 @@ roles:
 #   ANTHROPIC_DEFAULT_HAIKU_MODEL there. Thinking cannot be turned off in Claude Code,
 #   so lower `effort:` to spend fewer thinking tokens.
 #   checker rests on one A/B. Sonnet 5.5 and Haiku 5.5 gave the same state on 29 of 29
-#   claims from one PR, and on four false claims Haiku never answered CONFIRMED. Haiku
-#   twice answered FIXED where Sonnet answered WRONG, which is harmless here because
-#   neither state is re-reported as a new finding. Two further limits apply. Spend was not
-#   measured, and the sample is one PR. Do not extend checker to a gate on this evidence.
+#   claims from one PR. Six extra claims had known answers, four false and two true. Haiku
+#   never answered CONFIRMED on a false claim and confirmed both true ones. On two of the
+#   false claims it answered FIXED where Sonnet answered WRONG. That is harmless here
+#   because neither state is re-reported as a new finding. Spend was not measured, the A/B
+#   effort level was not recorded, and the sample is one PR. Do not extend checker to a
+#   gate on this evidence.
