@@ -40,6 +40,8 @@ Read the single line of JSON on stdout. `available: false`, or `confidence` unde
 
 `--type` takes the capitalized spelling (`Choice` / `Score` / `Noul`); the script lowercases it on the wire, because the API pins each question schema's `type` to a lowercase const and rejects anything else with HTTP 400.
 
+A `Noul` call must pass `--instructions` with the one-line yes/no question, worded so yes is the answer the skill acts on. Its `criteria` keys are `true` (what makes the answer yes) and `false` (what makes it no). Any other key, such as `{"yes": "..."}`, is dropped without a warning, and with no `instructions` either the call fails with HTTP 400 (`Noul question must have criteria or instructions`). The answer is a probability from 0 to 1 that the statement is true, and the API sends no confidence for it, so the script reports `max(p, 1 - p)` as the confidence. `tests/scripts/test-jev-judge.sh` fails when a call site under `.claude` names `--type Noul` without `--instructions`. Keep both flags on one line, because the guard reads one line at a time.
+
 `--dry-run` prints the request body and exits without a key and without a network call. Use it to check a new call site's shape, and note that `tests/scripts/test-jev-judge.sh` asserts the wire casing through it.
 
 ## Where a point's definition lives
@@ -50,4 +52,4 @@ To find every point currently wired up: `grep -rn -i "try jev first" .claude wor
 
 ## Provenance
 
-The API shape (`POST /v1/systemone`, `{state, questions, model: "jev-latest"}`, bearer auth, `{answers: {name: {type, choice|score|noul, confidence}}}`) and the degrade philosophy come from this same product's OMC plugin integration (`docs/adr/03665-jev-degradation-contract.md`, `docs/issues/issue-3669-jev-judgment-points.md`, `src/hooks/jev/` in the `omc` marketplace plugin). nase's version drops OMC's shadow-mode, circuit-breaker, and manual-promotion machinery - that exists to earn trust across OMC's many hook-triggered calls per session; nase calls this once per named decision point per skill run, so it goes straight to active-with-confidence-gated-fallback instead.
+The API shape (`POST /v1/systemone`, `{state, questions, model: "jev-latest"}`, bearer auth, `{answers: {name: {type, choice|score|noul, confidence}}}` (Noul carries no `confidence`) and the degrade philosophy come from this same product's OMC plugin integration (`docs/adr/03665-jev-degradation-contract.md`, `docs/issues/issue-3669-jev-judgment-points.md`, `src/hooks/jev/` in the `omc` marketplace plugin). nase's version drops OMC's shadow-mode, circuit-breaker, and manual-promotion machinery - that exists to earn trust across OMC's many hook-triggered calls per session; nase calls this once per named decision point per skill run, so it goes straight to active-with-confidence-gated-fallback instead.

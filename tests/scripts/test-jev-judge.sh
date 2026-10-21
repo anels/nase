@@ -181,6 +181,58 @@ else
   fail "doctor probes jev-judge.py"
 fi
 
+# A Noul question with only free-form criteria is rejected by the API with HTTP 400.
+noul_sites=$(git -C "$ROOT" grep -n -E -e '--type[= ]+"?Noul' -- .claude ':!.claude/docs/jev-judgment-points.md')
+noul_rc=$?
+noul_bad=$(printf '%s\n' "$noul_sites" | awk -F: '{
+  a = $0; calls = gsub(/--type[= ]+"?Noul/, "&", a)
+  b = $0; ins = gsub(/--instructions/, "&", b)
+  if (calls != ins) print $1 ":" $2
+}')
+if [ "$noul_rc" -eq 0 ] && [ -z "$noul_bad" ]; then
+  pass "every Noul call site passes --instructions"
+else
+  fail "every Noul call site passes --instructions (git grep exit $noul_rc, missing in: $(printf '%s' "$noul_bad" | tr '\n' ' '))"
+fi
+
+# The API sends no confidence for Noul, only a probability, so the script derives one.
+noul_confidence() {
+  env -u NASE_JEV TYPESAFE_API_KEY=dummy python3 -I - "$SCRIPT" "$1" <<'PY'
+import importlib.util
+import io
+import json
+import sys
+import urllib.request
+
+spec = importlib.util.spec_from_file_location("jev_judge", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+class Response(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+body = json.dumps({"answers": {"p": {"type": "noul", "noul": float(sys.argv[2])}}}).encode()
+urllib.request.urlopen = lambda *a, **k: Response(body)
+sys.argv = ["jev-judge.py", "--point", "p", "--type", "Noul", "--instructions", "q", "--criteria", "{}", "--state", "{}"]
+mod.main()
+PY
+}
+for p in 0.95 0.05 0.6; do
+  want=$(python3 -c "p=$p; print(max(p, 1 - p))")
+  got=$(noul_confidence "$p" | python3 -c "import json,sys; print(json.load(sys.stdin)['confidence'])")
+  if [ "$got" = "$want" ]; then
+    pass "Noul probability $p reports confidence $want"
+  else
+    fail "Noul probability $p reports confidence $want (got '$got')"
+  fi
+done
+
 if [ "$failures" -gt 0 ]; then
   printf '\n%d test(s) failed\n' "$failures" >&2
   exit 1
