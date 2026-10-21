@@ -16,7 +16,7 @@ Usage:
     [--instructions "extra context for the judgment"]
 
 Output (stdout, always valid JSON, always exit 0):
-  {"available": true,  "answer": <choice str | score num | bool>, "confidence": <float|null>}
+  {"available": true,  "answer": <choice str | score num | noul probability 0-1>, "confidence": <float|null>}
   {"available": false, "reason": "<one of the reasons below>"}
 
 Reasons, grouped by what the caller should do about them. This list is the whole
@@ -167,6 +167,8 @@ def main():
 
     value = answer.get(value_key)
     confidence = answer.get("confidence")
+    if confidence is None and value_key == "noul" and isinstance(value, (int, float)):
+        confidence = max(value, 1 - value)
 
     print(json.dumps({"available": True, "answer": value, "confidence": confidence}))
 
