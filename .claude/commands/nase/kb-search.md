@@ -1,6 +1,6 @@
 ---
 name: nase:kb-search
-description: "Search KB files for topics, keywords, patterns, and related entries. Use for search KB, find in KB, or is X documented; use /nase:kb-update or /nase:learn to write."
+description: "Search KB files for topics, keywords, and related entries. Use for search KB, find in KB, or is X documented."
 argument-hint: "<query>"
 category: Knowledge base
 disable-model-invocation: true

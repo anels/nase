@@ -1,6 +1,6 @@
 ---
 name: nase:recap
-description: "Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, review progress, what did I do, or summarize a period."
+description: "Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, or summarize a period."
 argument-hint: "[days|week|month] [--verbose]"
 category: Reporting
 ---

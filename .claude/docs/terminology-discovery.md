@@ -23,4 +23,4 @@ A term taken from a private repo, a PR, session text, Confluence, Jira, Slack, a
 | `/nase:learn` | Step 7 gate, as a second question beside the skill flag | Step 9, after the KB write. Skipped when the write was cancelled |
 | `/nase:onboard` single repo | No ask. List candidates in the command output after the apply | Not run. The user can call `/nase:terminology` later |
 | `/nase:onboard` batch refresh | No ask. List candidates in the `workspace/tmp/onboard-{YYYY-MM-DD}.md` report | Not run. The user can call `/nase:terminology` later |
-| `/nase:discuss-pr` | Step 7 draft decision (`.claude/docs/discuss-pr-output.md`) | When the flow ends: after the review submission step, after the user declines it, after a chat-only draft, or after "No draft" |
+| `/nase:discuss-pr` | Step 8 submission gate (`.claude/docs/discuss-pr-output.md`) | When the flow ends: after the review submission step, after a "Keep in chat" answer, or after a "Discard" answer |

@@ -200,7 +200,9 @@ Goal: trace when it can move a finding to confirmed or dropped.
 
 ### 5b. Trace implementations
 
-For each deep-dive candidate, spawn an Explore agent (role: worker) to trace the code path. Give each agent:
+**Pick the role from the eval receipt, never from intuition.** Run `python3 .claude/scripts/trace-role.py resolve`. It returns `worker` unless a fresh receipt records a ≥20-case A/B in which `lookup` matched `worker`, and the §13 directive hash still matches what the eval measured. A missing, stale, failed, or mismatched receipt resolves to `worker`; the script owns that decision so a spawn site cannot drift. The A/B procedure, case selection, and receipt shape are in `.claude/docs/trace-role-ab.md`; do not edit the receipt without running it.
+
+For each deep-dive candidate, spawn an Explore agent (role from the resolver) to trace the code path. Give each agent:
 - **The spawn directive from `.claude/docs/pr-review-verification.md` §13, copied verbatim into the prompt.** A spawned subagent does not load that doc, so the block has to travel inline; paraphrasing it per site is what let three spawn sites drift. It carries §11 diff-first investigation, the pinned-revision rule, and the §12 trace-shape self-check.
 - The specific question to answer (e.g., "does `DashboardService.GetDashboardAsync` do `Enum.TryParse` internally when it receives a non-enum sourceType string?")
 - Where to look (the implementation repo if known from KB, NuGet package source, or the current repo)

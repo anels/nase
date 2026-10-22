@@ -96,6 +96,8 @@ Apply these gates in order:
 | **reply-only** | Question, discussion point, or acknowledgment needed - no code involved | Write a reply |
 | **ask-user** | Business intent, product tradeoff, or hidden repo context is required to decide safely | Ask the exact missing question before Phase 4 |
 
+Try jev first via `.claude/scripts/jev-judge.py` (`.claude/docs/jev-judgment-points.md` point `address-comments.classify`, `--type Choice` over exactly `accept` / `decline` / `reply-only` / `ask-user`; state = one line holding the reviewer's premise, the single most decisive dossier fact, and whether the referenced line matches the reviewer's prose - never the dossier itself, because `jev-judge.py` truncates state at 200 chars without telling the caller); `usable: false` (unavailable, low confidence, or missing confidence) → classify it yourself against the four definitions above. A jev answer is a first pass: it never waives the completeness gate, the premise checks, or the Step 3d second opinion.
+
 Accept only when the change measurably improves correctness/clarity. If current code is equally valid, decline with concrete evidence from the dossier. Declines must prove the reviewer premise is false, already addressed, out of PR scope, or lower-value than the risk it introduces.
 
 **Probe for a middle ground before committing to accept-vs-decline.** Before classifying, check whether a scoped third option (partial accept, a narrower fix, or a follow-up issue for out-of-scope asks) better serves the reviewer's intent.
@@ -134,28 +136,26 @@ Found {N} unresolved review threads:
 
 ## Phase 4: User Override & Confirm Execution
 
-After presenting the plan, use `AskUserQuestion` to ask the user to review the classifications:
+After presenting the plan, ask both remaining decisions in **one** `AskUserQuestion` call: a `questions` array with the plan-review entry first and the execution-mode entry second. The harness renders them in order, so the user still reviews the classifications before choosing how to run.
 
 ```
-question: "Review the plan above. Want to change any classifications before I proceed?"
-header: "Plan Review"
-options:
-  - label: "Looks good"
-    description: "Proceed as planned"
-  - label: "I have changes"
-    description: "Let me adjust some items"
+questions:
+  - question: "Review the plan above. Want to change any classifications before I proceed?"
+    header: "Plan Review"
+    options:
+      - label: "Looks good"
+        description: "Proceed as planned"
+      - label: "I have changes"
+        description: "Let me adjust some items"
+  - question: "How should I proceed?"
+    header: "Execution Mode"
+    options:
+      - label: "Full auto"
+        description: "Make changes, build, test, and push; still ask the required concrete gate before GitHub replies/resolves"
+      - label: "Confirm before push"
+        description: "Make changes and run build/tests, but pause for your review before pushing"
 ```
 
 If user changes classifications, recompute the final per-thread dossier/action map explicitly; Phase 9 uses only this map.
 
-Then use `AskUserQuestion` to ask for execution mode:
-
-```
-question: "How should I proceed?"
-header: "Execution Mode"
-options:
-  - label: "Full auto"
-    description: "Make changes, build, test, and push; still ask the required concrete gate before GitHub replies/resolves"
-  - label: "Confirm before push"
-    description: "Make changes and run build/tests, but pause for your review before pushing"
-```
+If the answers are "Looks good" plus an execution mode, act on both immediately - do not re-ask either. If the user picks "I have changes", take their edits in the same turn and recompute before Phase 5.

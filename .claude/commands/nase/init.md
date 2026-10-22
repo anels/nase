@@ -1,6 +1,6 @@
 ---
 name: nase:init
-description: "Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing workspace/config.md, init nase, configure, or bootstrap."
+description: "Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing config, configure, or bootstrap."
 argument-hint: "[--reconfigure]"
 category: Setup & health
 ---
@@ -12,7 +12,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 ## Workflow
 
 1. Inspect `workspace/config.md`, `.local-paths`, backup target, and existing workspace content. Without `--reconfigure`, ask only for missing required values.
-2. Batch the required inputs: AI name, workspace name, backup target, retention, `conversation:` language, and `output:` language. If GitHub mutation workflows should be enabled, collect the exact top-level owner mapping: `github_org` with `work_gh_account`, plus `personal_gh_account` when personal repositories are in scope. Unmapped owners fail closed. Preserve legacy `gh_account` only as the work-account fallback.
+2. Batch the required inputs: AI name, workspace name, backup target, retention, `conversation:` language, `output:` language, and the autonomy level (`guided` / `standard` / `auto`, recommended `standard`; see `.claude/docs/external-mutation-policy.md → Autonomy level`). If GitHub mutation workflows should be enabled, collect the exact top-level owner mapping: `github_org` with `work_gh_account`, plus `personal_gh_account` when personal repositories are in scope. Unmapped owners fail closed. Preserve legacy `gh_account` only as the work-account fallback.
 3. If Jira or Slack configuration is requested, collect identifiers only. Never request or persist passwords, PATs, OAuth tokens, client secrets, or cookies.
 4. For a fresh workspace with backup content, inspect available archives and show the exact candidate. Require explicit confirmation before `/nase:restore`; never merge an archive blindly.
 5. Verify hook wiring and executable bits. Restoring the executable bit on a file already tracked under `.claude/hooks/` is in scope; creating, rewriting, or registering a hook is not. Report changes needed outside the repo instead of silently editing user-level Claude configuration.

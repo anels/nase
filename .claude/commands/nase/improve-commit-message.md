@@ -1,6 +1,6 @@
 ---
 name: nase:improve-commit-message
-description: "Rewrite the latest commit message to match repo conventions. Use after committing, before push, or for improve commit, fix commit message, amend commit, or clean up commit."
+description: "Rewrite the latest commit message to repo conventions. Use for improve commit, fix commit message, amend, clean up commit, or before push."
 argument-hint: "[--auto-accept] [--repo <abs-path>]"
 category: Git workflow
 ---

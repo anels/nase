@@ -27,26 +27,7 @@ This is the one sanctioned exception to `CLAUDE.md`'s "while we're at it" reject
 
 ## Phase 3.5: Research Gate (external dependencies only)
 
-Before code, check whether the task depends on external APIs, libraries, frameworks, SDKs, CLIs, services, or platform behavior. KB and `CLAUDE.md` can satisfy familiar repo patterns, but not current external facts.
-
-1. **Scan** the task description ($ARGUMENTS) for library names, API references, SDK mentions, or framework-specific terms
-2. **Pin version** when possible from manifests, lockfiles, SDK config, or service tier/config
-3. **Decision**:
-   - If task is purely internal code changes with no external dependencies → **skip**
-   - If external behavior is familiar and not version-sensitive → use KB/`CLAUDE.md` as context; no web research required
-   - If unfamiliar, version-sensitive, dependency-bump, breaking-change, deprecation/EOL, or behavior is in doubt → run `.claude/docs/design-research.md → Part A: External Research`
-     - Prefer that source ladder: `ms-learn` / `context7`, then official docs, pinned source/changelog, then issue trackers
-     - Extract: method signatures, required parameters, return types, version constraints, and common pitfalls
-     - Hold this context for Phase 4 - do not write to KB yet (Phase 8c handles that)
-
-**Track findings for KB:** always record `research_gate_findings`:
-```
-research_gate_findings:
-  - {LibraryName}: key method signatures, required params, return types, pitfalls, doc URL
-```
-Record findings even when obvious to avoid re-researching.
-
-Direct / phase-isolated: keep findings in context. Team: also write the same block to `workspace/tmp/fsd-research-{branch_slug}.md` for Phase 8c and subagent prompts.
+Scan `$ARGUMENTS` for library names, API references, SDK mentions, framework-specific terms, or platform behavior. Purely internal code changes with no external dependency → **skip the gate**, but still record `research_gate_findings: none`. Anything external and unfamiliar, version-sensitive, a dependency bump, a breaking change, a deprecation/EOL, or behavior in doubt → read `.claude/docs/fsd-external-deps-gate.md` and run it before code; it owns the version pin, the source ladder, and where findings go.
 
 ---
 

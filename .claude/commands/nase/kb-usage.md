@@ -1,6 +1,6 @@
 ---
 name: nase:kb-usage
-description: "Report which skills access, read, or surface KB files and which mapped files are unobserved. Use for KB usage, KB observability, top KB files, or unused KB entries."
+description: "Report which skills read or surface KB files and which mapped files are unused. Use for KB usage or top KB files."
 argument-hint: "[--window N|all] [--top N] [--verbose]"
 category: Reporting
 disable-model-invocation: true

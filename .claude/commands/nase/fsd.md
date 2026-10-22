@@ -1,6 +1,6 @@
 ---
 name: nase:fsd
-description: "Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, fire and forget, or feature/fix handoff."
+description: "Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, or fire and forget."
 argument-hint: "<task description or effort doc>"
 category: Design & implementation
 ---

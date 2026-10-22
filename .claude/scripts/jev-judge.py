@@ -16,8 +16,20 @@ Usage:
     [--instructions "extra context for the judgment"]
 
 Output (stdout, always valid JSON, always exit 0):
-  {"available": true,  "answer": <choice str | score num | noul probability 0-1>, "confidence": <float|null>}
-  {"available": false, "reason": "<one of the reasons below>"}
+  {"available": true,  "point": "<name>", "answer": <choice str | score num | noul probability 0-1>,
+   "confidence": <float|null>, "usable": <bool>, "fallback_reason": <string|null>}
+  {"available": false, "point": "<name>", "reason": "<one of the reasons below>",
+   "usable": false, "fallback_reason": "<the reason>"}
+
+`usable` is true only for an available answer with a confidence of at least 0.9;
+anything else is a fallback, and `fallback_reason` says which (`low_confidence`,
+`missing_confidence`, or the unavailable reason). Callers test `usable`, not a
+hand-rolled comparison, so the threshold lives in one place.
+
+Telemetry: set NASE_JEV_TELEMETRY_FILE=<path> to append one JSON line per call
+(point, type, available, confidence, usable, fallback_reason, latency_ms, and the
+question-definition hash that helps group call sites). Off by default; a telemetry
+write failure never changes the answer or the exit code.
 
 Reasons, grouped by what the caller should do about them. This list is the whole
 set; `.claude/docs/jev-judgment-points.md` carries the same one.
@@ -39,18 +51,26 @@ set; `.claude/docs/jev-judgment-points.md` carries the same one.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import NoReturn
 
 DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 DEFAULT_TIMEOUT_MS = 2500
 DEFAULT_EXCERPT_CHARS = 200
 JEV_MODEL = "jev-latest"
+CONFIDENCE_FLOOR = 0.9
+_START = time.monotonic()
+_POINT = ""
+_TYPE = ""
+_CRITERIA_SHA = ""
 
 
 def bound_excerpts(value, max_chars):
@@ -63,8 +83,47 @@ def bound_excerpts(value, max_chars):
     return value
 
 
+def _emit(payload: dict) -> None:
+    """Print the answer and, when enabled, append one telemetry line.
+
+    Telemetry is best-effort: any failure is swallowed so a full disk or a bad
+    path can never turn a judgment into a crash or change the answer.
+    """
+    print(json.dumps(payload))
+    path = os.environ.get("NASE_JEV_TELEMETRY_FILE")
+    if not path:
+        return
+    try:
+        row = {
+            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "point": payload.get("point"),
+            "type": _TYPE,
+            "available": payload.get("available"),
+            "confidence": payload.get("confidence"),
+            "usable": payload.get("usable"),
+            "fallback_reason": payload.get("fallback_reason"),
+            "latency_ms": int((time.monotonic() - _START) * 1000),
+            "criteria_sha256": _CRITERIA_SHA,
+        }
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+    except Exception:  # a telemetry failure must never change the answer
+        return
+
+
 def unavailable(reason: str) -> NoReturn:
-    print(json.dumps({"available": False, "reason": reason}))
+    _emit(
+        {
+            "available": False,
+            "point": _POINT,
+            "reason": reason,
+            "usable": False,
+            "fallback_reason": reason,
+        }
+    )
     sys.exit(0)
 
 
@@ -81,6 +140,12 @@ def main():
         help="print the request body that would be POSTed and exit; no key needed, no network",
     )
     args = parser.parse_args()
+
+    # The unavailable path is reached from many early returns that run before a
+    # payload dict exists; these three values are the only context they share.
+    global _POINT, _TYPE, _CRITERIA_SHA  # noqa: PLW0603
+    _POINT, _TYPE = args.point, args.type
+    _CRITERIA_SHA = hashlib.sha256(args.criteria.encode("utf-8")).hexdigest()[:12]
 
     if os.environ.get("NASE_JEV", "").strip().lower() == "off":
         unavailable("disabled")
@@ -170,7 +235,25 @@ def main():
     if confidence is None and value_key == "noul" and isinstance(value, (int, float)):
         confidence = max(value, 1 - value)
 
-    print(json.dumps({"available": True, "answer": value, "confidence": confidence}))
+    numeric_confidence = isinstance(confidence, (int, float)) and not isinstance(confidence, bool)
+    usable = numeric_confidence and confidence >= CONFIDENCE_FLOOR
+    if usable:
+        fallback_reason = None
+    elif numeric_confidence:
+        fallback_reason = "low_confidence"
+    else:
+        fallback_reason = "missing_confidence"
+
+    _emit(
+        {
+            "available": True,
+            "point": args.point,
+            "answer": value,
+            "confidence": confidence,
+            "usable": usable,
+            "fallback_reason": fallback_reason,
+        }
+    )
 
 
 if __name__ == "__main__":

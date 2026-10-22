@@ -5,15 +5,15 @@
 - Step 6 - Present findings and open discussion
 - Sense Check
 - Step 6.5 - Stage 2: automatic additional deep dives
-- Step 7 - Stage 3: draft decision
-- Step 8 - Stage 4: submit the review (gated write)
+- Step 7 - Stage 3: draft automatically
+- Step 8 - Stage 4: choose the state and submit (one gate)
 - Step 9 - Stage 5: completion message
 - Error Handling
 - Ongoing - KB auto-write (on confirmed findings)
 - Notes
 - Final - Daily Log
 
-Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visible review report, automatic additional deep dives, draft decision, gated review submission, completion message, KB handoff, and daily log. Steps 6-6.5 are investigation-only; all external writes go through the `external-write-action.py` manifest gate per the command's standing invariants.
+Read this file only when /nase:discuss-pr reaches Step 6. It owns the user-visible review report, automatic additional deep dives, automatic drafting, the single submission gate, completion message, KB handoff, and daily log. Steps 6-6.5 are investigation-only; all external writes go through the `external-write-action.py` manifest gate per the command's standing invariants.
 
 ## Step 6 - Present findings and open discussion
 
@@ -126,11 +126,15 @@ Collect remaining trace-worthy items:
 
 If none, say "No additional deep-dive candidates - auto-dive covered everything." and proceed to Step 7.
 
-Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how much a trace could move the verdict and spawn Explore agents (role `worker` per `.claude/roles.yaml`, same as Step 5b - an unrouted spawn inherits the session model, which bills a code trace at whatever the main loop is running) for the top items in parallel (cap at 4 to bound cost; if more remain, note the ones you deferred and why). Use the same pattern as Step 5b: each spawn prompt carries `.claude/docs/pr-review-verification.md` §13 copied verbatim. Update findings with the evidence returned, then proceed to Step 7.
+Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how much a trace could move the verdict and spawn Explore agents (role `worker` per `.claude/roles.yaml` - the trace-role receipt covers Step 5b only, so 6.5 stays `worker`; an unrouted spawn inherits the session model, which bills a code trace at whatever the main loop is running) for the top items in parallel (cap at 4 to bound cost; if more remain, note the ones you deferred and why). Use the same pattern as Step 5b: each spawn prompt carries `.claude/docs/pr-review-verification.md` §13 copied verbatim. Update findings with the evidence returned, then proceed to Step 7.
 
-## Step 7 - Stage 3: draft decision
+## Step 7 - Stage 3: draft automatically
 
-Ask the user how to handle drafting via `AskUserQuestion`. Three options, always in this order, always with these labels. **Default recommendation is "Draft + post"** - the normal outcome of a review is inline comments submitted on GitHub, so lead with it and append `(recommended)`. The other two options stay available for a chat-only draft or nothing at all; the recommendation does not skip the confirmation - the user still actively picks, and Step 8 still asks for the review state before any write. Carry the terminology question from `.claude/docs/terminology-discovery.md` in the same `AskUserQuestion` call and run its hand-off when the flow ends: after the review submission step, after the user declines it, after a chat-only draft, or after "No draft".
+There is no pre-draft question. Drafting inline comments is local and private - it writes nothing to GitHub - so asking permission to draft costs a round trip and buys no safety. Produce the drafts (format below) for every finding that survives the outgoing gate, render them in the report, and continue into Step 8 in the same turn.
+
+- If nothing survives, say "No inline drafts - nothing to submit." and skip to the completion message, unless Step 3 batched reactions/replies the user agreed to, which still go through their own gates.
+- Chat-only delivery is a Step 8 answer ("Keep in chat"), not a Step 7 mode.
+- Do not ask the terminology question here. Step 8's `AskUserQuestion` carries it when `.claude/docs/terminology-discovery.md` produced candidates, so the run still asks once.
 
 **Before drafting, run the trace-shape self-check** (`.claude/docs/pr-review-verification.md` §12) on your own main-thread investigation (Steps 4–5d): did it narrow before reading, batch discovery, stay diff-anchored, and recover from failed searches without path-guessing? Downgrade any finding that survived only a widen-first / path-guessing trace to WEAK and re-verify it before including it in the draft.
 
@@ -145,24 +149,7 @@ python3 .claude/scripts/citation-validator.py "{drafts_file}" \
 
 Exit `1` means a cited `path:line`, PR URL, or Jira key does not resolve: re-anchor or drop that draft, never post it. Exit `2` is `UNKNOWN` (Confluence needs MCP) - a private-source citation should not have been in a GitHub-bound draft anyway, so treat it as a prompt to cut the citation. Exit `3` or `4` means nothing was validated; fix the invocation and rerun rather than posting unchecked drafts. Full contract: `.claude/docs/citation-validator.md → Result and exit semantics`.
 
-```
-Question: "Draft inline comments now?"
-Header: "Draft choice"
-Options (single-select):
-- "Draft + post (recommended)" - I draft inline comments and proceed to Step 8 to submit the review after you pick the state
-- "Draft + discuss" - I draft inline comments inline in chat; you copy/refine manually, nothing is posted
-- "No draft" - End the flow here, no comments drafted
-```
-
-Behavior per choice:
-
-**Draft + post** -> produce the drafts (format below), then **immediately enter Step 8** without re-asking the draft question. Mention in the handoff line: "Drafts ready - moving to review-state selection."
-
-**Draft + discuss** -> produce the drafts (format below) inline in chat. End the flow with: "Drafts above. Paste or refine manually. To submit via this skill, re-invoke and pick 'Draft + post'." Do NOT enter Step 8.
-
-**No draft** -> End with: "No drafts produced. Re-invoke if you want to act on these later." Do NOT proceed.
-
-**Draft format** (used by Draft + post and Draft + discuss):
+Continue straight to Step 8 with the surviving drafts. **Draft format** (used by both the posted review and the chat-only path):
 
 - **Voice profile**: before drafting, follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`; read `workspace/communication-style.md` for high-stakes or ambiguous comments. Keep no-blame phrasing, soft prefix when disagreeing with senior reviewers (`"Thanks for the suggestions. I agree with them. 😊 However, ..."`), and no AI-flavor fillers. Also honor `CLAUDE.md → Code Review` - don't over-escalate severity, prefer measured assessments.
 - **No intent-label prefix.** The chat report already carries `kind` and `disposition`; opening the posted comment with `nit (non-blocking):` or `question (needs-answer):` spends the first line restating a classification the author cannot act on. Severity lives in the review state and in how the comment reads, not in a tag. Start on the claim itself. (The `github-review-comment` capsule points here for this rule; everything else about length, anchoring, and tone is the capsule's and is not restated below.)
@@ -190,14 +177,14 @@ The LookerML cross-check and the PR-body correction are still worth having; they
 <comment text>
 ```
 
-## Step 8 - Stage 4: submit the review (gated write)
+## Step 8 - Stage 4: choose the state and submit (one gate)
 
-Enter this step only when Step 7 = "Draft + post". Otherwise skip it.
+Enter whenever Step 7 left at least one draft. There is exactly one gate: it shows the review payload, the state, and the ownership consequence at once, so the run never asks a question whose answer is already implied by the payload it is about to show.
 
 **Ownership check:** compare `viewerLogin` from the Step 2 `review-context` JSON against the PR `user.login`. Do not make a fresh `gh api user` call - it rode along in that batch precisely so the write boundary does not add a serial round trip.
 
-- If the PR is not the user's, submitting a review notifies the author - confirm once more before proceeding ("PR is owned by @other-user - submitting a review will notify them. Proceed?").
-- If the PR is self-authored, GitHub does not allow the author to approve it. Never recommend or submit `APPROVE`; publish only as `COMMENT`, or keep the result in `Draft + discuss`. State the hypothetical merge verdict in chat instead of trying to encode it as an approval. Source: [GitHub required-review documentation](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
+- If the PR is not the user's, the submission notifies the author. Do not ask a separate confirmation: the gate question names `@author` and its recommended option says the write notifies them.
+- If the PR is self-authored, GitHub does not allow the author to approve it. Never recommend or submit `APPROVE`; `COMMENT` is the only posting state. State the hypothetical merge verdict in chat instead of trying to encode it as an approval. Source: [GitHub required-review documentation](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
 
 **Determine the recommended state** for a non-owned PR mechanically:
 
@@ -211,49 +198,35 @@ Enter this step only when Step 7 = "Draft + post". Otherwise skip it.
 
 `REQUEST_CHANGES` is exceptional. It requires a PR-introduced issue with confidence ≥ 80, a concrete failure or binding-policy violation, no safe follow-up path, and an explicit must-not-merge reason. It is not limited to already-observed production incidents: confirmed acceptance-criteria failure, compile/build break, security/privacy/data-integrity violation, public-contract break, or unsafe deploy/migration/rollback may qualify. Missing tests alone do not.
 
-Ask via `AskUserQuestion`, recommended option first with `(recommended)` appended. Build the options from eligible states only:
+Eligible states for a non-owned PR: `APPROVE` only when there is no blocking issue and no `needs-answer`; `COMMENT` only when there is no blocking issue; `REQUEST_CHANGES` only when a confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer. For a self-authored PR, `COMMENT` is the only eligible state.
+
+**Build the recommended payload, then ask once.** Build the options from eligible states only: prepare the manifest for the recommended state and show it - `jq . "$MANIFEST"`, the body, and the inline-comment count - immediately before the question. Then make one `AskUserQuestion` call with at most four options: the recommended state, the next eligible state when one exists, keep in chat, discard. A third eligible state is reachable under Other. Carry the terminology question from `.claude/docs/terminology-discovery.md` as a second `questions` entry in the same call when it produced candidates, so the run still asks once.
 
 ```
-Question: "Submit review as which state? (recommended: <STATE>)"
-Header: "Review state"
-Eligible options (single-select):
-- "APPROVE" - include only when there is no blocking issue and no `needs-answer`
-- "COMMENT" - include only when there is no blocking issue
-- "REQUEST_CHANGES" - include only when a confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer
+Question: "Submit this review on {owner}/{repo}#{number} as {RECOMMENDED}? {N} inline comments plus the body shown above.{ PR is @author's - this notifies them.}"
+Header: "Submit review"
+Options (single-select):
+- "{RECOMMENDED} (Recommended)" - submits the payload shown above, manifest {short hash}
+- "{NEXT_ELIGIBLE}" - rebuilds the same body and comments under that state, shows the new payload, and asks you to confirm it once
+- "Keep in chat" - no write; I render the drafts for you to paste manually
+- "Discard" - no write; end the flow
 ```
 
-For a non-owned PR with a confirmed blocking issue, `REQUEST_CHANGES` is the only submission state. The user may instead return to Step 7 and choose `Draft + discuss` or `No draft`. For a self-authored PR, omit `APPROVE` and `REQUEST_CHANGES`; submit as `COMMENT` only.
+Drop the `{NEXT_ELIGIBLE}` option when there is no second eligible state. For a non-owned PR with a confirmed blocking issue, `REQUEST_CHANGES` is the only submission state; keep-in-chat and discard are not submissions, so they stay available. For a self-authored PR, offer `COMMENT`, keep in chat, and discard.
 
-**Submit sequence** once the user picks - one payload-bound `external-write-action.py` manifest for the whole review (a GitHub review with inline comments and a state is a single POST). Never run a raw `gh api` mutation.
+**Submit sequence** once the user answers - one payload-bound `external-write-action.py` manifest for the whole review (a GitHub review with inline comments and a state is a single POST). Never run a raw `gh api` mutation.
 
-- Recompute state eligibility from the confirmed findings immediately before manifest creation. If the selected state is no longer eligible, do not build or authorize a manifest; return to review-state selection with the changed evidence.
+- Picking the recommended state approves the manifest already shown: authorize and execute it without another question.
+- Picking a different state changes the payload, so it needs its own approval: rebuild the payload with that `event`, show the new manifest and body, and ask one confirmation naming the new state. Do not execute the manifest the user did not see.
+- Keep in chat / discard: render the drafts (or not) and end; no manifest is authorized, and the manifest prepared for the shown payload is abandoned unspent.
+- Recompute state eligibility from the confirmed findings immediately before building the payload shown above. If the recommended state is no longer eligible, do not build or authorize a manifest; present the changed evidence and ask again.
 - Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`, name the unresolved question, missing domain evidence, or self-review verdict without calling it blocking. For `REQUEST_CHANGES`, name the confirmed must-not-merge concern in one or two sentences.
 - Inline comments: post the drafts verbatim - the Step 7 **Draft format** rules (no label prefix, ~60 words, supporting evidence held back for chat) plus the `github-review-comment` capsule are the posting contract, not a drafting-only style. Use `output:` language and the voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
-- Build the review payload as a private file, prepare the manifest, show it, get the immediate `AskUserQuestion` approval of that exact manifest, then authorize and execute:
-
-```bash
-# Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
-REVIEW_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-review-{number}-XXXXXXXX")
-REVIEW_FILE="$REVIEW_DIR/review.json"
-trap 'rm -rf "$REVIEW_DIR"' EXIT
-# Build with jq from the confirmed state, body, and drafted inline comments:
-#   {"event":"APPROVE|COMMENT|REQUEST_CHANGES","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}
-jq -n --arg event "$STATE" --arg body "$REVIEW_BODY" --argjson comments "$INLINE_COMMENTS_JSON" \
-  '{event:$event, body:$body, comments:$comments}' > "$REVIEW_FILE"
-MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
-  --system github --summary "submit {STATE} review on {owner}/{repo}#{number}" -- \
-  gh api "repos/{owner}/{repo}/pulls/{number}/reviews" --method POST --input "$REVIEW_FILE" | jq -r .manifest)
-jq . "$MANIFEST"
-# AskUserQuestion approved this exact manifest. Then:
-python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
-python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
-```
-
-- After the review submits, post any Step 3 batched reactions/replies the user agreed to. Each reaction/reply/resolve is its own `external-write-action.py` manifest with its own one-shot token - follow `.claude/docs/github-queries.md -> Reply To A Review Thread` for the reply shape (jq-built `--input` payload, integer `databaseId`, mandatory read-back check) and `-> Resolve Review Threads` for the resolve shape. Reactions use `gh api "repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions" --method POST --raw-field content="+1"` wrapped in the same manifest gate. Honor the 30-mutation throttle rule in that doc.
+- The private payload snippet, the before/after-gate marker, and the reactions/replies/resolve mechanics live in `.claude/docs/discuss-pr-submit.md`; read it before building the manifest. The gate itself stays in this file.
 
 ## Step 9 - Stage 5: completion message
 
-Reached only after Step 8 submits successfully. Emit a single chat block:
+Reached after Step 8 - submitted, kept in chat, or discarded. Emit a single chat block:
 
 ```
 ✅ Submitted.
@@ -266,6 +239,8 @@ Reached only after Step 8 submits successfully. Emit a single chat block:
 - KB: <target file + one-line summary of what was written | none>
 - Daily log: <appended | skipped>
 ```
+
+When nothing was written, the block is the same minus the `Review`, `State`, `Reactions`, and `Replies` lines, and the headline states the outcome instead - "💬 Kept in chat - {N} inline drafts above." or "🚫 Discarded - nothing was posted."
 
 Get the review URL from the execute response (`html_url`, or build `https://github.com/<owner>/<repo>/pull/<N>#pullrequestreview-<id>` from the returned `id`). If a write partially failed (review submitted but a reaction failed), use ⚠️ instead of ✅ and list the failures explicitly.
 
@@ -301,6 +276,6 @@ Report the write in one line at the end of the flow: target file, what was added
 
 ## Final - Daily Log
 
-Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`). Runs at the end of every invocation regardless of whether a review was submitted, so a "No draft" or "Draft + discuss" exit still gets a one-line entry. When Step 8 submitted a review, its `Daily log:` field reports the actual outcome (`appended` / `skipped`) and the log line names the state.
+Append to daily log following `.claude/docs/daily-log-format.md` (tag: `review`). Runs at the end of every invocation regardless of whether a review was submitted, so a "Keep in chat" or "Discard" exit still gets a one-line entry. When Step 8 submitted a review, its `Daily log:` field reports the actual outcome (`appended` / `skipped`) and the log line names the state.
 
 Log: `{repo}#{number} - {N} files, {N} issues ({categories})[, review: {STATE}]; key: {1-line summary}`

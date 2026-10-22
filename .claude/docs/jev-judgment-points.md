@@ -12,8 +12,8 @@ The API shape and degrade philosophy are carried over from this same product's O
 - Any HTTP, timeout, or malformed-response failure → same `{"available": false, "reason": "..."}` shape, never a crash, never a hang past `NASE_JEV_TIMEOUT_MS` (default 2500ms).
 - `reason` distinguishes the failure kinds that need different responses: `http_error:<code>` is the API rejecting the request (a contract bug - fix the call), `timeout` is the deadline expiring, `net_error:<class>` is the connection failing. Collapsing these hides contract bugs behind what looks like a flaky network. `<class>` is an exception class name such as `ConnectionRefusedError`, never a message, so it can be matched on.
 - Three more reasons mean the call was never attempted because the invocation itself is wrong, and they are fixed at the call site rather than retried: `invalid_config:<msg>` (`NASE_JEV_TIMEOUT_MS` or `NASE_JEV_EXCERPT_CHARS` is not an integer), `invalid_endpoint_scheme` (`NASE_JEV_ENDPOINT` is not http(s)), and `exception:bad_json:<msg>` (`--criteria` or `--state` is not parseable JSON). Two more are catch-alls: `invalid_response[:<msg>]` for a body that is not the documented answer shape, and `exception:<class>` (an exception class name, never a message, because a message can quote the Authorization header) for any other client-side failure. The script's module docstring is the sole enumeration, and `tests/scripts/test-jev-judge.sh` asserts every reason above appears in it.
-- Success with `confidence >= 0.9` → trust the answer, skip the point's own full judgment.
-- Success with `confidence < 0.9`, or `confidence` missing → still `"available": true`, but judge the point yourself using the same criteria; treat the jev answer only as a hint, never as the decision.
+- Success with `confidence >= 0.9` → `"usable": true`. Trust the answer and skip the point's own full judgment.
+- Success with `confidence < 0.9`, or `confidence` missing → `"usable": false` with `fallback_reason` set to `low_confidence` or `missing_confidence`; still `"available": true`, but judge the point yourself using the same criteria and treat the jev answer only as a hint, never as the decision. Callers test `usable`; re-deriving the 0.9 comparison at each call site is how the threshold drifts. A call site that still compares `confidence` itself must treat a missing confidence as a fallback too - `null` is not `>= 0.9`.
 - **The fallback in every case is: do exactly what the skill instructed before this script existed.** Adding a jev call must never change behavior for a user with no `TYPESAFE_API_KEY` configured.
 
 ## Config
@@ -25,6 +25,7 @@ The API shape and degrade philosophy are carried over from this same product's O
 | `NASE_JEV_TIMEOUT_MS` | 2500 | per-call timeout. A healthy call measures ~1100ms, so a budget under that turns every success into a reported `timeout`. |
 | `NASE_JEV_EXCERPT_CHARS` | 200 | max chars of any string sent in state/criteria (never whole files) |
 | `NASE_JEV_ENDPOINT` | `https://api.typesafe.ai/v1/systemone` | override for testing |
+| `NASE_JEV_TELEMETRY_FILE` | unset | append one JSON line per call (point, confidence, `usable`, fallback reason, latency, criteria hash). Off by default; a write failure never changes the answer. |
 
 ## Calling it from a skill
 
@@ -36,7 +37,9 @@ python3 .claude/scripts/jev-judge.py \
   --state '{"finding_text": "<the bounded text being judged>"}'
 ```
 
-Read the single line of JSON on stdout. `available: false`, or `confidence` under 0.9 or missing, means fall back to the skill's own judgment for that point.
+Read the single line of JSON on stdout. `usable: false` (unavailable, low confidence, or a missing confidence) means fall back to the skill's own judgment for that point; `fallback_reason` says which case, and is worth quoting in a report when a point keeps falling back.
+
+**Telemetry.** Set `NASE_JEV_TELEMETRY_FILE=workspace/stats/jev.jsonl` to record one line per call. It carries `point`, `type`, `available`, `confidence`, `usable`, `fallback_reason`, `latency_ms`, and `criteria_sha256` (the first 12 hex chars of the criteria JSON). The hash groups call sites whose labels drifted apart; the fallback counts tell you which point is not worth keeping. The write is best-effort and never affects the answer.
 
 `--type` takes the capitalized spelling (`Choice` / `Score` / `Noul`); the script lowercases it on the wire, because the API pins each question schema's `type` to a lowercase const and rejects anything else with HTTP 400.
 

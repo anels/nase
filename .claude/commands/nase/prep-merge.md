@@ -1,6 +1,6 @@
 ---
 name: nase:prep-merge
-description: "Prepare a PR for merge by checking threads, history, verification, and metadata. Use with a PR URL only for explicit prep merge, squash and push, clean up, ready-to-merge, or finalize intent."
+description: "Prepare a PR for merge: threads, history, verification, metadata. Use with a PR URL only for explicit prep merge, ready-to-merge, or squash and push."
 argument-hint: "<pr-url-or-number>"
 category: Git workflow
 ---
@@ -17,7 +17,7 @@ Prepare one PR without merging it. Follow `.claude/docs/language-config.md` → 
 python3 .claude/scripts/pr-github-helper.py prep-state "$PR_URL" --local-repo "{repo-path}"
 ```
 
-   It returns unresolved review threads, review submission bodies (`reviewSubmissions`), and issue comments (`issueComments`). A thread-only read returns an honest zero while a bot verdict sits on another surface. Auto-resolve a bot-declined thread only when it is **explicitly obsolete**, meaning that bot's newest comment on any of the three surfaces withdraws the finding or names the commit that fixed it; a thread that is merely old is not obsolete. Show the exact set and take immediate approval before resolving any of them. A severity bot (any login in `BOT_LOGINS` or `NASE_BOT_LOGINS`) re-fires declined findings after a push; surface a repeated finding and stop instead of silently resolving it again. Neither non-thread surface has a resolved flag, so read a bot's newest comment as its current verdict. Any remaining actionable item on any of the three surfaces blocks history rewriting.
+   It returns unresolved review threads, review submission bodies (`reviewSubmissions`), and issue comments (`issueComments`). A thread-only read returns an honest zero while a bot verdict sits on another surface. Auto-resolve a bot-declined thread only when it is **explicitly obsolete**, meaning that bot's newest comment on any of the three surfaces withdraws the finding or names the commit that fixed it; a thread that is merely old is not obsolete. Try jev first for each candidate via `.claude/scripts/jev-judge.py` (`--point prep-merge.thread-obsolete --type Noul --instructions "Does this bot comment explicitly withdraw the declined finding, or name the commit that fixed it?" --criteria '{"true": "withdraws the finding or names the fixing commit", "false": "merely old, unanswered, or restates the original finding"}'`, state = one line holding the bot's newest comment excerpt and the commit it names, if any); `usable: true` with answer ≥ 0.5 only nominates a thread, and any fallback means decide it yourself. Show the exact set and take immediate approval before resolving any of them. A severity bot (any login in `BOT_LOGINS` or `NASE_BOT_LOGINS`) re-fires declined findings after a push; surface a repeated finding and stop instead of silently resolving it again. Neither non-thread surface has a resolved flag, so read a bot's newest comment as its current verdict. Any remaining actionable item on any of the three surfaces blocks history rewriting.
 4. Run the repo's required verification before rebase/squash. Apply `.claude/docs/build-test-loop.md` and `.claude/docs/anti-rationalization.md`; environment-only gaps remain explicit.
 5. Create an isolated worktree through `.claude/docs/worktree-pattern.md` and call its absolute path `{work_root}`. Rebase on the fetched base and re-run focused verification when conflict resolution changes code.
 6. Inspect `origin/{base}..HEAD`. If multiple commits remain, squash from the verified merge base and derive the message with `/nase:improve-commit-message --auto-accept --repo {work_root}`, which owns the conventional-commit shape and the repo's commitlint rules; this file does not restate them. Never use a stale base or destructive reset outside the isolated worktree.
@@ -50,6 +50,6 @@ python3 .claude/scripts/pr-github-helper.py prep-state "$PR_URL" --local-repo "{
 - {HH:MM} | prep-merge: {repo}#{number} squashed and pushed, {ready|blocked: reason}
 ```
 
-   Offer mark-ready and review-request actions only as separate, explicit, payload-bound approvals. Do not merge.
+   Offer mark-ready and review-request actions only as separate, explicit, payload-bound approvals - with one exception: when `python3 .claude/scripts/autonomy-policy.py --class pr-mark-ready` reports `decision: auto`, that level pre-authorizes the mark-ready action, so show the manifest, execute it, and append the audit entry with `python3 .claude/scripts/daily-log-append.py autonomy "pr-mark-ready {repo}#{number} {manifest}"`. Review-request stays a separate class and its own gate. Do not merge.
 
 Any mismatch after approval invalidates the payload and requires a new preview. Never bypass hooks, reuse stale tokens, or force-push an unverified commit.

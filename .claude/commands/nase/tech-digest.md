@@ -1,6 +1,6 @@
 ---
 name: nase:tech-digest
-description: "Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, tech digest, what's new, latest in AI, morning digest, or tech roundup."
+description: "Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, what's new, or morning digest."
 argument-hint: "[--refresh]"
 category: Knowledge base
 ---

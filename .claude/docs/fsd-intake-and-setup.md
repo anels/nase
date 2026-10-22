@@ -4,7 +4,7 @@
 
 - Phase 1: Infer Context (do the homework before asking anything)
 - Phase 1.5: Topology Map (before any code intent is locked in)
-- Phase 2: Upfront Config - single batched AskUserQuestion, then execution
+- Phase 2: Upfront Config - derive what the design answers, ask only the gaps
 - Phase 3: Setup
 - Phase 3.7: Task Decomposition (execution_mode = "Direct with Phase isolation" only)
 
@@ -74,15 +74,33 @@ If topology exists, Phase 4 edits only `affected_files`; add files by re-enterin
 
 **Early size signal:** if `affected_files` already exceeds ~15 files, say so now and name the natural split seams - cheaper to scope down before code intent locks in than at the Phase 6.1 final diff measurement.
 
-## Phase 2: Upfront Config - single batched AskUserQuestion, then execution
+## Phase 2: Upfront Config - derive what the design answers, ask only the gaps
 
-Ask all 5 config decisions in one `AskUserQuestion` `questions` array, then continue until done or blocked.
+Five config decisions exist. It is not five questions: a design handoff usually settles some of them in writing, and asking a question whose answer is already in the doc the user just approved is the noise this phase removes.
 
-**If `success_criteria_from_design` exists** (Phase 1 effort-doc intake): drop Q0 from the batched call, set `success_criteria` = the design doc's Success Criteria, and say one line: `Done-definition taken from workspace/efforts/{slug}.md Success Criteria.` Ask only Q1–Q4.
+**Derive first, ask the rest.** When `success_criteria_from_design` exists, score each decision against its evidence rule below. Derived means the doc *states* it; a plausible reading of the prose is not a derivation. Anything without evidence is asked.
 
-Store answers: `success_criteria` = Q0 answer (or the design doc's criteria), `execution_mode` = Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR"), `tdd_mode` = (Q4 = "Yes"). After any Q0 follow-up, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
+| Decision | Derive it when | Derived value |
+|---|---|---|
+| Q0 done-definition | `### Success Criteria` exists | those criteria |
+| Q1 execution mode | `### Implementation Plan` states the dependency graph | 1-2 steps → `Direct`. ≥3 steps, any branch marked parallel → `Team`. ≥3 steps, all sequential → `Direct with Phase isolation` |
+| Q2 worktree | Frontmatter has an explicit `worktree: yes` / `worktree: no` | that value |
+| Q3 draft PR | `### PR Plan` exists and names a PR strategy | `Yes - draft PR`. Explicit "no PR" / "local only" → `No` |
+| Q4 strict TDD | The plan states test-first / RED→GREEN per step, or says tests are follow-up | that value |
 
-**Single batched call:**
+State each derived value in one line with its source, so the user can correct it without being re-asked the whole set:
+
+```
+Derived from workspace/efforts/{slug}.md: done-definition = Success Criteria;
+execution mode = Direct with Phase isolation (4 sequential steps);
+draft PR = yes (PR Plan: Target PR count 1).
+```
+
+**Then ask the gaps** in one `AskUserQuestion` `questions` array. Four entries is the harness maximum, so: with any derivation the gaps fit in one call; with none derived, ask Q0-Q3 in the first call and Q4 in a second call immediately after - never a fifth entry in one array.
+
+Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR"), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
+
+**Options for the entries you do ask:**
 
 ```
 questions:

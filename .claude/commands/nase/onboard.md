@@ -1,6 +1,6 @@
 ---
 name: nase:onboard
-description: "Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL."
+description: "Onboard or refresh repo context in the workspace KB. Use for onboard, refresh KB, add repo, or a repo path or URL."
 argument-hint: "[repo|url] [--group N] [--all-groups] [--force] [--no-curate]"
 category: Knowledge base
 ---

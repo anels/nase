@@ -1,6 +1,6 @@
 ---
 name: nase:reflect
-description: "Reflect on completed work and extract lessons. Use after a feature, bug fix, or debugging session, or for reflect, what went well, or post-mortem."
+description: "Reflect on completed work and extract lessons. Use after a feature, fix, or debugging session, or for post-mortem."
 argument-hint: "[completed task] [--auto-accept]"
 category: Learning & reflection
 ---
