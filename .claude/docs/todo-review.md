@@ -1,6 +1,6 @@
 # Todo Review
 
-Re-checks the open `## Independent` items in `workspace/tasks/todo.md` against live state, archives what is done, and walks the user through the rest one question per item. `/nase:today` Step 7 runs it. Effort-backed pointers are out of scope because the effort doc owns their status, `/nase:today` Step 1 reads their live PR state, and `check-effort-pointer-integrity.py` polices the rows.
+Re-checks the open `## Independent` items in `workspace/tasks/todo.md` against live state, archives what is done, and walks the user through the rest in groups of up to four questions. `/nase:today` Step 7 runs it. Effort-backed pointers are out of scope because the effort doc owns their status, `/nase:today` Step 1 reads their live PR state, and `check-effort-pointer-integrity.py` polices the rows.
 
 ## Triage
 
@@ -38,15 +38,15 @@ The default by verdict: RESOLVED closes. SUPERSEDED closes, or is rewritten when
 
 ## Walkthrough
 
-One `AskUserQuestion` per item, in file order, and the answers are applied together after the last one. This departs from `skill-contract.md` rule 4 (batch the questions) because the user reads one item's evidence at a time. It departs from `skill-authoring-contract.md` section 5 (act on each answer at once) because Apply writes `todo.md` once. `## Archived This Cleanup` in `todo.md` records each close and rewrite, in place of `### Resolved Decisions`.
+One `AskUserQuestion` call carrying up to four due items as separate `questions` entries, in file order; when more items are due, send the next group of four after the answers land. The harness renders the entries one screen at a time, so the user still reads one item's evidence before deciding it, while the run pays one round trip per group instead of one per item. Apply every answer together after the last one.
 
-- The question names the item and the verdict in one sentence.
-- An `AskUserQuestion` takes 2 to 4 options. Offer the recommended action, then park and close (unless one of them is the recommendation), then at most one more candidate. The user can type anything else under Other.
+- Each `question` names the item and the verdict in one sentence.
+- An `AskUserQuestion` entry takes 2 to 4 options. Offer the recommended action, then park and close (unless one of them is the recommendation), then at most one more candidate. The user can type anything else under Other.
 - Each option description says what happens, what it costs, and what it leaves undone, in full sentences, so the user never backtracks to understand an option.
 - The recommended option ends with ` (Recommended)` (`skill-authoring-contract.md`).
 - Quote only the decisive numbers. The full evidence stays in the subagent output.
 
-If the user stops early, apply the answers so far and leave the other items due.
+If the user stops early, apply the answers so far and leave the other items due. A group whose questions were answered is applied even when a later group is abandoned.
 
 ## Apply
 

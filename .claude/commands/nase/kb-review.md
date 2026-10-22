@@ -1,6 +1,6 @@
 ---
 name: nase:kb-review
-description: "Audit KB and workspace state for stale data, layer drift, unverified status claims, broken references, credential exposure, and unsafe backups, then apply safe repairs. Use for review KB, workspace hygiene, clean up KB, or curate KB."
+description: "Audit KB and workspace hygiene, then apply safe repairs. Use for review KB, curate KB, stale data, or clean up KB."
 argument-hint: "[workspace/path] [--kb-only] [--report-only|--repair]"
 category: Knowledge base
 ---

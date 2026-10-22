@@ -1,6 +1,6 @@
 ---
 name: nase:discuss-pr
-description: "Deeply review a PR and draft evidence-backed inline findings. Use for analyze PR, review PR, self-review, or a PR URL; use /nase:address-comments for existing feedback."
+description: "Review a PR and draft evidence-backed inline findings. Use for review PR, analyze PR, self-review, or a PR URL; not for existing feedback."
 argument-hint: "<pr-url-or-number>"
 category: Git workflow
 ---
@@ -27,23 +27,23 @@ Default question order:
 
 Treat "more elegant" as actionable only when the alternative is concretely simpler, safer, easier to test, or a better fit with existing patterns.
 
-Stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. That is the fan-out threshold. Prefer compact script output before spawning agents. When the threshold trips, route per `.claude/roles.yaml`: code traces to **worker** (`tools=[Read, Edit, Write, Grep, Glob, Bash]`), the doubt pass to **verifier** (`tools=[Read, Grep, Glob, Bash]`), PR metadata to the persisted `nase-pr-metadata-reader`. That agent is `Read, Grep, Glob` with no Bash, so run every `gh` query in the main thread and hand it the output to read. An unrouted spawn inherits the session model.
+Stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. That is the fan-out threshold. Prefer compact script output before spawning agents. When the threshold trips, route per `.claude/roles.yaml`: code traces to **worker** (`tools=[Read, Edit, Write, Grep, Glob, Bash]`), the doubt pass to **verifier** (`tools=[Read, Grep, Glob, Bash]`), PR metadata to the persisted `nase-pr-metadata-reader`. Step 5b's traces are the one exception: their role comes from `.claude/scripts/trace-role.py`, which returns `worker` unless a recorded A/B receipt allows `lookup`. That agent is `Read, Grep, Glob` with no Bash, so run every `gh` query in the main thread and hand it the output to read. An unrouted spawn inherits the session model.
 
 ## Standing invariants
 
-- Steps 1-5.7, plus the Step 6.5 additional deep dives, are investigation-only and auto-run traces without asking. The only external mutations this command performs are the review submission and any batched reactions/replies the user explicitly approves at Step 7-8. Every GitHub write goes through a payload-bound `external-write-action.py` manifest the user authorizes; never run a raw `gh api` mutation.
+- Steps 1-5.7, plus the Step 6.5 additional deep dives, are investigation-only and auto-run traces without asking. The only external mutations this command performs are the review submission and any batched reactions/replies the user explicitly approves at Step 8. Every GitHub write goes through a payload-bound `external-write-action.py` manifest the user authorizes; never run a raw `gh api` mutation.
 - Keep findings anchored to the stated PR intent and changed code. Drop unrelated pre-existing issues.
 - Fetch existing human and bot comments once, then de-duplicate every candidate against them before presenting.
 - Preserve the KB lookup shape `mentions:<path>` for core changed files.
 - Keep `confidence` (evidence certainty), `severity` (impact), `kind` (`issue | suggestion | nit | question`), and `disposition` (`blocking | non-blocking | needs-answer`) independent. High confidence never makes a nit severe or blocking.
-- Try jev first via `.claude/scripts/jev-judge.py` for `kind` and for `disposition`. `.claude/docs/discuss-pr-analysis.md` is the single definition point for both - it owns the `--type`, the option list, and the bounded state, so do not restate them here. Confidence < 0.9 or unavailable → classify it yourself against the labels above.
+- Try jev first via `.claude/scripts/jev-judge.py` for `kind` and for `disposition`. `.claude/docs/discuss-pr-analysis.md` is the single definition point for both - it owns the `--type`, the option list, and the bounded state, so do not restate them here. `usable: false` (unavailable, low confidence, or missing confidence) → classify it yourself against the labels above.
 - Every GitHub-bound inline draft must pass the private outgoing-comment research gate. Keep private or sensitive evidence out of GitHub text.
 - A nit may be drafted only when it is high-confidence, PR-introduced, changed-line anchored, not formatter-detectable, and supported by repo authority or a concrete maintainability benefit. Nits are always non-blocking.
 - Diff-first investigation and the trace-shape self-check must run at the actual investigation and classification call sites.
 
 ## State contract
 
-Preserve normalized `owner`, `repo`, `number`, `pr_ref`, `repo_path`, compact PR metadata, changed files, existing comment set, review frame, risk map, selected specialists, candidate findings, private outgoing-comment records, confidence, severity, kind, disposition, authority, `safe_defer`, `must_not_merge_reason`, verification matrix, doubt-cycle results, de-duplicated findings, draft choice, and final counts.
+Preserve normalized `owner`, `repo`, `number`, `pr_ref`, `repo_path`, compact PR metadata, changed files, existing comment set, review frame, risk map, selected specialists, candidate findings, private outgoing-comment records, confidence, severity, kind, disposition, authority, `safe_defer`, `must_not_merge_reason`, verification matrix, doubt-cycle results, de-duplicated findings, review state, and final counts.
 
 ## Phase 0: Input Guard
 
@@ -57,8 +57,8 @@ Return the complete state contract above. Before Step 6, no user-visible finding
 
 ## Steps 6-Final: Present and hand off
 
-At Step 6, read `.claude/docs/discuss-pr-output.md` once. Follow its exact output order, scorecard, severity/disposition grouping, automatic additional deep dives, draft decision, gated review submission, completion message, KB auto-write, error handling, notes, and daily log.
+At Step 6, read `.claude/docs/discuss-pr-output.md` once. Follow its exact output order, scorecard, severity/disposition grouping, automatic additional deep dives, automatic drafting, the single submission gate, completion message, KB auto-write, error handling, notes, and daily log.
 
-The draft decision defaults to drafting inline comments and submitting a GitHub review; the user still actively confirms the draft choice and the review state before any write. All writes go through the `external-write-action.py` manifest gate.
+Drafting is local and private, so Step 7 produces the inline drafts without asking. The user confirms the review state and the exact payload once, at Step 8, before any write. All writes go through the `external-write-action.py` manifest gate.
 
-Steps 6, 6.5, and 7 run in one turn. The findings report is the setup for the draft question, not the deliverable, so the turn ends on Step 7's `AskUserQuestion` - never on the report itself. Stopping after the report reads to the user as an abandoned review and costs them a round trip to say "continue".
+Steps 6, 6.5, 7, and 8 run in one turn. The findings report and the drafts are the setup for the submission gate, not the deliverable, so the turn ends on Step 8's `AskUserQuestion` - never on the report itself. Stopping after the report reads to the user as an abandoned review and costs them a round trip to say "continue".

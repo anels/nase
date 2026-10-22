@@ -1,6 +1,6 @@
 ---
 name: nase:request-review
-description: "Find appropriate PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, request approval, notify reviewers, or ping code owners."
+description: "Find PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, approval, or ping code owners."
 argument-hint: "<pr-url>... [--mode re-review-ping]"
 category: Git workflow
 ---
@@ -158,23 +158,23 @@ the URL on the same line so the auto-linker cannot swallow the next bullet.
 
 ## Step 8 - Confirm recipient list and draft
 
-People move teams or leave companies, and sometimes you want a different reviewer than what git history suggests. Give the user control over the final list before staging any Slack drafts.
-
-Use two `AskUserQuestion` calls:
+Use one `AskUserQuestion` call with both entries; the harness renders them in order:
 
 **Question 1 - select recipients** (`multiSelect: true`):
 
 Present each resolved person as a selectable option, pre-selected, labelled with their real name and a brief reason (`Alice Smith` - "14 commits to changed files"). List unresolved handles in the question text, not as options. The "Other" free-text option lets the user add someone not on the list.
 
-**Question 2 - message preview** (single-select, only if the recipient list is non-empty - question 1's selections, or the caller's handles when question 1 was skipped):
+**Question 2 - message preview** (single-select; include it whenever there is a handle to write to - the candidate list by default, the caller's handles in `--mode re-review-ping`, where question 1 is skipped and this is the only entry):
 
-Show the drafted message and ask "Stage Slack DM drafts for the selected people?"
+Show the drafted message above the call, then ask "Stage the DM draft shown for the selected people?":
 - `Stage drafts` - proceed
 - `Cancel` - abort
 
-**Handling "Other"**: If the user types a name in the Other field, search Slack for that person (`mcp__plugin_slack_slack__slack_search_users`) and add them to the draft list. If the search is ambiguous, surface the candidates and ask the user to clarify before staging drafts.
+Both entries share one round trip; the preview renders before either is answered. A changed list needs no re-preview - the message has no per-person fields. If question 1 ends with nobody selected, question 2 stages nothing.
 
-Only stage drafts for the people the user confirmed in question 1, or for the caller's handles when question 1 was skipped.
+**Handling "Other"**: search Slack for the typed name (`mcp__plugin_slack_slack__slack_search_users`) and add them to the draft list. If the search is ambiguous, surface the candidates and ask the user to clarify before staging drafts.
+
+Stage drafts only for the people confirmed in question 1 - or, in re-review-ping mode, for the caller's handles.
 
 ## Step 9 - Stage DM drafts (parallel)
 

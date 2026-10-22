@@ -1,6 +1,6 @@
 ---
 name: nase:simplify
-description: "Simplify recently modified code without changing behavior. Use before commit or for simplify, clean up code, refactor for clarity, tidy up, deslop, or anti-slop."
+description: "Simplify recently modified code without changing behavior. Use for simplify, clean up code, refactor for clarity, or deslop."
 argument-hint: "[diff scope]"
 category: Git workflow
 ---

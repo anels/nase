@@ -1,6 +1,6 @@
 ---
 name: nase:learn
-description: "Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, deep dive, or article URL."
+description: "Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, or a URL."
 argument-hint: "<tip/url/repo/topic>"
 category: Learning & reflection
 ---

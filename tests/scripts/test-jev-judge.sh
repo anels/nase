@@ -117,8 +117,8 @@ if printf '%s' "$out" | grep -Eq '"reason": "net_error:[A-Za-z]+"'; then
 else
   fail "net_error names an exception class, not a message (got: $out)"
 fi
-if printf '%s' "$out" | grep -q 'net_error:.*[][ (]'; then
-  fail "net_error suffix must not carry errno text or punctuation"
+if printf '%s' "$out" | python3 -c 'import json,sys; r=json.load(sys.stdin)["reason"]; sys.exit(0 if any(c in r for c in "[] (") else 1)'; then
+  fail "net_error suffix must not carry errno text or punctuation (got: $(printf '%s' "$out" | python3 -c 'import json,sys;print(json.load(sys.stdin)["reason"])'))"
 else
   pass "net_error suffix must not carry errno text or punctuation"
 fi
@@ -232,6 +232,98 @@ for p in 0.95 0.05 0.6; do
     fail "Noul probability $p reports confidence $want (got '$got')"
   fi
 done
+
+# The usable/fallback decision lives in the script, not in each call site: a
+# caller that hand-rolls `confidence >= 0.9` will drift from this threshold, and
+# a caller that only checks `available` will trust a 0.4 answer. Telemetry is
+# opt-in and must never change the answer.
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/jev-telemetry-XXXXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+
+choice_shape() {
+  env -u NASE_JEV TYPESAFE_API_KEY=dummy NASE_JEV_TELEMETRY_FILE="$TMP/jev.jsonl" \
+    python3 -I - "$SCRIPT" "$1" <<'PY'
+import importlib.util
+import io
+import json
+import sys
+import urllib.request
+
+spec = importlib.util.spec_from_file_location("jev_judge", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+class Response(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+body = json.dumps(
+    {"answers": {"p": {"type": "choice", "choice": "a", "confidence": float(sys.argv[2])}}}
+).encode()
+urllib.request.urlopen = lambda *a, **k: Response(body)
+sys.argv = ["jev-judge.py", "--point", "p", "--type", "Choice", "--criteria", '{"a":"b"}', "--state", "{}"]
+mod.main()
+PY
+}
+
+out=$(choice_shape 0.4)
+if [ "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["usable"])')" = "False" ]; then
+  pass "confidence 0.4 is not usable"
+else
+  fail "confidence 0.4 is not usable (got: $out)"
+fi
+if [ "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["fallback_reason"])')" = "low_confidence" ]; then
+  pass "confidence 0.4 reports low_confidence"
+else
+  fail "confidence 0.4 reports low_confidence (got: $out)"
+fi
+if [ "$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["point"])')" = "p" ]; then
+  pass "the answer echoes its point name"
+else
+  fail "the answer echoes its point name (got: $out)"
+fi
+
+out=$(choice_shape 0.95)
+if [ "$(printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["usable"], d["fallback_reason"])')" = "True None" ]; then
+  pass "confidence 0.95 is usable with no fallback"
+else
+  fail "confidence 0.95 is usable with no fallback (got: $out)"
+fi
+
+if [ -s "$TMP/jev.jsonl" ]; then
+  lines=$(wc -l < "$TMP/jev.jsonl" | tr -d ' ')
+  if [ "$lines" = "2" ]; then
+    pass "telemetry writes one line per call"
+  else
+    fail "telemetry writes one line per call (got $lines)"
+  fi
+  if tail -1 "$TMP/jev.jsonl" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+need={"ts","point","type","available","confidence","usable","fallback_reason","latency_ms","criteria_sha256"}
+sys.exit(0 if need <= set(d) and len(d["criteria_sha256"])==12 else 1)'; then
+    pass "telemetry carries point, confidence, fallback, latency, and criteria hash"
+  else
+    fail "telemetry carries point, confidence, fallback, latency, and criteria hash (got: $(tail -1 "$TMP/jev.jsonl"))"
+  fi
+else
+  fail "telemetry file was not written"
+fi
+
+# A telemetry path that cannot be written must not change the answer or the exit code.
+out=$(env -u TYPESAFE_API_KEY -u NASE_JEV NASE_JEV_TELEMETRY_FILE=/dev/null/nope \
+  python3 "$SCRIPT" --point test.point --type Choice \
+  --criteria '{"a": "b"}' --state '{"a": "b"}')
+rc=$?
+if [ "$rc" = "0" ] && printf '%s' "$out" | grep -q '"reason": "no_api_key"'; then
+  pass "an unwritable telemetry path leaves the answer intact"
+else
+  fail "an unwritable telemetry path leaves the answer intact (rc=$rc, got: $out)"
+fi
 
 if [ "$failures" -gt 0 ]; then
   printf '\n%d test(s) failed\n' "$failures" >&2

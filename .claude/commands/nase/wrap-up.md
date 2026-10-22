@@ -1,6 +1,6 @@
 ---
 name: nase:wrap-up
-description: "Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, EOD, done for today, closing out, or summarize today."
+description: "Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, or closing out."
 argument-hint: "[day summary]"
 category: Learning & reflection
 ---

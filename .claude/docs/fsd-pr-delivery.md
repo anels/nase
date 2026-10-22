@@ -18,7 +18,7 @@ If `review_outcome = not-run`, the PR body states it in whichever section carrie
 
 Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command. The helper enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`), so there is no separate snippet to run and no `gh auth` call to make - those are blocked.
 
-Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation:
+Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation - unless `python3 .claude/scripts/autonomy-policy.py --class pr-create-draft` reports `decision: auto`, in which case the level pre-authorizes this one creation: still show the payload, then prepare and execute it and append the audit entry with `python3 .claude/scripts/daily-log-append.py autonomy "pr-create-draft {repo_owner}/{repo_name} {manifest}"`. Pre-authorization never removes the manifest binding or the account guard:
 
 ```
 question: "Create this draft PR?"

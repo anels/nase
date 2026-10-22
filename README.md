@@ -238,77 +238,77 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:doctor` | Diagnose nase workspace configuration, hooks, backups, tools, and skill sync. Use for doctor, health check, hooks not firing, backup warnings, or after migration. |
+| `/nase:doctor` | Diagnose nase workspace config, hooks, backups, tools, and skill sync. Use for doctor, health check, hooks not firing, or after migration. |
 | `/nase:help` | Show the nase command and hook guide. Use for help, show commands, what can you do, what skills are available, or how does nase work. |
-| `/nase:init` | Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing workspace/config.md, init nase, configure, or bootstrap. |
+| `/nase:init` | Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing config, configure, or bootstrap. |
 
 ### Knowledge base
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:kb-gap-detect` | Find missing KB topics from logs and lessons. Use for knowledge gap, find KB holes, or what should I document; use /nase:kb-review for stale or duplicate entries. |
-| `/nase:kb-merge` | Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export. |
-| `/nase:kb-review` | Audit KB and workspace state for stale data, layer drift, unverified status claims, broken references, credential exposure, and unsafe backups, then apply safe repairs. Use for review KB, workspace hygiene, clean up KB, or curate KB. |
-| `/nase:kb-search` | Search KB files for topics, keywords, patterns, and related entries. Use for search KB, find in KB, or is X documented; use /nase:kb-update or /nase:learn to write. |
-| `/nase:kb-teamshare` | Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, share skills, or package content for /nase:kb-merge. |
-| `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns. |
-| `/nase:onboard` | Onboard or refresh repo context in the workspace KB. Use before repo work or for onboard, refresh KB, refresh all repos, add repo, a repo path, or a GitHub URL. |
-| `/nase:tech-digest` | Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, tech digest, what's new, latest in AI, morning digest, or tech roundup. |
-| `/nase:terminology` | Define, update, or look up scope-aware terminology (same term can mean different things per repo/domain), cross-linked. Use for what does X mean, add a term, or glossary entry; use kb-update/learn otherwise. |
+| `/nase:kb-gap-detect` | Find missing KB topics from logs and lessons. Use for knowledge gap or what should I document; kb-review finds stale entries. |
+| `/nase:kb-merge` | Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, or a kb-teamshare export. |
+| `/nase:kb-review` | Audit KB and workspace hygiene, then apply safe repairs. Use for review KB, curate KB, stale data, or clean up KB. |
+| `/nase:kb-search` | Search KB files for topics, keywords, and related entries. Use for search KB, find in KB, or is X documented. |
+| `/nase:kb-teamshare` | Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, or share skills. |
+| `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract. |
+| `/nase:onboard` | Onboard or refresh repo context in the workspace KB. Use for onboard, refresh KB, add repo, or a repo path or URL. |
+| `/nase:tech-digest` | Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, what's new, or morning digest. |
+| `/nase:terminology` | Define, update, or look up scope-aware, cross-linked terminology. Use for what does X mean, add a term, or glossary. |
 
 ### Learning & reflection
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:extract-skills` | Extract reusable problem-solving patterns from the current session into nase skills. Use after non-trivial work or for extract pattern, save technique, or capture workflow. |
-| `/nase:learn` | Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, deep dive, or article URL. |
-| `/nase:reflect` | Reflect on completed work and extract lessons. Use after a feature, bug fix, or debugging session, or for reflect, what went well, or post-mortem. |
-| `/nase:today` | Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todo items. Use for today, morning kickoff, daily plan, standup, or what should I work on. |
-| `/nase:wrap-up` | Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, EOD, done for today, closing out, or summarize today. |
+| `/nase:extract-skills` | Extract reusable patterns from this session into nase skills. Use for extract pattern, save technique, capture workflow, or after non-trivial work. |
+| `/nase:learn` | Research and save a tip, URL, repo, or cross-project pattern to KB. Use for remember this, learn from this, or a URL. |
+| `/nase:reflect` | Reflect on completed work and extract lessons. Use after a feature, fix, or debugging session, or for post-mortem. |
+| `/nase:today` | Build a daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todos. Use for today, standup, or what should I work on. |
+| `/nase:wrap-up` | Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, or closing out. |
 
 ### Design & implementation
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:design` | Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill plan, or review a design. |
-| `/nase:fsd` | Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, fire and forget, or feature/fix handoff. |
+| `/nase:design` | Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill a plan, or review a design. |
+| `/nase:fsd` | Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, or fire and forget. |
 
 ### Git workflow
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:address-comments` | Resolve existing PR review feedback with fixes or replies. Use for address comments, fix review comments, handle PR feedback, or resolve threads. |
-| `/nase:discuss-pr` | Deeply review a PR and draft evidence-backed inline findings. Use for analyze PR, review PR, self-review, or a PR URL; use /nase:address-comments for existing feedback. |
-| `/nase:improve-commit-message` | Rewrite the latest commit message to match repo conventions. Use after committing, before push, or for improve commit, fix commit message, amend commit, or clean up commit. |
-| `/nase:prep-merge` | Prepare a PR for merge by checking threads, history, verification, and metadata. Use with a PR URL only for explicit prep merge, squash and push, clean up, ready-to-merge, or finalize intent. |
-| `/nase:request-review` | Find appropriate PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, request approval, notify reviewers, or ping code owners. |
-| `/nase:simplify` | Simplify recently modified code without changing behavior. Use before commit or for simplify, clean up code, refactor for clarity, tidy up, deslop, or anti-slop. |
+| `/nase:address-comments` | Resolve existing PR review feedback with fixes or replies. Use for address comments, handle PR feedback, or resolve threads. |
+| `/nase:discuss-pr` | Review a PR and draft evidence-backed inline findings. Use for review PR, analyze PR, self-review, or a PR URL; not for existing feedback. |
+| `/nase:improve-commit-message` | Rewrite the latest commit message to repo conventions. Use for improve commit, fix commit message, amend, clean up commit, or before push. |
+| `/nase:prep-merge` | Prepare a PR for merge: threads, history, verification, metadata. Use with a PR URL only for explicit prep merge, ready-to-merge, or squash and push. |
+| `/nase:request-review` | Find PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, approval, or ping code owners. |
+| `/nase:simplify` | Simplify recently modified code without changing behavior. Use for simplify, clean up code, refactor for clarity, or deslop. |
 
 ### Reporting
 
 | Command | Purpose |
 |---------|---------|
 | `/nase:effort-rollup` | Build a monthly delivery report from live PR and Jira state. Use for effort rollup, impact report, month in review, or what did I ship. |
-| `/nase:efforts` | Reconcile active efforts with live PR and Jira state. Use for list my efforts, effort status, sync efforts, stalled work, or what am I working on. |
-| `/nase:estimate-eta` | Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, estimate this, or before committing to a timeline. |
-| `/nase:kb-usage` | Report which skills access, read, or surface KB files and which mapped files are unobserved. Use for KB usage, KB observability, top KB files, or unused KB entries. |
-| `/nase:publish-confluence` | Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts preserved. Use for publish to Confluence, share this report, put this on the wiki, or a local report path. |
-| `/nase:recap` | Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, review progress, what did I do, or summarize a period. |
-| `/nase:skill-usage` | Report skill usage, outcomes, context hotspots, and deprecation candidates. Use for which skills do I use, skill stats, skill token cost, context hotspots, or deprecate skills. |
-| `/nase:stats` | Display workspace activity counts and charts inline. Use for show stats, how active am I, productivity, or 7/30/all-time activity; use /nase:recap for narrative. |
+| `/nase:efforts` | Reconcile active efforts with live PR and Jira state. Use for effort status, sync efforts, stalled work, or what am I working on. |
+| `/nase:estimate-eta` | Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, or estimate this. |
+| `/nase:kb-usage` | Report which skills read or surface KB files and which mapped files are unused. Use for KB usage or top KB files. |
+| `/nase:publish-confluence` | Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts intact. Use for publish to Confluence or share this report. |
+| `/nase:recap` | Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, or summarize a period. |
+| `/nase:skill-usage` | Report skill usage, outcomes, and context hotspots. Use for skill stats, skill token cost, or deprecate skills. |
+| `/nase:stats` | Display workspace activity counts and charts. Use for show stats, how active am I, or 7/30/all-time activity. |
 
 ### Security & maintenance
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:skill-audit` | Scan skills for injection, exfiltration, unsafe operations, supply-chain, and credential risks. Use for audit skills, skill security, or imported skills. |
-| `/nase:tech-debt-audit` | Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for tech debt audit, architecture review, or modernization. |
+| `/nase:skill-audit` | Scan skills for injection, exfiltration, unsafe operations, and credential risks. Use for audit skills or skill security. |
+| `/nase:tech-debt-audit` | Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for a tech debt audit. |
 
 ### Backup & restore
 
 | Command | Purpose |
 |---------|---------|
-| `/nase:restore` | Restore workspace/ from a backup. Use after migration or deletion, when local state is out of sync, or for sync workspace, recover workspace, restore backup, or pull backup. |
+| `/nase:restore` | Restore workspace/ from a backup. Use after migration or deletion, or for sync workspace, recover, or pull backup. |
 
 ---
 ## Hooks at a glance

@@ -1,6 +1,6 @@
 ---
 name: nase:kb-merge
-description: "Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, merge shared KB, or after receiving a /nase:kb-teamshare export."
+description: "Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, or a kb-teamshare export."
 argument-hint: "<source-kb-path>"
 category: Knowledge base
 disable-model-invocation: true

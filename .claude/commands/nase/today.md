@@ -1,6 +1,6 @@
 ---
 name: nase:today
-description: "Build a live-status-checked daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todo items. Use for today, morning kickoff, daily plan, standup, or what should I work on."
+description: "Build a daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todos. Use for today, standup, or what should I work on."
 argument-hint: "[date or focus]"
 category: Learning & reflection
 ---
@@ -73,4 +73,4 @@ Append one bounded daily-log line using `.claude/docs/daily-log-format.md`. Incl
 
 ## Notes
 
-Step 7 asks one `AskUserQuestion` per item and applies the answers together. That departs from `.claude/docs/skill-contract.md` rule 4 because the user reads one item's evidence at a time. `.claude/docs/todo-review.md` has the rest.
+Step 7 asks in `AskUserQuestion` groups of up to four items and applies each group's answers together. That keeps one item's evidence per screen, as `skill-contract.md` rule 4 intends, without one round trip per item. `.claude/docs/todo-review.md` has the rest.

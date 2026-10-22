@@ -1,6 +1,6 @@
 ---
 name: nase:design
-description: "Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill plan, or review a design."
+description: "Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill a plan, or review a design."
 argument-hint: "<feature/request> [--auto|--interactive|--grill|--review]"
 category: Design & implementation
 ---

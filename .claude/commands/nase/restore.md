@@ -1,6 +1,6 @@
 ---
 name: nase:restore
-description: "Restore workspace/ from a backup. Use after migration or deletion, when local state is out of sync, or for sync workspace, recover workspace, restore backup, or pull backup."
+description: "Restore workspace/ from a backup. Use after migration or deletion, or for sync workspace, recover, or pull backup."
 argument-hint: "[backup path]"
 category: Backup & restore
 disable-model-invocation: true

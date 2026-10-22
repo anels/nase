@@ -95,15 +95,19 @@ check_absent "prep-merge does not trap-delete a body a later gate still needs" .
 
 discuss=".claude/commands/nase/discuss-pr.md"
 discuss_out=".claude/docs/discuss-pr-output.md"
+discuss_submit=".claude/docs/discuss-pr-submit.md"
 check_contains "discuss PR routes writes through the manifest gate" "$discuss" "external-write-action.py"
 check_contains "discuss PR keeps analysis investigation-only" "$discuss" "investigation-only"
-check_contains "discuss PR output offers the gated post flow" "$discuss_out" "Draft + post"
-check_contains "discuss PR output submits the review via manifest" "$discuss_out" "pulls/{number}/reviews"
-check_contains "discuss PR output cleans the private review file" "$discuss_out" "trap 'rm -rf \"\$REVIEW_DIR\"' EXIT"
+check_contains "discuss PR output offers the gated submit flow" "$discuss_out" "Submit review"
+check_contains "discuss PR submit doc submits the review via manifest" "$discuss_submit" "pulls/{number}/reviews"
+check_contains "discuss PR submit doc cleans the private review file" "$discuss_submit" "trap 'rm -rf \"\$REVIEW_DIR\"' EXIT"
 
 sre="workspace/skills/docs/sre-alert-flow.md"
+sre_signals="workspace/skills/docs/sre-alert-flow-signals.md"
 check_absent "SRE flow does not start web apps" "$sre" "az webapp start"
 check_absent "SRE flow does not swap slots" "$sre" "az webapp deployment slot swap"
+check_absent "SRE signal routing does not start web apps" "$sre_signals" "az webapp start"
+check_absent "SRE signal routing does not swap slots" "$sre_signals" "az webapp deployment slot swap"
 
 repro="workspace/skills/agentic-repro-bug.md"
 check_contains "browser repro requires a non-production test workspace" "$repro" "non-production test workspace"

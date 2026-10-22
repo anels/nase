@@ -29,7 +29,7 @@ Only `type` and `attrs.id` (the Atlassian account ID) are required; `text` shoul
 So when a comment or description must mention/notify someone, send the whole body as `contentFormat: "adf"`. Because ADF drifts the single-shot sha (above), the guard allows ADF **only under a batch / issue-allowlist token**, which binds the approved issue set + an op-count cap instead of the payload bytes. Steps:
 
 1. `AskUserQuestion` showing the target issue(s) and the mention(s).
-2. Write a batch token (`approved_issues`, `max_ops`, `created_at`) - see `.claude/docs/external-mutation-policy.md` → batch token.
+2. Write a batch token (`approved_issues`, `max_ops`, `created_at`) - see `.claude/docs/mutation-reference.md` → Batch token.
 3. Call `editJiraIssue` / `addCommentToJiraIssue` with `contentFormat: "adf"`.
 
 `createJiraIssue` cannot use a batch token (no issue key exists yet), so it is markdown-only - create the issue in markdown, then add the mention via an ADF `addCommentToJiraIssue` or `editJiraIssue` under a batch token.

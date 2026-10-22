@@ -1,6 +1,6 @@
 ---
 name: nase:kb-update
-description: "Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract; use /nase:learn for shared patterns."
+description: "Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract."
 argument-hint: "<repo/topic/fact>"
 category: Knowledge base
 ---

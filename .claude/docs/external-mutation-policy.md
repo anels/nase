@@ -3,14 +3,14 @@
 ## Contents
 
 - The rule
-- CLI mutation action contract
+- Autonomy level
+- Gate contract
 - Private payload directory
-- Hook backstops
+- `execute` exit codes
 - What this policy is NOT
 - Application checklist for new skills
 - GitHub auth account guard
-- Related memories
-- Reference from skills
+- Deeper recipes
 
 Canonical rule for skills that change state in systems outside the local workspace (Slack, Jira, Confluence, GitHub, ADO, cloud resources).
 
@@ -18,25 +18,53 @@ Canonical rule for skills that change state in systems outside the local workspa
 
 ## The rule
 
-**No external mutation without an explicit, draft-first or `AskUserQuestion`-gated user confirmation in the same turn.** "External mutation" = anything other people can see, anything that pages someone, anything that costs money, anything that's hard to undo.
+**No external mutation without an explicit, draft-first, autonomy-pre-authorized, or `AskUserQuestion`-gated user confirmation in the same turn.** "External mutation" = anything other people can see, anything that pages someone, anything that costs money, or anything hard to undo.
 
 | System | Hard rule |
 |--------|-----------|
-| **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. A canvas is a write too. `slack_create_canvas` and `slack_update_canvas` publish into the workspace with no draft path, so `slack-send-guard.sh` blocks both. Put the canvas body in `workspace/tmp/{name}.md`, get explicit approval, and have the user create it. |
-| **Jira** | Drafting comments, creating issues, transitioning status - all require `AskUserQuestion` before the call. "Open" / "In Progress" transitions are mutations too - they notify watchers and may auto-assign. |
-| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, prompt user, only then call the create/update tool. Never publish silently. Tool names differ by MCP generation, so cite this row rather than hardcoding one. Current server: `createConfluenceContent`, `updateConfluenceContent`, `getConfluenceContent`, `searchConfluence`. Older server: `createConfluencePage`, `updateConfluencePage`, `getConfluencePage`, `searchConfluenceUsingCql`. Use the current names; if a call reports an unknown tool, check the live tool list for the other generation before substituting. `getConfluenceSpaces` exists in neither generation - reach spaces through `searchConfluence` or `discover` plus `executeRead`. |
-| **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, which has no named tool and is gated on its own payload by that same hook - body format `markdown`/`html`, non-empty body under 4096 bytes, and exactly one addressing shape (`parentCommentId` reply, or `contentId` plus `commentType` `footer`/`inline`, inline needing `inlineSelection.selectedText`). The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead before posting. For anything else, use the named tool, or show the user the operation and inputs and let them run it. `discover` and `executeRead` are read-only and fine. |
-| **GitHub PR** | Opening a PR, merging, editing description, adding labels, requesting reviewers, posting review comments - `AskUserQuestion` before. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
-| **ADO pipeline** | Triggering a build = action-taking. `AskUserQuestion` before the trigger with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` - never `curl` with `$ADO_PAT`; see `feedback_ado-az-cli-only.md`). |
-| **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` - anything that mutates infrastructure requires explicit user confirmation. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
-| **git push** | Push to feature branch is OK after the standard commit sequence. Push to `main` / `master` / `develop` / `release/*` is BLOCKED by `block-dangerous-git.sh` hook - do not bypass. Force-push: only with `--force-with-lease` and only when the user has been warned. |
+| **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. A canvas is a write too: `slack_create_canvas` and `slack_update_canvas` publish with no draft path, so `slack-send-guard.sh` blocks both. Put the canvas body in `workspace/tmp/{name}.md`, get explicit approval, and have the user create it. |
+| **Jira** | Comments, issue creation, and status transitions are mutations - they notify watchers and may auto-assign. Gate each one, except a transition whose class the autonomy level pre-authorizes (below). |
+| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, get explicit approval, only then call the tool. Never publish silently. Tool names differ by MCP generation; the current and older names are listed in `.claude/docs/mutation-reference.md → Confluence tool names`. |
+| **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, gated on its own payload by that hook. The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead. `discover` and `executeRead` are read-only and fine. |
+| **GitHub PR** | Opening a PR, merging, editing a description, adding labels, requesting reviewers, posting review comments - gate each, unless the autonomy level pre-authorizes the class. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
+| **ADO pipeline** | Triggering a build is action-taking: gate it with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` - never `curl` with `$ADO_PAT`). |
+| **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` - any infrastructure mutation requires explicit confirmation at every autonomy level. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
+| **git push** | Push to a feature branch is OK after the standard commit sequence. Push to `main` / `master` / `develop` / `release/*` is BLOCKED by `block-dangerous-git.sh` - do not bypass. Force-push only with `--force-with-lease` after warning the user. |
 
-## CLI mutation action contract
+## Autonomy level
 
-GitHub CLI, ADO, Azure, Kubernetes, and Terraform mutations use
-`.claude/scripts/external-write-action.py`, not a raw mutating shell command.
-Prepare an action with the exact argv and any payload files, show the emitted
-manifest to the user, call `AskUserQuestion`, then authorize and execute it:
+`workspace/config.md → ## Autonomy` carries `level: guided | standard | auto`. Missing section or key means `guided`, so an unconfigured workspace behaves exactly as before. Ask the policy script, never re-implement the table:
+
+```bash
+python3 .claude/scripts/autonomy-policy.py --class jira-transition-progress
+# {"level": "standard", "class": "...", "decision": "auto", "reason": "..."}
+```
+
+`decision` is `auto`, `ask`, or `never`. `never` means the class cannot be pre-authorized at any level and must stop for a human.
+
+| Class | guided | standard | auto |
+|---|---|---|---|
+| `workspace-append` (daily log, journal, JSONL) | ask | auto | auto |
+| `slack-draft` (create/update a draft, never send) | ask | auto | auto |
+| `jira-transition-progress` (to In Progress only) | ask | auto | auto |
+| `jira-comment-approved` (body already approved once this run) | ask | auto | auto |
+| `pr-mark-ready` | ask | auto | auto |
+| `worktree-cleanup` | ask | auto | auto |
+| `workspace-durable-write` (KB, tasks, efforts, journals) | ask | ask | auto |
+| `pr-create-draft`, `pr-label`, `pr-request-review` | ask | ask | auto |
+| `jira-transition-other` (any status except Done / Canceled) | ask | ask | auto |
+| `slack-send`, `merge`, `force-push`, `confluence-publish`, `review-other-pr`, `cloud-resource`, `ado-trigger` | never | never | never |
+
+Rules that apply at every level:
+
+- `auto` removes the human stop, never the payload binding. The manifest, one-shot token, drift checks, hooks, and prose gates all still run, and the caller appends an audit entry to the daily log in the canonical shape `- {HH:MM} | autonomy: {class} {target} {manifest}`. Write it through `python3 .claude/scripts/daily-log-append.py autonomy "{class} {target} {manifest}"` - a hand-written line under `## Sessions` in any other shape fails the daily-log format check.
+- A class the table does not name, or a `--class` the script rejects, is `ask`. Unknown never means auto.
+- The level is a floor for *asking*, not a grant of permission: a repo rule, a protected branch, an external mutation policy row, or an explicit user instruction that is stricter still wins.
+- When a mutation fails, the failure path is unchanged - report it, do not retry blind.
+
+## Gate contract
+
+GitHub CLI, ADO, Azure, Kubernetes, and Terraform mutations use `.claude/scripts/external-write-action.py`, never a raw mutating shell command. Prepare the exact argv and payload files, show the emitted manifest plus payload content, then authorize and execute:
 
 ```bash
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
@@ -44,12 +72,14 @@ MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
   gh pr create --draft --title "{title}" --body-file "{body_file}" \
   | jq -r .manifest)
 
-# Show the manifest and exact payload content before AskUserQuestion confirms this action.
+# Show the manifest and exact payload content before asking.
 cat "$body_file"
 jq . "$MANIFEST"
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
+
+Show the exact argv, target, side effects, payload content (or its structured fields), and each payload SHA - a path and hash alone are not an adequate payload review. Do not put credentials in argv or payload files. For an `auto` class, show nothing and execute immediately, then write the audit line.
 
 ### Private payload directory
 
@@ -77,185 +107,16 @@ Read the exit code before reporting an outcome. Only `0` means the write landed.
 | `2` | The helper refused: stale or missing token, manifest drift, payload drift, changed owner/account mapping, or a preflight `gh` call that timed out. Nothing was executed. | Fix what it names, then prepare and approve again. |
 | `11` | The CLI exceeded `--timeout-seconds` (default 900) and was killed. **The outcome is unknown** - it may have applied the mutation first. | Read the target state before deciding anything. Never report this as either success or failure, and never retry blind: the one-shot token is spent, so a retry needs a fresh preview and approval. |
 
-`11` exists because a bounded hang and a failed write are different facts and a caller
-cannot tell them apart from a generic non-zero. A killed CLI also only receives the
-signal itself, so a helper process it spawned can outlive it.
-
 `11` is not a reserved range, so a CLI that natively exits `11` is indistinguishable by
 code alone. The helper prints a `TIMEOUT:` line to stderr when it is the one that gave
-up - read that, not the number, when it matters. The collision fails safe in the
-direction that matters: a CLI failure read as unknown sends you to check state, while
-a timeout read as a clean failure would not.
-
-The helper stores a local manifest and a one-shot 300-second token. Before the
-confirmation, show the exact argv, target, side effects, payload-file content (or
-the structured fields it contains), and each payload SHA - a path and hash alone
-are not an adequate payload review. The helper accepts no environment overrides;
-the CLI uses the current authenticated environment. Do not put credentials in
-argv or payload files. It hashes the argv and payload-file contents, rechecks both
-before execution, invokes the CLI without a shell, and consumes the token after
-success or failure. The Hook blocks raw mutations and fails closed for
-unrecognized guarded CLI invocations. This binds the approved action and prevents
-accidental payload drift; it does not prove a hostile model actually obtained user
-approval.
-
----
-
-## Hook backstops
-
-Prompt rules are not enough for irreversible writes. These hooks enforce the
-highest-risk rules even when a future skill forgets the prompt contract:
-
-| Hook | Blocks |
-|------|--------|
-| `slack-send-guard.sh` | direct `slack_send_message`, `slack_schedule_message`, `slack_create_canvas`, and `slack_update_canvas`; use `slack_send_message_draft` |
-| `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
-| `confluence-size-guard.sh` | Confluence bodies over 70 KB; writes with an unset or unaccepted body format (see `.claude/docs/confluence-adf-pattern.md`) |
-| `atlassian-generic-write-guard.sh` | `executeWrite` and `executeDestructive`, whose opaque payload no named Atlassian gate can read; `createConfluenceComment` under `executeWrite` is the one allowed operation, and only when its body format, body size, and addressing fields all pass this hook's own checks |
-| `block-dangerous-git.sh` | destructive or protected-branch git commands |
-| `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
-| `prose-lint-guard.sh` | Slack draft bodies that fail `prose-lint.py`; it fails open when the linter is unavailable, because a quality check must not block a write on its own breakage. `gh` payload prose goes through `external-write-action.py`'s own `prose_gate_findings` instead |
-
-These guards select by tool name, so an upstream rename silently turns one off:
-the matcher stops matching and the guard exits 0 on every call. Each guarded name
-is therefore pinned in `.claude/scripts/validate-workspace.sh`, which probes the
-live matchers and the guard bodies. When an MCP renames a write path, add the new
-name in the same commit as the pin - do not swap it, because both generations can
-be installed at once.
-
-### What the CLI guard does with a command it cannot parse
-
-`gh`, `az`, `kubectl`, and `terraform` are the four guarded executables. `guard` runs
-three checks in order, and only the first of them consults those names:
-
-1. **Unbindable target, guarded name present.** A `$(...)`, a backtick, or a function
-   definition leaves the command lexable but its target unknown. That blocks only when one
-   of the four names appears in the raw command text. Reading the raw string rather than
-   the lexed segments is what catches a name the lexer cannot see:
-   `echo "count: $(gh pr list)"` has it inside a substitution and
-   `f() { gh pr create; }; f` never puts it in an executable position, so neither lexes to
-   a `gh` invocation. Drop the name from either - `echo "count: $(date)"`,
-   `f() { ls; }; f` - and both are allowed.
-2. **Mutation.** A statically bound guarded invocation that mutates: `gh pr create`,
-   `terraform apply`, `kubectl delete`.
-3. **Unrecognized or unenumerable invocation.** A guarded invocation the read-only
-   allowlist does not recognize, **and** every construct whose executed command cannot be
-   enumerated at all. `eval`, `source`, `alias`, a pipe into a shell, and a shell fed a
-   herestring are in the second class, so `eval "ls -la"` and `echo hi | bash` block with
-   no guarded name anywhere. This check reads the raw command text for the shell-pipe
-   forms, so it does not need the lexer to succeed.
-
-So a dynamic construct alone does not block, and a guarded name is not what decides it in
-every case: check 1 needs the name, check 3 does not. A `$(git rev-parse HEAD)` inside an
-`echo` reaches none of them, which is the point - blocking every command the parser cannot
-bind blocked the read-only majority for nothing. Three consequences worth knowing:
-
-- **Heredoc bodies are data, not commands.** `cat > file <<EOF` writes prose; its lines are
-  not lexed as invocations, so a backtick or a guarded verb sitting in that prose no longer
-  blocks the write. The exception is a heredoc feeding a shell (`bash <<EOF`), where the
-  body really is executed and keeps being read as commands.
-- **What this guard cannot see.** Two shapes, both measured. A name assembled into a
-  variable: `X=$(printf 'g''h'); $X pr create` carries no `gh` in its text, so check 1
-  declines and nothing later can bind it. And anything a script or task runner executes
-  for itself: `bash deploy.sh`, `./deploy.sh`, `make deploy`, and `npm run deploy` are all
-  allowed, whatever the file goes on to run. Note that putting the substitution in the
-  executable position does *not* slip through - `$(printf 'g''h') pr create` is blocked by
-  check 3, because an executable it cannot read is exactly what that check is for. This
-  guard bounds the commands this agent writes by mistake; it is not a sandbox against a
-  hostile author.
-- **An unlexable command still reaches checks 2 and 3.** `printf 'unterminated` lexes to
-  nothing and is allowed, but `printf 'unterminated | bash` is blocked by check 3, whose
-  shell-pipe arm reads the text rather than the segments. "Cannot be lexed" is therefore
-  not a shortcut to "allowed": only checks 1 through 3 all declining is.
-
-### Jira token contract
-
-Every Jira mutation needs a fresh JSON token written immediately before the
-tool call, after the payload-showing `AskUserQuestion` approval. For a
-single-shot mutation, bind the exact payload:
-
-```json
-{
-  "tool_name": "{actual transitionJiraIssue tool name}",
-  "issue_key": "PROJ-123",
-  "issue_keys": ["PROJ-123"],
-  "created_at": "2026-05-25T19:00:00Z",
-  "payload_summary": "PROJ-123 -> Done",
-  "payload_sha256": "{sha256 of canonical tool_input}"
-}
-```
-
-The hook verifies the tool name, freshness, issue-key parity, and
-`payload_sha256`, then consumes the token. Compute `payload_sha256` from the
-exact Jira MCP `tool_input` that will be sent:
-
-```bash
-PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | shasum -a 256 | awk '{print $1}')
-```
-
-`createJiraIssue` may omit issue keys because the issue does not exist yet;
-link/comment/transition/edit calls must identify their target keys. `tool_name`
-must exactly match the current MCP tool name; the namespace prefix may differ
-by MCP server, so do not blindly copy the example value.
-If the guard cannot parse the hook JSON or its required `jq` dependency is
-missing, it blocks the mutation instead of guessing.
-
-#### Batch token (approved multi-ticket runs)
-
-When one `AskUserQuestion` approves a batch of mutations across several tickets
-(e.g. cancel N incidents, each needing a transition + a comment), a single-shot
-token per call is wasteful - every call re-derives a payload sha. Write one
-**batch token** instead, after the approval that showed the per-ticket plan:
-
-```json
-{
-  "approved_issues": ["SRE-1", "SRE-2"],
-  "max_ops": 6,
-  "created_at": "2026-06-12T15:40:00Z",
-  "payload_summary": "cancel approved incidents",
-  "tools": ["transitionJiraIssue", "addCommentToJiraIssue"],
-  "ttl_seconds": 900
-}
-```
-
-The hook authorizes any gated Jira mutation whose target issue is in
-`approved_issues`, up to `max_ops` calls, within the TTL (default **900s**;
-`ttl_seconds` overrides). It decrements `max_ops` on each allowed call and
-deletes the token when the budget is exhausted or the TTL passes. `tools` is an
-optional allowlist (exact or suffix match, to tolerate MCP namespace prefixes);
-omit it to allow all gated Jira tools. A non-empty `approved_issues` array is
-what selects batch mode.
-
-Publish tokens with `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>`. Publication, validation, consumption,
-and audit logging share the repo-wide workspace mutation lock. Concurrent calls
-therefore share one atomic approval budget: a single-shot token allows exactly
-one call, and a batch token allows at most `max_ops` calls. If the lock cannot
-be acquired within two seconds, the hook blocks the call and leaves the token
-untouched.
-
-Batch mode trades the exact-payload sha binding for an **issue allowlist + op
-cap + TTL**: a runaway loop still cannot touch a ticket outside the approved set
-or exceed the approved op budget. Use it only for the concrete batch the user
-just approved; for a single irreversible mutation, prefer the single-shot token.
-A malformed or stale token is deleted. A call that does not match the current
-token leaves it untouched, so an approval for a separate pending mutation is
-not consumed. `createJiraIssue` (no target key) still requires a single-shot
-token.
-
-Size the op budget to cover the planned calls (e.g. 4 tickets × [transition +
-comment + close transition] = 12). The token authorizes mutation *count*, not
-exact text - show the per-ticket disposition in the `AskUserQuestion` so the
-user approves the substance, not just a number.
-
----
+up - read that, not the number, when it matters.
 
 ## What this policy is NOT
 
 - Not a license to ask permission for every read (`gh pr view`, `az pipelines runs show`, MCP `getJiraIssue` - all fine, run them directly).
-- Not a substitute for verifying side effects. After a mutation, confirm the change landed (e.g., re-fetch the Jira issue, re-check Slack draft was created, parse `gh pr create` response for URL).
+- Not a substitute for verifying side effects. After a mutation, confirm the change landed (e.g., re-fetch the Jira issue, re-check the Slack draft was created, parse `gh pr create` for the URL).
 - Not a substitute for the `slack_send_message_draft` rule - that is stricter and absolute. Slack never gets a direct send.
-
----
+- Not a reason to re-document the rules per skill. Update this doc when the policy evolves.
 
 ## Application checklist for new skills
 
@@ -265,57 +126,23 @@ When authoring or reviewing a skill that touches an external system, ask:
 2. If yes: is there a draft-first path? (Slack draft, Confluence draft page, draft PR, `workspace/tmp/{name}.md`)
 3. If draft-first isn't available: is there an explicit `AskUserQuestion` gate immediately before the mutation call? (not a generic "should we proceed?" earlier in the flow - the gate must be the last step before the side-effect)
 4. Does the gate show the user the *concrete payload* (Jira transition, Confluence page diff, ADO templateParameters, PR title+body)?
+5. If the class is autonomy-pre-authorized, does the call still bind a manifest and append the audit line?
 
 If any answer is no, the skill is non-compliant - fix before merging.
 
----
-
 ## GitHub auth account guard
 
-Workspaces with multiple `gh` accounts can lose the intended active account between
-commands. Every GitHub mutation therefore runs through
-`.claude/scripts/external-write-action.py`. `prepare` resolves the target owner and
-maps it through top-level `workspace/config.md`: `github_org` selects
-`work_gh_account`, while an owner matching `personal_gh_account` selects the personal
-identity. It binds both owner and account into the hashed action. `execute` re-reads
-the mapping, loads that account's credential with `gh auth token --user`, verifies the
-token actor with `gh api user`, and passes `GH_TOKEN` only to the mutation subprocess.
-It never changes shared `gh` account state. A missing, changed, unreadable, unmapped,
-unselectable, or actor-mismatched account blocks the write and consumes the one-shot
-token.
+Every GitHub mutation runs through `.claude/scripts/external-write-action.py`. `prepare` binds the owner-to-account mapping into the hashed action; `execute` re-reads the mapping, loads that account's `gh` token, verifies the token actor, and passes `GH_TOKEN` only to the mutation subprocess. It never changes shared `gh` account state. A missing, changed, unreadable, unmapped, unselectable, or actor-mismatched account blocks the write and consumes the one-shot token. Raw `gh auth token`, `login`, `logout`, `refresh`, and `switch` are blocked; only `gh auth status` without `-t`/`--show-token` may run outside the helper.
 
-The helper derives owners from `-R`/`--repo`, `--org`/`--owner`, REST API paths,
-repo positional targets, PR or issue URLs, or the current `origin`. Opaque
-API/GraphQL, PR or issue URL, repo positional, gist, and user-scoped mutations must
-also pass `prepare --github-owner <owner>`; that value must match any owner encoded
-in the command or current `origin`.
-GitHub writes are restricted and manifest-bound to `github.com`; enterprise hosts,
-environment host overrides, and duplicate target selectors fail closed.
-Execution clears `GH_REPO` and token environment overrides so they cannot redirect
-the approved target or actor before it selects the manifest-bound token.
+Skills reference the helper; they do not copy token-selection snippets. The full owner-derivation and credential handling rules are in `.claude/docs/mutation-reference.md → GitHub auth account guard`. Skills that should reference it: `address-comments`, `prep-merge`, `request-review`, `fsd`. Read-only `gh` calls (`gh pr view`, `gh pr diff`, `gh api .../comments` GET) do not need the guard - only mutations.
 
-Raw `gh auth token`, `login`, `logout`, `refresh`, and `switch` commands are blocked.
-Only `gh auth status` without `-t`/`--show-token` may run outside the helper.
-Raw Azure access-token output and login/logout commands are also blocked; ordinary
-read-only account inspection remains allowed.
-Credential-bearing Azure reads, Kubernetes Secret/raw-config reads, and Terraform
-output/state reads fail closed so secret values cannot enter command output.
+## Deeper recipes
 
-The selected token is captured, never printed or stored in the manifest, and scoped to
-the exact `gh` subprocess. Mutation skills reference the shared helper; they do not
-copy token-selection snippets.
-
-Skills that should reference this guard: `address-comments`, `prep-merge`, `request-review`, `fsd`. Read-only `gh` calls (`gh pr view`, `gh pr diff`, `gh api .../comments` GET) do not need the guard - only mutations.
-
-## Related memories
-
-- `feedback_no-address-comments-others-pr.md` - never mutate someone else's PR without permission
-- `feedback_ado-az-cli-only.md` - never `curl` with `$ADO_PAT` (use `az` CLI; same auth boundary as user)
-- `feedback_gh-auth-active-account-flips.md` - the multi-account `gh auth switch` non-durability that motivates the guard above
+Load `.claude/docs/mutation-reference.md` only when the current step needs one of: the manifest/token internals, the Jira single-shot or batch token contract, the hook backstop table, how the CLI guard parses an unrecognized command, the Confluence tool-name matrix, the full GitHub account rules, or the related memory list.
 
 ## Reference from skills
 
 Add a one-line pointer near the top of any mutation-capable skill:
-> Follows `.claude/docs/external-mutation-policy.md` - every external write goes through draft-first or `AskUserQuestion`.
+> Follows `.claude/docs/external-mutation-policy.md` - every external write goes through draft-first, autonomy pre-authorization, or `AskUserQuestion`.
 
-Do not re-document the rules per skill. Update the doc here when the policy evolves.
+Do not re-document the rules per skill.

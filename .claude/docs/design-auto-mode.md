@@ -164,17 +164,11 @@ After 3 iterations: exit with status `max-iterations`. Remaining issues go to `h
 
 ## Step 4.5: Resolve Human Input (the one interactive batch)
 
-This is the single point where auto mode talks to the user. By now research + grill + review have shrunk `human_input_queue` to only what genuinely needs a human - business/stakeholder calls, decisions with no codebase/KB/Jira/external signal. Ask them all here, together, before the final write.
+This is the single point where auto mode talks to the user.
 
 **If `human_input_queue` is empty: skip this step entirely** - write the doc and report with no prompt. The best auto run asks nothing.
 
-**If non-empty:**
-
-1. Convert each queued item into an `AskUserQuestion` entry per `.claude/docs/skill-authoring-contract.md` → §5, which owns batching, recommendation-first options, load-bearingness ordering, and the `### Resolved Decisions` table. The only design-specific part: `question` is the concrete decision (not "clarify scope" but "Should the export endpoint support CSV only, or also Excel?"), and the recommended option is the default assumption the design already applied.
-2. After each answer, apply the decision to the relevant design sections before moving on.
-3. Anything the user skips or answers with "Other → defer" stays in `human_input_queue` for the `## Human Input Required` section (Step 5b). Everything answered is removed from the queue.
-
-This replaces the old "queue everything to the doc and tell the user to run `--review`" behavior: the user gets asked once, at the end, and the written doc already reflects their answers.
+**If non-empty:** read `.claude/docs/design-human-input.md` and run its batch before the final write; it owns the batching contract, the recommended-option rule, and where deferred answers go.
 
 ## Step 5: Write Final Effort Doc
 
@@ -194,19 +188,7 @@ python3 .claude/scripts/effort-state.py --file "{staged_path}" --evaluate-transi
 
 ### 5b. Append `## Human Input Required`
 
-Append only if `human_input_queue` is still non-empty **after Step 4.5** - i.e. the user deferred these at the end-of-run prompt (skipped, or "Other → defer"). Most questions should be resolved by then; this section is the leftover. Place AFTER `## Open Questions` and BEFORE `## Lifecycle`.
-
-```markdown
-## Human Input Required
-
-You deferred these at the end-of-run prompt. Provide answers below, then run `/nase:design --review {slug}` before starting implementation.
-
-| # | Question | Why it needs you | What was tried | Default assumption used | Affects |
-|---|----------|-----------------|----------------|------------------------|---------|
-| 1 | {question} | {business/stakeholder decision — no codebase signal} | {sources checked} | {conservative default} | {design section} |
-```
-
-Each row must be a concrete, actionable question - not "clarify scope" but "Should the export endpoint support CSV only, or also Excel? Default: CSV-only (matches existing download endpoints in `src/api/export.ts`)."
+Append only if `human_input_queue` is still non-empty **after Step 4.5** - i.e. the user deferred these at the end-of-run prompt (skipped, or "Other → defer"). Place AFTER `## Open Questions` and BEFORE `## Lifecycle`. Use the table and the row rule in `.claude/docs/design-human-input.md → Deferred items`.
 
 ### 5c. Update lifecycle
 

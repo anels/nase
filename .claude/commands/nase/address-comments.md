@@ -1,6 +1,6 @@
 ---
 name: nase:address-comments
-description: "Resolve existing PR review feedback with fixes or replies. Use for address comments, fix review comments, handle PR feedback, or resolve threads."
+description: "Resolve existing PR review feedback with fixes or replies. Use for address comments, handle PR feedback, or resolve threads."
 argument-hint: "<pr-url-or-number>"
 category: Git workflow
 ---

@@ -1,6 +1,6 @@
 ---
 name: nase:terminology
-description: "Define, update, or look up scope-aware terminology (same term can mean different things per repo/domain), cross-linked. Use for what does X mean, add a term, or glossary entry; use kb-update/learn otherwise."
+description: "Define, update, or look up scope-aware, cross-linked terminology. Use for what does X mean, add a term, or glossary."
 argument-hint: "<term> [source:private]|list [scope:<l>]|define/update <term> scope:<l>=<def>"
 category: Knowledge base
 ---

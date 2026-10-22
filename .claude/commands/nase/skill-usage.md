@@ -1,6 +1,6 @@
 ---
 name: nase:skill-usage
-description: "Report skill usage, outcomes, context hotspots, and deprecation candidates. Use for which skills do I use, skill stats, skill token cost, context hotspots, or deprecate skills."
+description: "Report skill usage, outcomes, and context hotspots. Use for skill stats, skill token cost, or deprecate skills."
 argument-hint: "[--window N --top N]"
 category: Reporting
 model: haiku
