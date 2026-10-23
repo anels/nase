@@ -65,4 +65,6 @@ Resolve all configured repos first, apply the group scope when one is set, then 
 
 Write the full batch report to `workspace/tmp/onboard-{YYYY-MM-DD}.md`: refreshed/skipped/retired/failed counts, changed KB paths, evidence gaps, the next scheduled refresh, curation as its own four counts - refreshed, merged, removed, regrouped sections - plus any candidates deferred by the line budget, so a cleanup is never read as a knowledge change, and the group scope alongside the groups left untouched, so a partial refresh is never mistaken for a full one. List unknown-term candidates per `.claude/docs/terminology-discovery.md` in the same report without asking.
 
+After a batch refresh with no group scope, run `python3 .claude/scripts/maintenance-schedule.py done onboard` so the todo's maintenance line moves to the next due day. A group-scoped refresh is partial, so it does not count.
+
 Per `.claude/docs/skill-contract.md`, chat gets the report path plus at most five lines: the four headline counts, the group scope, and any failure. Append the daily-log entry per `.claude/docs/daily-log-format.md`.
