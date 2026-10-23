@@ -16,8 +16,14 @@
 #   ...last-commit/last commit  HEAD~1..HEAD
 #   (anything else)           merge-base with origin/<default> + staged + unstaged + untracked
 #
+# A glob containing spaces must be quoted: --scope="my file*.py". The quoted form is
+# parsed before the whitespace split, so the spaces stay inside the glob.
+#
 # Selection matching is case-insensitive, but the glob keeps the case it was typed in:
 # git paths are case-sensitive, so lowercasing the glob would silently miss files.
+#
+# Remote refs are read as they are. Set NASE_SCOPE_FETCH=1 to refresh origin first;
+# the default keeps the helper network-free and side-effect-free.
 
 set -uo pipefail
 
@@ -27,7 +33,9 @@ LOWER=$(printf '%s' "$ARGUMENTS" | tr '[:upper:]' '[:lower:]')
 
 git() { command git -C "$REPO" "$@"; }
 
-git fetch origin --quiet || true
+if [ "${NASE_SCOPE_FETCH:-0}" = "1" ]; then
+  git fetch origin --quiet || true
+fi
 DEFAULT=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
 [ -z "$DEFAULT" ] && DEFAULT=main
 BASE_REF="origin/$DEFAULT"
@@ -38,7 +46,15 @@ case "$LOWER" in
               # the raw string so the flag may be spelled in any case.
               TAIL="${LOWER##*--scope=}"
               GLOB="${ARGUMENTS:$(( ${#ARGUMENTS} - ${#TAIL} ))}"
-              GLOB="${GLOB%% *}"
+              # A leading quote means the glob is quoted, so keep everything up to the
+              # closing quote: the glob may contain spaces, and a trailing flag must
+              # not be swallowed into the pattern. An unquoted glob ends at the first
+              # space instead.
+              case "$GLOB" in
+                \"*) GLOB="${GLOB#\"}"; GLOB="${GLOB%%\"*}" ;;
+                \'*) GLOB="${GLOB#\'}"; GLOB="${GLOB%%\'*}" ;;
+                *) GLOB="${GLOB%% *}" ;;
+              esac
               FILES=$({
                 git ls-files -- "$GLOB"
                 git ls-files --others --exclude-standard -- "$GLOB"

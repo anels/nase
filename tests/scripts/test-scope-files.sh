@@ -40,6 +40,7 @@ printf 'staged\n' > "$REPO/src/staged.txt"
 git -C "$REPO" add "$REPO/src/staged.txt"
 printf 'changed\n' >> "$REPO/src/base.txt"
 printf 'untracked\n' > "$REPO/src/untracked.txt"
+printf 'spaced\n' > "$REPO/src/spaced file.txt"
 
 # --- oracle: the pre-helper inline block, unchanged ---------------------------
 oracle() {
@@ -102,7 +103,7 @@ unstaged_out=$(cd "$REPO" && bash "$SCRIPT" "unstaged")
 staged_out=$(cd "$REPO" && bash "$SCRIPT" "staged")
 assert_cmd "unstaged branch is matched before staged" test "$unstaged_out" != "$staged_out"
 assert_cmd "unstaged scope includes untracked files" \
-  bash -c "printf '%s\n' \"\$1\" | grep -qx src/untracked.txt" _ "$unstaged_out"
+  bash -c 'grep -qx -- src/untracked.txt <<< "$1"' _ "$unstaged_out"
 assert_cmd "staged scope is limited to the index" test "$staged_out" = "src/staged.txt"
 
 # Documented behaviour: selection matches case-insensitively, the glob keeps its case.
@@ -113,6 +114,11 @@ assert_cmd "glob keeps its original case" test "$cased_out" = "src/Cased.txt"
 upper_flag_out=$(cd "$REPO" && bash "$SCRIPT" "--SCOPE=src/C*")
 assert_cmd "an upper-cased --scope flag still yields the same glob" \
   test "$upper_flag_out" = "src/Cased.txt"
+spaced_out=$(cd "$REPO" && bash "$SCRIPT" '--scope="src/spaced file.txt"')
+assert_cmd "a quoted glob keeps its spaces" test "$spaced_out" = "src/spaced file.txt"
+spaced_trailing_flag_out=$(cd "$REPO" && bash "$SCRIPT" '--scope="src/spaced file.txt" --review')
+assert_cmd "a quoted glob is not broken by a trailing flag" \
+  test "$spaced_trailing_flag_out" = "src/spaced file.txt"
 
 # The repo argument lets a caller scope a checkout other than the current directory.
 elsewhere_out=$(cd "$TMPROOT" && bash "$SCRIPT" "staged" "$REPO")

@@ -2,11 +2,12 @@
 """
 date-resolve.py — Resolve a human date spec to a START_DATE END_DATE pair.
 
-Usage: python3 .claude/scripts/date-resolve.py <spec>
+Usage: python3 .claude/scripts/date-resolve.py [--strict] <spec>
 
 Output (stdout): "YYYY-MM-DD YYYY-MM-DD"  (start end, space-separated)
-Exit 0: success (always — unrecognised specs fall back to last 7 days with a stderr warning)
+Exit 0: success (unrecognised specs fall back to last 7 days with a stderr warning)
 Exit 1: missing argument (usage error)
+Exit 2: invalid spec under --strict, instead of the silent 7-day fallback
 
 Supported specs:
   N / Nd / last N days          → last N days (today-(N-1) → today)
@@ -62,7 +63,19 @@ def fallback_range(today: datetime.date) -> tuple[datetime.date, datetime.date]:
     return last_days_range(today, 7)
 
 
-def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
+def fallback_or_error(
+    today: datetime.date, problem: str, strict: bool
+) -> tuple[datetime.date, datetime.date]:
+    """Fall back to the last 7 days, or fail when parsing must be strict."""
+    if strict:
+        raise ValueError(problem)
+    print(f"WARNING: {problem}, defaulting to last 7 days", file=sys.stderr)
+    return fallback_range(today)
+
+
+def resolve(
+    spec: str, *, strict: bool = False
+) -> tuple[datetime.date, datetime.date]:
     today = local_today()
     s = spec.strip().lower()
 
@@ -73,11 +86,11 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
             start = datetime.date.fromisoformat(parts[0].strip())
             end = datetime.date.fromisoformat(parts[1].strip())
         except ValueError:
-            print(f"WARNING: invalid date range '{spec}', defaulting to last 7 days", file=sys.stderr)
-            return fallback_range(today)
+            return fallback_or_error(today, f"invalid date range '{spec}'", strict)
         if end < start:
-            print(f"WARNING: invalid date range '{spec}' (end before start), defaulting to last 7 days", file=sys.stderr)
-            return fallback_range(today)
+            return fallback_or_error(
+                today, f"invalid date range '{spec}' (end before start)", strict
+            )
         return start, end
 
     # Numeric days
@@ -95,8 +108,7 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
                 return last_days_range(today, days)
             except OverflowError:
                 pass
-        print(f"WARNING: invalid day count '{spec}', defaulting to last 7 days", file=sys.stderr)
-        return fallback_range(today)
+        return fallback_or_error(today, f"invalid day count '{spec}'", strict)
 
     # Today / yesterday
     if s == "today":
@@ -141,18 +153,27 @@ def resolve(spec: str) -> tuple[datetime.date, datetime.date]:
         pass
 
     # Fallback: warn and use last 7 days
-    print(f"WARNING: unrecognised date spec '{spec}', defaulting to last 7 days", file=sys.stderr)
-    return fallback_range(today)
+    return fallback_or_error(today, f"unrecognised date spec '{spec}'", strict)
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: date-resolve.py <spec>", file=sys.stderr)
+    args = sys.argv[1:]
+    strict = False
+    if args and args[0] == "--strict":
+        strict = True
+        args = args[1:]
+    if not args:
+        print("Usage: date-resolve.py [--strict] <spec>", file=sys.stderr)
         print("Example specs: 7, 10d, all, 'last week', 'last month', '2026-04-01 to 2026-04-30'", file=sys.stderr)
+        print("--strict: exit 2 instead of falling back to the last 7 days", file=sys.stderr)
         sys.exit(1)
 
-    spec = " ".join(sys.argv[1:])
-    start, end = resolve(spec)
+    spec = " ".join(args)
+    try:
+        start, end = resolve(spec, strict=strict)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
     print(f"{start.isoformat()} {end.isoformat()}")
 
 

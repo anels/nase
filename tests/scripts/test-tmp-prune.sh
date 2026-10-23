@@ -78,7 +78,7 @@ printf x >"$T/second.md"
 age 10 "$T/second.md"
 python3 "$HELPER" --root "$R" --apply --manifest "$TMP/manifest.tsv" >/dev/null
 assert_cmd "second run appends to the manifest" \
-  bash -c "[[ \$(wc -l <'$TMP/manifest.tsv') -eq 5 ]] && grep -q 'workspace/tmp/old.md' '$TMP/manifest.tsv' && tail -1 '$TMP/manifest.tsv' | grep -q second.md"
+  bash -c "[[ \$(wc -l <'$TMP/manifest.tsv') -eq 5 ]] && grep -q 'workspace/tmp/old.md' '$TMP/manifest.tsv' && grep -q second.md <<< \"\$(tail -1 '$TMP/manifest.tsv')\""
 
 printf x >"$T/old2.md"
 age 10 "$T/old2.md"

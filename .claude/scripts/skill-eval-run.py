@@ -145,7 +145,7 @@ def command_inventory() -> list[dict[str, str]]:
         source = REPO_ROOT / relative
         match = re.search(
             r"(?m)^name:\s*(nase:(?:workspace:)?[a-z0-9][a-z0-9-]*)\s*$",
-            source.read_text(),
+            source.read_text(encoding="utf-8"),
         )
         if not match or match.group(1) in seen:
             raise RunError(f"invalid or duplicate command name: {relative}")
@@ -926,7 +926,7 @@ def load_receipts(directory: Path) -> tuple[list[dict[str, Any]], int]:
             invalid += 1
             continue
         try:
-            value = json.loads(path.read_text())
+            value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             invalid += 1
             continue
@@ -1164,7 +1164,7 @@ def review(args: argparse.Namespace) -> int:
     ):
         raise RunError("receipt must be an existing non-symlink file")
     try:
-        receipt = json.loads(receipt_path.read_text())
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise RunError("receipt is malformed") from exc
     if receipt.get("lane") != "output" or not output_receipt_passes(receipt):

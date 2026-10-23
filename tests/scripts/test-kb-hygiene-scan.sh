@@ -13,7 +13,7 @@ fail=0
 
 assert_contains() {
   local desc="$1" actual="$2" needle="$3"
-  if printf '%s' "$actual" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$actual"; then
     pass=$((pass + 1))
     printf 'PASS  %s\n' "$desc"
   else
@@ -24,7 +24,7 @@ assert_contains() {
 
 assert_not_contains() {
   local desc="$1" actual="$2" needle="$3"
-  if printf '%s' "$actual" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$actual"; then
     fail=$((fail + 1))
     printf 'FAIL  %s\n  expected NOT to contain: %s\n  actual: %s\n' "$desc" "$needle" "$actual" >&2
   else

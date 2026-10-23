@@ -58,7 +58,8 @@ seed 2026-02-05
 count=$(run 2026-02-02 2026-02-05 | tr ' ' '\n' | grep -c .)
 assert_eq "days with no log file are dropped" "2" "$count"
 
-if run 2026-02-02 2026-02-05 | grep -q '2026-02-03'; then
+missing_day_out=$(run 2026-02-02 2026-02-05)
+if grep -q -- '2026-02-03' <<< "$missing_day_out"; then
   bad "a missing day never reaches the caller"
 else
   ok "a missing day never reaches the caller"
@@ -74,7 +75,8 @@ assert_eq "a single-day range is inclusive" "1" "$single"
 newline_lines=$(run 2026-01-30 2026-02-02 --separator newline | grep -c .)
 assert_eq "newline separator emits one path per line" "4" "$newline_lines"
 
-if run 2026-01-30 2026-02-02 | grep -q ' '; then
+space_sep_out=$(run 2026-01-30 2026-02-02)
+if grep -q -- ' ' <<< "$space_sep_out"; then
   ok "space separator joins on a single line"
 else
   bad "space separator joins on a single line"
@@ -100,7 +102,8 @@ fi
 # --- the root is resolved, not assumed from the link -----------------------
 
 ln -s "$SCRIPT" "$TMP/linked-log-range.py"
-if python3 "$TMP/linked-log-range.py" 2026-01-30 2026-02-02 --root "$TMP" | grep -q '2026-01-30'; then
+linked_out=$(python3 "$TMP/linked-log-range.py" 2026-01-30 2026-02-02 --root "$TMP")
+if grep -q -- '2026-01-30' <<< "$linked_out"; then
   ok "invocation through a symlink still resolves the range"
 else
   bad "invocation through a symlink still resolves the range"

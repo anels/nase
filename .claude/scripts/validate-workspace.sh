@@ -184,7 +184,18 @@ docs = pathlib.Path("docs/architecture.md").read_text(encoding="utf-8")
 pretool_scripts = []
 for group in hooks.get("PreToolUse", []):
     for hook in group.get("hooks", []):
-        pretool_scripts.extend(re.findall(r"([A-Za-z0-9_.-]+\.sh)", hook.get("command", "")))
+        command = hook.get("command", "")
+        # Commands go through hook-dispatch.sh; the hook name is its argument.
+        # Match that argument rather than every .sh token, or the dispatcher
+        # itself would be demanded in the docs table. A command the regex cannot
+        # read is an error: otherwise a new quoting style would make this gate
+        # pass while checking nothing.
+        found = re.findall(
+            r'hook-dispatch\.sh["\']?\s+([A-Za-z0-9_.-]+\.sh)', command
+        )
+        if "hook-dispatch.sh" in command and not found:
+            errors.append(f"cannot read the PreToolUse hook name from: {command}")
+        pretool_scripts.extend(found)
 for script in sorted(set(pretool_scripts)):
     if script not in docs:
         errors.append(f"docs/architecture.md missing PreToolUse guard: {script}")

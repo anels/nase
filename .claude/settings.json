@@ -7,7 +7,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null || pwd); python3 \"$WORKSPACE/.claude/scripts/statusline-context.py\"'",
+    "command": "python3 \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/scripts/statusline-context.py\"",
     "padding": 1
   },
   "hooks": {
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/session-start.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" session-start.sh"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/stop-todos.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-todos.sh"
           }
         ]
       },
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/stop-backup.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-backup.sh"
           }
         ]
       }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=StopFailure bash \"$WORKSPACE/.claude/hooks/track-session-failure.sh\"'"
+            "command": "HOOK_EVENT_NAME=StopFailure bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-session-failure.sh"
           }
         ]
       }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=WorktreeRemove bash \"$WORKSPACE/.claude/hooks/worktree-log.sh\"'"
+            "command": "HOOK_EVENT_NAME=WorktreeRemove bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" worktree-log.sh"
           }
         ]
       }
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/pre-compact-archive.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-archive.sh"
           }
         ]
       }
@@ -74,7 +74,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-skill-prompt.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill-prompt.sh"
           }
         ]
       },
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/style-edit-detect.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" style-edit-detect.sh"
           }
         ]
       }
@@ -93,7 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=UserPromptExpansion bash \"$WORKSPACE/.claude/hooks/track-skill-prompt.sh\"'"
+            "command": "HOOK_EVENT_NAME=UserPromptExpansion bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill-prompt.sh"
           }
         ]
       }
@@ -104,7 +104,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/block-dangerous-git.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" block-dangerous-git.sh"
           }
         ]
       },
@@ -113,7 +113,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && NASE_ROOT=\"$WORKSPACE\" bash \"$WORKSPACE/.claude/hooks/external-cli-write-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" external-cli-write-guard.sh"
           }
         ]
       },
@@ -122,7 +122,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/slack-send-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" slack-send-guard.sh"
           }
         ]
       },
@@ -131,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && NASE_ROOT=\"$WORKSPACE\" bash \"$WORKSPACE/.claude/hooks/prose-lint-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" prose-lint-guard.sh"
           }
         ]
       },
@@ -140,7 +140,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/atlassian-generic-write-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" atlassian-generic-write-guard.sh"
           }
         ]
       },
@@ -149,7 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/confluence-size-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" confluence-size-guard.sh"
           }
         ]
       },
@@ -158,7 +158,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && NASE_ROOT=\"$WORKSPACE\" bash \"$WORKSPACE/.claude/hooks/jira-write-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" jira-write-guard.sh"
           }
         ]
       },
@@ -167,11 +167,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c '[[ \"${NASE_FACT_FORCE:-1}\" == \"0\" ]] && exit 0; WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/pre-edit-write-fact-force.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-edit-write-fact-force.sh"
           },
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/daily-log-format-guard.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" daily-log-format-guard.sh"
           }
         ]
       }
@@ -182,7 +182,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-kb-read.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-kb-read.sh"
           }
         ]
       },
@@ -191,7 +191,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/track-skill.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill.sh"
           }
         ]
       },
@@ -200,11 +200,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/post-edit-shellcheck.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" post-edit-shellcheck.sh"
           },
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$WORKSPACE/.claude/hooks/post-edit-ruff.sh\"'"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" post-edit-ruff.sh"
           }
         ]
       }
@@ -214,7 +214,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=PostToolUseFailure bash \"$WORKSPACE/.claude/hooks/track-tool-failure.sh\"'"
+            "command": "HOOK_EVENT_NAME=PostToolUseFailure bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-tool-failure.sh"
           }
         ]
       }
@@ -224,7 +224,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'WORKSPACE=$(git rev-parse --show-toplevel 2>/dev/null) && HOOK_EVENT_NAME=SubagentStop bash \"$WORKSPACE/.claude/hooks/track-subagent.sh\"'"
+            "command": "HOOK_EVENT_NAME=SubagentStop bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-subagent.sh"
           }
         ]
       }

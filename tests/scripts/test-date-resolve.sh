@@ -22,7 +22,7 @@ assert_exit() {
 
 assert_contains() {
   local desc="$1" actual="$2" needle="$3"
-  if printf '%s' "$actual" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$actual"; then
     pass=$((pass + 1))
     printf 'PASS  %s\n' "$desc"
   else
@@ -33,7 +33,7 @@ assert_contains() {
 
 assert_not_contains() {
   local desc="$1" actual="$2" needle="$3"
-  if printf '%s' "$actual" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$actual"; then
     fail=$((fail + 1))
     printf 'FAIL  %s\n  expected NOT to contain: %s\n  actual: %s\n' "$desc" "$needle" "$actual" >&2
   else
@@ -82,6 +82,13 @@ rc=$?
 assert_exit "T6: huge day count falls back cleanly" 0 "$rc"
 assert_contains "T6: huge day count warns" "$out" "WARNING: invalid day count"
 assert_not_contains "T6: no traceback" "$out" "Traceback"
+
+# Strict mode exists so a caller can refuse the silent 7-day fallback.
+out=$(python3 "$SCRIPT" --strict "not-a-date" 2>&1)
+rc=$?
+assert_exit "T7: strict mode rejects an invalid spec" 2 "$rc"
+assert_contains "T7: strict mode names the rejected spec" "$out" "ERROR: unrecognised date spec"
+assert_not_contains "T7: strict mode does not claim a fallback" "$out" "defaulting to last 7 days"
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

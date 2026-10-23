@@ -38,7 +38,7 @@ The kit (`.claude/`, `CLAUDE.md`, `README.md`, `docs/`) is checked in, except lo
 
 ![How a nase tool call is gated: the prompt contract shapes a Claude Code tool call, PreToolUse hooks either deny it or route it down a staged workspace write or a payload-bound external manifest, and PostToolUse hooks append telemetry.](assets/control-flow.svg)
 
-Hooks are registered in `.claude/settings.json`. Shell output and exit codes feed back into model context.
+Hooks are registered in `.claude/settings.json`. Every registration calls `.claude/scripts/hook-dispatch.sh` with the hook file name, which resolves the project root (`NASE_ROOT`, then `CLAUDE_PROJECT_DIR`, then `git rev-parse --show-toplevel`), exports it as `NASE_ROOT`, and execs `.claude/hooks/<name>`. Shell output and exit codes feed back into model context.
 
 | Hook | Event | Script | Behavior |
 |------|-------|--------|----------|

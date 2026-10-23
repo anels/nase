@@ -369,7 +369,7 @@ assert_cmd "tracked untracked delete rename and mode change alter tree" test "$t
 assert_cmd "candidate tree records deletion" grep -q '^D.*delete.txt' <<<"$tree_status"
 assert_cmd "candidate tree records rename" grep -q '^R.*old-name.txt.*new-name.txt' <<<"$tree_status"
 assert_cmd "candidate tree records untracked file" grep -q 'untracked.txt' <<<"$tree_status"
-assert_cmd "ignored file does not enter candidate tree" bash -c '! git -C "$1" ls-tree -r "$2" -- ignored.txt | grep -q .' _ "$tree_repo" "$tree_changed"
+assert_cmd "ignored file does not enter candidate tree" bash -c '! grep -q . <<< "$(git -C "$1" ls-tree -r "$2" -- ignored.txt)"' _ "$tree_repo" "$tree_changed"
 git -C "$tree_repo" add tracked.txt
 partial_tree=$(git -C "$tree_repo" write-tree)
 assert_cmd "partial staging fails approved-tree assertion" test "$partial_tree" != "$tree_changed"

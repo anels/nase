@@ -129,7 +129,7 @@ fi
 out=$(env -u NASE_JEV TYPESAFE_API_KEY=$'sk-leak-canary\r' NASE_JEV_ENDPOINT=http://127.0.0.1:1/systemone \
   python3 "$SCRIPT" --point test.point --type Choice \
   --criteria '{"a": "b"}' --state '{"a": "b"}')
-if printf '%s' "$out" | grep -q 'sk-leak-canary'; then
+if grep -q -- "sk-leak-canary" <<< "$out"; then
   fail "the reason must not echo the API key (got: $out)"
 else
   pass "the reason does not echo the API key"
@@ -147,7 +147,7 @@ fi
 docstring=$(python3 -c "import ast,sys;print(ast.get_docstring(ast.parse(open(sys.argv[1],encoding='utf-8').read())) or '')" "$SCRIPT")
 for reason in no_api_key disabled invalid_config invalid_endpoint_scheme \
   "exception:bad_json" http_error timeout net_error invalid_response "exception:<class>"; do
-  if printf '%s' "$docstring" | grep -qF "$reason"; then
+  if grep -qF -- "$reason" <<< "$docstring"; then
     pass "docstring taxonomy lists $reason"
   else
     fail "docstring taxonomy lists $reason"
@@ -319,7 +319,7 @@ out=$(env -u TYPESAFE_API_KEY -u NASE_JEV NASE_JEV_TELEMETRY_FILE=/dev/null/nope
   python3 "$SCRIPT" --point test.point --type Choice \
   --criteria '{"a": "b"}' --state '{"a": "b"}')
 rc=$?
-if [ "$rc" = "0" ] && printf '%s' "$out" | grep -q '"reason": "no_api_key"'; then
+if [ "$rc" = "0" ] && grep -q -- '"reason": "no_api_key"' <<< "$out"; then
   pass "an unwritable telemetry path leaves the answer intact"
 else
   fail "an unwritable telemetry path leaves the answer intact (rc=$rc, got: $out)"

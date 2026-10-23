@@ -31,8 +31,9 @@ assert_contains "learn carries the question in its existing ask" .claude/command
 assert_contains "discuss-pr carries the question in its existing ask" .claude/docs/discuss-pr-output.md 'terminology question from `.claude/docs/terminology-discovery.md`'
 
 step_3a_skips_web() {
-  awk '/^ +4\. WebSearch\/WebFetch/{f=1} f&&/^$/{exit} f' .claude/commands/nase/terminology.md \
-    | grep -qF 'Skip this step when `source:private` is set'
+  local text
+  text=$(awk '/^ +4\. WebSearch\/WebFetch/{f=1} f&&/^$/{exit} f' .claude/commands/nase/terminology.md) || return 1
+  grep -qF -- 'Skip this step when `source:private` is set' <<< "$text"
 }
 assert_cmd "terminology Step 3a keeps the private-source web skip" step_3a_skips_web
 
