@@ -23,6 +23,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local desc="$1" haystack="$2" needle="$3"
+  if grep -qF -- "$needle" <<< "$haystack"; then
+    printf 'FAIL  %s\n      unexpected: %s\n      out: %s\n' "$desc" "$needle" "$haystack" >&2
+    fail=$((fail + 1))
+  else
+    printf 'PASS  %s\n' "$desc"
+    pass=$((pass + 1))
+  fi
+}
+
 assert_json_reload() {
   local desc="$1" output="$2"
   local expected="${3:-true}"
@@ -401,6 +412,18 @@ cat > "$repo/workspace/logs/.backup-status" <<'STATUS'
 STATUS
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 assert_contains "throttle and retention lines are not a good backup" "$out" "last good backup: 2026-05-28T11:00:00"
+
+cp "$repo/.local-paths" "$repo/.local-paths.bak"
+{
+  printf 'SomeRepo=%s\n' "$fixture/missing-repo"
+  printf 'SomeRepo-ai-attribution=on\n'
+  printf 'OtherRepo-ai-attribution=off\n'
+} >> "$repo/.local-paths"
+out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+assert_contains "missing repo path is still warned" "$out" "repo path not found: $fixture/missing-repo"
+assert_not_contains "ai-attribution setting is not read as a repo path (on)" "$out" "repo path not found: on"
+assert_not_contains "ai-attribution setting is not read as a repo path (off)" "$out" "repo path not found: off"
+mv "$repo/.local-paths.bak" "$repo/.local-paths"
 
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

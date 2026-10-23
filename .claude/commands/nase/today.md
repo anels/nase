@@ -39,7 +39,7 @@ Read failures stay visible and block automatic lifecycle changes for the affecte
 
 ### 2. Maintenance and context
 
-Run the bounded KB staleness/gap checks, scheduled maintenance checks, and today's local activity. Take the skill-usage counts from the Step 0 helper output rather than re-deriving them; commits and log activity still come from Step 0's scanner reads. Keep maintenance behind active delivery work unless it is overdue or blocking.
+Run the bounded KB staleness/gap checks, scheduled maintenance checks, and today's local activity. Read the scheduled maintenance lines with `python3 .claude/scripts/maintenance-schedule.py list`; each `due` line is a skill that owes a run, and the skill itself moves the date when it finishes. Take the skill-usage counts from the Step 0 helper output rather than re-deriving them; commits and log activity still come from Step 0's scanner reads. Keep maintenance behind active delivery work unless it is overdue or blocking.
 
 ### 3. Jira, Slack, and Confluence pulse
 
