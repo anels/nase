@@ -47,7 +47,7 @@ assert_contains() {
   local desc="$1"
   local text="$2"
   local needle="$3"
-  if printf '%s' "$text" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$text"; then
     pass_msg "$desc"
   else
     fail_msg "$desc (missing $needle)"

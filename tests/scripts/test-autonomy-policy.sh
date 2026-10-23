@@ -91,7 +91,7 @@ level: standard'
 out=$(run --list)
 count=$(printf '%s\n' "$out" | grep -c '"class":')
 if [ "$count" -ge 18 ]; then pass "list: prints every class ($count)"; else fail "list: prints every class (got $count)"; fi
-if printf '%s\n' "$out" | grep -q '"decision": "never"'; then
+if grep -q -- '"decision": "never"' <<< "$out"; then
   pass "list: includes never classes"
 else
   fail "list: includes never classes"

@@ -49,7 +49,7 @@ impact.
 
 | Group | Tools | Use |
 |-------|-------|-----|
-| `baseline` | `rg`, `fd`, `yq`, `shellcheck`, `shfmt`, `ruff` | Fast repo exploration and common local verification. `/nase:doctor` checks these as warning-only. `shellcheck` and `ruff` are the two lint gates `tests/check-all.sh` runs on every invocation. |
+| `baseline` | `jq`, `rg`, `fd`, `yq`, `shellcheck`, `shfmt`, `ruff` | Fast repo exploration and common local verification. `jq` is listed although it is closer to required: every payload-reading guard calls it, and without it those guards block the tool call instead of warning. `python3` is not listed because this probe runs under it and cannot report its own absence; session start warns instead. `/nase:doctor` checks the rest as warning-only. `shellcheck` and `ruff` are the two lint gates `tests/check-all.sh` runs on every invocation. |
 | `ci` | `actionlint` | GitHub Actions validation only when workflow files are in scope. Not part of the default install recommendation. |
 | `review` | `ast-grep`, `semgrep`, `trivy` | Structural code claims and focused security/dependency/container/IaC review. |
 | `security` | `gitleaks`, `hadolint` | Secret scanning plus Dockerfile-only linting. `hadolint` is advanced and not part of the default install recommendation. |

@@ -36,13 +36,13 @@ rc=$?
 if [ "$rc" -eq 0 ]; then ok "a one-week range renders"; else bad "a one-week range renders" "rc=$rc: $out"; fi
 
 # 2026-03-02 is a Monday, so a per-day chart must carry weekday labels.
-if printf '%s' "$out" | grep -q "Mon" && printf '%s' "$out" | grep -q "Sun"; then
+if grep -q -- "Mon" <<< "$out" && grep -q -- "Sun" <<< "$out"; then
   ok "a range of 14 days or fewer buckets per day with weekday labels"
 else
   bad "a range of 14 days or fewer buckets per day with weekday labels" "$out"
 fi
 
-if printf '%s' "$out" | grep -qE 'W[0-9]+'; then
+if grep -qE -- "W[0-9]+" <<< "$out"; then
   bad "a short range is never labelled by ISO week"
 else
   ok "a short range is never labelled by ISO week"
@@ -59,7 +59,7 @@ out=$(python3 "$SCRIPT" --daily-csv "$CSV" --start 2026-03-02 --end 2026-03-31 2
 rc=$?
 if [ "$rc" -eq 0 ]; then ok "a 30-day range renders"; else bad "a 30-day range renders" "rc=$rc: $out"; fi
 
-if printf '%s' "$out" | grep -qE 'W[0-9]+'; then
+if grep -qE -- "W[0-9]+" <<< "$out"; then
   ok "a range over 14 days buckets per ISO week"
 else
   bad "a range over 14 days buckets per ISO week" "$out"
@@ -78,7 +78,7 @@ fi
 
 # The two well-formed rows must still be represented, or a parse failure has
 # quietly become a report of no activity.
-if printf '%s' "$out" | grep -q "█"; then
+if grep -q -- "█" <<< "$out"; then
   ok "well-formed rows survive alongside malformed ones"
 else
   bad "well-formed rows survive alongside malformed ones" "$out"

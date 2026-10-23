@@ -52,7 +52,7 @@ def collect_skill_usage(root: Path, first_day: date, last_day: date) -> dict:
         return {}
     window_start = datetime.combine(first_day, time.min).astimezone()
     window_end = datetime.combine(last_day + timedelta(days=1), time.min).astimezone()
-    text = path.read_text(errors="ignore")
+    text = path.read_text(encoding="utf-8", errors="ignore")
     decoder = json.JSONDecoder()
     idx = 0
     n = len(text)

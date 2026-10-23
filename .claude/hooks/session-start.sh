@@ -3,12 +3,9 @@ set -euo pipefail
 
 NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
 if [ -z "$NASE_ROOT" ]; then
-  jq -cn '{
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: "[session-start] ERROR: not in a git repo — cannot determine workspace"
-    }
-  }'
+  # Static payload: this path runs before PYTHON is resolved, so it must not
+  # depend on jq either.
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[session-start] ERROR: not in a git repo — cannot determine workspace"}}'
   exit 0
 fi
 
@@ -33,6 +30,18 @@ trap 'rm -f "$BUFFER"' EXIT
 SKILL_SYNC_CHANGED=0
 
 {
+  # Guard dependencies. The blocking guards refuse to inspect a payload without
+  # their parser, so a missing dependency blocks tool calls instead of quietly
+  # dropping protection; the telemetry hooks fail open and go silent. Either way
+  # session start has to say so, because both outcomes change what the session
+  # can safely do.
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "[session-start] WARNING: jq not found — Bash and Atlassian guards block tool calls and telemetry is dropped; install it (brew install jq)"
+  fi
+  if [ -z "$PYTHON" ]; then
+    echo "[session-start] WARNING: python3/python not found — archive and skill sync are skipped, telemetry is dropped, and the Bash/Jira guards block"
+  fi
+
   # Check last backup status: surface errors AND last successful run timestamp.
   STATUS_FILE="$NASE_ROOT/workspace/logs/.backup-status"
   if [ -f "$STATUS_FILE" ]; then
@@ -108,7 +117,10 @@ SKILL_SYNC_CHANGED=0
     HAS_COMMITS=0
     while IFS= read -r repo; do
       [ -z "$repo" ] && continue
-      [ -d "$repo" ] || continue
+      if [ ! -d "$repo" ]; then
+        echo "[session-start] WARNING: .local-paths repo path not found: $repo"
+        continue
+      fi
       REPO_LOG=$(git -C "$repo" log --since="midnight" --oneline --branches 2>/dev/null || true)
       if [ -n "$REPO_LOG" ]; then
         HAS_COMMITS=1
@@ -134,10 +146,29 @@ if [ -z "$CONTEXT" ] && [ "$RELOAD" = "false" ]; then
   exit 0
 fi
 
-jq -cn --arg ctx "$CONTEXT" --argjson reload "$RELOAD" '{
-  hookSpecificOutput: {
-    hookEventName: "SessionStart",
-    additionalContext: $ctx,
-    reloadSkills: $reload
-  }
-}'
+if command -v jq >/dev/null 2>&1; then
+  jq -cn --arg ctx "$CONTEXT" --argjson reload "$RELOAD" '{
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $ctx,
+      reloadSkills: $reload
+    }
+  }'
+elif [ -n "$PYTHON" ]; then
+  # jq is the usual carrier, but losing every diagnostic because one CLI is
+  # absent is the failure mode this fallback exists to avoid.
+  "$PYTHON" -c '
+import json
+import sys
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": sys.argv[1],
+        "reloadSkills": sys.argv[2] == "true",
+    }
+}))
+' "$CONTEXT" "$RELOAD"
+else
+  printf '[session-start] WARNING: jq and python3 are missing; diagnostics not emitted\n' >&2
+fi

@@ -14,7 +14,7 @@ fail=0
 
 assert_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$haystack"; then
     printf 'PASS  %s\n' "$desc"
     pass=$((pass + 1))
   else

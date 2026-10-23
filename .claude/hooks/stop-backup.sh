@@ -177,6 +177,10 @@ COMMIT_HASHES=""
 if [ -n "$REPOS" ]; then
   while IFS= read -r repo; do
     [ -z "$repo" ] && continue
+    if [ ! -d "$repo" ]; then
+      log_status "WARNING" "configured repo path not found, skipping commit summary: $repo"
+      continue
+    fi
     # `%H %s` gives full hash + subject — single git call serves both
     # display (truncated to short hash on output) and dedup fingerprint.
     REPO_LOG=$(git -C "$repo" log --since="midnight" --format='%H %s' --branches 2>/dev/null || true)

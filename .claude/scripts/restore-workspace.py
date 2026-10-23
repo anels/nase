@@ -34,6 +34,10 @@ SEVEN_ZIP_LIST_TIMEOUT_SECONDS = 120
 # Unpacking a whole workspace archive is legitimately slow, so this only catches a
 # 7z waiting on a password prompt it will never receive.
 SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS = 1800
+# Declared-size ceiling. Restore runs on a file the user picked, but a corrupt or
+# hand-crafted archive must not be able to fill the disk before validation runs.
+MAX_RESTORE_MEMBERS = 200_000
+MAX_RESTORE_UNCOMPRESSED_BYTES = 10 * 1024**3
 
 
 class RestoreError(RuntimeError):
@@ -250,6 +254,18 @@ def validated_members(
         output.append(item)
     if not output:
         raise RestoreError("archive payload is empty")
+    if len(output) > MAX_RESTORE_MEMBERS:
+        raise RestoreError(
+            f"archive has {len(output)} members, above the {MAX_RESTORE_MEMBERS} limit"
+        )
+    declared_bytes = sum(
+        int(item.get("size") or 0) for item in output if item["type"] == "file"
+    )
+    if declared_bytes > MAX_RESTORE_UNCOMPRESSED_BYTES:
+        raise RestoreError(
+            f"archive declares {declared_bytes} uncompressed bytes, above the "
+            f"{MAX_RESTORE_UNCOMPRESSED_BYTES} limit"
+        )
     for path, kind in types.items():
         parts = PurePosixPath(path).parts
         for index in range(1, len(parts)):
@@ -444,6 +460,7 @@ def validate_recovery_candidate(
 
 def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -> None:
     by_archive = {str(item["archive_path"]): item for item in members}
+    written_bytes = 0
     with zipfile.ZipFile(archive) as source:
         for info in source.infolist():
             normalized = normalize_member(info.filename)
@@ -463,7 +480,16 @@ def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -
                 source.open(info) as read_handle,
                 destination.open("xb") as write_handle,
             ):
-                shutil.copyfileobj(read_handle, write_handle)
+                # Copy in chunks so a zip whose declared size lies still stops at the
+                # ceiling instead of filling the disk.
+                while chunk := read_handle.read(1024 * 1024):
+                    written_bytes += len(chunk)
+                    if written_bytes > MAX_RESTORE_UNCOMPRESSED_BYTES:
+                        raise RestoreError(
+                            "archive exceeded the uncompressed byte ceiling while "
+                            "extracting"
+                        )
+                    write_handle.write(chunk)
                 write_handle.flush()
                 os.fsync(write_handle.fileno())
             mode = item.get("mode")

@@ -34,7 +34,7 @@ MAX_ROWS = 10
 
 def load_sessions(path: str) -> dict[str, int]:
     sessions: dict[str, int] = {}
-    with open(path, newline="") as f:
+    with open(path, newline="", encoding="utf-8") as f:
         for row in csv.reader(f):
             if not row or len(row) < 2:
                 continue

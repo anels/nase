@@ -43,7 +43,7 @@ make_repo() {
 
 assert_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF "$needle"; then
+  if grep -qF -- "$needle" <<< "$haystack"; then
     printf 'PASS  %s\n' "$desc"
     pass=$((pass + 1))
   else
@@ -114,8 +114,8 @@ printf 'backup-target=/tmp/nase-stop-backup-test/..\n' > "$repo/.local-paths"
 out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "reject canonicalized shallow target" 1 "$rc" "$out"
-if printf '%s' "$out" | grep -qF '/tmp/nase-stop-backup-test/..' \
-  && printf '%s' "$out" | grep -Eq 'resolves to: /(private/)?tmp'; then
+if grep -qF -- "/tmp/nase-stop-backup-test/.." <<< "$out" \
+  && grep -Eq -- 'resolves to: /(private/)?tmp' <<< "$out"; then
   printf 'PASS  rejection message includes raw and resolved paths\n'
   pass=$((pass + 1))
 else

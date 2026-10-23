@@ -2,13 +2,15 @@
 # Run local validation gates that mirror CI (`.github/workflows/validate.yml`).
 #
 # Run from repo root:
-#   bash tests/check-all.sh            # full gate, no local lychee
+#   bash tests/check-all.sh            # full gate, includes local lychee when present
 #   bash tests/check-all.sh --fast
 #   bash tests/check-all.sh --changed
 #   bash tests/check-all.sh --evals
-#   bash tests/check-all.sh --links
+#   bash tests/check-all.sh --links    # internal links only
+#   bash tests/check-all.sh --online-links   # include external links (network)
 #   bash tests/check-all.sh --list
 #
+# NASE_TEST_TIMEOUT overrides the per-test cap in seconds (default 600).
 # Exit 0 = all gates pass, exit N = N failed gates.
 
 set -uo pipefail
@@ -18,17 +20,18 @@ cd "$ROOT" || exit 1
 
 MODE="${1:---full}"
 case "$MODE" in
-  --full|--fast|--changed|--evals|--links|--list) ;;
+  --full|--fast|--changed|--evals|--links|--online-links|--list) ;;
   -h|--help)
     cat <<'EOF'
-Usage: bash tests/check-all.sh [--full|--fast|--changed|--evals|--links|--list]
+Usage: bash tests/check-all.sh [--full|--fast|--changed|--evals|--links|--online-links|--list]
 
 Modes:
-  --full     Default full validation gate, excluding local lychee.
+  --full     Default full validation gate, including local lychee when installed.
   --fast     Fast syntax/catalog/doctrine/subagent/core-script gate.
   --changed  Fast gate plus path-targeted regression tests for changed files.
   --evals    PR review eval schema/scorer tests only.
   --links    Local lychee markdown link check; skips with warning when missing.
+  --online-links  Lychee check including external URLs (needs network).
   --list     Print available modes and major gate groups.
 EOF
     exit 0
@@ -49,7 +52,7 @@ failures=()
 # file exited 2.
 ran_test_files=()
 
-# Test files are the wall clock: 70 of them, every one building its own fixtures under
+# Test files are the wall clock: 80+ of them, every one building its own fixtures under
 # its own mktemp root, none touching repo state. They are subprocess-spawn bound rather
 # than CPU bound, so the useful width is higher than the core count. Override with
 # NASE_TEST_JOBS=1 to get a serial run back when debugging an interleaved failure.
@@ -59,7 +62,7 @@ else
   TEST_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
   [[ "$TEST_JOBS" =~ ^[0-9]+$ ]] || TEST_JOBS=4
   # Twice the core count, because these tests spend most of their time waiting on
-  # subprocess startup rather than computing. Measured on a 14-core machine over the 53
+  # subprocess startup rather than computing. Measured on a 14-core machine over the 66
   # script tests: width 1 = 470s, 4 = 263s, 8 = 211s, 14 = 208s, 24 = 177s. The knee is
   # around 8 and core-count leaves ~15% on the table.
   TEST_JOBS=$((TEST_JOBS * 2))
@@ -83,6 +86,34 @@ RUFF_BIN=$(command -v ruff 2>/dev/null || true)
 RUFF_SKIP='SKIP: ruff is not installed locally (pip install ruff); GitHub Actions still runs this gate.'
 VERMIN_BIN=$(command -v vermin 2>/dev/null || true)
 VERMIN_SKIP='SKIP: vermin is not installed locally (pip install vermin); GitHub Actions still runs this gate.'
+
+# Per-test wall-clock cap. A hung fixture used to block the whole batch forever
+# (CI only stops at GitHub's 6-hour job limit). `python3` is the timeout carrier
+# because macOS ships no `timeout(1)`; the alarm survives exec, so the test keeps
+# its own PID and receives SIGALRM normally.
+TEST_TIMEOUT_SECONDS=${NASE_TEST_TIMEOUT:-600}
+case "$TEST_TIMEOUT_SECONDS" in
+  ''|*[!0-9]*) TEST_TIMEOUT_SECONDS=600 ;;
+esac
+(( TEST_TIMEOUT_SECONDS < 1 )) && TEST_TIMEOUT_SECONDS=600
+TIMEOUT_PY=$(command -v python3 2>/dev/null || true)
+
+run_with_timeout() {
+  local seconds="$1"
+  shift
+  if [[ -n "$TIMEOUT_PY" ]]; then
+    "$TIMEOUT_PY" -c '
+import os
+import signal
+import sys
+
+signal.alarm(int(sys.argv[1]))
+os.execvp(sys.argv[2], sys.argv[2:])
+' "$seconds" "$@"
+  else
+    "$@"
+  fi
+}
 
 # Every tracked shell file. `bash -n` and shellcheck read the same list so a new
 # script cannot land in one gate and miss the other.
@@ -168,9 +199,21 @@ already_ran_test_file() {
 }
 
 run_test_files_serially() {
-  local test_file
+  local test_file start end rc
   for test_file in "$@"; do
-    run_gate "$(basename "$test_file")" bash "$test_file"
+    start=$(date +%s)
+    printf '[gate] %s\n' "$(basename "$test_file")"
+    run_with_timeout "$TEST_TIMEOUT_SECONDS" bash "$test_file"
+    rc=$?
+    end=$(date +%s)
+    if [ "$rc" -eq 142 ]; then
+      printf '[timeout] %s exceeded %ss (NASE_TEST_TIMEOUT)\n' \
+        "$(basename "$test_file")" "$TEST_TIMEOUT_SECONDS" >&2
+    fi
+    # Record the plain rerun command, not `run_with_timeout ...`: that helper is a
+    # function in this shell and would not resolve in the copied command.
+    record_gate_result "$(basename "$test_file")" "$rc" "$((end - start))" \
+      bash "$test_file"
   done
 }
 
@@ -184,12 +227,13 @@ run_test_files_serially() {
 # accounting, which is also what keeps `failed` accurate.
 run_test_files() {
   local test_file absent=() present=() run_dir gate
-  local idx=0 pids=() rc duration
+  local idx=0 pids=() rc duration skipped_optional=0
   for test_file in "$@"; do
     if [[ ! -f "$test_file" ]]; then
       case "$test_file" in
         workspace/skills/scripts/*)
           printf '[skip] optional workspace skill test missing: %s\n' "$test_file"
+          skipped_optional=$((skipped_optional + 1))
           continue
           ;;
       esac
@@ -206,6 +250,13 @@ run_test_files() {
   for test_file in "${absent[@]+"${absent[@]}"}"; do
     run_gate "$(basename "$test_file")" test -f "$test_file"
   done
+
+  # `workspace/` is git-ignored, so its skills and tests never reach a clean CI
+  # checkout. Say that out loud instead of letting a silent skip read as coverage.
+  if (( skipped_optional > 0 )); then
+    printf '[warn] %s optional workspace test(s) skipped; workspace/ is local-only, so CI cannot cover them.\n' \
+      "$skipped_optional" >&2
+  fi
 
   (( ${#present[@]} == 0 )) && return 0
 
@@ -238,7 +289,8 @@ run_test_files() {
     {
       local start end job_rc
       start=$(date +%s)
-      bash "$test_file" >"$run_dir/$idx.out" 2>&1
+      run_with_timeout "$TEST_TIMEOUT_SECONDS" bash "$test_file" \
+        >"$run_dir/$idx.out" 2>&1
       # Capture before anything else runs: `$?` after the `date` below is date's status,
       # which would report every failing test as a pass.
       job_rc=$?
@@ -255,6 +307,9 @@ run_test_files() {
     gate=$(basename "$test_file")
     read -r rc duration 2>/dev/null < "$run_dir/$idx.rc" || { rc=1; duration=0; }
     printf '[gate] %s\n' "$gate"
+    if [ "$rc" -eq 142 ]; then
+      printf '[timeout] %s exceeded %ss (NASE_TEST_TIMEOUT)\n' "$gate" "$TEST_TIMEOUT_SECONDS" >&2
+    fi
     cat "$run_dir/$idx.out" 2>/dev/null
     record_gate_result "$gate" "$rc" "$duration" bash "$test_file"
     idx=$((idx + 1))
@@ -274,6 +329,7 @@ Modes:
   --changed
   --evals
   --links
+  --online-links
 
 Major gate groups:
   syntax: bash hooks/scripts, Python helpers, settings JSON
@@ -282,7 +338,7 @@ Major gate groups:
   wiring: hook registrations and workspace validation
   docs: shared-doc reference integrity, canonical pointer wording, KB domain-map contract, skill doctrine, and advisory skill trigger overlap
   regressions: hook tests and script tests
-  links: lychee markdown link check, only in --links
+  links: lychee markdown link check (part of --full when lychee is installed)
 EOF
 }
 
@@ -353,6 +409,12 @@ run_python_floor() {
 run_json() {
   section "JSON"
   run_gate "settings.json parses" bash -c 'python3 -m json.tool .claude/settings.json >/dev/null'
+  # settings.local.json is git-ignored and hand-edited; a syntax error there can
+  # silently disable or change hook behavior without touching a tracked file.
+  run_gate "settings.local.json parses when present" bash -c '
+    f=.claude/settings.local.json
+    [ ! -f "$f" ] || python3 -m json.tool "$f" >/dev/null
+  '
 }
 
 run_shellcheck_scripts() {
@@ -525,23 +587,37 @@ run_evals() {
   run_gate "test-skill-eval-run.sh" bash tests/scripts/test-skill-eval-run.sh
 }
 
-run_links() {
-  section "markdown internal-link check"
-  if command -v lychee >/dev/null 2>&1; then
-    # Keep this exclude list identical to the lychee step in
-    # .github/workflows/validate.yml; a divergence means the local gate passes
-    # and CI fails. tests/fixtures is excluded because fixtures are deliberately
-    # malformed inputs, not documentation.
-    run_gate "lychee offline markdown links" lychee --offline --no-progress --include-fragments \
-      --exclude-path workspace \
-      --exclude-path .omc \
-      --exclude-path node_modules \
-      --exclude-path tests/fixtures \
-      './**/*.md' \
-      '.claude/**/*.md'
-  else
-    printf 'WARN: lychee not installed locally; skipping --links gate.\n'
+# Shared by --links and --online-links: the exclude list must stay identical to
+# the lychee step in .github/workflows/validate.yml, so it lives in one place.
+# tests/fixtures is excluded because fixtures are deliberately malformed inputs,
+# not documentation.
+run_lychee() {
+  local gate="$1" section_name="$2"
+  shift 2
+  section "$section_name"
+  if ! command -v lychee >/dev/null 2>&1; then
+    printf 'WARN: lychee not installed locally; skipping %s.\n' "$gate"
+    return 0
   fi
+  run_gate "$gate" lychee --no-progress --include-fragments "$@" \
+    --exclude-path workspace \
+    --exclude-path .omc \
+    --exclude-path node_modules \
+    --exclude-path tests/fixtures \
+    './**/*.md' \
+    '.claude/**/*.md'
+}
+
+run_links() {
+  run_lychee "lychee offline markdown links" "markdown internal-link check" --offline
+}
+
+run_links_online() {
+  # PR CI stays offline on purpose: private Atlassian/GitHub links 401 from a
+  # fork, and link rot is not a merge blocker. This opt-in run is how a human
+  # audits external links without forcing that noise onto every PR.
+  run_lychee "lychee online markdown links" "markdown external-link check" \
+    --max-retries 2 --timeout 20
 }
 
 collect_changed_files() {
@@ -575,34 +651,34 @@ run_changed_extras() {
 
   # tests/lib/ for the same reason as the scripts branch below: 3 hook tests source
   # tests/lib/assert.sh.
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/hooks/|tests/hooks/|tests/lib/)'; then
+  if grep -qE '^(\.claude/hooks/|tests/hooks/|tests/lib/)' <<< "$changed"; then
     run_hook_tests
   fi
   # tests/lib/ is in this list because 18 script tests source tests/lib/assert.sh: editing
   # the shared assertion helper changes what every one of them checks, and without this
   # it triggered no test run at all.
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/|tests/scripts/|tests/lib/|workspace/skills/scripts/|tests/check-all\.sh)'; then
+  if grep -qE '^(\.claude/scripts/|tests/scripts/|tests/lib/|workspace/skills/scripts/|tests/check-all\.sh)' <<< "$changed"; then
     run_script_tests
   fi
-  if printf '%s\n' "$changed" | grep -qE '^\.claude/commands/nase/[^/]+\.md$'; then
+  if grep -qE '^\.claude/commands/nase/[^/]+\.md$' <<< "$changed"; then
     run_skill_bash_blocks
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|tests/check-skill-overlap\.sh)$'; then
+  if grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|tests/check-skill-overlap\.sh)$' <<< "$changed"; then
     run_skill_overlap
   fi
-  if printf '%s\n' "$changed" | grep -qE '^\.claude/docs/[^/]+\.md$'; then
+  if grep -qE '^\.claude/docs/[^/]+\.md$' <<< "$changed"; then
     run_shared_doc_bash_blocks
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/docs/(repo-resolution|kb-staleness)\.md|\.claude/commands/nase/onboard\.md|\.claude/scripts/(kb-domain-resolve\.sh|kb-hygiene-scan\.py)|tests/check-kb-domain-map-contract\.sh)$'; then
+  if grep -qE '^(\.claude/docs/(repo-resolution|kb-staleness)\.md|\.claude/commands/nase/onboard\.md|\.claude/scripts/(kb-domain-resolve\.sh|kb-hygiene-scan\.py)|tests/check-kb-domain-map-contract\.sh)$' <<< "$changed"; then
     run_kb_domain_map_contract
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$'; then
+  if grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$' <<< "$changed"; then
     run_canonical_pointers
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-(lifecycle|model|drift|transitions)\.md|\.claude/commands/nase/kb-review\.md)$'; then
+  if grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-(lifecycle|model|drift|transitions)\.md|\.claude/commands/nase/kb-review\.md)$' <<< "$changed"; then
     run_effort_pointer_integrity
   fi
-  if printf '%s\n' "$changed" | grep -qE '^(evals/(pr-review|core-workflows)/|\.claude/scripts/(pr-review-eval|skill-eval-run)\.py|tests/scripts/test-(pr-review-eval|skill-eval-run)\.sh)'; then
+  if grep -qE '^(evals/(pr-review|core-workflows)/|\.claude/scripts/(pr-review-eval|skill-eval-run)\.py|tests/scripts/test-(pr-review-eval|skill-eval-run)\.sh)' <<< "$changed"; then
     run_evals
   fi
 
@@ -659,6 +735,7 @@ run_full() {
   run_effort_pointer_integrity
   run_skill_doctrine
   run_skill_overlap
+  run_links
 }
 
 print_summary() {
@@ -692,6 +769,7 @@ case "$MODE" in
   --changed) run_fast; run_changed_extras ;;
   --evals) run_evals ;;
   --links) run_links ;;
+  --online-links) run_links_online ;;
 esac
 
 print_summary

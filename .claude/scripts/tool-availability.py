@@ -22,6 +22,18 @@ class Tool:
 
 
 TOOLS: tuple[Tool, ...] = (
+    # jq is listed even though it is closer to required than optional: every
+    # payload-reading guard calls it, and without it those guards block the tool
+    # call instead of warning. python3 is deliberately absent because this probe
+    # runs under it and so cannot report its own absence; session-start.sh warns
+    # when no interpreter resolves.
+    Tool(
+        "baseline",
+        "jq",
+        "jq",
+        "jq",
+        "hook JSON payload parsing; Bash and Atlassian guards block without it",
+    ),
     Tool(
         "baseline",
         "ripgrep",

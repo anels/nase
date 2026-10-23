@@ -105,7 +105,7 @@ def local_paths() -> dict[str, str]:
     path = REPO_ROOT / ".local-paths"
     if not path.exists():
         return out
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
@@ -304,7 +304,7 @@ def audit_effort(
     # which is only a question while the effort can still transition. A terminal doc has
     # no transition left to fire, so `--closed` turns the scan off: on this corpus it
     # produced 100 rows no caller of that pass acts on, and most of its payload.
-    for idx, line in enumerate(path.read_text().splitlines(), 1) if scan_rows else ():
+    for idx, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1) if scan_rows else ():
         match = ROW_RE.match(line)
         if not match:
             continue
@@ -575,7 +575,7 @@ def main() -> int:
     known_owners: frozenset[str] = frozenset()
     cited_anywhere: set[tuple[str, str, int]] = set()
     if not args.closed:
-        texts = [path.read_text() for path in files]
+        texts = [path.read_text(encoding="utf-8") for path in files]
         known_owners = frozenset(
             m[0] for text in texts for m in PR_URL_RE.findall(text)
         )
