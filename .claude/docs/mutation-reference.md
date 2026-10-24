@@ -185,6 +185,13 @@ comment + close transition] = 12). The token authorizes mutation *count*, not
 exact text - show the per-ticket disposition in the approval so the user
 approves the substance, not just a number.
 
+The hook decrements `max_ops` in `PreToolUse`, before the MCP server validates the
+payload, so a call the schema rejects still costs one op. Budget one spare op, and
+check parameter names against the loaded tool schema before the first call (seen
+rejected: `body` for `commentBody`, a `transition` object for `transitionId`).
+Take `created_at` from the real clock, never from an estimate. The hook rejects a
+value ahead of real time as stale or from the future.
+
 ## GitHub auth account guard
 
 Workspaces with multiple `gh` accounts can lose the intended active account between
