@@ -1567,9 +1567,30 @@ def cmd_execute(args: argparse.Namespace) -> int:
             if action["system"] == "github":
                 completed = run_github_action(args.root, action, args.timeout_seconds)
             else:
+                # Do not let ambient GitHub auth env vars leak into a non-GitHub
+                # CLI: an approved `az`/`kubectl`/`terraform` call must not
+                # silently inherit a stray GH_TOKEN. Target selectors (KUBECONFIG,
+                # AZURE_CONFIG_DIR, TF_CLI_CONFIG_FILE, ...) are deliberately kept,
+                # because they are the approved target, not credentials.
+                environment = os.environ.copy()
+                for key in GITHUB_AUTH_ENV_VARS:
+                    environment.pop(key, None)
+                for redirect_var in (
+                    "AZURE_CONFIG_DIR",
+                    "KUBECONFIG",
+                    "TF_CLI_CONFIG_FILE",
+                    "TF_DATA_DIR",
+                ):
+                    if redirect_var in environment:
+                        print(
+                            f"NOTE: {redirect_var} is set and selects the target for "
+                            f"this {action['system']} write.",
+                            file=sys.stderr,
+                        )
                 completed = subprocess.run(
                     action["argv"],
                     cwd=args.root,
+                    env=environment,
                     check=False,
                     timeout=args.timeout_seconds,
                 )

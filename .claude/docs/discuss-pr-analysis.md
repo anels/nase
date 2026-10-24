@@ -75,6 +75,8 @@ For design/elegance review, compare with adjacent implementations and propose an
 
 **Audit-PR list re-grep:** if the PR title/body signals exclusion-list pruning, blanket rule narrowing, allowlist removal, or similar audit work, re-grep every *remaining* entry against the same policy used for the removals. Treat it as "re-audit the full list against the new policy", not "verify the named removals". Flag sibling entries that match the same anti-pattern but escaped the cut.
 
+**Open prerequisite check:** if the diff carries a flag flip, schema change, or migration step that the description names as belonging to another PR, confirm that PR is merged. A still-open prerequisite is its own `issue (blocking)` candidate, because that PR usually holds the gate (a row-access policy, a config wiring) that this one bypasses by merging first. Give it a `must_not_merge_reason`. It qualifies for REQUEST_CHANGES under the `discuss-pr-output.md` gates when the bypassed gate is a security or isolation control.
+
 ## Step 2.6 - Sense Check and Review Frame
 
 Follow `.claude/docs/pr-review-verification.md → Review Frame and Specialist Selection` before launching specialists. Record the four-pillar verdicts for Step 6, then select only the review lenses the risk map warrants.
