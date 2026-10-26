@@ -409,16 +409,9 @@ fi
 
 # Reverse check (defense in depth): the payload must not name an issue key that
 # the token did not approve, even if its sha happens to match. Batch mode
-# already enforces this; single-shot must too.
+# already enforces this; single-shot must too. This also covers createIssueLink,
+# whose payload names both endpoints.
 if [ -n "$CURRENT_ISSUES" ] && [ -n "$APPROVED_ISSUES_CSV" ]; then
-  while IFS= read -r current_issue; do
-    [ -z "$current_issue" ] && continue
-    issue_in_csv "$current_issue" "$APPROVED_ISSUES_CSV" \
-      || block "token issue mismatch: payload has unapproved $current_issue" 0
-  done < <(printf '%s\n' "$CURRENT_ISSUES" | tr ',' '\n')
-fi
-
-if [[ "$TOOL" == *__createIssueLink ]]; then
   while IFS= read -r current_issue; do
     [ -z "$current_issue" ] && continue
     issue_in_csv "$current_issue" "$APPROVED_ISSUES_CSV" \

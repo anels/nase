@@ -600,6 +600,51 @@ else
   report 1 "authorized action runs once and consumes token"
 fi
 
+# A non-GitHub write must not inherit ambient GitHub credentials, while keeping the
+# target selector that belongs to its own system.
+cat > "$TMPDIR_TEST/bin/az" <<'SH'
+#!/usr/bin/env bash
+{
+  printf 'GH_TOKEN=%s\n' "${GH_TOKEN-unset}"
+  printf 'GITHUB_TOKEN=%s\n' "${GITHUB_TOKEN-unset}"
+  printf 'GH_REPO=%s\n' "${GH_REPO-unset}"
+  printf 'KUBECONFIG=%s\n' "${KUBECONFIG-unset}"
+  printf 'AZURE_CONFIG_DIR=%s\n' "${AZURE_CONFIG_DIR-unset}"
+} > "$NASE_FAKE_ENV_OUTPUT"
+exit 0
+SH
+chmod +x "$TMPDIR_TEST/bin/az"
+
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+  --system azure --summary "patch pipeline" -- \
+  az rest --method patch --uri https://example.invalid --body '{}' > "$TMPDIR_TEST/az-prepared.json"
+manifest=$(jq -r '.manifest' "$TMPDIR_TEST/az-prepared.json")
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+GH_TOKEN=ambient-gh GITHUB_TOKEN=ambient-github GH_REPO=owner/example \
+  KUBECONFIG="$TMPDIR_TEST/kubeconfig" AZURE_CONFIG_DIR="$TMPDIR_TEST/azure-config" \
+  NASE_FAKE_ENV_OUTPUT="$TMPDIR_TEST/az-env" PATH="$TMPDIR_TEST/bin:$PATH" \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest" \
+  2> "$TMPDIR_TEST/az-stderr"
+if grep -qx 'GH_TOKEN=unset' "$TMPDIR_TEST/az-env" \
+  && grep -qx 'GITHUB_TOKEN=unset' "$TMPDIR_TEST/az-env" \
+  && grep -qx 'GH_REPO=unset' "$TMPDIR_TEST/az-env"; then
+  report 0 "non-GitHub write strips ambient GitHub credentials"
+else
+  report 1 "non-GitHub write strips ambient GitHub credentials" "$(tr '\n' ' ' < "$TMPDIR_TEST/az-env")"
+fi
+if grep -qxF "AZURE_CONFIG_DIR=$TMPDIR_TEST/azure-config" "$TMPDIR_TEST/az-env" \
+  && grep -qxF "KUBECONFIG=$TMPDIR_TEST/kubeconfig" "$TMPDIR_TEST/az-env"; then
+  report 0 "non-GitHub write keeps its target selectors"
+else
+  report 1 "non-GitHub write keeps its target selectors" "$(tr '\n' ' ' < "$TMPDIR_TEST/az-env")"
+fi
+if grep -q 'AZURE_CONFIG_DIR is set' "$TMPDIR_TEST/az-stderr" \
+  && ! grep -q 'KUBECONFIG is set' "$TMPDIR_TEST/az-stderr"; then
+  report 0 "selector note names only the variables its system reads"
+else
+  report 1 "selector note names only the variables its system reads" "$(tr '\n' ' ' < "$TMPDIR_TEST/az-stderr")"
+fi
+
 manifest=$(prepare_action)
 python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
 python3 - "$manifest" <<'PY'
