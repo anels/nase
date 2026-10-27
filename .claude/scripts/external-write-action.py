@@ -134,6 +134,14 @@ GITHUB_AUTH_ENV_VARS = {
     "GH_ENTERPRISE_TOKEN",
     "GITHUB_ENTERPRISE_TOKEN",
 }
+# Env vars that redirect a non-GitHub CLI at a specific target. They are kept (they are
+# the approved target, not credentials), but each one is announced for the system that
+# actually reads it, so an `az` write never claims KUBECONFIG chose its target.
+TARGET_SELECTOR_ENV_VARS = {
+    "azure": ("AZURE_CONFIG_DIR",),
+    "kubernetes": ("KUBECONFIG",),
+    "terraform": ("TF_CLI_CONFIG_FILE", "TF_DATA_DIR"),
+}
 PAYLOAD_FILE_FLAGS = {"--body-file", "--input", "--file"}
 SHELL_SEPARATORS = {";", "&&", "&", "|", "||", "(", ")", "\n"}
 SHELL_INTERPRETERS = {"bash", "dash", "ksh", "sh", "zsh"}
@@ -1569,17 +1577,14 @@ def cmd_execute(args: argparse.Namespace) -> int:
             else:
                 # Do not let ambient GitHub auth env vars leak into a non-GitHub
                 # CLI: an approved `az`/`kubectl`/`terraform` call must not
-                # silently inherit a stray GH_TOKEN. Target selectors (KUBECONFIG,
-                # AZURE_CONFIG_DIR, TF_CLI_CONFIG_FILE, ...) are deliberately kept,
-                # because they are the approved target, not credentials.
+                # silently inherit a stray GH_TOKEN. Target selectors are
+                # deliberately kept, because they are the approved target, not
+                # credentials.
                 environment = os.environ.copy()
                 for key in GITHUB_AUTH_ENV_VARS:
                     environment.pop(key, None)
-                for redirect_var in (
-                    "AZURE_CONFIG_DIR",
-                    "KUBECONFIG",
-                    "TF_CLI_CONFIG_FILE",
-                    "TF_DATA_DIR",
+                for redirect_var in TARGET_SELECTOR_ENV_VARS.get(
+                    action["system"], ()
                 ):
                     if redirect_var in environment:
                         print(
