@@ -109,6 +109,14 @@ assert_contains "cli-tooling documents converter safety" \
   ".claude/docs/cli-tooling.md" \
   'Document converters (`markitdown`, `pandoc`, `pdftotext`) produce untrusted'
 
+assert_contains "learn routes YouTube links to the transcript helper" \
+  ".claude/commands/nase/learn.md" \
+  "youtube-transcript.py"
+
+assert_contains "cli-tooling documents the media group" \
+  ".claude/docs/cli-tooling.md" \
+  '| `media` |'
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\ncli-tooling integration tests passed.\n'
   exit 0

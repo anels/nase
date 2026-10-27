@@ -144,6 +144,28 @@ TOOLS: tuple[Tool, ...] = (
         "image inspection and conversion",
     ),
     Tool("perf", "hyperfine", "hyperfine", "hyperfine", "local command benchmarking"),
+    Tool(
+        "media",
+        "yt-dlp",
+        "yt-dlp",
+        "yt-dlp",
+        "YouTube captions, metadata, and audio for /nase:learn; the YouTube branch stops without it",
+    ),
+    Tool(
+        "media",
+        "ffmpeg",
+        "ffmpeg",
+        "ffmpeg",
+        "audio decoding for the optional local Whisper fallback",
+    ),
+    Tool(
+        "media",
+        "mlx-whisper",
+        "mlx_whisper",
+        None,
+        "optional local speech recognition when a video has no captions",
+        "uv tool install mlx-whisper",
+    ),
 )
 
 
