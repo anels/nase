@@ -97,6 +97,20 @@ tools = {row["tool"] for row in json.load(open(sys.argv[1], encoding="utf-8"))}
 assert tools == {"actionlint"}
 PY
 
+media_json="$TMPDIR_TEST/media.json"
+PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --group media --format json > "$media_json"
+assert_cmd "media group maps yt-dlp, ffmpeg, and mlx_whisper" "$PYTHON_BIN" - "$media_json" <<'PY'
+import json
+import sys
+
+by_tool = {row["tool"]: row for row in json.load(open(sys.argv[1], encoding="utf-8"))}
+assert set(by_tool) == {"yt-dlp", "ffmpeg", "mlx-whisper"}, by_tool
+assert by_tool["yt-dlp"]["install"] == "brew install yt-dlp"
+assert by_tool["mlx-whisper"]["binary"] == "mlx_whisper"
+assert by_tool["mlx-whisper"]["install"] == "uv tool install mlx-whisper"
+assert all(row["status"] == "missing" for row in by_tool.values())
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\ntool-availability tests passed.\n'
   exit 0
