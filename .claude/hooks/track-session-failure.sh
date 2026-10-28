@@ -1,29 +1,35 @@
 #!/usr/bin/env bash
+# Sourced before `set -e`: on bash 3.2 a syntax error in a sourced file would otherwise
+# end the shell with status 2 instead of reaching the `||` fallback below.
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || { echo "[track-session-failure] hook-common.sh unavailable - skipping" >&2; exit 0; }
+
 set -euo pipefail
 
 # StopFailure hook — append a compact API/session failure summary.
 
-command -v jq >/dev/null 2>&1 || exit 0
+nase_require jq || exit 0
 
-NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
-[ -z "$NASE_ROOT" ] && exit 0
+NASE_ROOT=$(nase_root) || exit 0
 
-STATS_DIR="$NASE_ROOT/workspace/stats"
-JSONL="$STATS_DIR/session-failures.jsonl"
-mkdir -p "$STATS_DIR"
+JSONL="$NASE_ROOT/workspace/stats/session-failures.jsonl"
 
 INPUT=$(cat)
-TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+TS=$(nase_now_utc)
+SESSION_FALLBACK=$(nase_session_id)
 EVENT="${HOOK_EVENT_NAME:-StopFailure}"
 
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRELUDE=$(cat "$HOOK_DIR/../lib/redact.jq")
-printf '%s' "$INPUT" | jq -c --arg ts "$TS" --arg event "$EVENT" \
+LINE=$(printf '%s' "$INPUT" | jq -c --arg ts "$TS" --arg event "$EVENT" --arg sid "$SESSION_FALLBACK" \
   "$PRELUDE"'{
     ts: $ts,
     event: $event,
-    session: (.session_id // env.CLAUDE_SESSION_ID // ""),
+    session: ((.session_id // "") | if . == "" then $sid else . end),
     error: clip((.error | scrub); 500),
     error_details: clip((.error_details | scrub); 500),
     last_assistant_chars: ((.last_assistant_message // "") | tostring | length)
-  }' >> "$JSONL" 2>/dev/null || true
+  }' 2>/dev/null) || exit 0
+nase_append_jsonl "$JSONL" "$LINE" || true

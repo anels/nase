@@ -18,11 +18,16 @@ set -uo pipefail
 
 [ "${NASE_PROSE_LINT:-1}" = "0" ] && exit 0
 
-ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || exit 0
+
+ROOT=$(nase_root) || exit 0
 LINT="$ROOT/.claude/scripts/prose-lint.py"
 
-command -v jq >/dev/null 2>&1 || exit 0
-command -v python3 >/dev/null 2>&1 || exit 0
+nase_require jq python3 || exit 0
 [ -r "$LINT" ] || exit 0
 
 INPUT=$(cat)

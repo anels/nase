@@ -127,6 +127,43 @@ expect_rc "equals-form GitHub field mutation is blocked" 10 \
 expect_rc "equals-form GitHub input mutation is blocked" 10 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" guard --command \
     "gh api repos/owner/example/issues --input=payload.json"
+# gh accepts clustered short flags: -iXDELETE is -i -X DELETE and -if k=v is -i -f k=v.
+expect_guard_rc "clustered method with separate value is blocked" 10 \
+  "gh api repos/owner/example/issues/1 -iX DELETE"
+expect_guard_rc "clustered method with attached value is blocked" 10 \
+  "gh api repos/owner/example/issues/1 -iXPOST"
+expect_guard_rc "clustered raw field is blocked" 10 \
+  "gh api repos/owner/example/issues/1 -if title=x"
+expect_guard_rc "clustered field is blocked" 10 \
+  "gh api repos/owner/example/issues/1 -iF title=x"
+expect_guard_rc "clustered field with attached value is blocked" 10 \
+  "gh api repos/owner/example/issues/1 -ifbody=x"
+expect_guard_rc "clustered GET method stays a read" 0 \
+  "gh api repos/owner/example/issues/1 -iXGET"
+expect_guard_rc "clustered GET method with separate value stays a read" 0 \
+  "gh api repos/owner/example/issues/1 -iX GET"
+expect_guard_rc "unknown clustered short flag fails closed" 10 \
+  "gh api repos/owner/example/issues/1 -iZ"
+expect_guard_rc "unknown clustered short flag after a read method fails closed" 10 \
+  "gh api repos/owner/example/issues/1 -XGET -iZ"
+expect_guard_rc "clustered GraphQL mutation field is blocked" 10 \
+  "gh api graphql -iF 'query=mutation { x }'"
+expect_guard_rc "clustered GraphQL query stays a read" 0 \
+  "gh api graphql -if 'query={ viewer { login } }'"
+expect_guard_rc "GraphQL query field with --input body is not a read" 10 \
+  "gh api graphql -f 'query=query { a }' --input mutation.json"
+expect_guard_rc "gh pr create inside git rebase -x is blocked" 10 \
+  "git rebase -x 'gh pr create' HEAD~1"
+expect_guard_rc "gh pr create inside unquoted git submodule foreach is blocked" 10 \
+  "git submodule foreach gh pr create"
+expect_guard_rc "plain gh api read stays a read" 0 "gh api repos/owner/example"
+expect_guard_rc "gh api include flag stays a read" 0 "gh api -i repos/owner/example"
+expect_guard_rc "gh api explicit GET stays a read" 0 "gh api -X GET repos/owner/example"
+expect_guard_rc "gh api paginate stays a read" 0 "gh api --paginate repos/owner/example/issues"
+expect_guard_rc "gh api header value is not read as a cluster" 0 \
+  "gh api -H 'Accept: application/vnd.github+json' repos/owner/example"
+expect_guard_rc "gh api jq value is not read as a cluster" 0 \
+  "gh api repos/owner/example -q '.name'"
 printf 'reply prose\n' > "$TMPDIR_TEST/reply.md"
 jq -n --rawfile body "$TMPDIR_TEST/reply.md" '{body:$body}' > "$TMPDIR_TEST/payload.json"
 REPLY_ENDPOINT="/repos/owner/example/pulls/1/comments/2/replies"
@@ -145,6 +182,14 @@ expect_rc "attached raw-field @file body is blocked" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
     --system github --summary "reply with literal path" -- \
     gh api --method POST "$REPLY_ENDPOINT" "--raw-field=body=@$TMPDIR_TEST/reply.md"
+expect_rc "short attached raw-field @file body is blocked" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system github --github-owner owner --summary "reply with literal path" -- \
+    gh api --method POST "$REPLY_ENDPOINT" "-fbody=@$TMPDIR_TEST/reply.md"
+expect_rc "clustered raw-field @file body is blocked" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system github --github-owner owner --summary "reply with literal path" -- \
+    gh api -iX POST "$REPLY_ENDPOINT" -if "body=@$TMPDIR_TEST/reply.md"
 
 expect_rc "jq-built --input reply payload is accepted" 0 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
@@ -354,10 +399,14 @@ expect_guard_rc "a herestring into a shell is blocked with no guarded CLI named"
   "bash <<< 'ls -la'"
 expect_guard_rc "a function definition naming no guarded CLI is allowed" 0 "f() { ls; }; f"
 
-# The two shapes the policy doc names as outside this guard's reach. Pinned so the doc
-# and the guard cannot drift apart, and so a later narrowing that closes one of them
-# fails here and gets the doc updated with it.
-expect_guard_rc "a guarded name assembled into a variable is not seen" 0 \
+# The shape the policy doc names as outside this guard's reach: whatever a script or task
+# runner executes for itself. Pinned so the doc and the guard cannot drift apart, and so a
+# later narrowing that closes it fails here and gets the doc updated with it.
+#
+# A name assembled into a variable used to be the second such shape, because the old lexer
+# folded the closing parenthesis into the next word and never saw `$X` as an executable.
+# The shared parser keeps `$X` as a dynamic executable, which check 3 blocks.
+expect_guard_rc "a guarded name assembled into a variable is blocked as a dynamic executable" 10 \
   "X=\$(printf 'g''h'); \$X pr create"
 expect_guard_rc "a script the guard cannot read is allowed to run" 0 "bash deploy.sh"
 expect_guard_rc "a task runner is allowed to run" 0 "make deploy"
@@ -390,7 +439,7 @@ expect_guard_rc "herestring with no space before the script is blocked" 10 \
 # redirect sits on: a backslash continuation puts the shell and the `<<` on separate
 # lines, and a line-local test would strip a body that really is executed.
 expect_guard_rc "shell continued onto the heredoc line is blocked" 10 \
-  "$(printf 'bash \\\\\n  <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
+  "$(printf 'bash \\\n  <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
 expect_guard_rc "shell after another command is blocked" 10 \
   "$(printf 'true && bash <<%sEOF%s\ngh pr create --title Example\nEOF\n' "'" "'")"
 expect_guard_rc "env-prefixed shell heredoc is blocked" 10 \

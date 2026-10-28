@@ -85,5 +85,35 @@ else
   fail_msg "dispatch skips the hook when no root resolves (rc=$rc out=$no_root_out)"
 fi
 
+GUARD_HOOKS="block-dangerous-git.sh jira-write-guard.sh atlassian-generic-write-guard.sh external-cli-write-guard.sh confluence-size-guard.sh slack-send-guard.sh"
+
+# Claude Code blocks only on exit 2. A guard that cannot run must fail closed.
+for guard in $GUARD_HOOKS; do
+  guard_out=$(cd "$FIXTURE" && env -u NASE_ROOT -u CLAUDE_PROJECT_DIR bash "$SCRIPT" "$guard" 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ] && [[ "$guard_out" == *"cannot resolve the project root"* ]]; then
+    pass_msg "guard $guard exits 2 when no root resolves"
+  else
+    fail_msg "guard $guard exits 2 when no root resolves (rc=$rc out=$guard_out)"
+  fi
+
+  guard_out=$(printf '{}' | NASE_ROOT="$FIXTURE" bash "$SCRIPT" "$guard" 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ] && [[ "$guard_out" == *"$guard"* ]]; then
+    pass_msg "guard $guard exits 2 when the hook file is missing"
+  else
+    fail_msg "guard $guard exits 2 when the hook file is missing (rc=$rc out=$guard_out)"
+  fi
+done
+
+# Non-guard hooks (tracking, session) stay fail-open on an unresolved root.
+nonguard_out=$(cd "$FIXTURE" && env -u NASE_ROOT -u CLAUDE_PROJECT_DIR bash "$SCRIPT" track-skill.sh 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass_msg "non-guard hook still fails open when no root resolves"
+else
+  fail_msg "non-guard hook still fails open when no root resolves (rc=$rc out=$nonguard_out)"
+fi
+
 printf '\n%d/%d assertions passed\n' "$pass" "$((pass + fail))"
 [ "$fail" -eq 0 ]

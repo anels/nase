@@ -80,6 +80,7 @@ mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" "$repo/workspace/logs" \
   "$repo/workspace/skills" "$repo/workspace/kb/general"
 git -C "$repo" init -q
 cp "$HOOK" "$repo/.claude/hooks/session-start.sh"
+stage_hook_lib "$repo"
 stage_scripts "$repo/.claude/scripts" workspace-archive.py sync-workspace-skills.py
 printf '%s\n' '2026-05-28T00:00:00 [WARNING] backup target unavailable' > "$repo/workspace/logs/.backup-status"
 printf 'backup-target=%s\n' "$fixture/backups" > "$repo/.local-paths"
@@ -423,6 +424,35 @@ out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 assert_contains "missing repo path is still warned" "$out" "repo path not found: $fixture/missing-repo"
 assert_not_contains "ai-attribution setting is not read as a repo path (on)" "$out" "repo path not found: on"
 assert_not_contains "ai-attribution setting is not read as a repo path (off)" "$out" "repo path not found: off"
+mv "$repo/.local-paths.bak" "$repo/.local-paths"
+
+# A .local-paths with no backup-target= line must not abort the hook: grep exits 1
+# there, and pipefail would otherwise kill the script and drop every diagnostic.
+cp "$repo/.local-paths" "$repo/.local-paths.bak"
+printf 'Repo=%s\n' "$fixture/no-target-missing-repo" > "$repo/.local-paths"
+rc=0
+out=$(cd "$repo" && bash .claude/hooks/session-start.sh 2>&1) || rc=$?
+assert_equals "missing backup-target line does not abort session-start" "$rc" "0"
+assert_contains "diagnostics after the target check still run without backup-target" "$out" "repo path not found: $fixture/no-target-missing-repo"
+mv "$repo/.local-paths.bak" "$repo/.local-paths"
+
+# NASE_ROOT exported by hook-dispatch.sh must win over the cwd's git toplevel.
+outside="$fixture/outside-non-git"
+mkdir -p "$outside"
+cp "$repo/.local-paths" "$repo/.local-paths.bak"
+printf 'Repo=%s\n' "$fixture/override-missing-repo" > "$repo/.local-paths"
+rc=0
+out=$(cd "$outside" && NASE_ROOT="$repo" bash "$repo/.claude/hooks/session-start.sh" 2>&1) || rc=$?
+assert_equals "NASE_ROOT override from a non-git cwd exits 0" "$rc" "0"
+assert_contains "NASE_ROOT override reads the overridden workspace" "$out" "repo path not found: $fixture/override-missing-repo"
+assert_not_contains "NASE_ROOT override does not fall into the not-in-git error" "$out" "not in a git repo"
+other="$fixture/other-git"
+mkdir -p "$other"
+git -C "$other" init -q
+rc=0
+out=$(cd "$other" && NASE_ROOT="$repo" bash "$repo/.claude/hooks/session-start.sh" 2>&1) || rc=$?
+assert_contains "NASE_ROOT override beats a different git repo cwd" "$out" "repo path not found: $fixture/override-missing-repo"
+assert_equals "NASE_ROOT override leaves the other repo's workspace untouched" "$(test -e "$other/workspace" && echo yes || echo no)" "no"
 mv "$repo/.local-paths.bak" "$repo/.local-paths"
 
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"

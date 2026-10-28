@@ -59,7 +59,13 @@ block_format() {
   exit 2
 }
 
-command -v jq >/dev/null 2>&1 || block_without_log "jq is required to parse tool input"
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || block_without_log "hook-common.sh is missing or unreadable; failing closed"
+
+nase_require jq || block_without_log "jq is required to parse tool input"
 
 INPUT=$(cat)
 if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
@@ -83,17 +89,16 @@ case "$TOOL" in
     ;;
 esac
 
-NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo ".")}"
+NASE_ROOT=$(nase_root) || block_without_log "cannot resolve the project root"
 TOKEN="$NASE_ROOT/workspace/.jira-write-token"
 LOG="$NASE_ROOT/workspace/logs/.jira-writes.log"
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-LOCK_HELPER="$SCRIPT_DIR/../scripts/workspace_lock.py"
+LOCK_HELPER="$HOOK_DIR/../scripts/workspace_lock.py"
 mkdir -p "$NASE_ROOT/workspace/logs" \
   || block_without_log "could not create Jira mutation audit directory"
 
 TS=$(date +%Y-%m-%dT%H:%M:%S)
 
-command -v python3 >/dev/null 2>&1 \
+nase_require python3 \
   || block_without_log "python3 is required to serialize Jira token consumption"
 [ -f "$LOCK_HELPER" ] \
   || block_without_log "workspace mutation lock helper is missing"
@@ -152,7 +157,7 @@ block() {
     echo "  {"
     echo "    \"tool_name\": \"$TOOL\","
     echo "    \"issue_key\": \"PROJ-123\","
-    echo "    \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo "    \"created_at\": \"$(nase_now_utc)\","
     echo "    \"payload_summary\": \"short human-readable summary\","
     echo "    \"payload_sha256\": \"sha256 of jq -cS .tool_input\""
     echo "  }"
@@ -161,7 +166,7 @@ block() {
     echo "  {"
     echo "    \"approved_issues\": [\"PROJ-1\", \"PROJ-2\"],"
     echo "    \"max_ops\": 6,"
-    echo "    \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo "    \"created_at\": \"$(nase_now_utc)\","
     echo "    \"payload_summary\": \"cancel approved incidents\""
     echo "  }"
     echo ""

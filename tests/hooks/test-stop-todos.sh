@@ -28,8 +28,9 @@ bad() {
   fail=$((fail + 1))
 }
 
-# The hook locates the workspace with `git rev-parse --show-toplevel` from its own
-# cwd and takes no override, so each case needs a throwaway repo.
+# The hook locates the workspace from the NASE_ROOT that hook-dispatch.sh exports
+# and falls back to `git rev-parse --show-toplevel` from its own cwd, so each case
+# needs a throwaway repo (or an explicit NASE_ROOT).
 make_repo() {
   local dir
   dir=$(mktemp -d)
@@ -144,6 +145,33 @@ else
   expect_silent "outside a git checkout the hook exits 0 quietly"
 fi
 rm -rf "$outside"
+
+# NASE_ROOT exported by hook-dispatch.sh wins over the cwd's git toplevel.
+# The override repo has no log, the cwd repo has notes: only the override can
+# produce the "no daily log" reminder.
+repo=$(make_repo)
+other=$(make_repo)
+write_log_with_notes "$other"
+RC=0
+OUT=$(cd "$other" && NASE_ROOT="$repo" bash "$HOOK" 2>/dev/null) || RC=$?
+MSG=$(jq -r '.systemMessage // empty' <<<"$OUT" 2>/dev/null || true)
+if [[ "$RC" -eq 0 ]] && grep -q 'no daily log for today' <<<"$MSG"; then
+  ok "NASE_ROOT override beats the cwd's git repo"
+else
+  bad "NASE_ROOT override beats the cwd's git repo" "rc=$RC out=$OUT"
+fi
+rm -rf "$other"
+
+outside=$(mktemp -d)
+RC=0
+OUT=$(cd "$outside" && NASE_ROOT="$repo" bash "$HOOK" 2>/dev/null) || RC=$?
+MSG=$(jq -r '.systemMessage // empty' <<<"$OUT" 2>/dev/null || true)
+if [[ "$RC" -eq 0 ]] && grep -q 'no daily log for today' <<<"$MSG"; then
+  ok "NASE_ROOT override works from a non-git cwd"
+else
+  bad "NASE_ROOT override works from a non-git cwd" "rc=$RC out=$OUT"
+fi
+rm -rf "$outside" "$repo"
 
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

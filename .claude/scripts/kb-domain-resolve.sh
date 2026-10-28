@@ -20,10 +20,8 @@ log_kb_resolve() {
   local file_path="$1"
   command -v python3 >/dev/null 2>&1 || return 0
   local args=(record --file "$file_path" --access resolve --source kb-domain-resolve)
-  # Pass the session through when the environment carries one; without it the
-  # logger falls back to a per-process id that no skill activation ever keyed.
-  local session="${CLAUDE_SESSION_ID:-${CLAUDE_SESSIONID:-}}"
-  [ -n "$session" ] && args+=(--session "$session")
+  # No --session: kb-usage-log.py reads the session id from the environment
+  # itself (CLAUDE_CODE_SESSION_ID first), so the chain lives in one place.
   python3 "$SCRIPT_DIR/kb-usage-log.py" "${args[@]}" >/dev/null 2>&1 || true
 }
 

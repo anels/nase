@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# Sourced before `set -e`: on bash 3.2 a syntax error in a sourced file would otherwise
+# end the shell with status 2 instead of reaching the `||` fallback below.
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || { echo "[stop-backup] ERROR: hook-common.sh unavailable - backup skipped" >&2; exit 0; }
+
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -44,7 +52,7 @@ PY
 # ---------------------------------------------------------------------------
 # Resolve workspace — no hardcoded fallback path (P1-ARCH-02)
 # ---------------------------------------------------------------------------
-NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+NASE_ROOT=$(nase_root) || NASE_ROOT=""
 if [ -z "$NASE_ROOT" ]; then
   echo "[stop-backup] ERROR: not in a git repo — cannot determine workspace" >&2
   exit 1
@@ -55,7 +63,7 @@ fi
 # ---------------------------------------------------------------------------
 LOCAL_PATHS="$NASE_ROOT/.local-paths"
 if [ -f "$LOCAL_PATHS" ]; then
-  TARGET=$(grep -E '^backup-target=' "$LOCAL_PATHS" 2>/dev/null | head -1 | cut -d= -f2-)
+  TARGET=$(grep -E '^backup-target=' "$LOCAL_PATHS" 2>/dev/null | head -1 | cut -d= -f2- || true)
 else
   # No config — nothing to do; exit silently
   exit 0
@@ -190,7 +198,7 @@ if [ -n "$REPOS" ]; then
         continue
       fi
       REPO_NAME=$(basename "$repo")
-      REPO_DISPLAY=$(printf '%s\n' "$REPO_LOG" | awk '{ printf "%s %s\n", substr($1,1,7), substr($0, index($0,$2)) }')
+      REPO_DISPLAY=$(printf '%s\n' "$REPO_LOG" | awk '{ h = substr($1,1,7); sub(/^[^ ]+ ?/, ""); printf "%s %s\n", h, $0 }')
       REPO_HASHES=$(printf '%s\n' "$REPO_LOG" | awk '{print $1}')
       COMMITS+="**[$REPO_NAME]**"$'\n'"$REPO_DISPLAY"$'\n'
       COMMIT_HASHES+="$REPO_HASHES"$'\n'
@@ -506,38 +514,55 @@ if ! SCAN_OUTPUT=$(bash "$SENSITIVE_SCAN" --archive "$LOCAL_ZIP_PATH" "$SOURCE_M
   log_status "ERROR" "local backup snapshot failed security validation; backup not published"
   exit 1
 fi
+# A killed publish leaves a hidden `.partial` file. We hold the lock, so no live run
+# owns one; anything older than an hour is debris. Swept here, not at startup, so a
+# throttled run that publishes nothing skips the `find`.
+find "$TARGET" -maxdepth 1 -type f -name '.nase-backup-*.partial' -mmin +60 -delete 2>/dev/null || true
+
+# Publish by writing a hidden `.partial` sibling and renaming it into place. A kill or
+# timeout mid-copy then leaves only a name that no `nase-backup-*` glob (throttle,
+# retention, /nase:restore) matches, never a truncated archive that looks newest.
 if ! python3 - "$LOCAL_ZIP_PATH" "$ZIP_PATH" <<'PY'
 import os
+import secrets
 import shutil
 import sys
 
 source_path, destination_path = sys.argv[1:]
+target_dir = os.path.dirname(destination_path)
+partial_path = os.path.join(target_dir, ".nase-backup-%s.partial" % secrets.token_hex(6))
 source_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
 source_fd = os.open(source_path, source_flags)
-destination_fd = None
+partial_fd = None
 try:
-    destination_fd = os.open(
-        destination_path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-        0o600,
-    )
+    partial_fd = os.open(partial_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(source_fd, "rb", closefd=False) as source, os.fdopen(
-        destination_fd, "wb", closefd=False
-    ) as destination:
-        shutil.copyfileobj(source, destination, 1024 * 1024)
-        destination.flush()
-        os.fsync(destination.fileno())
+        partial_fd, "wb", closefd=False
+    ) as partial:
+        shutil.copyfileobj(source, partial, 1024 * 1024)
+        partial.flush()
+        os.fsync(partial.fileno())
+    if os.path.lexists(destination_path):
+        raise FileExistsError(destination_path)
+    os.rename(partial_path, destination_path)
 except Exception:
-    if destination_fd is not None:
-        try:
-            os.unlink(destination_path)
-        except OSError:
-            pass
+    try:
+        os.unlink(partial_path)
+    except OSError:
+        pass
     raise SystemExit(1)
 finally:
     os.close(source_fd)
-    if destination_fd is not None:
-        os.close(destination_fd)
+    if partial_fd is not None:
+        os.close(partial_fd)
+try:
+    dir_fd = os.open(target_dir, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+except OSError:
+    pass
 PY
 then
   log_status "ERROR" "validated backup snapshot could not be published"

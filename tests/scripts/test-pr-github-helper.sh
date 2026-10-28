@@ -526,6 +526,55 @@ for url in (
 assert module.normalize_repo_slug("https://example.com/acme/widgets") != "acme/widgets"
 PY
 
+overlap_repo="$TMPDIR_TEST/overlap-repo"
+git init -q "$overlap_repo"
+assert_cmd "adjacent_same_file_overlap lists only files the PR changed, not base-only changes" \
+  "$PYTHON_BIN" - "$SCRIPT" "$overlap_repo" <<'PY'
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+repo = Path(sys.argv[2])
+env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e", "GIT_COMMITTER_NAME": "t",
+       "GIT_COMMITTER_EMAIL": "t@e", "PATH": "/usr/bin:/bin:/usr/local/bin"}
+
+
+def git(*args):
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, env=env,
+                          capture_output=True, text=True).stdout.strip()
+
+
+def commit(name, text, msg):
+    (repo / name).write_text(text, encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", msg)
+
+
+git("checkout", "-q", "-b", "main")
+commit("a.txt", "a0\n", "init a")
+commit("b.txt", "b0\n", "init b")
+fork_point = git("rev-parse", "HEAD")
+git("checkout", "-q", "-b", "pr")
+commit("a.txt", "a-pr\n", "pr touches a")
+pr_tip = git("rev-parse", "HEAD")
+git("checkout", "-q", "main")
+commit("a.txt", "a-base\n", "base touches a")
+commit("b.txt", "b-base\n", "base touches b")
+git("update-ref", "refs/remotes/origin/main", "main")
+git("update-ref", "refs/remotes/origin/pr", pr_tip)
+assert fork_point != git("rev-parse", "main")
+
+result = module.adjacent_same_file_overlap(repo, "main", "pr", "2000-01-01T00:00:00Z")
+assert result["scanRan"] is True, result
+paths = [item["path"] for item in result["files"]]
+assert paths == ["a.txt"], paths
+PY
+
 guards_repo="$TMPDIR_TEST/guards-repo"
 git init -q "$guards_repo"
 git -C "$guards_repo" remote add origin git@github.com:Acme/Widgets.git

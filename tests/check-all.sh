@@ -118,7 +118,7 @@ os.execvp(sys.argv[2], sys.argv[2:])
 # Every tracked shell file. `bash -n` and shellcheck read the same list so a new
 # script cannot land in one gate and miss the other.
 SHELL_FILES=()
-for _shell_file in .claude/hooks/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh \
+for _shell_file in .claude/hooks/*.sh .claude/lib/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh \
   tests/lib/*.sh tests/scripts/*.sh workspace/skills/scripts/*.sh; do
   [[ -f "$_shell_file" ]] && SHELL_FILES+=("$_shell_file")
 done
@@ -651,7 +651,7 @@ run_changed_extras() {
 
   # tests/lib/ for the same reason as the scripts branch below: 3 hook tests source
   # tests/lib/assert.sh.
-  if grep -qE '^(\.claude/hooks/|tests/hooks/|tests/lib/)' <<< "$changed"; then
+  if grep -qE '^(\.claude/hooks/|\.claude/lib/|tests/hooks/|tests/lib/)' <<< "$changed"; then
     run_hook_tests
   fi
   # tests/lib/ is in this list because 18 script tests source tests/lib/assert.sh: editing

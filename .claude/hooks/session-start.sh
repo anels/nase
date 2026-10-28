@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
+# Sourced before `set -e`: on bash 3.2 a syntax error in a sourced file would otherwise
+# end the shell with status 2 instead of reaching the `||` fallback below.
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || {
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[session-start] ERROR: hook-common.sh unavailable - cannot determine workspace"}}'
+  exit 0
+}
+
 set -euo pipefail
 
-NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+NASE_ROOT=$(nase_root) || NASE_ROOT=""
 if [ -z "$NASE_ROOT" ]; then
   # Static payload: this path runs before PYTHON is resolved, so it must not
   # depend on jq either.
@@ -64,7 +75,7 @@ SKILL_SYNC_CHANGED=0
   # Item 4 — backup target reachability check
   LOCAL_PATHS="$NASE_ROOT/.local-paths"
   if [ -f "$LOCAL_PATHS" ]; then
-    TARGET=$(grep -E '^backup-target=' "$LOCAL_PATHS" 2>/dev/null | head -1 | cut -d= -f2-)
+    TARGET=$(grep -E '^backup-target=' "$LOCAL_PATHS" 2>/dev/null | head -1 | cut -d= -f2- || true)
     if [ -n "$TARGET" ] && ! ls "$TARGET" >/dev/null 2>&1; then
       echo "[session-start] WARNING: backup target not reachable: $TARGET"
       echo "[session-start] Check that drive/network share is mounted, or update .local-paths"

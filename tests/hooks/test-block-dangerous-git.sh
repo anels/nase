@@ -95,6 +95,38 @@ test_invalid_json() {
   fi
 }
 
+# Fault injection: insert a failing command into a copy of each guard, after its
+# input is read and before any verdict. Claude Code blocks only on exit 2, so an unexpected non-zero exit
+# (set -e, set -u, a failed subprocess) must map to 2 and not leak out as 1.
+test_unexpected_error_fails_closed() {
+  local guard="$1" inject="$2" desc="unexpected error fails closed: $1"
+  local dir rc out input='{"tool_name":"mcp__x__noop","tool_input":{"command":"ls"}}'
+
+  dir=$(mktemp -d)
+  mkdir -p "$dir/.claude/hooks" "$dir/.claude/scripts"
+  sed "$inject" "$ROOT/.claude/hooks/$guard" > "$dir/.claude/hooks/$guard"
+  mkdir -p "$dir/.claude/lib"
+  cp "$ROOT"/.claude/lib/hook-common.sh "$dir/.claude/lib/"
+  if cmp -s "$ROOT/.claude/hooks/$guard" "$dir/.claude/hooks/$guard"; then
+    printf 'FAIL  [block] %-30s fault injection did not apply\n' "$desc"
+    fail=$((fail+1))
+    rm -rf "$dir"
+    return
+  fi
+  cp "$ROOT"/.claude/scripts/external-write-action.py "$ROOT"/.claude/scripts/shell_scan.py "$dir/.claude/scripts/" 2>/dev/null || true
+  out=$(printf '%s' "$input" | NASE_ROOT="$dir" bash "$dir/.claude/hooks/$guard" 2>&1)
+  rc=$?
+  rm -rf "$dir"
+
+  if [[ "$rc" == "2" ]]; then
+    printf 'PASS  [block] %-30s rc=%s\n' "$desc" "$rc"
+    pass=$((pass+1))
+  else
+    printf 'FAIL  [block] %-30s rc=%s\n      out: %s\n' "$desc" "$rc" "$out"
+    fail=$((fail+1))
+  fi
+}
+
 MAIN_REPO=$(make_git_repo_on_branch main)
 RELEASE_REPO=$(make_git_repo_on_branch release/sprint-29)
 FEATURE_REPO=$(make_git_repo_on_branch feat/user-avatar)
@@ -124,6 +156,42 @@ test_case "restore magic top pathspec" "g""it res""tore ':(top)'"               
 # `--staged` alone rewrites index entries from HEAD and touches no file, so a
 # whole-tree pathspec cannot discard work. Adding --worktree does touch files.
 test_case "restore staged dot"   "g""it res""tore --staged ."                   allow
+test_case "restore dot slash"    "g""it res""tore ./"                           block
+test_case "restore star glob"    "g""it res""tore '*'"                          block
+test_case "restore parent dir"   "g""it res""tore .."                           block
+test_case "checkout dash dot slash" "g""it checkout -- ./"                      block
+test_case "push heads/main"      "g""it push origin heads/main"                 block
+test_case "push HEAD to heads/main" "g""it push origin HEAD:heads/main"         block
+test_case "push to heads/release" "g""it push origin feature:heads/release/1.0" block
+test_case "rebase --exec push main" "g""it rebase --exec 'git push origin main' HEAD~1" block
+test_case "rebase -x push main"  "g""it rebase -x 'git push origin main' HEAD~1" block
+test_case "rebase --exec benign" "g""it rebase --exec 'make test' HEAD~1"       allow
+test_case "submodule foreach push main" "g""it submodule foreach 'git push origin main'" block
+test_case "submodule foreach benign" "g""it submodule foreach 'git status'"     allow
+test_case "submodule foreach unquoted push" "g""it submodule foreach git push origin main" block
+test_case "submodule foreach recursive reset" "g""it submodule foreach --recursive git reset --hard" block
+test_case "submodule foreach after -C" "g""it -C sub submodule foreach git reset --hard" block
+test_case "submodule foreach unquoted benign" "g""it submodule foreach git status" allow
+test_case "bisect run git reset" "g""it bisect run git reset --hard"             block
+test_case "bisect run sh -c push" "g""it bisect run sh -c 'git push origin main'" block
+test_case "bisect run benign"    "g""it bisect run make test"                   allow
+test_case "branch -df cluster"   "g""it branch -df foo"                         block
+test_case "branch -fd cluster"   "g""it branch -fd foo"                         block
+test_case "branch -d -f split"   "g""it branch -d -f foo"                       block
+test_case "branch -d alone"      "g""it branch -d foo"                          allow
+test_case "dynamic subcommand substitution" "g""it \$(echo push) origin main"    block
+test_case "dynamic subcommand variable" 'SUB=$(echo push); g''it $SUB origin main' block
+test_case "dynamic subcommand quoted arg" 'g''it "$1" origin main'               block
+test_case "dynamic reset flag"   'read F; g''it reset --$F'                     block
+test_case "dynamic clean flag"   'read F; g''it clean -$F'                      block
+test_case "dynamic commit message ok" 'g''it commit -m "$msg"'                  allow
+test_case "dynamic checkout branch ok" 'g''it checkout "$branch"'               allow
+test_case "dynamic log count ok" 'g''it log -$N'                                allow
+test_case "config remote push refspec" "g""it config remote.origin.push HEAD:main" block
+test_case "-c remote push refspec" "g""it -c remote.origin.push=feature:main push origin feature" block
+test_case "config global pager value -l" "g""it config --global core.pager -l"   block
+test_case "config global pager value --list" "g""it config --global core.pager --list" block
+test_case "config global -l"     "g""it config --global -l"                     allow
 test_case "restore staged pathspec" "g""it res""tore --staged -- src/a.ts"      allow
 test_case "restore staged and worktree" "g""it res""tore --staged --worktree ." block
 test_case "restore worktree dot" "g""it res""tore --worktree ."                 block
@@ -331,6 +399,177 @@ test_case "quoted process substitution text" "ec""ho \"<(g""it res""et --hard)\"
 test_case "single-quoted command substitution text" "ec""ho '\$(g""it res""et --hard)'" allow
 test_case "escaped backtick text" 'ec''ho \`g''it res''et --hard\`'             allow
 test_case "bash script named -c"  "b""ash -- -c 'g""it res""et --hard'"         allow
+
+# `git commit -n` is the short form of --no-verify; git also accepts unambiguous
+# long-option abbreviations, so literal matching alone is a bypass.
+test_case "commit -n"            "g""it co""mmit -n -m fix"                     block
+test_case "commit -nm"           "g""it co""mmit -nm fix"                       block
+test_case "commit -anm"          "g""it co""mmit -anm fix"                      block
+test_case "commit -n after msg"  "g""it co""mmit -m fix -n"                     block
+test_case "commit --amend -n"    "g""it co""mmit --amend -n"                    block
+test_case "commit --no-ver"      "g""it co""mmit --no-ver -m fix"               block
+test_case "commit --no-verif"    "g""it co""mmit -m fix --no-verif"             block
+test_case "push --no-ver"        "g""it pu""sh --no-ver origin feat/x"          block
+test_case "rebase --no-ver"      "g""it re""base --no-ver main"                 block
+test_case "commit --no-gpg-s"    "g""it co""mmit --no-gpg-s -m fix"             block
+test_case "reset --ha"           "g""it res""et --ha HEAD~1"                    block
+test_case "reset --har"          "g""it res""et --har"                          block
+test_case "push --del"           "g""it pu""sh --del origin feat/x"             block
+test_case_in_dir "push --mir" "g""it pu""sh --mir origin" block "$FEATURE_REPO"
+test_case_in_dir "push --pru" "g""it pu""sh --pru origin" block "$FEATURE_REPO"
+test_case "clean --for"          "g""it cl""ean --for -d"                       block
+test_case "branch --del --for"   "g""it br""anch --del --for feat/foo"          block
+test_case "tag --del"            "g""it ta""g --del v1"                         block
+test_case "config --glo"         "g""it co""nfig --glo user.name x"             block
+test_case "config --sys"         "g""it co""nfig --sys user.name x"             block
+test_case "restore --sta --wor ." "g""it res""tore --staged --wor ."            block
+test_case "commit -mn is a message" "g""it co""mmit -mn"                        allow
+test_case "commit -m -n message" "g""it co""mmit -m -n"                         allow
+test_case "commit -am msg"       "g""it co""mmit -am fix"                       allow
+test_case "commit -F -n file"    "g""it co""mmit -F -n"                         allow
+test_case "commit --no-edit"     "g""it co""mmit --amend --no-edit"             allow
+test_case "commit --no-status"   "g""it co""mmit --no-status -m fix"            allow
+test_case "commit --no-post-rewrite" "g""it co""mmit --no-post-rewrite -m fix"  allow
+test_case "commit -n after --"   "g""it co""mmit -m fix -- -n"                  allow
+test_case "push -n dry run"      "g""it pu""sh -n origin feat/x"                allow
+test_case "push --dry-run"       "g""it pu""sh --dry-run origin feat/x"         allow
+test_case "push --dry"           "g""it pu""sh --dry origin feat/x"             allow
+test_case "merge -n"             "g""it me""rge -n feat/x"                      allow
+test_case "cherry-pick -n"       "g""it ch""erry-pick -n abc123"                allow
+test_case "reset --soft"         "g""it res""et --soft HEAD~1"                  allow
+test_case "reset --mixed"        "g""it res""et --mixed HEAD~1"                 allow
+test_case "branch --list"        "g""it br""anch --list"                        allow
+test_case "branch --show-current" "g""it br""anch --show-current"               allow
+test_case "tag --list"           "g""it ta""g --list"                           allow
+test_case "config --local"       "g""it co""nfig --local user.name x"           allow
+test_case "config --get-regexp"  "g""it co""nfig --global --get-regexp user"    allow
+test_case "config --glo --li"    "g""it co""nfig --glo --li"                    allow
+test_case "restore --staged ."   "g""it res""tore --staged ."                   allow
+test_case "restore --sta ."      "g""it res""tore --sta ."                      allow
+test_case "clean -nfd dry run"   "g""it cl""ean -nfd"                           allow
+test_case "clean -n -f -d"       "g""it cl""ean -n -f -d"                       allow
+test_case "clean -fdn"           "g""it cl""ean -fdn"                           allow
+test_case "clean --dry-run -f"   "g""it cl""ean --dry-run -fd"                  allow
+test_case "clean --dry -f"       "g""it cl""ean --dry -fd"                      allow
+test_case "clean -n"             "g""it cl""ean -n"                             allow
+test_case "clean -fd still blocked with -e -n" "g""it cl""ean -fd -e -n"        block
+test_case "clean -n then --no-dry-run" "g""it cl""ean -n --no-dry-run -fd"      block
+
+# Shell constructs that used to hide a push from the guard. The shell parsing is shared with
+# the external-CLI guard (.claude/scripts/shell_scan.py), so these cover the wrapper,
+# compound-command, pipe-into-shell, and variable gaps that parser closes.
+test_case "timeout wrapper push main"   "timeout 30 g""it pu""sh origin main"             block
+test_case "timeout option wrapper"      "timeout -s KILL 30 g""it pu""sh origin main"     block
+test_case "xargs wrapper push main"     "xargs g""it pu""sh origin main"                  block
+test_case "xargs supplies the refspec"  "echo main | xargs g""it pu""sh origin"           block
+test_case "stdbuf wrapper push main"    "stdbuf -o0 g""it pu""sh origin main"             block
+test_case "nohup wrapper push main"     "nohup g""it pu""sh origin main"                  block
+test_case "setsid wrapper push main"    "setsid g""it pu""sh origin main"                 block
+test_case "nice wrapper push main"      "nice -n 5 g""it pu""sh origin main"              block
+test_case "time wrapper push main"      "time g""it pu""sh origin main"                   block
+test_case "exec wrapper push main"      "exec g""it pu""sh origin main"                   block
+test_case "env -u wrapper push main"    "env -u FOO g""it pu""sh origin main"             block
+test_case "sudo -u wrapper push main"   "sudo -u me g""it pu""sh origin main"             block
+test_case "stacked wrappers push main"  "sudo env A=1 timeout 5 nohup g""it pu""sh origin main" block
+test_case "for loop push main"          "for i in 1; do g""it pu""sh origin main; done"   block
+test_case "while loop push main"        "while true; do g""it pu""sh origin main; done"   block
+test_case "if body push main"           "if true; then g""it pu""sh origin main; fi"      block
+test_case "brace group push main"       "{ g""it pu""sh origin main; }"                   block
+test_case "negated push main"           "! g""it pu""sh origin main"                      block
+test_case "find -exec push main"        "find . -name x -exec g""it pu""sh origin main \;" block
+test_case "echo piped into bash"        "echo \"g\"\"it pu\"\"sh origin main\" | bash"    block
+test_case "echo piped into path bash"   "echo \"g\"\"it pu\"\"sh origin main\" | /bin/bash" block
+test_case "echo piped into sudo bash"   "echo \"g\"\"it pu\"\"sh origin main\" | sudo bash" block
+test_case "echo piped into env bash"    "echo \"g\"\"it pu\"\"sh origin main\" | env bash" block
+test_case "here-string into bash"       "bash <<< \"g\"\"it pu\"\"sh origin main\""       block
+test_case "here-string with no space"   "bash<<<'g''it pu''sh origin main'"               block
+test_case "heredoc into bash"           "bash <<EOF"$'\n'"g""it pu""sh origin main"$'\n'"EOF" block
+test_case "quoted heredoc into bash"    "bash <<'EOF'"$'\n'"g""it pu""sh origin main"$'\n'"EOF" block
+test_case "variable holds the program"  "G=g""it; \$G pu""sh origin main"                 block
+test_case "variable holds program and subcommand" "G=\"g\"\"it pu\"\"sh\"; \$G origin main" block
+test_case "unknown program pushing main" "\$TOOL pu""sh origin main"                      block
+test_case "glob program name"           "/usr/bin/g?t pu""sh origin main"                 block
+test_case "eval push main"              "eval \"g\"\"it pu\"\"sh origin main\""           block
+test_case "command substitution push main" "echo \$(g""it pu""sh origin main)"            block
+test_case "function forwards its arguments to git" "g() { g""it \"\$@\"; }; g pu""sh origin main" block
+test_case "function forwards a whole command"    "r() { \"\$@\"; }; r g""it pu""sh origin main" block
+test_case "function forwards a feature push"     "g() { g""it \"\$@\"; }; g sta""tus" allow
+test_case "uppercase program name"              "GI""T pu""sh origin main"                  block
+test_case "plain command skips the scanner"     "ls -la docs"                               allow
+test_case "plain pipeline skips the scanner"    "cat notes.txt | head -5"                   allow
+test_case "unterminated quote naming git" "g""it sta""tus 'unterminated"                  block
+
+# Refspec words the guard cannot read literally.
+test_case "brace refspec with empty arm" "g""it pu""sh origin {main,}"                    block
+test_case "brace refspec under refs/heads" "g""it pu""sh origin refs/heads/{main,x}"      block
+test_case "brace range refspec"         "g""it pu""sh origin {1..3}"                      block
+test_case "ANSI-C quoted refspec"       "g""it pu""sh origin \$'ma\\x69n'"                block
+test_case "ANSI-C quoted protected name in refspec" "g""it pu""sh origin \$'refs/heads/\\x6dain'" block
+test_case "glob refspec in quotes"      "g""it pu""sh origin 'refs/heads/*:refs/heads/*'" block
+test_case "glob refspec unquoted"       "g""it pu""sh origin 'feat/*'"                    block
+test_case "variable refspec"            "g""it pu""sh origin \$BRANCH"                    block
+test_case "quoted variable refspec"     "g""it pu""sh origin \"\$BRANCH\""                block
+test_case "substitution refspec"        "g""it pu""sh origin \"\$(g""it branch --show-current)\"" block
+test_case "variable-only target"        "g""it pu""sh \$ARGS"                              block
+test_case "backslash in refspec"        "g""it pu""sh origin ma\\\\in"                    block
+test_case "unknown --no-* global option" "g""it --no-advice pu""sh origin main"           block
+test_case "unknown --opt=value global option" "g""it --future=1 pu""sh origin main"       block
+test_case "unknown short global option" "g""it -Z pu""sh origin main"                     block
+test_case "-P global option"            "g""it -P pu""sh origin main"                     block
+
+# A bare push publishes HEAD of whichever repository git runs in, which is not always the
+# hook's own directory.
+test_case_in_dir "cd to main repo then bare push" "cd $MAIN_REPO && g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "cd to main repo with semicolon" "cd $MAIN_REPO; g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "cd then HEAD push" "cd $MAIN_REPO && g""it pu""sh origin HEAD" block "$FEATURE_REPO"
+test_case_in_dir "pushd to main repo then bare push" "pushd $MAIN_REPO >/dev/null && g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "subshell cd to main repo" "(cd $MAIN_REPO && g""it pu""sh)" block "$FEATURE_REPO"
+test_case_in_dir "env -C main repo" "env -C $MAIN_REPO g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "git -C main repo from a feature cwd" "g""it -C $MAIN_REPO pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "GIT_DIR main repo" "GIT_DIR=$MAIN_REPO/.git g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "exported GIT_DIR main repo" "export GIT_DIR=$MAIN_REPO/.git; g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "--git-dir= main repo" "g""it --git-dir=$MAIN_REPO/.git pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "--git-dir main repo" "g""it --git-dir $MAIN_REPO/.git pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "cd to a variable then bare push" "cd \"\$REPO\" && g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "cd to home then bare push" "cd ~/repo && g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "cd - then bare push" "cd - && g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "-C variable then bare push" "g""it -C \"\$REPO\" pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "GIT_DIR variable then bare push" "GIT_DIR=\$X g""it pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "--work-tree then bare push" "g""it --work-tree=$MAIN_REPO pu""sh" block "$FEATURE_REPO"
+test_case_in_dir "cd to main repo from a release cwd" "cd $MAIN_REPO && g""it pu""sh" block "$RELEASE_REPO"
+test_case_in_dir "cd away from main cwd with ; still blocks" "cd $FEATURE_REPO; g""it pu""sh" block "$MAIN_REPO"
+
+# False positives that must stay allowed.
+test_case "quoted mention of a push"    "echo \"g\"\"it pu\"\"sh origin main\""           allow
+test_case "single-quoted mention"       "echo 'run g''it pu''sh origin main by hand'"     allow
+test_case "grep for a push"             "grep -rn 'g''it pu''sh origin main' docs"        allow
+test_case "quoted heredoc mentions a push" "cat <<'EOF'"$'\n'"g""it pu""sh origin main"$'\n'"EOF" allow
+test_case "unquoted heredoc mentions a push" "cat <<EOF"$'\n'"g""it pu""sh origin main"$'\n'"EOF" allow
+test_case "arithmetic shift"            "echo \$((1<<2))"                                  allow
+test_case "status through a wrapper"    "timeout 30 g""it sta""tus"                        allow
+test_case "push feature through timeout" "timeout 30 g""it pu""sh origin feat/x"           allow
+test_case "push feature through xargs"  "echo ok | xargs g""it sta""tus"                   allow
+test_case "push feature in a loop"      "for b in a; do g""it pu""sh origin feat/x; done"  allow
+test_case "push feature with unknown global option" "g""it --no-advice pu""sh origin feat/x" allow
+test_case "push with a dynamic remote and literal branch" "g""it pu""sh \"\$REMOTE\" feat/x" allow
+test_case "dynamic head that is plainly not git" "\$ROOT/bin/deploy pu""sh"               allow
+test_case "commit with a heredoc message" "g""it co""mmit -m \"\$(cat <<'EOF'"$'\n'"it's a message with an apostrophe"$'\n'"EOF"$'\n'")\"" allow
+test_case "git log piped to head"       "g""it log --oneline | head -5"                    allow
+test_case_in_dir "cd to feature repo then bare push from main" "cd $FEATURE_REPO && g""it pu""sh" allow "$MAIN_REPO"
+test_case_in_dir "git -C feature repo from a main cwd" "g""it -C $FEATURE_REPO pu""sh" allow "$MAIN_REPO"
+test_case_in_dir "relative -C chain" "cd $FEATURE_REPO/.. && g""it -C $(basename "$FEATURE_REPO") pu""sh" allow "$MAIN_REPO"
+test_case_in_dir "GIT_DIR feature repo from a main cwd" "GIT_DIR=$FEATURE_REPO/.git g""it pu""sh" allow "$MAIN_REPO"
+test_case_in_dir "--git-dir feature repo from a main cwd" "g""it --git-dir=$FEATURE_REPO/.git pu""sh" allow "$MAIN_REPO"
+test_case_in_dir "explicit feature refspec ignores the cwd branch" "cd \"\$X\" && g""it pu""sh origin feat/x" allow "$MAIN_REPO"
+test_case_in_dir "cd to a directory that is not a repository" "cd .. && g""it pu""sh" allow "$FEATURE_REPO"
+test_case_in_dir "subshell cd does not leak" "(cd $MAIN_REPO && g""it sta""tus); g""it pu""sh" allow "$FEATURE_REPO"
+
+test_unexpected_error_fails_closed block-dangerous-git.sh 's/^block() {$/false\nblock() {/'
+# shellcheck disable=SC2016 # A sed pattern, not a shell expansion.
+INJECT_AFTER_INPUT='s/^INPUT=\$(cat)$/INPUT=$(cat)\nfalse/'
+test_unexpected_error_fails_closed confluence-size-guard.sh "$INJECT_AFTER_INPUT"
+test_unexpected_error_fails_closed atlassian-generic-write-guard.sh "$INJECT_AFTER_INPUT"
+test_unexpected_error_fails_closed external-cli-write-guard.sh "$INJECT_AFTER_INPUT"
 
 test_missing_jq
 test_invalid_json

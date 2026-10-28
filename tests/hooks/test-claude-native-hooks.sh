@@ -81,6 +81,48 @@ printf '{"error":"rate limit %s","error_details":"too many requests %s","last_as
 assert_jq "StopFailure writes session failure summary" "$FIXTURE/workspace/stats/session-failures.jsonl" \
   'select(.event == "StopFailure" and (.error | contains("redaction-test-secret") | not) and (.error_details | contains("redaction-test-token") | not) and .last_assistant_chars == 11 and has("last_assistant_preview") | not)'
 
+# Slack write tools beyond send/canvas must be gated by the guard and by settings.json wiring.
+settings="$ROOT/.claude/settings.json"
+slack_write_tools="slack_send_message slack_schedule_message slack_create_canvas slack_update_canvas slack_add_reaction slack_create_conversation slack_add_list_record slack_update_list_record slack_create_list slack_update_list slack_complete_file_upload"
+slack_allowed_tools="slack_send_message_draft slack_read_channel slack_get_file_upload_url slack_read_list slack_get_reactions slack_search_users"
+slack_matcher=$(jq -r '[.hooks.PreToolUse[] | select(.hooks[].command | contains("slack-send-guard.sh")) | .matcher] | first // ""' "$settings")
+for t in $slack_write_tools; do
+  full="mcp__plugin_slack_slack__$t"
+  if printf '%s' "$full" | grep -Eq "$slack_matcher"; then
+    pass_msg "settings matcher covers $t"
+  else
+    fail_msg "settings matcher covers $t"
+  fi
+  out=$(printf '{"tool_name":"%s","tool_input":{}}' "$full" | bash "$ROOT/.claude/hooks/slack-send-guard.sh" 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ] && [[ "$out" == *"BLOCKED by slack-send-guard"* ]]; then
+    pass_msg "slack-send-guard blocks $t"
+  else
+    fail_msg "slack-send-guard blocks $t (rc=$rc)"
+  fi
+done
+for t in $slack_allowed_tools; do
+  full="mcp__plugin_slack_slack__$t"
+  if printf '%s' "$full" | grep -Eq "$slack_matcher"; then
+    fail_msg "settings matcher leaves $t alone"
+  else
+    pass_msg "settings matcher leaves $t alone"
+  fi
+  printf '{"tool_name":"%s","tool_input":{}}' "$full" | bash "$ROOT/.claude/hooks/slack-send-guard.sh" >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 0 ]; then pass_msg "slack-send-guard allows $t"; else fail_msg "slack-send-guard allows $t (rc=$rc)"; fi
+done
+
+for hook in post-edit-shellcheck.sh post-edit-ruff.sh; do
+  post_matcher=$(jq -r --arg h "$hook" '[.hooks.PostToolUse[] | select(.hooks[].command | contains($h)) | .matcher] | first // ""' "$settings")
+  if printf 'MultiEdit' | grep -Eq "^($post_matcher)$"; then
+    pass_msg "PostToolUse $hook matches MultiEdit"
+  else
+    fail_msg "PostToolUse $hook matches MultiEdit (matcher '$post_matcher')"
+  fi
+done
+if jq empty "$settings" 2>/dev/null; then pass_msg "settings.json is valid JSON"; else fail_msg "settings.json is valid JSON"; fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

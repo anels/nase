@@ -66,6 +66,32 @@ else
   printf '%s\n' "$log" >&2
 fi
 
+# NASE_ROOT exported by hook-dispatch.sh wins over the cwd's git toplevel.
+override="$FIXTURE/override"
+mkdir -p "$override/workspace/logs"
+git -C "$override" init -q
+outside="$FIXTURE/outside"
+mkdir -p "$outside"
+out=$(cd "$outside" && printf '{"worktree_path":"/tmp/nase-override-wt"}' | NASE_ROOT="$override" bash "$HOOK" 2>&1)
+rc=$?
+if [ "$rc" = 0 ] && grep -q 'removed `/tmp/nase-override-wt`' "$override/workspace/logs/$today.md" 2>/dev/null; then
+  pass_msg "NASE_ROOT override logs into the overridden workspace from a non-git cwd"
+else
+  fail_msg "NASE_ROOT override logs into the overridden workspace from a non-git cwd"
+  printf 'rc=%s out=%s\n' "$rc" "$out" >&2
+fi
+
+out=$(cd "$repo" && printf '{"worktree_path":"/tmp/nase-override-wt2"}' | NASE_ROOT="$override" bash "$HOOK" 2>&1)
+rc=$?
+if [ "$rc" = 0 ] \
+  && grep -q 'removed `/tmp/nase-override-wt2`' "$override/workspace/logs/$today.md" \
+  && ! grep -q 'nase-override-wt2' "$repo/workspace/logs/$today.md"; then
+  pass_msg "NASE_ROOT override beats the cwd's git repo"
+else
+  fail_msg "NASE_ROOT override beats the cwd's git repo"
+  printf 'rc=%s out=%s\n' "$rc" "$out" >&2
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

@@ -20,18 +20,24 @@
 # Session state: ${TMPDIR:-/tmp}/nase-fact-force.${session}.state. 30-min
 # inactivity expiry. Caps entries at 500 to bound disk use.
 
+# Advisory hook: an unloadable lib must never block an edit, so it fails open. Source it
+# before `set -e`, or a syntax error in the lib would exit 2 and block.
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ]] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [[ -r "$HOOK_DIR/../lib/hook-common.sh" ]] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || exit 0
+
 set -euo pipefail
 
 [[ "${NASE_FACT_FORCE:-1}" == "0" ]] && exit 0
 
 STATE_DIR="${TMPDIR:-/tmp}"
-SESSION_ID="${CLAUDE_SESSION_ID:-${PPID}}"
-STATE_FILE="${STATE_DIR}/nase-fact-force.${SESSION_ID}.state"
 SESSION_TIMEOUT_SECS=$((30 * 60))
 MAX_ENTRIES=500
 
 # Read tool input from stdin; if jq missing, exit silently (don't block edits).
-command -v jq >/dev/null 2>&1 || exit 0
+nase_require jq || exit 0
 
 INPUT="$(cat || true)"
 [[ -z "$INPUT" ]] && exit 0
@@ -50,6 +56,15 @@ esac
 
 # Brand-new file (Write only) — no callers, skip.
 [[ -f "$FILE_PATH" ]] || exit 0
+
+# The real session id keys the once-per-session state. PPID is the fallback only,
+# because it changes whenever the hook is launched from a different parent. The id
+# comes from stdin, so strip anything that could leave the state directory. Resolved
+# here, after the cheap early exits, so edits to non-source files never pay for the jq.
+SESSION_ID="$(nase_session_id "$INPUT")"
+[[ -n "$SESSION_ID" ]] || SESSION_ID="${PPID}"
+SESSION_ID="${SESSION_ID//[!A-Za-z0-9._-]/_}"
+STATE_FILE="${STATE_DIR}/nase-fact-force.${SESSION_ID}.state"
 
 # Initialise or expire stale state file.
 if [[ -f "$STATE_FILE" ]]; then

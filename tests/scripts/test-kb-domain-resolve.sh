@@ -66,10 +66,10 @@ assert_jq() {
   fi
 }
 
-NASE_ROOT="$FIXTURE" CLAUDE_SESSION_ID="domain-test" \
+NASE_ROOT="$FIXTURE" CLAUDE_CODE_SESSION_ID="domain-test" \
   python3 "$LOGGER" activate --skill "discuss-pr" --source test >/dev/null 2>&1
 
-out=$(cd "$FIXTURE" && NASE_ROOT="$FIXTURE" CLAUDE_SESSION_ID="domain-test" bash "$SCRIPT" "example_repo" 2>&1)
+out=$(cd "$FIXTURE" && NASE_ROOT="$FIXTURE" CLAUDE_CODE_SESSION_ID="domain-test" bash "$SCRIPT" "example_repo" 2>&1)
 rc=$?
 assert_exit "T1: resolves normalized domain key" 0 "$rc"
 assert_contains "T1: stdout is resolved KB path" "$out" "workspace/kb/projects/example.md"
@@ -77,7 +77,7 @@ assert_jq "T1: successful resolve appends telemetry" \
   'select(.skill == "discuss-pr" and .file == "workspace/kb/projects/example.md" and .access == "resolve" and .source == "kb-domain-resolve")'
 
 before=$(jq -s 'length' "$FIXTURE/workspace/stats/kb-usage.jsonl" 2>/dev/null || echo 0)
-out=$(cd "$FIXTURE" && NASE_ROOT="$FIXTURE" CLAUDE_SESSION_ID="domain-test" bash "$SCRIPT" "missing-domain" 2>&1)
+out=$(cd "$FIXTURE" && NASE_ROOT="$FIXTURE" CLAUDE_CODE_SESSION_ID="domain-test" bash "$SCRIPT" "missing-domain" 2>&1)
 rc=$?
 after=$(jq -s 'length' "$FIXTURE/workspace/stats/kb-usage.jsonl" 2>/dev/null || echo 0)
 assert_exit "T2: missing domain exits nonzero" 1 "$rc"

@@ -296,6 +296,41 @@ PY
 check "attach: refresh embeds the new media id" "$reattach" \
   "rc=0 calls=[('update', 'att500')] fresh=True stale=False"
 
+# --- --site is validated before any token read or network call -------------
+# The host is spliced into https://{site}/... next to a Basic-auth token, so
+# `evil.example#`, `evil.example/x` and `a.atlassian.net@evil.example` would send the
+# credential elsewhere.
+sitecheck=$(python3 - "$SCRIPT" "$WORK/selfclose/plan.json" <<'PY'
+import contextlib, importlib.util, io, sys, types
+spec = importlib.util.spec_from_file_location("cp", sys.argv[1])
+cp = importlib.util.module_from_spec(spec)
+sys.modules["cp"] = cp
+spec.loader.exec_module(cp)
+
+touched = []
+cp.api_token = lambda *a, **k: touched.append("token") or "token"
+cp.open_https = lambda *a, **k: touched.append("network")
+
+out = []
+for site in ("evil.example#", "evil.example/x", "a.atlassian.net@evil.example",
+             "evil.example", "atlassian.net", "https://evil.example", "x.atlassian.net:8080",
+             "example.atlassian.net\nevil.example"):
+    err = io.StringIO()
+    args = types.SimpleNamespace(
+        plan=sys.argv[2], page_index=0, page_id="900", account="a@b.c",
+        site=site, keychain_service="svc",
+    )
+    with contextlib.redirect_stderr(err):
+        rc = cp.cmd_attach(args)
+    out.append("%s:%s:%s" % (rc, "Atlassian site" in err.getvalue(), "Traceback" in err.getvalue()))
+print(" ".join(out), "touched=%s" % touched)
+for good in ("example.atlassian.net", "https://example.atlassian.net/", "Example.Atlassian.net"):
+    assert cp.resolve_site(good).lower() == "example.atlassian.net", good
+PY
+)
+check "attach: hostile --site values are rejected before token or network" "$sitecheck" \
+  "2:True:False 2:True:False 2:True:False 2:True:False 2:True:False 2:True:False 2:True:False 2:True:False touched=[]"
+
 # an attachment response with no fileId is a visible failure, not a broken <img>
 noid=$(python3 - "$SCRIPT" <<'PY'
 import importlib.util, sys

@@ -14,7 +14,7 @@ source "$ROOT/tests/lib/assert.sh"
 run_hook() {
   local file_path="$1"
   local output="$2"
-  CLAUDE_SESSION_ID="test-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$output.out" 2>"$output.err" <<JSON
+  CLAUDE_CODE_SESSION_ID="test-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$output.out" 2>"$output.err" <<JSON
 {"tool_input":{"file_path":"$file_path"}}
 JSON
 }
@@ -48,7 +48,7 @@ assert_cmd "relative docs path skipped" test ! -s "$TMPDIR_TEST/docs-run.err"
 assert_cmd "relative tests path skipped" test ! -s "$TMPDIR_TEST/tests-run.err"
 assert_cmd "relative workspace path skipped" test ! -s "$TMPDIR_TEST/workspace-run.err"
 
-NASE_FACT_FORCE=0 CLAUDE_SESSION_ID="disabled-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$TMPDIR_TEST/disabled.out" 2>"$TMPDIR_TEST/disabled.err" <<JSON
+NASE_FACT_FORCE=0 CLAUDE_CODE_SESSION_ID="disabled-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$TMPDIR_TEST/disabled.out" 2>"$TMPDIR_TEST/disabled.err" <<JSON
 {"tool_input":{"file_path":"$TMPDIR_TEST/src/app.py"}}
 JSON
 assert_cmd "NASE_FACT_FORCE emits no stdout" test ! -s "$TMPDIR_TEST/disabled.out"

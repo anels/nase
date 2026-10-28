@@ -74,3 +74,17 @@ PY
     cp "$root/.claude/scripts/$name" "$dest/$name"
   done <<< "$resolved"
 }
+
+# Stage the shared hook lib (.claude/lib) next to a hook copied into a fixture repo.
+# Hooks locate it relative to their own path, so a fixture without it makes every
+# staged hook fail open or closed before its own logic runs.
+#
+# Usage:  stage_hook_lib <fixture-repo-root>
+stage_hook_lib() {
+  local dest="$1"
+  [ -n "$dest" ] || { printf 'stage_hook_lib: no destination\n' >&2; return 1; }
+  local root
+  root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+  mkdir -p "$dest/.claude/lib"
+  cp "$root"/.claude/lib/* "$dest/.claude/lib/"
+}

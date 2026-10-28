@@ -31,7 +31,7 @@ PY
 
 # A skill activates inside a session that HAS a stable id, exactly as
 # track-skill-prompt.sh does from a real Claude Code session.
-CLAUDE_SESSION_ID="stable-session-abc" python3 "$LOGGER" activate \
+CLAUDE_CODE_SESSION_ID="stable-session-abc" python3 "$LOGGER" activate \
   --root "$fixture" --skill "/nase:kb-review" --source prompt >/dev/null 2>&1
 
 assert_cmd "activation writes the session-keyed context" \
@@ -39,11 +39,34 @@ assert_cmd "activation writes the session-keyed context" \
 assert_cmd "activation also writes the shared fallback context" \
   test -f "$fixture/workspace/tmp/kb-active-skill-current.json"
 
+# Session-id precedence: --session, then CLAUDE_CODE_SESSION_ID (what Claude Code
+# sets), then the legacy CLAUDE_SESSION_ID and CLAUDE_SESSIONID.
+session_of_fallback_context() {
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["session"])' \
+    "$fixture/workspace/tmp/kb-active-skill-current.json"
+}
+env -u CLAUDE_SESSIONID CLAUDE_CODE_SESSION_ID="code-id" CLAUDE_SESSION_ID="legacy-id" \
+  python3 "$LOGGER" activate --root "$fixture" --skill "/nase:kb-review" --source prompt >/dev/null 2>&1
+assert_cmd "CLAUDE_CODE_SESSION_ID beats the legacy CLAUDE_SESSION_ID" \
+  test "$(session_of_fallback_context)" = "code-id"
+env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID="legacy-id" CLAUDE_SESSIONID="legacy2-id" \
+  python3 "$LOGGER" activate --root "$fixture" --skill "/nase:kb-review" --source prompt >/dev/null 2>&1
+assert_cmd "CLAUDE_SESSION_ID is still honoured without CLAUDE_CODE_SESSION_ID" \
+  test "$(session_of_fallback_context)" = "legacy-id"
+env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID CLAUDE_SESSIONID="legacy2-id" \
+  python3 "$LOGGER" activate --root "$fixture" --skill "/nase:kb-review" --source prompt >/dev/null 2>&1
+assert_cmd "CLAUDE_SESSIONID is the last env fallback" \
+  test "$(session_of_fallback_context)" = "legacy2-id"
+env CLAUDE_CODE_SESSION_ID="code-id" \
+  python3 "$LOGGER" activate --root "$fixture" --skill "/nase:kb-review" --source prompt --session "explicit-id" >/dev/null 2>&1
+assert_cmd "an explicit --session beats every env var" \
+  test "$(session_of_fallback_context)" = "explicit-id"
+
 # kb-search.sh and kb-domain-resolve.sh run as plain subprocesses with no
-# CLAUDE_SESSION_ID, so they resolve a `local-{ppid}` session that no activation
+# session id, so they resolve a `local-{ppid}` session that no activation
 # ever keyed. Before the fallback was written unconditionally, every one of these
 # events logged as `unknown` — 385 of 429 unknown events in a 30-day sample.
-env -u CLAUDE_SESSION_ID -u CLAUDE_SESSIONID python3 "$LOGGER" record \
+env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u CLAUDE_SESSIONID python3 "$LOGGER" record \
   --root "$fixture" \
   --file "workspace/kb/projects/example.md" \
   --access search-result --source kb-search >/dev/null 2>&1
@@ -51,7 +74,7 @@ assert_cmd "a session-less kb-search event resolves the active skill" \
   test "$(skill_of_last_event)" = "kb-review"
 
 # An explicit --session still wins over the shared fallback.
-CLAUDE_SESSION_ID="stable-session-abc" python3 "$LOGGER" activate \
+CLAUDE_CODE_SESSION_ID="stable-session-abc" python3 "$LOGGER" activate \
   --root "$fixture" --skill "/nase:onboard" --source prompt >/dev/null 2>&1
 python3 "$LOGGER" record \
   --root "$fixture" --session "stable-session-abc" \
@@ -75,7 +98,7 @@ payload["ts"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
 path.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
 PY
 rm -f "$fixture"/workspace/tmp/kb-active-skill-[0-9a-f]*.json
-env -u CLAUDE_SESSION_ID -u CLAUDE_SESSIONID python3 "$LOGGER" record \
+env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u CLAUDE_SESSIONID python3 "$LOGGER" record \
   --root "$fixture" \
   --file "workspace/kb/projects/example.md" \
   --access resolve --source kb-domain-resolve >/dev/null 2>&1
@@ -113,7 +136,7 @@ write("kb-active-skill-cccccccccccccccc.json", 1)    # still live
 (tmp / "kb-active-skill-dddddddddddddddd.json").write_text("{not json\n")  # unparseable
 PY
 
-CLAUDE_SESSION_ID="reaper-session" python3 "$LOGGER" activate \
+CLAUDE_CODE_SESSION_ID="reaper-session" python3 "$LOGGER" activate \
   --root "$reap_fixture" --skill "/nase:fsd" --source prompt >/dev/null 2>&1
 
 assert_cmd "reaper removes a context past the TTL" \
