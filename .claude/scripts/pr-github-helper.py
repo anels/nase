@@ -17,6 +17,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
+from nase_gh import run as nase_gh_run
 
 # One `gh` call. Thread pagination issues many of them, so this bounds a single
 # hung call, not the whole command.
@@ -290,9 +291,13 @@ def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
 
 
 def run_gh(args: list[str]) -> str:
-    completed = subprocess.run(
-        args, check=True, text=True, stdout=subprocess.PIPE, timeout=GH_TIMEOUT_SECONDS
-    )
+    completed = nase_gh_run(args, timeout=GH_TIMEOUT_SECONDS)
+    if completed.returncode == 124:
+        raise subprocess.TimeoutExpired(args, GH_TIMEOUT_SECONDS)
+    if completed.returncode != 0:
+        raise subprocess.CalledProcessError(
+            completed.returncode, args, output=completed.stdout, stderr=completed.stderr
+        )
     return completed.stdout
 
 

@@ -230,6 +230,12 @@ def deemphasize(line: str) -> str:
     return re.sub(r"[*_`]+", " ", line)
 
 
+def frontmatter_lines(text: str) -> list[str]:
+    """The frontmatter body as a list of lines, or [] when absent."""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
+    return match.group(1).splitlines() if match else []
+
+
 def frontmatter_span(lines: list[str]) -> tuple[int, int]:
     """1-indexed [start, end) span of the frontmatter body, or (1, 1) when absent."""
     if not lines or lines[0].strip() != "---":
