@@ -328,11 +328,6 @@ def context_prs(text: str) -> list[str]:
     return dedupe_prs(found)
 
 
-def frontmatter_block(text: str) -> list[str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    return match.group(1).splitlines() if match else []
-
-
 def list_field(lines: list[str], key: str) -> tuple[list[str], bool]:
     starts = [
         index
@@ -409,7 +404,7 @@ def parse_efforts(root: Path) -> list[dict[str, Any]]:
             raise EvidenceError(f"duplicate effort slug: {path.stem}")
         slugs.add(path.stem)
         text = path.read_text(encoding="utf-8")
-        lines = frontmatter_block(text)
+        lines = EFFORT_STATE.frontmatter_lines(text)
         errors: list[str] = []
         status = scalar(text, "status", errors)
         owner = scalar(text, "owner", errors)
