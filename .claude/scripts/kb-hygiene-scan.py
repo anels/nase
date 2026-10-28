@@ -154,13 +154,20 @@ class RepoIndex:
         for path in self.paths:
             self.by_basename[pathlib.PurePosixPath(path).name].append(path)
 
-    def _git(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return nase_git.run(*args, repo=self.repo_root, text=True)
+    def _git(self, *args: str) -> subprocess.CompletedProcess[bytes]:
+        # Bytes mode: a tracked file need not be UTF-8, and strict decoding would
+        # abort the whole scan on one Latin-1 source file.
+        return nase_git.run(*args, repo=self.repo_root)
 
     def _load_paths(self) -> set[str]:
-        result = self._git("ls-tree", "-r", "--name-only", "HEAD")
+        # -z keeps non-ASCII names raw; without it git quotes them as "Caf\303\251.cs".
+        result = self._git("ls-tree", "-r", "-z", "--name-only", "HEAD")
         if result.returncode == 0:
-            return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+            return {
+                name.decode("utf-8", errors="replace")
+                for name in result.stdout.split(b"\0")
+                if name
+            }
 
         paths: set[str] = set()
         for root, dirs, files in os.walk(self.repo_root):
@@ -182,7 +189,7 @@ class RepoIndex:
     def line_count(self, path: str) -> int | None:
         result = self._git("show", f"HEAD:{path}")
         if result.returncode == 0:
-            return len(result.stdout.splitlines())
+            return len(result.stdout.decode("utf-8", errors="replace").splitlines())
         fs_path = self.repo_root / path
         if not fs_path.exists():
             return None

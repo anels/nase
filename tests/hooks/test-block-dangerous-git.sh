@@ -228,6 +228,22 @@ test_case "push refs main"       "g""it pu""sh origin refs/heads/main"          
 test_case "push refspec to main" "g""it pu""sh origin refs/heads/feature:refs/heads/main" block
 test_case "push plus refspec to main" "g""it pu""sh origin +feature:main"        block
 test_case "push HEAD plus main"  "g""it pu""sh origin HEAD:+main"                block
+test_case "push -- main"         "g""it pu""sh origin -- main"                   block
+test_case "push -- refspec to main" "g""it pu""sh origin -- feat:main"           block
+test_case "push -u -- release"   "g""it pu""sh -u origin -- release/1.0"         block
+test_case "push -- delete branch" "g""it pu""sh origin -- :feature"              block
+test_case "push -- feature ok"   "g""it pu""sh origin -- feature"                allow
+for runner in "rtk" "rtk proxy" "direnv exec ." "mise exec --" "uv run" "pnpm exec" "op run --" \
+  "taskset 1" "chrt 10" "runuser -u bob --" "chroot /srv" "systemd-run"; do
+  test_case "runner $runner push main" "$runner g""it pu""sh origin main" block
+done
+for shell in fish csh tcsh rbash; do
+  test_case "$shell -c push main" "$shell -c 'g""it pu""sh origin main'" block
+done
+test_case "rtk git status ok"    "rtk g""it status"                              allow
+test_case "uv run pytest ok"     "uv run pytest"                                 allow
+test_case "mise exec node ok"    "mise exec -- node x.js"                        allow
+test_case "rtk push feature ok"  "rtk g""it pu""sh origin feature"               allow
 test_case "push origin master"   "g""it pu""sh origin master"                   block
 test_case "push HEAD:main"       "g""it pu""sh origin HEAD:main"                block
 test_case "push HEAD:release"    "g""it pu""sh origin HEAD:release/sprint-29"   block

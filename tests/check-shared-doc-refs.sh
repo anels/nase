@@ -30,22 +30,48 @@ if [[ "${#existing_scan_paths[@]}" -eq 0 ]]; then
   exit 0
 fi
 
-# NUL-delimited filenames (-Z) so paths containing `:` parse safely.
-pairs=$({ grep -rZoE '(\.claude/docs|workspace/skills/docs)/[a-zA-Z0-9_-]+\.md' "${existing_scan_paths[@]}" 2>/dev/null || true; } \
-  | awk -F '\0' 'NF==2 {print $1 "\t" $2}' \
-  | sort -u)
+# Scanned in Python, not grep: BSD grep (macOS) reads `-Z` as "decompress", so a
+# `grep -Z | awk` pipeline found zero pairs there and the gate passed on a dead
+# reference. Python is a required dependency and behaves the same everywhere.
+missing_lines=$(python3 - "${existing_scan_paths[@]}" <<'PY'
+import os
+import re
+import sys
 
+REF = re.compile(r"(?:\.claude/docs|workspace/skills/docs)/[a-zA-Z0-9_-]+\.md")
+
+def sources(paths):
+    for path in paths:
+        if os.path.isdir(path):
+            for dirpath, _dirs, names in os.walk(path):
+                for name in names:
+                    yield os.path.join(dirpath, name)
+        else:
+            yield path
+
+pairs = set()
+for src in sources(sys.argv[1:]):
+    try:
+        with open(src, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as exc:
+        print(f"WARN: skipped unreadable {src}: {exc}", file=sys.stderr)
+        continue
+    for ref in REF.findall(text):
+        pairs.add((src, ref))
+
+for src, ref in sorted(pairs):
+    if ref.startswith("workspace/skills/docs/") and not src.startswith("workspace/skills/"):
+        continue
+    if not os.path.isfile(ref):
+        print(f"MISSING  {src} -> {ref}")
+PY
+)
 missing=0
-while IFS=$'\t' read -r src ref; do
-  [[ -z "$src" || -z "$ref" ]] && continue
-  if [[ "$ref" == workspace/skills/docs/* && "$src" != workspace/skills/* ]]; then
-    continue
-  fi
-  if [[ ! -f "$ref" ]]; then
-    printf 'MISSING  %s -> %s\n' "$src" "$ref"
-    missing=$((missing+1))
-  fi
-done <<< "$pairs"
+if [[ -n "$missing_lines" ]]; then
+  printf '%s\n' "$missing_lines"
+  missing=$(printf '%s\n' "$missing_lines" | wc -l | tr -d ' ')
+fi
 
 quality_failures=$(python3 - <<'PY'
 from pathlib import Path

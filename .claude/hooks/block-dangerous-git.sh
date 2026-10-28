@@ -789,6 +789,10 @@ apply_policy() {
       block "git push target '$PUSH_UNVERIFIABLE' uses a variable, glob, or brace expansion this guard cannot verify (use a literal branch name)"
     fi
     block_implicit_protected_push
+    # A bare `--` between the remote and the refspec only ends option parsing, so the
+    # regexes below read the command without it.
+    while [[ "$NORM_CMD" == *" -- "* ]]; do NORM_CMD=${NORM_CMD/ -- / }; done
+    NORM_CMD=${NORM_CMD% --}
     check "${remote_ref}[[:space:]]+\+?${protected_ref}([[:space:]:]|$)" "$protected_msg"
     check "${remote_ref}[[:space:]]+[^[:space:]]+:\+?${protected_ref}([[:space:]]|$)" "$protected_msg"
     check "HEAD:\+?${protected_ref}([[:space:]]|$)" 'push HEAD to protected branch'

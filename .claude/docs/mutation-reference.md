@@ -51,7 +51,7 @@ highest-risk rules even when a future skill forgets the prompt contract:
 | `confluence-size-guard.sh` | Confluence bodies over 70 KB; writes with an unset or unaccepted body format (see `.claude/docs/confluence-adf-pattern.md`) |
 | `atlassian-generic-write-guard.sh` | `executeWrite` and `executeDestructive`, whose opaque payload no named Atlassian gate can read; `createConfluenceComment` under `executeWrite` is the one allowed operation, and only when its body format, body size, and addressing fields all pass this hook's own checks |
 | `block-dangerous-git.sh` | destructive or protected-branch git commands |
-| `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, plus unrecognized commands for those guarded CLIs |
+| `external-cli-write-guard.sh` | raw GitHub, Azure/ADO, Kubernetes, and Terraform mutations, `confluence-publish.py attach` (an ungated REST upload otherwise), plus unrecognized commands for those guarded CLIs |
 | `prose-lint-guard.sh` | Slack draft bodies that fail `prose-lint.py`; it fails open when the linter is unavailable, because a quality check must not block a write on its own breakage. `gh` payload prose goes through `external-write-action.py`'s own `prose_gate_findings` instead |
 
 These guards select by tool name, so an upstream rename silently turns one off:
@@ -96,7 +96,7 @@ substitution, heredocs, here-strings, and the left side of a pipe into a shell. 
 So a dynamic construct alone does not block, and a guarded name is not what decides it in
 every case: check 1 needs the name, check 3 does not. A `$(git rev-parse HEAD)` inside an
 `echo` reaches none of them, which is the point - blocking every command the parser cannot
-bind blocked the read-only majority for nothing. Three consequences worth knowing:
+bind blocked the read-only majority for nothing. One narrow exception to check 1: a substitution that only fills an argument of a literal `gh` read (`gh pr view $(git branch --show-current)`) does not block, because the noun and verb are fixed and the verb has no write flag. A substitution in the program, noun, or verb, around `gh api`, `gh auth`, or any other guarded CLI, or holding a guarded command itself still blocks. Kubernetes and Terraform global flags (`-n`, `--context=`, `-chdir=`) are skipped before the verb is read, so `kubectl -n prod get pods` is a read and `kubectl -n prod delete pod x` is still a mutation. Three consequences worth knowing:
 
 - **Heredoc bodies are data, not commands.** `cat > file <<EOF` writes prose; its lines are
   not parsed as invocations, so a guarded verb sitting in that prose does not block the

@@ -217,7 +217,8 @@ check_contains "oversize: names the cause" "$msg" "largest single block"
 # --- every emitted body stays under the hard cap ---------------------------
 # Read the cap from the script so this assertion cannot drift from the constant
 # it guards.
-cap=$(grep -Eo '^CAP_BYTES = [0-9]+' "$SCRIPT" | grep -Eo '[0-9]+')
+cap=$(grep -Eho '^CAP_BYTES = [0-9]+' "$(dirname "$SCRIPT")"/confluence_markup.py | grep -Eo '[0-9]+')
+[ -n "$cap" ] || { printf 'FAIL: CAP_BYTES not found in confluence_markup.py\n'; exit 1; }
 overs=0
 for plan in "$WORK"/*/plan.json; do
   [ -f "$plan" ] || continue
@@ -610,6 +611,19 @@ if [ "$status" = "['skipped:no-renderer']" ]; then
 else
   check "padding: render grows the window by 12px a side" "$recorded" "[(424, 224)]"
 fi
+
+# --- <pre> is verbatim and text-level markup adds no gap -------------------
+# Unwrapped <span> siblings get a separator because their CSS gap is gone, but inside
+# <pre> the source text is the layout, and `H<sub>2</sub>O` must not split the word.
+out="$WORK/pretight"; rc=$(plan_of "$FIX/pre-and-tight-inline.html" "$out")
+check "pre: plan exits 0" "$rc" "0"
+body=$(cat "$out"/page-000.body.html 2>/dev/null)
+check_contains "pre: highlighted spans keep the source text exactly" "$body" \
+  "$(printf '<pre><code>def f(x):\n    return x\n</code></pre>')"
+check_contains "tight: superscript does not split the word" "$body" "a2 and"
+check_contains "tight: subscript does not split the word" "$body" "H2O,"
+check_contains "tight: abbr and time keep their punctuation" "$body" "HTML, today."
+check_contains "tight: sibling spans still get a separator" "$body" "Label Value</p>"
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

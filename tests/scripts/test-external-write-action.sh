@@ -950,5 +950,283 @@ else
     "rc=$preflight_rc err=$(tr '\n' ' ' < "$TMPDIR_TEST/preflight.err")"
 fi
 
+# --- every file a CLI reads is bound into the approved action ---------------
+# The flag tables miss short forms and flags added later, so a file could change
+# after approval while the hash still matched. Bound files come from the tables
+# and from any other word that names an existing regular file.
+printf 'bound body\n' > "$TMPDIR_TEST/bind-body.md"
+printf '{"spec":{}}\n' > "$TMPDIR_TEST/bind-body.json"
+printf 'kind: Patch\n' > "$TMPDIR_TEST/bind-patch.yaml"
+printf 'kind: Pod\n' > "$TMPDIR_TEST/bind-pod.yaml"
+
+expect_bound() {
+  local name="$1" system="$2" suffix="$3"
+  shift 3
+  if python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system "$system" --summary "$name" -- "$@" \
+    > "$TMPDIR_TEST/bound.json" 2> "$TMPDIR_TEST/err" \
+    && jq -e --arg suffix "$suffix" \
+      '.action.payload_files | length >= 1 and all(.[]; .arg and .sha256) and any(.[]; .path | endswith($suffix))' \
+      "$TMPDIR_TEST/bound.json" > /dev/null; then
+    report 0 "$name"
+  else
+    report 1 "$name" "$(cat "$TMPDIR_TEST/err") $(cat "$TMPDIR_TEST/bound.json")"
+  fi
+}
+
+expect_bound "gh pr comment -F body file is bound" github bind-body.md \
+  gh pr comment 1 -F bind-body.md -R owner/example
+expect_bound "gh pr comment attached -Ffile is bound" github bind-body.md \
+  gh pr comment 1 -Fbind-body.md -R owner/example
+expect_bound "gh pr create -F body file is bound" github bind-body.md \
+  gh pr create --draft --title Example -F bind-body.md -R owner/example
+expect_bound "gh pr edit -F body file is bound" github bind-body.md \
+  gh pr edit 1 -F bind-body.md -R owner/example
+expect_bound "gh pr review -F body file is bound" github bind-body.md \
+  gh pr review 1 --approve -F bind-body.md -R owner/example
+expect_bound "gh issue comment -F body file is bound" github bind-body.md \
+  gh issue comment 1 -F bind-body.md -R owner/example
+expect_bound "gh release create -F notes file is bound" github bind-body.md \
+  gh release create v1.0.0 -F bind-body.md -R owner/example
+expect_bound "gh api -F key=@file is bound" github bind-body.md \
+  gh api repos/owner/example/issues/1/comments --method POST -F body=@bind-body.md
+expect_bound "gh api clustered -iF key=@file is bound" github bind-body.md \
+  gh api repos/owner/example/issues/1/comments -iX POST -iF body=@bind-body.md
+expect_bound "az devops invoke --in-file is bound" azure bind-body.json \
+  az devops invoke --area build --resource builds --http-method POST \
+    --in-file bind-body.json --org https://dev.azure.com/example
+expect_bound "kubectl patch --patch-file is bound" kubernetes bind-patch.yaml \
+  kubectl patch deployment web --patch-file bind-patch.yaml
+expect_bound "kubectl apply attached -fFILE is bound" kubernetes bind-pod.yaml \
+  kubectl apply -fbind-pod.yaml
+expect_bound "kubectl apply -f=FILE is bound" kubernetes bind-pod.yaml \
+  kubectl apply -f=bind-pod.yaml
+expect_bound "an unlisted file-valued flag is bound by the file it names" kubernetes bind-pod.yaml \
+  kubectl apply --made-up-manifest bind-pod.yaml
+expect_bound "an unlisted --flag=FILE form is bound" kubernetes bind-pod.yaml \
+  kubectl apply --made-up-manifest=bind-pod.yaml
+expect_rc "gh api -F key=@missing file is rejected" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "missing" -- \
+    gh api repos/owner/example/issues/1/comments --method POST -F body=@bind-missing.md
+
+# The prose gate reads the bound files, so a `-F` body no longer skips it.
+mkdir -p "$TMPDIR_TEST/.claude/scripts"
+cp "$ROOT/.claude/scripts/prose-lint.py" "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+printf 'This is fine \342\200\224 really.\n' > "$TMPDIR_TEST/bind-dash.md"
+run_gh_execute() {
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$1" > /dev/null
+  NASE_FAKE_OUTPUT="$TMPDIR_TEST/section-gh-args" PATH="$TMPDIR_TEST/bin:$PATH" \
+    python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$1"
+}
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "dash body" -- \
+  gh pr comment 1 -F bind-dash.md -R owner/example | jq -r .manifest)
+expect_rc "a -F body file is held to the prose gate" 2 run_gh_execute "$manifest"
+if grep -q 'plain-writing gate' "$TMPDIR_TEST/err"; then
+  report 0 "the -F prose gate failure names the gate"
+else
+  report 1 "the -F prose gate failure names the gate" "$(cat "$TMPDIR_TEST/err")"
+fi
+rm -f "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "short body" -- \
+  gh pr comment 1 -F bind-body.md -R owner/example | jq -r .manifest)
+printf 'edited after approval\n' > "$TMPDIR_TEST/bind-body.md"
+expect_rc "a -F body edited after approval is refused" 2 run_gh_execute "$manifest"
+printf 'bound body\n' > "$TMPDIR_TEST/bind-body.md"
+
+# --- a symlink cannot be retargeted after approval ---------------------------
+# The manifest hashes the resolved file, but the CLI opens the path as written.
+printf 'approved text\n' > "$TMPDIR_TEST/link-a.md"
+printf 'swapped text\n' > "$TMPDIR_TEST/link-b.md"
+ln -sf link-a.md "$TMPDIR_TEST/link.md"
+expect_rc "a symlinked body file is rejected at prepare" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
+    gh pr comment 1 --body-file link.md -R owner/example
+expect_rc "a symlinked -F body file is rejected at prepare" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
+    gh pr comment 1 -F link.md -R owner/example
+mkdir -p "$TMPDIR_TEST/real-dir"
+printf 'in dir\n' > "$TMPDIR_TEST/real-dir/body.md"
+ln -sfn real-dir "$TMPDIR_TEST/link-dir"
+expect_rc "a body file under a symlinked directory is rejected at prepare" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
+    gh pr comment 1 --body-file link-dir/body.md -R owner/example
+expect_rc "a body file behind a dotdot hop through a symlink is rejected" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
+    gh pr comment 1 --body-file link-dir/../real-dir/body.md -R owner/example
+expect_rc "a symlinked --input payload is rejected at prepare" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --github-owner owner --summary "link" -- \
+    gh api --method POST "$REPLY_ENDPOINT" --input link.md
+expect_rc "a symlink named only in an unrelated field is not rejected" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --github-owner owner --summary "incidental" -- \
+    gh api "$REPLY_ENDPOINT" --method POST -f path=link.md -f body=hi
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system kubernetes --summary "unknown flag" -- \
+  kubectl apply --made-up link.md > "$TMPDIR_TEST/implicit.json"
+expect_jq "a symlink behind an unknown flag is still hashed" \
+  '.action.payload_files | length == 1 and .[0].implicit == true' "$TMPDIR_TEST/implicit.json"
+expect_rc "gh workflow run -F is a field, not a body file" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "dispatch" -- \
+    gh workflow run deploy.yml --ref main -F env=prod -R owner/example
+expect_rc "a regular file under the system temp alias is accepted" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "abs" -- \
+    gh pr comment 1 --body-file "$TMPDIR_TEST/real-dir/body.md" -R owner/example
+
+printf 'same text\n' > "$TMPDIR_TEST/swap.md"
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "swap" -- \
+  gh pr comment 1 --body-file swap.md -R owner/example | jq -r .manifest)
+mv "$TMPDIR_TEST/swap.md" "$TMPDIR_TEST/swap.real"
+ln -s swap.real "$TMPDIR_TEST/swap.md"
+expect_rc "a file replaced by a symlink after approval is refused" 2 run_gh_execute "$manifest"
+if grep -q 'resolves elsewhere' "$TMPDIR_TEST/err"; then
+  report 0 "the retarget refusal names the cause"
+else
+  report 1 "the retarget refusal names the cause" "$(cat "$TMPDIR_TEST/err")"
+fi
+
+# --- reads and mutations with global flags ------------------------------------
+expect_guard_rc "kubectl -n NS get stays a read" 0 "kubectl -n prod get pods"
+expect_guard_rc "kubectl attached -nNS get stays a read" 0 "kubectl -nprod get pods"
+expect_guard_rc "kubectl --context=X get stays a read" 0 "kubectl --context=prod get pods"
+expect_guard_rc "kubectl --context X --namespace Y describe stays a read" 0 \
+  "kubectl --context prod --namespace web describe pod x"
+expect_guard_rc "kubectl global flag before a secrets read stays blocked" 10 \
+  "kubectl -n prod get secrets"
+expect_guard_rc "kubectl unknown global flag fails closed" 10 "kubectl --weird x get pods"
+expect_guard_rc "kubectl -n NS delete is still guarded" 10 "kubectl -n prod delete pod x"
+expect_guard_rc "kubectl --context=X apply is still guarded" 10 \
+  "kubectl --context=prod apply -f m.yaml"
+expect_guard_rc "kubectl -n NS rollout restart is still guarded" 10 \
+  "kubectl -n prod rollout restart deployment/web"
+expect_rc "kubectl -n NS delete can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system kubernetes --summary "delete pod" -- \
+    kubectl -n prod delete pod x
+expect_rc "kubectl --context=X -nNS delete can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system kubernetes --summary "delete pod" -- \
+    kubectl --context=prod -nweb delete pod x
+expect_rc "a kubectl read cannot be prepared as a mutation" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system kubernetes --summary "read" -- \
+    kubectl -n prod get pods
+
+expect_guard_rc "terraform init is a read of the working directory" 0 "terraform init"
+expect_guard_rc "terraform init with -chdir stays allowed" 0 "terraform -chdir=infra init -upgrade"
+expect_guard_rc "terraform output is allowed" 0 "terraform output"
+expect_guard_rc "terraform output of one name stays blocked" 10 "terraform output db_host"
+expect_guard_rc "terraform output -json stays blocked" 10 "terraform output -json"
+expect_guard_rc "terraform state list is allowed" 0 "terraform state list"
+expect_guard_rc "terraform state pull stays blocked" 10 "terraform state pull"
+expect_guard_rc "terraform state rm stays blocked" 10 "terraform state rm aws_x.y"
+expect_guard_rc "terraform init -migrate-state is a mutation" 10 "terraform init -migrate-state"
+expect_guard_rc "terraform apply is still guarded" 10 "terraform apply"
+expect_guard_rc "terraform -chdir apply is still guarded" 10 "terraform -chdir=infra apply -auto-approve"
+expect_guard_rc "terraform destroy is still guarded" 10 "terraform destroy"
+expect_rc "terraform apply can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system terraform --summary "apply" -- \
+    terraform apply -auto-approve
+expect_rc "terraform init -migrate-state can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system terraform --summary "migrate" -- \
+    terraform init -migrate-state
+
+expect_guard_rc "az vm list is allowed" 0 "az vm list"
+expect_guard_rc "az vm show is allowed" 0 "az vm show -g rg -n web"
+expect_guard_rc "az keyvault list is allowed" 0 "az keyvault list"
+expect_guard_rc "az sql db list is allowed" 0 "az sql db list -g rg -s server"
+expect_guard_rc "az --version is allowed" 0 "az --version"
+expect_guard_rc "az keyvault secret show stays blocked" 10 \
+  "az keyvault secret show --vault-name v --name n"
+expect_guard_rc "az vm delete is still guarded" 10 "az vm delete -g rg -n web"
+expect_guard_rc "az vm deallocate is not a known read" 10 "az vm deallocate -g rg -n web"
+expect_guard_rc "az sql db delete is still guarded" 10 "az sql db delete -g rg -s server -n db"
+expect_rc "az vm delete can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system azure --summary "delete vm" -- \
+    az vm delete -g rg -n web --yes
+
+# A substitution that only fills an argument of a literal gh read is not a way
+# through, but one in the program, the noun or the verb still is.
+expect_guard_rc "gh pr view with a substituted argument is allowed" 0 \
+  'gh pr view $(git branch --show-current)'
+expect_guard_rc "gh pr list with a backtick argument is allowed" 0 \
+  'gh pr list --head `git branch --show-current`'
+expect_guard_rc "gh pr view with a substituted argument piped on is allowed" 0 \
+  'gh pr view $(git branch --show-current) --json title | cat'
+expect_guard_rc "gh with a substituted verb stays blocked" 10 'gh pr $(echo create) 1'
+expect_guard_rc "gh with a substituted noun stays blocked" 10 'gh $(echo pr) view 1'
+expect_guard_rc "gh pr create with a substituted argument stays blocked" 10 \
+  'gh pr create --title $(git branch --show-current)'
+expect_guard_rc "gh auth status with a substituted argument stays blocked" 10 \
+  'gh auth status $(echo -t)'
+expect_guard_rc "a gh read inside a substitution stays blocked" 10 'echo "n: $(gh pr list)"'
+expect_guard_rc "a substituted GH_HOST before a gh read stays blocked" 10 'GH_HOST=$(echo evil.example) gh pr view 5'
+
+# --- Confluence attachment upload is a payload-bound write ---------------------
+# `attach` posts bytes to any page with the stored Atlassian token.
+mkdir -p "$TMPDIR_TEST/stub" "$TMPDIR_TEST/cplan/assets"
+cat > "$TMPDIR_TEST/stub/confluence-publish.py" <<'PY'
+import sys
+open(sys.argv[0] + ".ran", "w").write(" ".join(sys.argv[1:]) + "\n")
+PY
+printf '{"pages":[{"index":0,"body_file":"cplan/page-000.body.html","visuals":[{"png":"chart-01.png","status":"pending"}]}]}\n' \
+  > "$TMPDIR_TEST/cplan/plan.json"
+printf '<p>body</p>\n' > "$TMPDIR_TEST/cplan/page-000.body.html"
+printf 'png-bytes\n' > "$TMPDIR_TEST/cplan/assets/chart-01.png"
+ATTACH_CMD="python3 .claude/scripts/confluence-publish.py attach --plan p.json --page-id 123 --account a@b.c"
+expect_guard_rc "confluence-publish attach is a raw external write" 10 "$ATTACH_CMD"
+expect_guard_rc "confluence-publish attach run as a script is a raw external write" 10 \
+  ".claude/scripts/confluence-publish.py attach --plan p.json --page-id 123 --account a@b.c"
+expect_guard_rc "confluence-publish attach with python options is a raw external write" 10 \
+  "python3 -B .claude/scripts/confluence-publish.py attach --plan p.json --page-id 123 --account a@b.c"
+expect_guard_rc "preparing an attach is not itself a raw write" 0 \
+  "python3 .claude/scripts/external-write-action.py prepare --system confluence --summary x -- python3 .claude/scripts/confluence-publish.py attach --plan p.json --page-id 123 --account a@b.c"
+expect_guard_rc "confluence-publish plan stays local" 0 \
+  "python3 .claude/scripts/confluence-publish.py plan --source a.html --out-dir out"
+expect_guard_rc "confluence-publish render stays local" 0 \
+  "python3 .claude/scripts/confluence-publish.py render --plan p.json"
+expect_guard_rc "confluence-publish ledger-lookup stays local" 0 \
+  "python3 .claude/scripts/confluence-publish.py ledger-lookup --source a.md --pages 1"
+expect_rc "a local confluence-publish subcommand cannot be prepared as a write" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "plan" -- \
+    python3 stub/confluence-publish.py plan --source a.html --out-dir out
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "attach charts" -- \
+  python3 stub/confluence-publish.py attach --plan cplan/plan.json --page-index 0 \
+  --page-id 123 --account a@b.c > "$TMPDIR_TEST/attach-prepared.json"
+expect_jq "attach binds the script, the plan, the body file and every pending PNG" \
+  '.action.system == "confluence" and (.action.payload_files | map(.path | split("/") | last) | sort) == ["chart-01.png","confluence-publish.py","page-000.body.html","plan.json"]' \
+  "$TMPDIR_TEST/attach-prepared.json"
+manifest=$(jq -r .manifest "$TMPDIR_TEST/attach-prepared.json")
+printf 'swapped-png\n' > "$TMPDIR_TEST/cplan/assets/chart-01.png"
+expect_rc "an attach PNG swapped after approval is refused" 2 run_gh_execute "$manifest"
+printf 'png-bytes\n' > "$TMPDIR_TEST/cplan/assets/chart-01.png"
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "attach charts" -- \
+  python3 stub/confluence-publish.py attach --plan cplan/plan.json --page-index 0 \
+  --page-id 123 --account a@b.c | jq -r .manifest)
+expect_rc "an approved attach runs through the helper" 0 run_gh_execute "$manifest"
+if grep -q 'attach --plan cplan/plan.json' "$TMPDIR_TEST/stub/confluence-publish.py.ran" 2>/dev/null; then
+  report 0 "the approved attach argv reaches the script"
+else
+  report 1 "the approved attach argv reaches the script"
+fi
+
+printf '{"pages":[{"index":0,"body_file":"cplan/page-000.body.html","visuals":[{"png":"chart-01.png","status":"pending"}]},{"index":1,"body_file":"cplan/page-001.body.html","visuals":[{"png":"missing-02.png","status":"skipped:no-renderer"}]}]}\n' \
+  > "$TMPDIR_TEST/cplan/two-pages.json"
+expect_rc "an unrendered visual on another page does not block prepare" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "page 0" -- \
+    python3 stub/confluence-publish.py attach --plan cplan/two-pages.json --page-index 0 \
+    --page-id 123 --account a@b.c
+expect_rc "an abbreviated --page-in is read as the page index" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "page 1" -- \
+    python3 stub/confluence-publish.py attach --plan cplan/two-pages.json --page-in 1 \
+    --page-id 123 --account a@b.c
+expect_rc "a repeated --page-index uses the last value" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "page 1" -- \
+    python3 stub/confluence-publish.py attach --plan cplan/two-pages.json --page-index 0 --page-index 1 \
+    --page-id 123 --account a@b.c
+expect_rc "a missing body file on the chosen page is refused at prepare" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "page 1" -- \
+    python3 stub/confluence-publish.py attach --plan cplan/two-pages.json --page-index 1 \
+    --page-id 123 --account a@b.c
+printf '{"pages":[1]}\n' > "$TMPDIR_TEST/cplan/malformed.json"
+expect_rc "an attach plan with a malformed page entry is refused at prepare" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system confluence --summary "malformed" -- \
+    python3 stub/confluence-publish.py attach --plan cplan/malformed.json --page-index 0 \
+    --page-id 123 --account a@b.c
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

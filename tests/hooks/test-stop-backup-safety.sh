@@ -881,5 +881,24 @@ else
   fail=$((fail + 1))
 fi
 
+repo="$fixture/attribution-lines-repo"
+target="$fixture/attribution-lines-backups"
+commit_repo="$fixture/attribution-lines-source"
+make_repo "$repo"
+mkdir -p "$commit_repo"
+git -C "$commit_repo" init -q
+printf 'backup-target=%s\nSourceRepo=%s\nSourceRepo-ai-attribution=on\nOtherRepo-ai-attribution=off\n' \
+  "$target" "$commit_repo" > "$repo/.local-paths"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "attribution switches in .local-paths do not break the run" 0 "$rc" "$out"
+if grep -qF 'configured repo path not found' <<< "$out"; then
+  printf 'FAIL  -ai-attribution lines were read as repo paths\n      out: %s\n' "$out" >&2
+  fail=$((fail + 1))
+else
+  printf 'PASS  -ai-attribution lines are not read as repo paths\n'
+  pass=$((pass + 1))
+fi
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

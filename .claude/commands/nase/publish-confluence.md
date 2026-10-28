@@ -77,12 +77,16 @@ Then per page, parent (index 0) before children, because a child needs its paren
 
 1. Create or update the page with its `page-{i}.body.html`, `contentFormat: "html"` for an HTML source and `"markdown"` for a Markdown one - never `storage`.
 2. If that page has visuals, upload them and rewrite the body in place. An attachment needs a content ID, so this only works after the page exists:
+   `attach` is a gated write (`.claude/docs/external-mutation-policy.md`); the Step 5 confirm is the approval:
    ```bash
-   python3 .claude/scripts/confluence-publish.py attach \
+   W=.claude/scripts/external-write-action.py
+   M=$(python3 $W prepare --system confluence --summary "attach charts {i}" -- \
+     python3 .claude/scripts/confluence-publish.py attach \
      --plan "workspace/tmp/confluence-{slug}/plan.json" \
-     --page-index {i} --page-id {id} --account "{atlassian-email}"
+     --page-index {i} --page-id {id} --account "{atlassian-email}" | jq -r .manifest)
+   python3 $W authorize --manifest "$M" && python3 $W execute --manifest "$M"
    ```
-   `--account` is the Atlassian account email; read it from `atlassianUserInfo` rather than guessing. `attach` is re-runnable: it retries anything still pending, and refreshes a filename the page already carries instead of re-uploading it. **Then update the page again from the body file `attach` just rewrote** - a refresh mints a new media id, so a body assembled before `attach` ran points at the superseded version and the page renders the old chart while every status says `attached`.
+   `--account` is the Atlassian account email; read it from `atlassianUserInfo`. `attach` is re-runnable: it retries pending items and refreshes a filename the page already has. **Then update the page again from the body file `attach` just rewrote** - a refresh mints a new media id, so an older body renders the old chart while every status says `attached`.
 3. Append the ledger record for that page **as it lands**, so an interrupted fan-out leaves an accurate trail:
    ```bash
    python3 .claude/scripts/confluence-publish.py ledger-append \
@@ -91,7 +95,7 @@ Then per page, parent (index 0) before children, because a child needs its paren
    ```
    `--source` must be the **durable** artifact, even when you planned from a derived copy (a redaction-scrubbed sidecar, a hand-split file). Re-publishes key on that exact path, so a scratch key stops matching once tmp is cleaned and the next run re-creates the whole family beside the old one. `ledger-append` refuses a `workspace/tmp/` source for that reason; pass `--allow-transient-source` only for a throwaway probe page.
 
-**Credential.** `attach` reads an Atlassian API token from the macOS keychain, falling back to `$CONFLUENCE_API_TOKEN` off macOS. Absent, it stops and prints both setup commands; relay them and let the user store the token. Never ask for the token in chat, never echo it, and never put it on a command line.
+**Credential.** `attach` reads an Atlassian API token from the macOS keychain, falling back to `$CONFLUENCE_API_TOKEN` off macOS. Absent, it prints both setup commands; relay them and let the user store the token. Never ask for the token in chat, never echo it, and never put it on a command line.
 
 **Site.** `--site` defaults to the host in `workspace/config.md` → `## Jira` → `baseUrl`. Pass `--site` explicitly when publishing to a different Atlassian tenant.
 
@@ -101,7 +105,7 @@ Then per page, parent (index 0) before children, because a child needs its paren
 
 ## Step 7 - Report and clean up
 
-Per `.claude/docs/skill-contract.md`: pointer plus ≤ 5 lines. Include the page URLs, and group any PNGs **by the page they attach to** - an attachment belongs to one page, so a flat list sends the reader to the wrong one. Then delete `workspace/tmp/confluence-{slug}/` so emitted bodies of a sensitive report do not reach the next backup.
+Per `.claude/docs/skill-contract.md`: pointer plus ≤ 5 lines. Include the page URLs, and group any PNGs **by the page they attach to**. Then delete `workspace/tmp/confluence-{slug}/` so emitted bodies of a sensitive report do not reach the next backup.
 
 Append a daily-log line per `.claude/docs/daily-log-format.md`.
 

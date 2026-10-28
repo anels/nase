@@ -117,6 +117,52 @@ for archive in "$TMPROOT"/unsafe/*.zip; do
   assert_cmd "unsafe archive is rejected: $name" test "$rc" = 2
 done
 
+assert_contains "file-directory conflict is named in the rejection" "$TMPROOT/unsafe-root-file-dir/err" "file-directory conflict"
+
+case_dir="$TMPROOT/many"
+mkdir -p "$case_dir/root"
+python3 - "$case_dir/many.zip" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    for index in range(20000):
+        archive.writestr(f"d{index % 200}/f{index}.md", b"x")
+PY
+start=$SECONDS
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/many.zip" --manifest-out "$case_dir/manifest.json" >/dev/null 2> "$case_dir/err"
+inspect_rc=$?
+elapsed=$((SECONDS - start))
+assert_cmd "20k-member archive inspects" test "$inspect_rc" = 0
+assert_cmd "20k-member inspect stays near-linear (took ${elapsed}s)" test "$elapsed" -lt 30
+
+case_dir="$TMPROOT/mtime-zip"
+mkdir -p "$case_dir/root"
+python3 - "$case_dir/archive.zip" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    info = zipfile.ZipInfo("efforts/old.md", date_time=(2025, 3, 1, 12, 0, 0))
+    archive.writestr(info, b"x")
+PY
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.zip" --manifest-out "$case_dir/manifest.json" >/dev/null
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" >/dev/null
+expected=$(python3 -c 'import time; print(int(time.mktime((2025, 3, 1, 12, 0, 0, 0, 0, -1))))')
+actual=$(python3 -c 'import os, sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$case_dir/root/workspace/efforts/old.md")
+assert_cmd "zip restore keeps the member's stored mtime" test "$actual" = "$expected"
+
+case_dir="$TMPROOT/mtime-7z"
+mkdir -p "$case_dir/root" "$case_dir/source/efforts"
+printf 'x\n' > "$case_dir/source/efforts/old.md"
+touch -t 202503011200 "$case_dir/source/efforts/old.md"
+(cd "$case_dir/source" && "$SEVEN_ZIP" a -t7z "$case_dir/archive.7z" . >/dev/null)
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.7z" --manifest-out "$case_dir/manifest.json" >/dev/null
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" >/dev/null
+expected=$(python3 -c 'import os, sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$case_dir/source/efforts/old.md")
+actual=$(python3 -c 'import os, sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$case_dir/root/workspace/efforts/old.md")
+assert_cmd "7z restore keeps the member's stored mtime" test "$actual" = "$expected"
+
 case_dir="$TMPROOT/link7z"
 mkdir -p "$case_dir/root" "$case_dir/source"
 printf 'target\n' > "$case_dir/source/file"

@@ -49,6 +49,8 @@ Capture `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `guards`, 
 
 **Single-repo gate:** every field of `guards` must hold - `originOk` (local `origin` resolves to `{owner}/{repo}`), `sameRepoOk` (PR head repo matches; forks and second repos are unsupported), `headRefOk` (`origin/{headRefName}` exists locally). Any false value stops Phase 2; report which one and the `originRepo` it actually found.
 
+**Head freshness:** `headMatchesPr` (top level, not in `guards`) is true only when local `origin/{headRefName}` equals the PR's live `headRefOid`. `headRefOk` only proves the ref resolves, so a stale ref passes it. When `headMatchesPr` is false, every thread's `headVerified` is false and its `headExcerpt` carries `verified: false`: run `git fetch origin {headRefName}` and re-run the helper before reading code or deciding a thread. Do not decline or reply from an unverified excerpt.
+
 Set `pr_head_ref = origin/{headRefName}` for Phase 3 code reads and Phase 5 worktree setup.
 
 Capture both thread `id` (GraphQL resolve) and `databaseId` (REST reply); they are not interchangeable.

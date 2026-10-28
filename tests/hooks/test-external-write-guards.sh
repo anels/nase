@@ -206,6 +206,7 @@ azure_unknown_global='{"tool_name":"Bash","tool_input":{"command":"az --future-g
 terraform_write='{"tool_name":"Bash","tool_input":{"command":"terraform apply -auto-approve"}}'
 terraform_import_write='{"tool_name":"Bash","tool_input":{"command":"terraform -chdir=/tmp import aws_instance.example i-123"}}'
 terraform_import_named_read='{"tool_name":"Bash","tool_input":{"command":"terraform -chdir=/tmp output import"}}'
+terraform_import_named_raw_read='{"tool_name":"Bash","tool_input":{"command":"terraform -chdir=/tmp output -raw import"}}'
 github_workflow_write='{"tool_name":"Bash","tool_input":{"command":"gh workflow run deploy.yml --ref feature/test"}}'
 github_comment_write='{"tool_name":"Bash","tool_input":{"command":"gh pr comment 7 --body approved"}}'
 github_write_via_shell='{"tool_name":"Bash","tool_input":{"command":"bash -lc '\''gh pr create --draft --title test'\''"}}'
@@ -228,7 +229,12 @@ expect_rc "Azure read operand named import allowed" .claude/hooks/external-cli-w
 expect_rc "unknown Azure global option fails closed" .claude/hooks/external-cli-write-guard.sh "$azure_unknown_global" 2 "unrecognized external CLI"
 expect_rc "raw Terraform mutation blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_write" 2 "raw external mutation"
 expect_rc "raw Terraform import with global option blocked" .claude/hooks/external-cli-write-guard.sh "$terraform_import_write" 2 "raw external mutation"
-expect_rc "Terraform output is blocked as credential-bearing" .claude/hooks/external-cli-write-guard.sh "$terraform_import_named_read" 2 "unrecognized external CLI"
+expect_rc "Terraform output named import is held as a named output, not an import mutation" .claude/hooks/external-cli-write-guard.sh "$terraform_import_named_read" 2 "unrecognized external CLI"
+expect_rc "Terraform output -raw is blocked as credential-bearing" .claude/hooks/external-cli-write-guard.sh "$terraform_import_named_raw_read" 2 "unrecognized external CLI"
+confluence_attach_write='{"tool_name":"Bash","tool_input":{"command":"python3 .claude/scripts/confluence-publish.py attach --plan p.json --page-id 123 --account a@b.c"}}'
+confluence_plan_read='{"tool_name":"Bash","tool_input":{"command":"python3 .claude/scripts/confluence-publish.py plan --source a.html --out-dir out"}}'
+expect_rc "Confluence attachment upload is a raw external mutation" .claude/hooks/external-cli-write-guard.sh "$confluence_attach_write" 2 "raw external mutation"
+expect_rc "Confluence plan stays a local read" .claude/hooks/external-cli-write-guard.sh "$confluence_plan_read" 0
 expect_rc "raw GitHub workflow mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_workflow_write" 2 "raw external mutation"
 expect_rc "raw GitHub comment mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_comment_write" 2 "raw external mutation"
 expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"
@@ -270,6 +276,22 @@ expect_cli_bypass_blocked "stdbuf wrapper" 'stdbuf -o0 gh pr merge 1'
 expect_cli_bypass_blocked "setsid wrapper" 'setsid gh pr merge 1'
 expect_cli_bypass_blocked "env with -u" 'env -u FOO gh pr merge 1'
 expect_cli_bypass_blocked "sudo with -u" 'sudo -u me gh pr merge 1'
+expect_cli_bypass_blocked "rtk direct" 'rtk gh pr merge 1'
+expect_cli_bypass_blocked "rtk proxy" 'rtk proxy gh pr merge 1'
+expect_cli_bypass_blocked "direnv exec" 'direnv exec . gh pr merge 1'
+expect_cli_bypass_blocked "mise exec" 'mise exec -- gh pr merge 1'
+expect_cli_bypass_blocked "uv run" 'uv run gh pr merge 1'
+expect_cli_bypass_blocked "pnpm exec" 'pnpm exec gh pr merge 1'
+expect_cli_bypass_blocked "op run" 'op run -- gh pr merge 1'
+expect_cli_bypass_blocked "taskset" 'taskset 1 gh pr merge 1'
+expect_cli_bypass_blocked "chrt" 'chrt 10 gh pr merge 1'
+expect_cli_bypass_blocked "runuser -u" 'runuser -u bob -- gh pr merge 1'
+expect_cli_bypass_blocked "chroot" 'chroot /srv gh pr merge 1'
+expect_cli_bypass_blocked "systemd-run" 'systemd-run gh pr merge 1'
+expect_cli_bypass_blocked "fish -c" "fish -c 'gh pr merge 1'"
+expect_cli_bypass_blocked "csh -c" "csh -c 'gh pr merge 1'"
+expect_cli_bypass_blocked "tcsh -c" "tcsh -c 'gh pr merge 1'"
+expect_cli_bypass_blocked "rbash -c" "rbash -c 'gh pr merge 1'"
 expect_cli_bypass_blocked "stacked wrappers" 'sudo env FOO=1 timeout 5 nohup gh pr merge 1'
 expect_cli_bypass_blocked "arithmetic shift before a mutation" $'echo $((1<<N))\ngh pr merge 1'
 expect_cli_bypass_blocked "heredoc text in quotes before a mutation" $'echo "use <<EOF here"\ngh pr merge 1'
@@ -294,6 +316,9 @@ expect_cli_allowed "a quoted literal that only mentions the command" 'echo "gh p
 expect_cli_allowed "a quoted heredoc body that only mentions the command" $'cat <<\'EOF\'\ngh pr merge 1\nEOF\n'
 expect_cli_allowed "an arithmetic shift" 'echo $((1<<2))'
 expect_cli_allowed "a read behind a wrapper" 'timeout 5 gh pr view 1'
+expect_cli_allowed "a read behind rtk" 'rtk gh pr view 1'
+expect_cli_allowed "a read behind uv run" 'uv run pytest'
+expect_cli_allowed "a read behind mise exec" 'mise exec -- node x.js'
 expect_cli_allowed "a read in a loop" 'for i in 1 2; do gh pr view $i; done'
 
 jira_transition_tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
@@ -359,6 +384,48 @@ jq -n --arg tool "$jira_link_tool" --arg created "$created" --arg payload_sha "$
   '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"link SRE-1 only",payload_sha256:$payload_sha}' \
   > "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "jira issue-link missing endpoint blocked" .claude/hooks/jira-write-guard.sh "$jira_link" 2 "unapproved SRE-2"
+
+# addGraphContext links issues like createIssueLink, so it needs the same token, and its
+# payload names the endpoints in objectIdentifier and targetObjectIdentifier.
+jira_graph_tool="mcp__plugin_atlassian_atlassian__addGraphContext"
+jira_graph=$(jq -cn --arg tool "$jira_graph_tool" \
+  '{tool_name:$tool,tool_input:{cloudId:"c1",relationshipType:"jira-work-item-blocks-jira-work-item",objectIdentifier:"SRE-1",targetObjectIdentifier:"SRE-2"}}')
+jira_graph_sha=$(payload_sha "$jira_graph")
+rm -f "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira addGraphContext without a token blocked" .claude/hooks/jira-write-guard.sh "$jira_graph" 2 "no jira-write-token"
+
+jq -n --arg tool "$jira_graph_tool" --arg created "$created" --arg payload_sha "$jira_graph_sha" \
+  '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_summary:"graph link SRE-1 SRE-2",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira addGraphContext token allowed" .claude/hooks/jira-write-guard.sh "$jira_graph" 0
+
+jq -n --arg tool "$jira_graph_tool" --arg created "$created" --arg payload_sha "$jira_graph_sha" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"graph link SRE-1 only",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira addGraphContext unapproved target blocked" .claude/hooks/jira-write-guard.sh "$jira_graph" 2 "unapproved SRE-2"
+
+# A non-issue target (an Atlas project key, a URL) cannot be an approved issue, so only the
+# work item side of the relation is checked against the token.
+jira_graph_project=$(jq -cn --arg tool "$jira_graph_tool" \
+  '{tool_name:$tool,tool_input:{cloudId:"c1",relationshipType:"jira-work-item-tracks-atlassian-project",objectIdentifier:"SRE-1",targetObjectIdentifier:"ATLAS-20426"}}')
+jq -n --arg tool "$jira_graph_tool" --arg created "$created" --arg payload_sha "$(payload_sha "$jira_graph_project")" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"graph project link SRE-1",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira addGraphContext non-issue target allowed" .claude/hooks/jira-write-guard.sh "$jira_graph_project" 0
+
+jira_graph_into=$(jq -cn --arg tool "$jira_graph_tool" \
+  '{tool_name:$tool,tool_input:{cloudId:"c1",relationshipType:"atlassian-project-has-jira-work-item",objectIdentifier:"ATLAS-20426",targetObjectIdentifier:"SRE-9"}}')
+jq -n --arg tool "$jira_graph_tool" --arg created "$created" --arg payload_sha "$(payload_sha "$jira_graph_into")" \
+  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"graph into SRE-1",payload_sha256:$payload_sha}' \
+  > "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "jira addGraphContext unapproved work item on the target side blocked" .claude/hooks/jira-write-guard.sh "$jira_graph_into" 2 "payload has SRE-9"
+
+jira_matcher=$(jq -r '[.hooks.PreToolUse[] | select(any(.hooks[]; .command | contains("jira-write-guard.sh"))) | .matcher] | first' .claude/settings.json)
+if [[ "$jira_graph_tool" =~ $jira_matcher ]]; then
+  report 1 "jira-write-guard matcher covers addGraphContext"
+else
+  report 0 "jira-write-guard matcher covers addGraphContext" "matcher=$jira_matcher"
+fi
 
 jira_create_tool="mcp__plugin_atlassian_atlassian__createJiraIssue"
 jira_create=$(jq -cn --arg tool "$jira_create_tool" '{tool_name:$tool,tool_input:{projectKey:"SRE",summary:"new issue",description:"body",contentFormat:"markdown"}}')

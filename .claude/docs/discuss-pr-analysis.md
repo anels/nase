@@ -99,13 +99,14 @@ python3 .claude/scripts/pr-github-helper.py finding-scope "$PR_URL" \
 
 Candidates go in as `[{"id": "...", "path": "src/a.ts", "line": 42}, ...]`.
 
-**Read three flags before a single verdict:**
+**Read these flags before a single verdict:**
 
 - `refsResolved: false` - a ref is missing locally, so every field below came from a failed `git diff` that returns empty. Stop and report which ref; do not drop findings on this JSON.
 - `headFromPullRef: false` with `crossRepo: true` - the pull ref was not fetched, so the helper fell back to `origin/{headRefName}`, which for a fork does not name the PR's head at all. When that name collides with a branch this origin already has (`main` and `develop` collide constantly) the ref resolves, base and head land on the same commit, and **every** candidate reads `touchedByPr: false`. Fetch the pull ref and re-run rather than trusting the result.
-- Either condition unhandled ends the same way: a confident `0 inline + 0 top-level` on a PR nobody actually reviewed.
+- `headMatchesPr: false` - the local head ref (`headRef`) does not equal the PR's live `headRefOid`, so it is a stale copy from before the last push. Excerpts carry `verified: false` and every `touchedByPr` is `null` (unknown). Fetch the head, re-run, and do not read `null` as untouched.
+- Any condition above left unhandled ends the same way: a confident `0 inline + 0 top-level` on a PR nobody actually reviewed.
 
-**4a. Diff-scope verification:** apply `.claude/docs/pr-review-verification.md` §2, reading `touchedByPr` and `inBase` from that JSON rather than re-deriving them. `touchedByPr: false` means the PR did not touch the path at all; `inBase: true` with an unchanged line means the issue pre-dates this PR. A candidate with `inBase: false` **and** `inHead: false` names a path at neither ref - that is a bad citation, not a new file, so drop the finding as unverifiable rather than as pre-existing. Drop genuine pre-existing issues silently (score < 50) - common false alarm: flagging a shared helper's side effects when the PR only touched an unrelated code path.
+**4a. Diff-scope verification:** apply `.claude/docs/pr-review-verification.md` §2, reading `touchedByPr` and `inBase` from that JSON rather than re-deriving them. `touchedByPr: false` means the PR did not touch the path at all (`null` means unverified, see `headMatchesPr`); `inBase: true` with an unchanged line means the issue pre-dates this PR. A candidate with `inBase: false` **and** `inHead: false` names a path at neither ref - that is a bad citation, not a new file, so drop the finding as unverifiable rather than as pre-existing. Drop genuine pre-existing issues silently (score < 50) - common false alarm: flagging a shared helper's side effects when the PR only touched an unrelated code path.
 
 **4b. Verify code matches description:** apply `.claude/docs/pr-review-verification.md` §3 against `headExcerpt`. Drop or downgrade findings where the agent's prose does not match the file at the referenced line.
 

@@ -17,6 +17,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
+from nase_json import canonical_bytes
 
 THEATER_PHRASE_RE = re.compile(r"grep|coverage|snapshot|test counts?", re.IGNORECASE)
 PATH_SUFFIX_RE = re.compile(r"\.\w+(?::\d+)*$")
@@ -102,15 +103,6 @@ CONTEXT_REQUEST_LIMIT = 64
 
 class InvalidResultError(ValueError):
     pass
-
-
-def canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
 
 
 def digest(data: bytes) -> str:

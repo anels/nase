@@ -323,6 +323,37 @@ else
   printf 'FAIL  workspace scan ignores commented domain-map examples\n%s\n' "$workspace_json" >&2
 fi
 
+# Non-UTF-8 sources and non-ASCII names must not break the scan or fake a broken_ref.
+ENC="$FIXTURE/enc"
+mkdir -p "$ENC/repo/src" "$ENC/kb"
+printf 'line one\n// \251 2024 line two\n' > "$ENC/repo/src/Latin.cs"
+printf 'namespace Fixture;\n' > "$ENC/repo/src/Café.cs"
+(
+  cd "$ENC/repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name Test
+  git add .
+  git commit -q -m "fixture"
+)
+cat > "$ENC/kb/enc.md" <<'EOF'
+# Knowledge Base - Encoding
+
+## Overview
+<!-- Last updated: 2026-05-01 -->
+- Latin-1 source: `src/Latin.cs:2`
+- Non-ASCII name: `src/Café.cs`
+EOF
+enc_json=$(python3 "$SCRIPT" --repo-root "$ENC/repo" --kb-file "$ENC/kb/enc.md" --today 2026-05-29 --json 2>&1)
+enc_rc=$?
+if [ "$enc_rc" = 0 ] && printf '%s' "$enc_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); bad=[i for i in data["issues"] if i["category"] in {"broken_ref","line_out_of_range"}]; assert not bad, bad'; then
+  pass=$((pass + 1))
+  printf 'PASS  Latin-1 source and non-ASCII path resolve without false findings\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  Latin-1 source and non-ASCII path resolve without false findings\n%s\n' "$enc_json" >&2
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

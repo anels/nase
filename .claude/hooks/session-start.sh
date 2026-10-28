@@ -121,10 +121,7 @@ SKILL_SYNC_CHANGED=0
 
   # Item 8 — suggest /nase:reflect when today has commits
   if [ -f "$LOCAL_PATHS" ]; then
-    REPOS=$(awk -F= '
-      /^[[:space:]]*#/ || /^[[:space:]]*$/ || $1 == "backup-target" || $1 ~ /-ai-attribution$/ { next }
-      { sub(/^[^=]*=/, ""); print }
-    ' "$LOCAL_PATHS")
+    REPOS=$(nase_local_repo_paths "$LOCAL_PATHS")
     HAS_COMMITS=0
     while IFS= read -r repo; do
       [ -z "$repo" ] && continue

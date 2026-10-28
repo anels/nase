@@ -154,7 +154,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*__(transitionJiraIssue|editJiraIssue|createJiraIssue|addCommentToJiraIssue|addOrEditJiraIssueComment|addWorklogToJiraIssue|createIssueLink)$",
+        "matcher": "mcp__.*__(transitionJiraIssue|editJiraIssue|createJiraIssue|addCommentToJiraIssue|addOrEditJiraIssueComment|addWorklogToJiraIssue|createIssueLink|addGraphContext)$",
         "hooks": [
           {
             "type": "command",

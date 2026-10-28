@@ -706,6 +706,19 @@ assert archived.count(module.MARKER_PREFIX) == 1
 assert "## debugging" not in source.read_text(encoding="utf-8")
 print("PASS  concurrent rotations neither lose nor duplicate sections")
 
+# CRLF sources archive cleanly; validation must not translate newlines.
+fixture = make_root()
+source = fixture / "workspace/tasks/lessons.md"
+crlf = ("# Lessons\n\n" + lesson()).replace("\n", "\r\n")
+source.write_bytes(crlf.encode("utf-8"))
+module.rotate_lessons(fixture)
+archive = fixture / "workspace/tasks/lessons-archive.md"
+assert b"same body" in archive.read_bytes()
+assert b"## debugging" not in source.read_bytes()
+assert not (fixture / ".nase-locks/workspace-archive-lessons.json").exists()
+module.rotate_lessons(fixture)
+print("PASS  CRLF lessons source archives and validates")
+
 # A live owner makes the background helper warn and skip within its bounded wait.
 import workspace_lock
 

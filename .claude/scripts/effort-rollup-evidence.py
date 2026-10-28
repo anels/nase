@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
-import io
 import json
 import re
 import shutil
@@ -22,13 +20,16 @@ from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import atomic_write, sha256_bytes
+from nase_fs import atomic_write, sha256_bytes, sha256_file
 from nase_gh import (
     MISSING_BINARY_RETURNCODE,
     TIMEOUT_RETURNCODE,
     failure_category,
 )
 from nase_gh import run as gh_run
+from nase_json import canonical_bytes
+from nase_script import load_script, stream_secret_kind
+from nase_time import utc_now_iso
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 BASIS_VERSION = "effort-rollup-v2"
@@ -70,46 +71,25 @@ class EvidenceError(ValueError):
     """Invalid scope, capture, or evidence state."""
 
 
-def load_module(name: str, path: Path) -> Any:
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise EvidenceError(f"cannot load helper: {path.name}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-FRONTMATTER = load_module(
+FRONTMATTER = load_script(
     "nase_frontmatter_scalar",
     SCRIPT_ROOT / ".claude" / "scripts" / "frontmatter_scalar.py",
+    EvidenceError,
 )
-EFFORT_STATE = load_module(
-    "nase_effort_state", SCRIPT_ROOT / ".claude" / "scripts" / "effort-state.py"
+EFFORT_STATE = load_script(
+    "nase_effort_state",
+    SCRIPT_ROOT / ".claude" / "scripts" / "effort-state.py",
+    EvidenceError,
 )
-SECRET = load_module(
+SECRET = load_script(
     "nase_effort_rollup_secret_scan",
     SCRIPT_ROOT / ".claude" / "scripts" / "verify-bundle.py",
+    EvidenceError,
 )
 
 
 def secret_kind(data: bytes) -> str | None:
-    hit = SECRET.scan_stream_for_secret(io.BytesIO(data))
-    return str(hit[0]) if hit else None
-
-
-def canonical_bytes(value: Any) -> bytes:
-    return (
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        + "\n"
-    ).encode()
-
-
-def file_sha(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return stream_secret_kind(SECRET, data)
 
 
 def parse_time(value: str) -> datetime:
@@ -117,7 +97,7 @@ def parse_time(value: str) -> datetime:
 
 
 def atomic_json(path: Path, value: Any) -> None:
-    data = canonical_bytes(value)
+    data = canonical_bytes(value, trailing_newline=True)
     if secret_kind(data):
         raise EvidenceError(f"sensitive JSON refused: {path.name}")
     atomic_write(path, data)
@@ -492,7 +472,7 @@ def parse_efforts(root: Path) -> list[dict[str, Any]]:
                 "id": f"effort:{path.stem}",
                 "slug": path.stem,
                 "source_path": path.relative_to(root).as_posix(),
-                "source_sha256": file_sha(path),
+                "source_sha256": sha256_file(path),
                 "location": location,
                 "source_mtime_month": modified.strftime("%Y-%m"),
                 "status": normalized_status,
@@ -646,7 +626,7 @@ class Collector:
                 "command": command,
                 "capture_path": relative,
                 "sha256": sha256_bytes(raw),
-                "collected_at": utc_now(),
+                "collected_at": utc_now_iso(),
                 "attempt_count": outcome.attempts,
                 "status": outcome.status,
                 "error_category": outcome.error,
@@ -1001,7 +981,7 @@ def inventory_capture(root: Path, month: str, bundle: Path) -> dict[str, Any]:
         "command": commands,
         "capture_path": relative,
         "sha256": sha256_bytes(raw),
-        "collected_at": utc_now(),
+        "collected_at": utc_now_iso(),
         "attempt_count": 1,
         "status": "complete",
         "error_category": None,
@@ -1068,7 +1048,7 @@ def collect(args: argparse.Namespace) -> int:
     mappings = local_path_values(local_paths_path, {repo["alias"] for repo in scope})
     local = local_availability(scope, mappings)
     version, reader = auth_preflight()
-    started_at = utc_now()
+    started_at = utc_now_iso()
     collector = Collector(bundle)
     collector.captures.append(inventory_capture(root, args.month, bundle))
 
@@ -1131,7 +1111,7 @@ def collect(args: argparse.Namespace) -> int:
         )
     live_prs, view_gaps = collect_pr_views(collector, candidates)
 
-    finished_at = utc_now()
+    finished_at = utc_now_iso()
     run = {
         "schema_version": 1,
         "run_id": str(uuid.uuid4()),
@@ -1151,9 +1131,9 @@ def collect(args: argparse.Namespace) -> int:
             "auth_status": "success",
         },
         "input_hashes": {
-            "workspace/context.md": file_sha(context),
-            "workspace/config.md": file_sha(config_path),
-            ".local-paths": file_sha(local_paths_path),
+            "workspace/context.md": sha256_file(context),
+            "workspace/config.md": sha256_file(config_path),
+            ".local-paths": sha256_file(local_paths_path),
         },
         "scope": {
             "repo_filter": args.repo,
@@ -1757,7 +1737,7 @@ def validate(args: argparse.Namespace) -> int:
     if not isinstance(input_hashes, dict) or set(input_hashes) != required_hashes:
         raise EvidenceError("input hash set drift")
     for relative, expected in input_hashes.items():
-        if file_sha(required_file(root, relative)) != expected:
+        if sha256_file(required_file(root, relative)) != expected:
             raise EvidenceError(f"input hash drift: {relative}")
     started = parse_time(run["collection_started_at"])
     finished = parse_time(run["collection_finished_at"])
@@ -1858,7 +1838,7 @@ def validate(args: argparse.Namespace) -> int:
     mismatches = [
         field for field in compared if evidence.get(field) != derived.get(field)
     ]
-    evidence_sha = file_sha(manifest)
+    evidence_sha = sha256_file(manifest)
     missing_markdown: list[str] = []
     if args.markdown:
         markdown = Path(args.markdown).expanduser()
@@ -1882,7 +1862,7 @@ def validate(args: argparse.Namespace) -> int:
     validation = {
         "schema_version": 1,
         "run_id": run["run_id"],
-        "validated_at": utc_now(),
+        "validated_at": utc_now_iso(),
         "evidence_sha256": evidence_sha,
         "measurement_basis_version": BASIS_VERSION,
         "coverage": evidence["coverage"],
