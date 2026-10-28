@@ -982,7 +982,7 @@ def adjacent_same_file_overlap(
     if not opened_at:
         return {"scanRan": False, "reason": "PR opened time unavailable", "files": []}
     file_result = run_git(
-        repo, "diff", f"origin/{base_branch}..origin/{pr_branch}", "--name-only"
+        repo, "diff", f"origin/{base_branch}...origin/{pr_branch}", "--name-only"
     )
     if file_result.returncode != 0:
         return {"scanRan": False, "reason": file_result.stderr.strip(), "files": []}

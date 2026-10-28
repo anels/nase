@@ -32,6 +32,7 @@ make_repo() {
   mkdir -p "$repo_path/.claude/hooks" "$repo_path/.claude/scripts" "$repo_path/tests" "$repo_path/workspace"
   git -C "$repo_path" init -q
   cp "$HOOK" "$repo_path/.claude/hooks/stop-backup.sh"
+  stage_hook_lib "$repo_path"
   stage_scripts "$repo_path/.claude/scripts" verify-bundle.py
   cp "$ROOT/tests/check-local-sensitive-artifacts.sh" "$repo_path/tests/check-local-sensitive-artifacts.sh"
   printf '# Workspace Context\n' > "$repo_path/workspace/context.md"
@@ -748,6 +749,137 @@ rc=$?
 assert_exit "old lock without a pid is recovered" 0 "$rc" "$out"
 assert_contains "old lock without a pid is reported stale" "$out" "removing stale backup lock"
 assert_exit "old lock without a pid lets the backup publish" 1 "$(count_archives "$target")" "$out"
+
+# --- .local-paths without a backup-target= line -------------------------------------
+# grep exits 1 on no match; under pipefail that used to abort the script silently, so the
+# "target path is empty" ERROR below it was unreachable and nothing ever got backed up.
+repo="$fixture/no-target-line-repo"
+make_repo "$repo"
+printf 'Repo=%s\n' "$fixture/some-repo" > "$repo/.local-paths"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "missing backup-target line exits 1" 1 "$rc" "$out"
+assert_contains "missing backup-target line reports the empty target" "$out" "backup target path is empty"
+
+# --- NASE_ROOT exported by hook-dispatch.sh wins over the cwd's git toplevel ---------
+repo="$fixture/nase-root-override-repo"
+target="$fixture/nase-root-override-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+nongit="$fixture/nase-root-override-nongit"
+mkdir -p "$nongit"
+out=$(cd "$nongit" && NASE_ROOT="$repo" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash "$repo/.claude/hooks/stop-backup.sh" 2>&1)
+rc=$?
+assert_exit "NASE_ROOT override works from a non-git cwd" 0 "$rc" "$out"
+assert_exit "NASE_ROOT override publishes into the overridden workspace's target" 1 "$(count_archives "$target")" "$out"
+othergit="$fixture/nase-root-override-othergit"
+mkdir -p "$othergit"
+git -C "$othergit" init -q
+out=$(cd "$othergit" && NASE_ROOT="$repo" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash "$repo/.claude/hooks/stop-backup.sh" 2>&1)
+rc=$?
+assert_exit "NASE_ROOT override beats a different git repo cwd" 0 "$rc" "$out"
+if [ ! -e "$othergit/workspace" ]; then
+  printf 'PASS  NASE_ROOT override leaves the cwd repo untouched\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  NASE_ROOT override wrote into the cwd repo\n' >&2
+  fail=$((fail + 1))
+fi
+
+# --- a kill mid-publish must not leave a truncated nase-backup-*.zip -----------------
+repo="$fixture/partial-publish-repo"
+target="$fixture/partial-publish-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+killdir="$fixture/kill-before-rename"
+mkdir -p "$killdir"
+cat > "$killdir/sitecustomize.py" <<'PY'
+import os
+import signal
+
+_rename = os.rename
+
+
+def _kill_on_publish(src, dst, *args, **kwargs):
+    if os.path.basename(str(src)).startswith(".nase-backup-"):
+        os.kill(os.getpid(), signal.SIGKILL)
+    return _rename(src, dst, *args, **kwargs)
+
+
+os.rename = _kill_on_publish
+PY
+out=$(cd "$repo" && PYTHONPATH="$killdir" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "killed publish is reported as a failure" 1 "$rc" "$out"
+assert_exit "killed publish leaves no nase-backup-*.zip" 0 "$(count_archives "$target")" "$out"
+partials=$(find "$target" -maxdepth 1 -name '.nase-backup-*.partial' | wc -l | tr -d ' ')
+assert_exit "killed publish leaves only a hidden .partial" 1 "$partials" "$out"
+assert_exit "no unhidden partial name is visible to restore/retention globs" 0 \
+  "$(ls -1 "$target"/nase-backup-* 2>/dev/null | wc -l | tr -d ' ')" "$out"
+
+# The next run publishes normally, is not throttled by the debris, and keeps a young .partial.
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "run after a killed publish succeeds" 0 "$rc" "$out"
+assert_exit "run after a killed publish publishes one archive" 1 "$(count_archives "$target")" "$out"
+partials=$(find "$target" -maxdepth 1 -name '.nase-backup-*.partial' | wc -l | tr -d ' ')
+assert_exit "a young .partial is kept" 1 "$partials" "$out"
+
+# An old .partial is stale debris and is removed on the next run.
+stale_partial=$(find "$target" -maxdepth 1 -name '.nase-backup-*.partial' | head -1)
+touch -t "$(date -v-3H +%Y%m%d%H%M.%S 2>/dev/null || date -d '-3 hours' +%Y%m%d%H%M.%S)" "$stale_partial"
+sleep 1
+printf 'changed after partial\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "run with a stale .partial succeeds" 0 "$rc" "$out"
+partials=$(find "$target" -maxdepth 1 -name '.nase-backup-*.partial' | wc -l | tr -d ' ')
+assert_exit "a stale .partial is removed" 0 "$partials" "$out"
+
+# --- commit summary display survives hex-like subjects and empty subjects ------------
+# `substr($0, index($0,$2))` finds $2 inside the 40-char hash when the subject starts with
+# a hex-like word ("add" sits inside the hash below), and prints the hash twice when the
+# subject is empty.
+repo="$fixture/hex-subject-repo"
+target="$fixture/hex-subject-backups"
+make_repo "$repo"
+commit_repo="$fixture/hex-subject-source"
+mkdir -p "$commit_repo"
+git -C "$commit_repo" init -q
+printf 'backup-target=%s\nsource=%s\n' "$target" "$commit_repo" > "$repo/.local-paths"
+real_git=$(command -v git)
+hexbin="$fixture/hexbin"
+mkdir -p "$hexbin"
+cat > "$hexbin/git" <<SH
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = "--format=%H %s" ]; then
+    printf '%s\n' '1fadd5e0a1b2c3d4e5f60718293a4b5c6d7e8f90 add retry logic'
+    printf '%s\n' 'abcdef0123456789abcdef0123456789abcdef01 '
+    exit 0
+  fi
+done
+exec "$real_git" "\$@"
+SH
+chmod +x "$hexbin/git"
+out=$(cd "$repo" && PATH="$hexbin:$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "hex-like commit subject run succeeds" 0 "$rc" "$out"
+hex_log=$(cat "$repo/workspace/logs/$(date +%Y-%m-%d).md" 2>/dev/null)
+if grep -qxF '1fadd5e add retry logic' <<< "$hex_log"; then
+  printf 'PASS  hex-like subject prints short hash then the full subject\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  hex-like subject garbled\n      log: %s\n' "$hex_log" >&2
+  fail=$((fail + 1))
+fi
+if grep -Eq '^abcdef0 +$' <<< "$hex_log"; then
+  printf 'PASS  empty subject prints the short hash once\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  empty subject line wrong\n      log: %s\n' "$hex_log" >&2
+  fail=$((fail + 1))
+fi
 
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

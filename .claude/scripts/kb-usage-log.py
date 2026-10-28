@@ -42,8 +42,12 @@ def session_id(explicit: str | None = None) -> str:
 
 
 def stable_session_id(explicit: str | None = None) -> str | None:
+    # CLAUDE_CODE_SESSION_ID is the variable Claude Code sets; the other two are
+    # legacy names. Keep this order in step with nase_session_id in
+    # .claude/lib/hook-common.sh.
     return (
         explicit
+        or os.environ.get("CLAUDE_CODE_SESSION_ID")
         or os.environ.get("CLAUDE_SESSION_ID")
         or os.environ.get("CLAUDE_SESSIONID")
     )
@@ -154,7 +158,7 @@ def activate(args: argparse.Namespace) -> int:
         path.write_text(serialized, encoding="utf-8")
         # The fallback is written unconditionally, not only when this activation
         # lacked a stable session id. `kb-search.sh` and `kb-domain-resolve.sh`
-        # run as plain subprocesses without CLAUDE_SESSION_ID, so they resolve a
+        # run as plain subprocesses without a session id, so they resolve a
         # `local-{ppid}` session that no activation ever keyed. Writing the
         # fallback only in the no-stable-id case left them with nothing to fall
         # back to, which is why nearly every kb-search event logged as `unknown`.
@@ -200,7 +204,7 @@ def active_skill(
     # 1. The activation itself had no session to key on, so the fallback is the
     #    only record of it and any reader may use it.
     # 2. The *caller* has no session id. `kb-search.sh` and `kb-domain-resolve.sh`
-    #    run as plain subprocesses without CLAUDE_SESSION_ID and resolve a
+    #    run as plain subprocesses without a session id and resolve a
     #    `local-{ppid}` session that no activation ever keyed, so a session-keyed
     #    activation is unreachable for them by construction. This is the path that
     #    logged 385 of 429 `unknown` events in a 30-day sample.

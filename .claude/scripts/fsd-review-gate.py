@@ -18,6 +18,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
 
+THEATER_PHRASE_RE = re.compile(r"grep|coverage|snapshot|test counts?", re.IGNORECASE)
+PATH_SUFFIX_RE = re.compile(r"\.\w+(?::\d+)*$")
+
+
+def _is_path_or_identifier(word: str) -> bool:
+    if "_" in word or PATH_SUFFIX_RE.search(word):
+        return True
+    return word.endswith("/") or word.startswith(("/", "./", "../")) or word.count("/") >= 2
+
+
+def is_theater_evidence(entry: str) -> bool:
+    """True when the entry names a weak-evidence phrase outside a path or identifier.
+
+    Paths (`tests/test_coverage_report.py:40`, `coverage/index.html`) and snake_case
+    identifiers are dropped first. Everything else is searched as plain text, so
+    `line-coverage 95%`, `grep-based check` and `grep/rg of assertions` still count as weak.
+    """
+    words = [word for word in entry.split() if not _is_path_or_identifier(word)]
+    return bool(THEATER_PHRASE_RE.search(" ".join(words)))
+
+
 REQUIRED_AXES = ("correctness", "test_quality", "verification_evidence")
 CONDITIONAL_AXES = (
     "security_privacy",
@@ -738,21 +759,24 @@ def validate_combined(value: Any, inventory: list[dict[str, str]]) -> dict[str, 
         # was asked for is the exact failure this schema exists to stop.
         if set(item) - {"status", "evidence", "reason"}:
             item = exact_keys(item, {"status", "evidence", "reason"}, f"axes.{axis}")
-        if "evidence" not in item:
-            raise InvalidResultError(f"axes.{axis} keys mismatch: missing=['evidence']")
+        required_keys = ("evidence", "reason") if needs_reason else ("evidence",)
+        missing_keys = [key for key in required_keys if key not in item]
+        if missing_keys:
+            raise InvalidResultError(f"axes.{axis} keys mismatch: missing={missing_keys}")
         if axis in REQUIRED_AXES and status == "NOT_APPLICABLE":
             raise InvalidResultError(f"required axis {axis} cannot be NOT_APPLICABLE")
         evidence = string_list(item["evidence"], f"axes.{axis}.evidence")
         if status == "PASS" and not evidence:
             raise InvalidResultError(f"PASS axis {axis} requires evidence")
-        if axis == "test_quality" and status == "PASS":
-            theater = ("grep", "coverage", "snapshot", "test count")
-            if evidence and all(
-                any(term in entry.lower() for term in theater) for entry in evidence
-            ):
-                raise InvalidResultError(
-                    "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
-                )
+        if (
+            axis == "test_quality"
+            and status == "PASS"
+            and evidence
+            and all(is_theater_evidence(entry) for entry in evidence)
+        ):
+            raise InvalidResultError(
+                "test_quality cannot PASS on grep, coverage, snapshot, or test count alone"
+            )
         normalized_axes[axis] = {"status": status, "evidence": evidence}
         if needs_reason:
             normalized_axes[axis]["reason"] = nonempty_string(

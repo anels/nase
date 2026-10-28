@@ -3,12 +3,15 @@
 
 set -uo pipefail
 
-command -v jq >/dev/null 2>&1 || exit 0
-command -v python3 >/dev/null 2>&1 || exit 0
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || { echo "[track-kb-read] hook-common.sh unavailable - skipping" >&2; exit 0; }
 
-NASE_ROOT="${NASE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
-[ -z "$NASE_ROOT" ] && exit 0
-HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+nase_require jq python3 || exit 0
+
+NASE_ROOT=$(nase_root) || exit 0
 LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 
 INPUT=$(cat)
@@ -26,7 +29,7 @@ SESSION_ID=""
       2>/dev/null || true
 )
 [ -z "$FILE_PATH" ] && exit 0
-[ -n "$SESSION_ID" ] || SESSION_ID="${CLAUDE_SESSION_ID:-${CLAUDE_SESSIONID:-}}"
+[ -n "$SESSION_ID" ] || SESSION_ID=$(nase_session_id)
 
 ARGS=(record --root "$NASE_ROOT" --file "$FILE_PATH" --access read --source read-hook)
 [ -n "$SESSION_ID" ] && ARGS+=(--session "$SESSION_ID")

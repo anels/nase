@@ -845,6 +845,24 @@ def replace_placeholder(body: str, png: str, node: str) -> tuple[str, bool]:
     return updated, bool(count)
 
 
+SITE_RE = re.compile(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.atlassian\.net", re.IGNORECASE)
+
+
+def validate_site(site: str) -> str:
+    """Return `site` only if it is a bare Atlassian Cloud hostname.
+
+    The host is spliced into `https://{site}/...` beside a Basic-auth token, so a value
+    such as `evil.example#` or `a.atlassian.net@evil.example` would send the credential
+    to another host.
+    """
+    if not SITE_RE.fullmatch(site):
+        raise ValueError(
+            f"invalid Atlassian site {site!r}: expected a bare hostname such as "
+            "<your-org>.atlassian.net (no scheme, path, port, or userinfo)"
+        )
+    return site
+
+
 def resolve_site(explicit: str) -> str:
     """The Atlassian host to upload to.
 
@@ -853,7 +871,7 @@ def resolve_site(explicit: str) -> str:
     Jira flows already read.
     """
     if explicit:
-        return explicit.replace("https://", "").rstrip("/")
+        return validate_site(explicit.removeprefix("https://").rstrip("/"))
     # REPO_ROOT is the checkout holding this script; cwd covers a worktree,
     # where `workspace/` is git-ignored and therefore absent.
     for root in (REPO_ROOT, os.getcwd()):
@@ -866,7 +884,7 @@ def resolve_site(explicit: str) -> str:
             re.MULTILINE,
         )
         if found:
-            return found.group(1).rstrip("/")
+            return validate_site(found.group(1).rstrip("/"))
     raise RuntimeError(
         "no Atlassian site to upload to. Pass --site <your-org>.atlassian.net, or add "
         "`baseUrl: https://<your-org>.atlassian.net` under `## Jira` in workspace/config.md"
@@ -874,7 +892,11 @@ def resolve_site(explicit: str) -> str:
 
 
 def cmd_attach(args) -> int:
-    site = resolve_site(args.site)
+    try:
+        site = resolve_site(args.site)
+    except ValueError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 2
     with open(args.plan, encoding="utf-8") as handle:
         plan = json.load(handle)
     out_dir = os.path.dirname(os.path.abspath(args.plan))

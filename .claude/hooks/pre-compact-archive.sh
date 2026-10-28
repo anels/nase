@@ -13,7 +13,13 @@
 
 set -uo pipefail
 
-NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || { echo "[pre-compact-archive] hook-common.sh unavailable - skipping" >&2; exit 0; }
+
+NASE_ROOT=$(nase_root) || exit 0
 cd "$NASE_ROOT" || exit 0
 
 PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)

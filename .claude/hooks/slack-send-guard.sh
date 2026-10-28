@@ -2,7 +2,8 @@
 # PreToolUse guard: hard-block direct Slack API sends.
 # Slack drafts are allowed; direct sends are irreversible from the model side.
 # slack_schedule_message is the same send with a delay, so it is blocked too -
-# the draft path substitutes for it exactly.
+# the draft path substitutes for it exactly. Canvases, reactions, conversations,
+# lists and file-upload completion also publish to Slack with no draft path.
 set -euo pipefail
 
 block() {
@@ -21,7 +22,13 @@ block() {
   exit 2
 }
 
-command -v jq >/dev/null 2>&1 || block "jq is required to parse tool input"
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || block "hook-common.sh is missing or unreadable; failing closed"
+
+nase_require jq || block "jq is required to parse tool input"
 
 INPUT=$(cat)
 if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
@@ -42,8 +49,14 @@ if [[ "$TOOL" == *__slack_schedule_message ]]; then
   block "slack_schedule_message is forbidden; a scheduled send is still a send"
 fi
 
-if [[ "$TOOL" == *__slack_create_canvas || "$TOOL" == *__slack_update_canvas ]]; then
-  block "${TOOL##*__} writes to Slack with no draft path"
-fi
+case "$TOOL" in
+  *__slack_create_canvas | *__slack_update_canvas | \
+    *__slack_add_reaction | *__slack_create_conversation | \
+    *__slack_add_list_record | *__slack_update_list_record | \
+    *__slack_create_list | *__slack_update_list | \
+    *__slack_complete_file_upload)
+    block "${TOOL##*__} writes to Slack with no draft path"
+    ;;
+esac
 
 exit 0

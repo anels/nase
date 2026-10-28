@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 import re
-import shlex
+import signal
 import subprocess
 import sys
 import uuid
@@ -18,6 +18,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
+import shell_scan
 from nase_fs import sha256_bytes, sha256_file
 
 TOKEN_TTL_SECONDS = 300
@@ -143,17 +144,11 @@ TARGET_SELECTOR_ENV_VARS = {
     "terraform": ("TF_CLI_CONFIG_FILE", "TF_DATA_DIR"),
 }
 PAYLOAD_FILE_FLAGS = {"--body-file", "--input", "--file"}
-SHELL_SEPARATORS = {";", "&&", "&", "|", "||", "(", ")", "\n"}
-SHELL_INTERPRETERS = {"bash", "dash", "ksh", "sh", "zsh"}
 GUARDED_EXECUTABLES = ("gh", "az", "kubectl", "terraform")
 # A path prefix still names the same binary, so `/usr/bin/gh` counts; a longer word that
 # merely starts with one does not, so `github`, `azure`, and `terraform-docs` do not.
 GUARDED_MENTION_RE = re.compile(
     r"(?<![\w-])(?:" + "|".join(GUARDED_EXECUTABLES) + r")(?![\w.-])", re.IGNORECASE
-)
-HEREDOC_RE = re.compile(r"<<-?(?!<)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
-PIPE_INTO_SHELL_RE = re.compile(
-    r"\|\s*(?:" + "|".join(sorted(SHELL_INTERPRETERS)) + r")\b"
 )
 
 
@@ -270,9 +265,12 @@ def mutation_system(argv: list[str]) -> str | None:
         if words[0] == "api":
             if graphql_read_query(argv):
                 return None
-            methods = option_values(argv[2:], "--method", "-X")
+            api_args, understood = expand_gh_api_args(argv[2:])
+            if not understood:
+                return "github"
+            methods = option_values(api_args, "--method", "-X")
             has_payload = any(
-                option_values(argv[2:], name)
+                option_values(api_args, name)
                 for name in ("-f", "-F", "--raw-field", "--field", "--input")
             )
             if any(method.upper() in MUTATING_HTTP_METHODS for method in methods) or (
@@ -358,6 +356,71 @@ def mutation_system(argv: list[str]) -> str | None:
     return None
 
 
+GH_API_BOOL_SHORT_FLAGS = set("ih")
+GH_API_VALUE_SHORT_FLAGS = set("FHXfpqt")
+GH_API_VALUE_LONG_FLAGS = {
+    "--cache",
+    "--field",
+    "--header",
+    "--hostname",
+    "--input",
+    "--jq",
+    "--method",
+    "--preview",
+    "--raw-field",
+    "--template",
+}
+
+
+def expand_short_cluster(arg: str) -> tuple[list[str], bool, bool]:
+    """Split one `-abc` cluster into tokens: (tokens, understood, wants_next_value)."""
+    tokens: list[str] = []
+    for position in range(1, len(arg)):
+        flag = arg[position]
+        if flag in GH_API_BOOL_SHORT_FLAGS:
+            tokens.append(f"-{flag}")
+        elif flag in GH_API_VALUE_SHORT_FLAGS:
+            tokens.append(f"-{flag}")
+            attached = arg[position + 1 :].removeprefix("=")
+            if attached:
+                tokens.append(attached)
+            return tokens, True, not attached
+        else:
+            tokens.append(arg[position:])
+            return tokens, False, False
+    return tokens, True, False
+
+
+def expand_gh_api_args(args: list[str]) -> tuple[list[str], bool]:
+    """Split clustered short flags in `gh api` arguments, as gh's flag parser does.
+
+    `-iXDELETE` is `-i -X DELETE` and `-ifbody=x` is `-i -f body=x`. A flag that
+    takes a value consumes the rest of its cluster, or the next argument when the
+    cluster ends there. Returns the expanded arguments and False when a cluster
+    holds a flag this guard cannot interpret, so callers can fail closed.
+    """
+    expanded: list[str] = []
+    understood = True
+    skip_value = False
+    for index, arg in enumerate(args):
+        if skip_value:
+            expanded.append(arg)
+            skip_value = False
+        elif arg == "--":
+            expanded.extend(args[index:])
+            break
+        elif arg in GH_API_VALUE_LONG_FLAGS:
+            expanded.append(arg)
+            skip_value = True
+        elif re.fullmatch(r"-[^-=].+", arg):
+            tokens, ok, skip_value = expand_short_cluster(arg)
+            expanded.extend(tokens)
+            understood = understood and ok
+        else:
+            expanded.append(arg)
+    return expanded, understood
+
+
 def option_values(argv: list[str], *names: str) -> list[str]:
     values: list[str] = []
     for index, value in enumerate(argv):
@@ -381,9 +444,14 @@ def graphql_read_query(argv: list[str]) -> bool:
     """Recognize direct `gh api graphql` query requests without opening a write path."""
     if len(argv) < 3 or argv[1:3] != ["api", "graphql"]:
         return False
+    api_args, understood = expand_gh_api_args(argv[3:])
+    if not understood:
+        return False
+    if any(arg == "--input" or arg.startswith("--input=") for arg in api_args):
+        return False
     query_values = [
         value.split("=", 1)[1]
-        for value in option_values(argv[3:], "-f", "-F", "--raw-field", "--field")
+        for value in option_values(api_args, "-f", "-F", "--raw-field", "--field")
         if value.startswith("query=")
     ]
     if len(query_values) != 1:
@@ -553,6 +621,7 @@ def literal_at_file_fields(root: Path, argv: list[str]) -> list[str]:
     if not argv or Path(argv[0]).name.lower() != "gh" or argv[1:2] != ["api"]:
         return []
     offenders: list[str] = []
+    argv = [*argv[:2], *expand_gh_api_args(argv[2:])[0]]
     index = 2
     while index < len(argv):
         value = argv[index]
@@ -1092,142 +1161,6 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def command_segments(command: str) -> list[list[str]]:
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
-        lexer.whitespace = " \t\r"
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        tokens = list(lexer)
-    except ValueError:
-        return []
-    segments: list[list[str]] = [[]]
-    for token in tokens:
-        if token in SHELL_SEPARATORS:
-            if segments[-1]:
-                segments.append([])
-            continue
-        segments[-1].append(token)
-    return [segment for segment in segments if segment]
-
-
-def unwrap_shell_segment(segment: list[str]) -> list[str]:
-    index = 0
-    while index < len(segment) and re.match(
-        r"^[A-Za-z_][A-Za-z0-9_]*=", segment[index]
-    ):
-        index += 1
-    while index < len(segment):
-        executable = Path(segment[index]).name
-        if executable == "command":
-            index += 1
-            continue
-        if executable == "env":
-            index += 1
-            while index < len(segment) and (
-                segment[index].startswith("-") or "=" in segment[index]
-            ):
-                index += 1
-            continue
-        if executable in {"sudo", "doas"}:
-            index += 1
-            while index < len(segment) and segment[index].startswith("-"):
-                index += 1
-            continue
-        break
-    return segment[index:]
-
-
-def shell_command(argv: list[str]) -> str | None:
-    if not argv or Path(argv[0]).name.lower() not in SHELL_INTERPRETERS:
-        return None
-    for index, option in enumerate(argv[1:], 1):
-        has_command = option in {"-c", "--command"} or (
-            option.startswith("-") and not option.startswith("--") and "c" in option[1:]
-        )
-        if has_command:
-            return argv[index + 1] if index + 1 < len(argv) else ""
-    return None
-
-
-def blank_single_quoted_spans(command: str) -> str:
-    """Blank single-quoted spans, which the shell expands and executes as nothing.
-
-    `command_segments` lexes with `shlex` in POSIX mode, so a single-quoted span is already
-    collapsed into one argument and can never become an executable. The dynamic-construct scan
-    has to agree with that lexer, or a literal backtick in prose - `printf 'see `Foo` rows'` -
-    reads as a command substitution and blocks a command that touches nothing external.
-
-    Double-quoted spans are copied verbatim because `$(...)` and backticks still expand inside
-    them. An unterminated single quote leaves the remainder untouched, so a malformed command
-    keeps failing closed.
-    """
-    result: list[str] = []
-    index = 0
-    length = len(command)
-    while index < length:
-        char = command[index]
-        if char == "\\" and index + 1 < length:
-            result.append(command[index : index + 2])
-            index += 2
-            continue
-        if char == '"':
-            result.append(char)
-            index += 1
-            while index < length:
-                if command[index] == "\\" and index + 1 < length:
-                    result.append(command[index : index + 2])
-                    index += 2
-                    continue
-                result.append(command[index])
-                index += 1
-                if command[index - 1] == '"':
-                    break
-            continue
-        if char == "'":
-            end = command.find("'", index + 1)
-            if end == -1:
-                result.append(command[index:])
-                break
-            result.append(" " * (end - index + 1))
-            index = end + 1
-            continue
-        result.append(char)
-        index += 1
-    return "".join(result)
-
-
-def blank_quoted_spans(command: str) -> str:
-    """Blank the contents of both quote kinds, for locating shell operators.
-
-    `blank_single_quoted_spans` deliberately keeps double-quoted spans, because `$(...)`
-    and backticks still expand inside them. An operator is the opposite case: `|` and `<`
-    are literal in both quote kinds, so a scan for them has to ignore both or a `grep -n
-    'a|sh' file.py` reads as a pipe into a shell. An unterminated quote leaves the
-    remainder untouched, so a malformed command keeps failing closed.
-    """
-    result: list[str] = []
-    index = 0
-    length = len(command)
-    while index < length:
-        char = command[index]
-        if char == "\\" and index + 1 < length:
-            result.append(command[index : index + 2])
-            index += 2
-            continue
-        if char in "\"'":
-            end = command.find(char, index + 1)
-            if end == -1:
-                result.append(command[index:])
-                break
-            result.append(" " * (end - index + 1))
-            index = end + 1
-            continue
-        result.append(char)
-        index += 1
-    return "".join(result)
-
-
 def mentions_guarded_executable(command: str) -> bool:
     """Report whether a guarded CLI name appears anywhere in the command text.
 
@@ -1243,116 +1176,50 @@ def mentions_guarded_executable(command: str) -> bool:
     return bool(GUARDED_MENTION_RE.search(command))
 
 
-def strip_heredoc_bodies(command: str) -> str:
-    """Drop heredoc bodies, which are data written to a file rather than commands.
+UNRECOGNIZED_SHELL_COMMAND = "__unrecognized_shell_command__"
+UNBINDABLE_HEADS = {"alias", "eval", "function", "source", "."}
+SHELL_WORD_RE = re.compile(r"(?<![\w-])(?:bash|dash|ksh|sh|zsh)(?![\w.-])")
 
-    `command_segments` splits on newlines, so a heredoc body is lexed as if each of its
-    lines were a command. A prose line starting with a guarded verb then reads as an
-    invocation, and a backtick in prose reads as a command substitution - both block a
-    command whose only effect is writing a local file.
 
-    A shell interpreter anywhere in the command is the exception: a heredoc feeding a
-    shell really is executed, and today's naive lexing is what catches `bash <<EOF` plus
-    `gh pr create`. The test spans the whole command rather than the line the redirect
-    sits on, because a line-local test misses `bash \\` continued onto `<<'EOF'` - the
-    redirect line names no shell at all, and stripping there hides an executed mutation.
-    Refusing to strip whenever a shell is named costs only the heredoc benefit in that
-    rarer combination.
+def command_argvs(result: shell_scan.ScanResult):
+    """Yield the argv of every program the scanned command would run.
+
+    Parsing is `shell_scan`'s job. What stays here is the policy: an invocation whose
+    program cannot be bound, a shell fed from a pipe or here-string, and a construct
+    inside a nested script that cannot be bound all yield one `UNRECOGNIZED` marker so
+    `command_has_unrecognized_external_cli` fails closed on them.
+
+    A `< script.sh` redirect is deliberately not a shell-fed case: it reads a file named
+    on the command line, which this guard cannot read either way, exactly like
+    `bash script.sh`.
     """
-    if "<<" not in command:
-        return command
-    lines = command.split("\n")
-    for index, line in enumerate(lines):
-        if not HEREDOC_RE.search(line):
+    for invocation in result.invocations:
+        # `eval` already yields the marker, and a function call's arguments are re-read as a
+        # command only for the git guard: here a function that forwards `"$@"` is caught by
+        # the dynamic program in its own body, and re-reading every argument as a program
+        # blocked `rec source ...` style helper calls for nothing.
+        if "eval" in invocation.via or "function-call" in invocation.via:
             continue
-        # The redirect's own line, plus any preceding lines joined to it by a backslash
-        # continuation: that is where `bash \` followed by `<<'EOF'` puts the shell name,
-        # and a line-local test misses it. Spanning the whole command instead refused a
-        # `python3 - <<'PY' ... PY` whose later segment merely ran `bash -n file`.
-        scope = [line]
-        previous = index - 1
-        while previous >= 0 and lines[previous].rstrip().endswith("\\"):
-            scope.insert(0, lines[previous])
-            previous -= 1
-        joined = " ".join(part.rstrip().rstrip("\\") for part in scope)
-        for segment in command_segments(joined):
-            argv = unwrap_shell_segment(segment)
-            if argv and Path(argv[0]).name.lower() in SHELL_INTERPRETERS:
-                return command
-
-    kept: list[str] = []
-    pending_delimiters: list[str] = []
-    for line in lines:
-        if pending_delimiters:
-            if line.strip() == pending_delimiters[0]:
-                pending_delimiters.pop(0)
+        if (
+            invocation.head_dynamic
+            or (invocation.glob and invocation.glob[0])
+            or invocation.name in UNBINDABLE_HEADS
+        ):
+            yield [UNRECOGNIZED_SHELL_COMMAND]
             continue
-        kept.append(line)
-        pending_delimiters = [match.group(2) for match in HEREDOC_RE.finditer(line)]
-    return "\n".join(kept)
+        yield invocation.argv
+        if (
+            invocation.is_shell()
+            and invocation.script_stdin
+            and invocation.stdin in {"pipe", "herestring"}
+        ):
+            yield [UNRECOGNIZED_SHELL_COMMAND]
+    if result.nested_opaque:
+        yield [UNRECOGNIZED_SHELL_COMMAND]
 
 
-def is_dynamic_shell_command(command: str) -> bool:
-    """Detect shell constructs whose executed command cannot be statically bound."""
-    return bool(
-        re.search(
-            r"`|\$\(|(?:^|[;&|]\s*)\s*(?:alias|eval|source)\b|"
-            r"(?:^|[;&|]\s*)\s*(?:"
-            r"function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|"
-            r"[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)"
-            r")\s*\{",
-            blank_single_quoted_spans(command),
-        )
-    )
-
-
-def command_argvs(command: str, depth: int = 0):
-    # A pipe into a shell runs whatever the left side produced, which cannot be read
-    # here. Quoted spans are masked first: `|` is literal inside either quote kind, so
-    # scanning the raw text refused a plain `grep -n 'a|sh' file.py`.
-    #
-    # There is deliberately no `<` arm. `< bash` reads stdin from a file named `bash` and
-    # never invokes one, so every hit it had was a false positive; the shape it looks like
-    # it should cover, `bash < script.sh`, puts the name first and is handled the same way
-    # as `bash script.sh`, which this guard allows because it cannot read either.
-    if PIPE_INTO_SHELL_RE.search(blank_quoted_spans(command)):
-        yield ["__unrecognized_shell_command__"]
-        return
-    for segment in command_segments(command):
-        argv = unwrap_shell_segment(segment)
-        if not argv:
-            continue
-        executable = Path(argv[0]).name
-        if re.search(r"[$`]", executable) or executable in {
-            "alias",
-            "eval",
-            "function",
-            "source",
-            ".",
-        }:
-            yield ["__unrecognized_shell_command__"]
-            continue
-        yield argv
-        nested = shell_command(argv)
-        if nested is None:
-            # A shell fed a herestring runs that text with no `-c` to parse. The
-            # sibling regex above only catches the name-last forms (`| bash`, `< bash`),
-            # so `bash <<< 'gh pr create'` would otherwise reach the shell unread. A
-            # heredoc needs no arm here: `strip_heredoc_bodies` leaves a shell's body in
-            # place precisely so its lines still lex as commands.
-            if executable.lower() in SHELL_INTERPRETERS and any(
-                word.startswith("<<<") for word in argv[1:]
-            ):
-                yield ["__unrecognized_shell_command__"]
-            continue
-        if depth >= 8 or not nested or is_dynamic_shell_command(nested):
-            yield ["__unrecognized_shell_command__"]
-            continue
-        yield from command_argvs(nested, depth + 1)
-
-
-def command_has_mutation(command: str) -> bool:
-    return any(mutation_system(argv) for argv in command_argvs(command))
+def command_has_mutation(argvs: list[list[str]]) -> bool:
+    return any(mutation_system(argv) for argv in argvs)
 
 
 def known_safe_external_command(argv: list[str]) -> bool:
@@ -1378,9 +1245,12 @@ def known_safe_external_command(argv: list[str]) -> bool:
         if words[0] == "api":
             if graphql_read_query(argv):
                 return True
-            methods = option_values(argv[2:], "--method", "-X")
+            api_args, understood = expand_gh_api_args(argv[2:])
+            if not understood:
+                return False
+            methods = option_values(api_args, "--method", "-X")
             has_payload = any(
-                option_values(argv[2:], name)
+                option_values(api_args, name)
                 for name in ("-f", "-F", "--raw-field", "--field", "--input")
             )
             return not has_payload and all(
@@ -1469,9 +1339,9 @@ def known_safe_external_command(argv: list[str]) -> bool:
     return True
 
 
-def command_has_unrecognized_external_cli(command: str) -> bool:
-    for argv in command_argvs(command):
-        if argv == ["__unrecognized_shell_command__"]:
+def command_has_unrecognized_external_cli(argvs: list[list[str]]) -> bool:
+    for argv in argvs:
+        if argv == [UNRECOGNIZED_SHELL_COMMAND]:
             return True
         executable = Path(argv[0]).name.lower() if argv else ""
         if (
@@ -1621,31 +1491,35 @@ def cmd_execute(args: argparse.Namespace) -> int:
 
 
 def cmd_guard(args: argparse.Namespace) -> int:
-    command = strip_heredoc_bodies(args.command or "")
-    unbindable_target = bool(command) and (
-        not command_segments(command) or is_dynamic_shell_command(command)
-    )
+    command = args.command or ""
+    result = shell_scan.scan(command)
+    unbindable_target = bool(command) and (result.unparseable or bool(result.top_opaque))
     # Failing closed here is only justified when a guarded CLI could actually be
     # reached. Blocking every command this parser cannot bind blocks the read-only
     # majority - a `$(...)` inside an `echo`, a backtick quoted in prose - and each
-    # one costs a rewrite and a re-run without protecting anything.
-    if unbindable_target and mentions_guarded_executable(command):
+    # one costs a rewrite and a re-run without protecting anything. A command that
+    # cannot be lexed at all also hides a `| bash`, so a shell name counts as reach too.
+    reaches_guarded = mentions_guarded_executable(result.visible_text) or (
+        result.unparseable and bool(SHELL_WORD_RE.search(result.visible_text))
+    )
+    if unbindable_target and reaches_guarded:
         print(
             "BLOCKED: could not safely parse this command, and it names a guarded CLI "
-            f"({', '.join(GUARDED_EXECUTABLES)}).\n"
+            f"({', '.join(GUARDED_EXECUTABLES)}) or a shell.\n"
             "  Rewrite it without the dynamic construct, or prepare a payload-bound "
             "action with .claude/scripts/external-write-action.py.",
             file=sys.stderr,
         )
         return 10
-    if command_has_mutation(command):
+    argvs = list(command_argvs(result))
+    if command_has_mutation(argvs):
         print(
             "BLOCKED: raw external mutation. Prepare, show, authorize, and execute the action with "
             ".claude/scripts/external-write-action.py instead.",
             file=sys.stderr,
         )
         return 10
-    if command_has_unrecognized_external_cli(command):
+    if command_has_unrecognized_external_cli(argvs):
         print(
             "BLOCKED: unrecognized external CLI command. Use an explicit read-only command or "
             "prepare an allowlisted payload-bound mutation action.",
@@ -1706,6 +1580,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    if hasattr(signal, "alarm") and sys.argv[1:2] == ["guard"]:
+        signal.alarm(shell_scan.SCAN_TIMEOUT_SECONDS)
     args = build_parser().parse_args()
     args.root = args.root.resolve()
     try:

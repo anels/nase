@@ -72,7 +72,7 @@ EOF
 
 cd "$FIXTURE" || exit 1
 export NASE_ROOT="$FIXTURE"
-export CLAUDE_SESSION_ID="kb-search-test"
+export CLAUDE_CODE_SESSION_ID="kb-search-test"
 
 pass=0
 fail=0

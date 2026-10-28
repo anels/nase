@@ -12,6 +12,7 @@ mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" \
   "$repo/workspace/tmp"
 git -C "$repo" init -q
 cp "$ROOT/.claude/hooks/pre-compact-archive.sh" "$repo/.claude/hooks/"
+stage_hook_lib "$repo"
 stage_scripts "$repo/.claude/scripts" workspace-archive.py workspace-write-guard.py
 
 python3 - "$repo/workspace/tasks/lessons.md" <<'PY'
@@ -92,5 +93,26 @@ out=$(cd "$repo" && bash .claude/hooks/pre-compact-archive.sh 2>&1)
 test ! -e "$repo/.nase-locks/workspace-archive-lessons.json"
 test "$(grep -c 'nase-archive:' "$repo/workspace/tasks/lessons-archive.md")" = "$markers_before"
 test "$(wc -c < "$repo/workspace/tasks/lessons.md")" -lt 81920
+
+# NASE_ROOT exported by hook-dispatch.sh wins over the cwd's git toplevel: run from
+# a non-git dir and from a different git repo, and the overridden workspace is the
+# one that gets rotated.
+for cwd_kind in non-git other-git; do
+  cwd="$FIXTURE/cwd-$cwd_kind"
+  mkdir -p "$cwd/workspace/efforts/done"
+  if [ "$cwd_kind" = other-git ]; then
+    git -C "$cwd" init -q
+    printf 'untouched\n' > "$cwd/workspace/efforts/done/other.md"
+    touch -t 202001010000 "$cwd/workspace/efforts/done/other.md"
+  fi
+  printf 'override %s\n' "$cwd_kind" > "$repo/workspace/efforts/done/override-$cwd_kind.md"
+  touch -t 202001010000 "$repo/workspace/efforts/done/override-$cwd_kind.md"
+  out=$(cd "$cwd" && NASE_ROOT="$repo" bash "$repo/.claude/hooks/pre-compact-archive.sh" 2>&1)
+  test ! -e "$repo/workspace/efforts/done/override-$cwd_kind.md"
+  grep -qx "override $cwd_kind" "$repo/workspace/efforts/archive/$year/override-$cwd_kind.md"
+  if [ "$cwd_kind" = other-git ]; then
+    test -e "$cwd/workspace/efforts/done/other.md"
+  fi
+done
 
 printf 'pre-compact archive hook tests passed.\n'

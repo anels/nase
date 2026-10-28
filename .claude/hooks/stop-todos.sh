@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
+# Sourced before `set -e`: on bash 3.2 a syntax error in a sourced file would otherwise
+# end the shell with status 2 instead of reaching the `||` fallback below.
+HOOK_DIR=${BASH_SOURCE[0]%/*}
+[ "$HOOK_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_DIR=.
+# shellcheck source=../lib/hook-common.sh
+{ [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
+  || { echo "[stop-todos] hook-common.sh unavailable - skipping" >&2; exit 0; }
+
 set -euo pipefail
 
-NASE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
-if [ -z "$NASE_ROOT" ]; then
-  exit 0
-fi
+NASE_ROOT=$(nase_root) || exit 0
 
 MESSAGE=""
 
@@ -31,5 +36,5 @@ fi
 if [ -z "$MESSAGE" ]; then
   exit 0
 fi
-command -v jq >/dev/null 2>&1 || exit 0
+nase_require jq || exit 0
 jq -cn --arg msg "$MESSAGE" '{systemMessage:$msg}'

@@ -1054,6 +1054,45 @@ class ReviewGateTests(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("invalid choice", rejected.stderr)
 
+    def test_missing_reason_is_an_invalid_result_not_a_crash(self) -> None:
+        # A required axis, or any non-PASS axis, needs a reason. A missing one used to
+        # raise a bare KeyError, so no INVALID decision was recorded.
+        result = self.combined()
+        del result["axes"]["correctness"]["reason"]
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
+        code, out = self.precheck(result)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(
+            any("axes.correctness keys mismatch: missing=['reason']" in item for item in out["problems"]),
+            out,
+        )
+
+        result = self.combined()
+        axis = next(a for a in QUALITY_AXES if a not in {"correctness", "test_quality", "verification_evidence"})
+        result["axes"][axis] = {"status": "FAIL", "evidence": ["app.py:1"]}
+        self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID")
+
+    def test_test_quality_theater_check_ignores_paths_and_identifiers(self) -> None:
+        result = self.combined()
+        result["axes"]["test_quality"] = {
+            "status": "PASS",
+            "evidence": ["tests/test_coverage_report.py:40 asserts exit 2"],
+            "reason": "The test asserts the exit code of the failing path directly.",
+        }
+        code, out = self.precheck(result)
+        self.assertEqual(code, 0, out)
+        self.assertNotEqual(self.reduce("combined", 1, result)["action"], "INVALID")
+
+        for entries in (
+            ["grep -q guard app.py", "100 percent line coverage"],
+            ["snapshot matches", "the test count went up"],
+            ["line-coverage 95%", "greps confirm", "grepped output"],
+            ["grep-based check of the diff", "coverage-report 95%", "snapshot-diff matches"],
+            ["grep/rg of assertions", "coverage/branch report"],
+        ):
+            result["axes"]["test_quality"]["evidence"] = entries
+            self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID", entries)
+
     def test_precheck_reports_every_problem_in_one_pass(self) -> None:
         # The point of precheck is that one run tells the operator everything to fix.
         # Both expectation checks once shared a `try`, so the first bad value hid the

@@ -233,11 +233,68 @@ expect_rc "raw GitHub workflow mutation blocked" .claude/hooks/external-cli-writ
 expect_rc "raw GitHub comment mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_comment_write" 2 "raw external mutation"
 expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"
 expect_rc "dynamic shell eval fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_eval" 2 "unrecognized external CLI"
-expect_rc "dynamic shell function fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_function" 2 "unrecognized external CLI"
+# The function body is read as commands now, so the mutation inside it is named directly
+# rather than reported as an unreadable construct; the exit code is the same.
+expect_rc "shell function wrapping a mutation fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_function" 2 "raw external mutation"
 expect_rc "GitHub GraphQL query remains allowed" .claude/hooks/external-cli-write-guard.sh "$github_graphql_read" 0
 expect_rc "unrecognized Azure command fails closed" .claude/hooks/external-cli-write-guard.sh "$azure_unknown" 2 "unrecognized external CLI"
 expect_rc "known Azure read remains allowed" .claude/hooks/external-cli-write-guard.sh "$azure_read" 0
 expect_rc "authorized helper invocation allowed" .claude/hooks/external-cli-write-guard.sh "$wrapped_action" 0
+
+# Shell constructs that used to hide a mutation from the guard. Each command below is a
+# plain `gh pr merge 1` behind one construct, and each must block exactly as the bare
+# command does. They share one parser (.claude/scripts/shell_scan.py) with the git guard.
+cli_command_input() {
+  jq -cn --arg command "$1" '{tool_name:"Bash",tool_input:{command:$command}}'
+}
+expect_cli_bypass_blocked() {
+  expect_rc "CLI guard bypass: $1" .claude/hooks/external-cli-write-guard.sh \
+    "$(cli_command_input "$2")" 2 "raw external mutation"
+}
+expect_cli_allowed() {
+  expect_rc "CLI guard allows: $1" .claude/hooks/external-cli-write-guard.sh \
+    "$(cli_command_input "$2")" 0
+}
+expect_cli_bypass_blocked "bare mutation (control)" 'gh pr merge 1'
+expect_cli_bypass_blocked "for loop body" 'for i in 1; do gh pr merge $i; done'
+expect_cli_bypass_blocked "if body" 'if true; then gh pr merge 1; fi'
+expect_cli_bypass_blocked "brace group" '{ gh pr merge 1; }'
+expect_cli_bypass_blocked "negation" '! gh pr merge 1'
+expect_cli_bypass_blocked "time wrapper" 'time gh pr merge 1'
+expect_cli_bypass_blocked "nohup wrapper" 'nohup gh pr merge 1'
+expect_cli_bypass_blocked "exec wrapper" 'exec gh pr merge 1'
+expect_cli_bypass_blocked "nice wrapper" 'nice gh pr merge 1'
+expect_cli_bypass_blocked "timeout wrapper" 'timeout 5 gh pr merge 1'
+expect_cli_bypass_blocked "xargs wrapper" 'xargs gh pr merge 1'
+expect_cli_bypass_blocked "stdbuf wrapper" 'stdbuf -o0 gh pr merge 1'
+expect_cli_bypass_blocked "setsid wrapper" 'setsid gh pr merge 1'
+expect_cli_bypass_blocked "env with -u" 'env -u FOO gh pr merge 1'
+expect_cli_bypass_blocked "sudo with -u" 'sudo -u me gh pr merge 1'
+expect_cli_bypass_blocked "stacked wrappers" 'sudo env FOO=1 timeout 5 nohup gh pr merge 1'
+expect_cli_bypass_blocked "arithmetic shift before a mutation" $'echo $((1<<N))\ngh pr merge 1'
+expect_cli_bypass_blocked "heredoc text in quotes before a mutation" $'echo "use <<EOF here"\ngh pr merge 1'
+expect_cli_bypass_blocked "mutation in an unquoted heredoc substitution" $'cat <<EOF\n$(gh pr merge 1)\nEOF\n'
+expect_cli_bypass_blocked "bash heredoc with no space" $'bash<<EOF\ngh pr merge 1\nEOF\n'
+expect_cli_bypass_blocked "here-string with no space" "bash<<<'gh pr merge 1'"
+expect_cli_bypass_blocked "pipe into a path-qualified shell" "echo 'gh pr merge 1' | /bin/bash"
+expect_cli_bypass_blocked "pipe into sudo bash" "echo 'gh pr merge 1' | sudo bash"
+expect_cli_bypass_blocked "pipe into env bash" "echo 'gh pr merge 1' | env bash"
+expect_cli_bypass_blocked "group piped into bash" "{ echo 'gh pr merge 1'; } | bash"
+expect_cli_bypass_blocked "mutation in a find -exec" 'find . -name x -exec gh pr merge 1 \;'
+expect_cli_bypass_blocked "mutation after a variable-assigned program" 'G=gh; $G pr merge 1'
+expect_cli_bypass_blocked "mutation in a process substitution" 'diff <(gh pr merge 1) x'
+expect_cli_bypass_blocked "mutation in a trap" "trap 'gh pr merge 1' EXIT"
+expect_rc "CLI guard bypass: program built from a variable" .claude/hooks/external-cli-write-guard.sh \
+  "$(cli_command_input 'X=$(printf g; printf h); $X pr merge 1')" 2 "unrecognized external CLI"
+expect_rc "CLI guard bypass: function forwards a whole command" .claude/hooks/external-cli-write-guard.sh \
+  "$(cli_command_input 'r() { "$@"; }; r gh pr merge 1')" 2 "unrecognized external CLI"
+expect_cli_allowed "a helper function called with a builtin-looking first argument" \
+  'rec() { echo "$@"; }; rec source x'
+expect_cli_allowed "a quoted literal that only mentions the command" 'echo "gh pr merge 1"'
+expect_cli_allowed "a quoted heredoc body that only mentions the command" $'cat <<\'EOF\'\ngh pr merge 1\nEOF\n'
+expect_cli_allowed "an arithmetic shift" 'echo $((1<<2))'
+expect_cli_allowed "a read behind a wrapper" 'timeout 5 gh pr view 1'
+expect_cli_allowed "a read in a loop" 'for i in 1 2; do gh pr view $i; done'
 
 jira_transition_tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
 jira_transition=$(jq -cn --arg tool "$jira_transition_tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
