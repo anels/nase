@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,18 @@ def load_script(name: str, path: Path, error: type[Exception] = ImportError) -> 
     if spec is None or spec.loader is None:
         raise error(f"cannot load helper: {path.name}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Python before 3.14 reads `sys.modules[cls.__module__]` while building a dataclass, so
+    # the module must be registered before its body runs.
+    previous = sys.modules.get(name)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        if previous is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+        raise
     return module
 
 
