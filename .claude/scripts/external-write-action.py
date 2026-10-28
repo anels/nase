@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import nase_git
 import shell_scan
 from nase_fs import sha256_bytes, sha256_file
+from nase_json import canonical_bytes
+from nase_time import utc_now_iso
 
 TOKEN_TTL_SECONDS = 300
 # Deliberately generous: one `terraform apply` or `az deployment create` can
@@ -75,23 +77,47 @@ AZURE_SAFE_READ_GROUPS = {
     "account",
     "acr",
     "ad",
+    "advisor",
     "aks",
+    "apim",
+    "appconfig",
+    "backup",
     "cloud",
+    "cosmosdb",
     "deployment",
     "devops",
+    "disk",
+    "dns",
+    "eventhubs",
     "extension",
     "functionapp",
     "graph",
     "group",
+    "image",
+    "keyvault",
+    "lock",
     "monitor",
+    "mysql",
     "network",
     "pipelines",
+    "policy",
+    "postgres",
+    "privatedns",
+    "provider",
+    "redis",
     "repos",
     "resource",
     "role",
+    "servicebus",
+    "snapshot",
+    "sql",
     "storage",
+    "tag",
+    "vm",
+    "vmss",
     "webapp",
 }
+AZURE_NO_COMMAND_FLAGS = AZURE_GLOBAL_FLAGS | {"--version"}
 AZURE_SENSITIVE_READ_RE = re.compile(
     r"(?i)(?:^|[\s/_.=?&-])(?:"
     r"app[-_]?settings|connection[-_]?strings?|credentials?|get-access-token|keys|listkeys|"
@@ -144,6 +170,65 @@ TARGET_SELECTOR_ENV_VARS = {
     "terraform": ("TF_CLI_CONFIG_FILE", "TF_DATA_DIR"),
 }
 PAYLOAD_FILE_FLAGS = {"--body-file", "--input", "--file"}
+KUBECTL_MUTATING_VERBS = {
+    "annotate",
+    "apply",
+    "cordon",
+    "create",
+    "delete",
+    "drain",
+    "edit",
+    "label",
+    "patch",
+    "replace",
+    "scale",
+    "taint",
+    "uncordon",
+}
+KUBECTL_GLOBAL_VALUE_OPTIONS = {
+    "--as",
+    "--as-group",
+    "--as-uid",
+    "--cache-dir",
+    "--certificate-authority",
+    "--client-certificate",
+    "--client-key",
+    "--cluster",
+    "--context",
+    "--kubeconfig",
+    "--namespace",
+    "--password",
+    "--profile",
+    "--profile-output",
+    "--proxy-url",
+    "--request-timeout",
+    "--server",
+    "--tls-server-name",
+    "--token",
+    "--user",
+    "--username",
+    "--v",
+    "-n",
+    "-s",
+    "-v",
+}
+KUBECTL_GLOBAL_FLAGS = {
+    "--disable-compression",
+    "--help",
+    "--insecure-skip-tls-verify",
+    "--match-server-version",
+    "--warnings-as-errors",
+    "-h",
+}
+# `terraform init` only touches the local working directory unless it moves state
+# between backends, which writes the remote state.
+TERRAFORM_STATE_MOVING_INIT_FLAGS = {"force-copy", "migrate-state"}
+TERRAFORM_HELP_FLAGS = {"-help", "-version", "--help", "--version"}
+PYTHON_VALUE_OPTIONS = {"-W", "-X", "--check-hash-based-pycs"}
+CONFLUENCE_PUBLISH_SCRIPT = "confluence-publish.py"
+# `attach` uploads or overwrites attachment bytes on any page with the stored Atlassian
+# token. The other subcommands only read and write local files or the local ledger.
+CONFLUENCE_WRITE_SUBCOMMANDS = {"attach"}
 GUARDED_EXECUTABLES = ("gh", "az", "kubectl", "terraform")
 # A path prefix still names the same binary, so `/usr/bin/gh` counts; a longer word that
 # merely starts with one does not, so `github`, `azure`, and `terraform-docs` do not.
@@ -229,21 +314,80 @@ def azure_datafactory_read_only(command_path: list[str]) -> bool:
     )
 
 
+def terraform_command(words: list[str]) -> list[str]:
+    """Return the words from the Terraform subcommand on, or [] when there is none."""
+    for index, word in enumerate(words):
+        if not word.startswith("-"):
+            return words[index:]
+    return []
+
+
 def terraform_subcommand(words: list[str]) -> str | None:
     """Return the Terraform subcommand after global options such as -chdir."""
-    return next((word for word in words if not word.startswith("-")), None)
+    return next(iter(terraform_command(words)), None)
 
 
-def canonical_json(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+def terraform_flag_names(words: list[str]) -> set[str]:
+    """Names of the flags in `words`; Go accepts one or two dashes and `=value`."""
+    return {
+        word.lstrip("-").split("=", 1)[0] for word in words if word.startswith("-")
+    }
+
+
+def kubectl_command(words: list[str]) -> list[str] | None:
+    """Return the words from the kubectl verb on, skipping global options.
+
+    `kubectl -n prod get pods` and `kubectl --context=prod delete pod x` carry the
+    verb after the target flags. Returns None for a global option this guard does not
+    know, because the next word could then be that option's value and not the verb;
+    callers fail closed on None rather than guess.
+    """
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if not word.startswith("-"):
+            return words[index:]
+        name = word.split("=", 1)[0]
+        if name in KUBECTL_GLOBAL_VALUE_OPTIONS:
+            index += 1 if "=" in word else 2
+        elif name in KUBECTL_GLOBAL_FLAGS or re.fullmatch(r"-[nsv].+", word):
+            index += 1
+        else:
+            return None
+    return []
+
+
+def confluence_publish_subcommand(argv: list[str]) -> str | None:
+    """Return the `confluence-publish.py` subcommand this argv runs, or None."""
+    if not argv:
+        return None
+    executable = Path(argv[0]).name.lower()
+    if executable == CONFLUENCE_PUBLISH_SCRIPT:
+        rest = argv[1:]
+    elif re.fullmatch(r"python[0-9.]*", executable):
+        # The script is the first word that is not an interpreter option, so the
+        # helper's own `prepare ... -- python3 confluence-publish.py attach` command,
+        # which only names the script as data, is not read as running it.
+        script = None
+        skip_value = False
+        for index, word in enumerate(argv[1:], 1):
+            if skip_value:
+                skip_value = False
+            elif word in PYTHON_VALUE_OPTIONS:
+                skip_value = True
+            elif not word.startswith("-"):
+                script = index
+                break
+        if script is None or Path(argv[script]).name.lower() != CONFLUENCE_PUBLISH_SCRIPT:
+            return None
+        rest = argv[script + 1 :]
+    else:
+        return None
+    return next((word.lower() for word in rest if not word.startswith("-")), None)
 
 
 def sha256(value: Any) -> str:
-    return sha256_bytes(canonical_json(value))
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return sha256_bytes(canonical_bytes(value, ensure_ascii=True))
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -322,36 +466,31 @@ def mutation_system(argv: list[str]) -> str | None:
         return None
 
     if executable == "kubectl":
-        if words and words[0] in {
-            "annotate",
-            "apply",
-            "cordon",
-            "create",
-            "delete",
-            "drain",
-            "edit",
-            "label",
-            "patch",
-            "replace",
-            "scale",
-            "taint",
-            "uncordon",
-        }:
+        command = kubectl_command(words) or []
+        if command and command[0] in KUBECTL_MUTATING_VERBS:
             return "kubernetes"
         if (
-            len(words) >= 2
-            and words[0] == "rollout"
-            and words[1] in {"pause", "restart", "resume", "undo"}
+            len(command) >= 2
+            and command[0] == "rollout"
+            and command[1] in {"pause", "restart", "resume", "undo"}
         ):
             return "kubernetes"
         return None
 
-    if executable == "terraform" and terraform_subcommand(words) in {
-        "apply",
-        "destroy",
-        "import",
-    }:
-        return "terraform"
+    if executable == "terraform":
+        command = terraform_command(words)
+        if command and command[0] in {"apply", "destroy", "import"}:
+            return "terraform"
+        if (
+            command
+            and command[0] == "init"
+            and terraform_flag_names(command[1:]) & TERRAFORM_STATE_MOVING_INIT_FLAGS
+        ):
+            return "terraform"
+        return None
+
+    if confluence_publish_subcommand(argv) in CONFLUENCE_WRITE_SUBCOMMANDS:
+        return "confluence"
 
     return None
 
@@ -391,34 +530,42 @@ def expand_short_cluster(arg: str) -> tuple[list[str], bool, bool]:
     return tokens, True, False
 
 
-def expand_gh_api_args(args: list[str]) -> tuple[list[str], bool]:
+def expand_gh_api_tokens(args: list[str]) -> tuple[list[tuple[int, str]], bool]:
     """Split clustered short flags in `gh api` arguments, as gh's flag parser does.
 
     `-iXDELETE` is `-i -X DELETE` and `-ifbody=x` is `-i -f body=x`. A flag that
     takes a value consumes the rest of its cluster, or the next argument when the
-    cluster ends there. Returns the expanded arguments and False when a cluster
-    holds a flag this guard cannot interpret, so callers can fail closed.
+    cluster ends there. Each token comes back with the index of the argument it came
+    from. Returns False when a cluster holds a flag this guard cannot interpret, so
+    callers can fail closed on it.
     """
-    expanded: list[str] = []
+    expanded: list[tuple[int, str]] = []
     understood = True
     skip_value = False
     for index, arg in enumerate(args):
         if skip_value:
-            expanded.append(arg)
+            expanded.append((index, arg))
             skip_value = False
         elif arg == "--":
-            expanded.extend(args[index:])
+            expanded.extend(
+                (index + offset, rest) for offset, rest in enumerate(args[index:])
+            )
             break
         elif arg in GH_API_VALUE_LONG_FLAGS:
-            expanded.append(arg)
+            expanded.append((index, arg))
             skip_value = True
         elif re.fullmatch(r"-[^-=].+", arg):
             tokens, ok, skip_value = expand_short_cluster(arg)
-            expanded.extend(tokens)
+            expanded.extend((index, token) for token in tokens)
             understood = understood and ok
         else:
-            expanded.append(arg)
+            expanded.append((index, arg))
     return expanded, understood
+
+
+def expand_gh_api_args(args: list[str]) -> tuple[list[str], bool]:
+    tokens, understood = expand_gh_api_tokens(args)
+    return [token for _, token in tokens], understood
 
 
 def option_values(argv: list[str], *names: str) -> list[str]:
@@ -477,6 +624,33 @@ def resolve_payload_path(root: Path, raw_path: str) -> Path:
     return path.resolve()
 
 
+def reject_symlinked_path(root: Path, raw_path: str) -> None:
+    """Refuse a payload path that reaches its file through a symlink.
+
+    The manifest stores the resolved real path, but the CLI later opens `raw_path`
+    itself, so a link retargeted after approval would feed it different bytes than the
+    ones hashed. The file may not be a link at all, and no directory above it may be a
+    link unless the root user owns it: that is a system alias such as macOS `/var`
+    and `/tmp`, which the approving user cannot repoint. `verify_payload_files` closes
+    the remaining gap by re-resolving the argument at execute time.
+    """
+    path = Path(raw_path)
+    current = Path(path.anchor) if path.is_absolute() else root
+    parts = path.parts[1:] if path.is_absolute() else path.parts
+    for position, part in enumerate(parts):
+        if part == "..":
+            current = current.parent
+            continue
+        candidate = current / part
+        if candidate.is_symlink():
+            if position == len(parts) - 1 or candidate.lstat().st_uid != 0:
+                raise ActionError(
+                    f"payload path must not be or pass through a symlink: {raw_path}"
+                )
+            candidate = candidate.resolve()
+        current = candidate
+
+
 def positional_arguments(
     argv: list[str],
     start: int,
@@ -499,13 +673,113 @@ def positional_arguments(
     return found
 
 
+def payload_scan_tokens(argv: list[str]) -> list[tuple[int, str]]:
+    """The words a CLI's flag parser sees after the program name, with their argv index."""
+    if argv[:2] and Path(argv[0]).name.lower() == "gh" and argv[1:2] == ["api"]:
+        tokens, _ = expand_gh_api_tokens(argv[2:])
+        return [(index + 2, token) for index, token in tokens]
+    return list(enumerate(argv))[1:]
+
+
+def implicit_file_candidates(value: str) -> list[str]:
+    """Strings a token could name a file by: itself, `--flag=PATH`, `key=@PATH`, `-fPATH`."""
+    raw = [value]
+    _, delimiter, tail = value.partition("=")
+    if delimiter and tail:
+        raw.extend([tail, tail.rsplit("=", 1)[-1]])
+    if re.fullmatch(r"-[A-Za-z].+", value):
+        raw.append(value[2:].removeprefix("="))
+    found: list[str] = []
+    for item in raw:
+        candidate = item.removeprefix("@")
+        if candidate and candidate != "-" and candidate not in found:
+            found.append(candidate)
+    return found
+
+
+def attach_page_index(argv: list[str]) -> int:
+    """The page `confluence-publish.py attach` works on; the script defaults to 0.
+
+    argparse accepts a unique prefix such as `--page-in` and keeps the last value
+    of a repeated flag, so this reads the flag the same way.
+    """
+    page = 0
+    for position, word in enumerate(argv):
+        name, equals, value = word.partition("=")
+        if len(name) < len("--page-in") or not "--page-index".startswith(name):
+            continue
+        if not equals:
+            if position + 1 >= len(argv):
+                continue
+            value = argv[position + 1]
+        try:
+            page = int(value)
+        except ValueError:
+            page = 0
+    return page
+
+
+def confluence_attach_files(
+    root: Path, bound: list[dict[str, Any]], page_index: int
+) -> list[tuple[int, str, bool]]:
+    """Name the body file and PNGs a bound `attach` plan will upload or rewrite.
+
+    The approver reads the plan, but the bytes that reach Confluence are the PNGs
+    beside it, so they are part of the payload. Only the page `attach` was asked for
+    counts. Its body file must exist, but a PNG that is not on disk is left to
+    `attach`, which reports it as `attach-failed:missing-png`. Each item is
+    `(arg_index, path, required)`.
+    """
+    found: list[tuple[int, str, bool]] = []
+    for entry in bound:
+        path = Path(entry["path"])
+        if path.suffix.lower() != ".json":
+            continue
+        try:
+            plan = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        pages = plan.get("pages") if isinstance(plan, dict) else None
+        if not isinstance(pages, list):
+            continue
+        assets = os.path.join(
+            os.path.dirname(os.path.abspath(root / entry["arg"])), "assets"
+        )
+        for page in pages:
+            if not isinstance(page, dict):
+                raise ActionError(f"attach plan has a malformed page entry: {entry['arg']}")
+            if page.get("index") != page_index:
+                continue
+            if isinstance(page.get("body_file"), str):
+                found.append((entry["arg_index"], page["body_file"], True))
+            found.extend(
+                (entry["arg_index"], os.path.join(assets, visual["png"]), False)
+                for visual in page.get("visuals") or []
+                if isinstance(visual, dict)
+                and isinstance(visual.get("png"), str)
+                and visual.get("status") != "attached"
+            )
+    return found
+
+
 def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, Any]]:
+    """Bind every file the CLI will read into the approved action.
+
+    Two passes feed one list. The flag tables name the files a command is known to
+    read; a named file that is missing is an error, because the CLI would fail on it
+    later. The second pass binds any other word that resolves to an existing regular
+    file, so a file-valued flag missing from the tables cannot slip past unhashed.
+    """
     executable = Path(argv[0]).name.lower() if argv else ""
     file_flags = set(PAYLOAD_FILE_FLAGS)
     if executable == "gh":
         file_flags.update({"--env-file", "--notes-file"})
+        if argv[1:2] in (["pr"], ["issue"], ["release"]):
+            # `-F` is `--body-file` for these, but a field flag for `gh api` and
+            # `gh workflow run`, where `key=@file` is handled below.
+            file_flags.add("-F")
     elif executable == "az":
-        file_flags.update({"--template-file", "--yaml-path"})
+        file_flags.update({"--in-file", "--template-file", "--yaml-path"})
     elif executable == "kubectl":
         file_flags.update(
             {
@@ -517,26 +791,35 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
                 "--from-file",
                 "--key",
                 "--kustomize",
+                "--patch-file",
             }
         )
     elif executable == "terraform":
         file_flags.add("-var-file")
 
+    tokens = payload_scan_tokens(argv)
     candidates: list[tuple[int, str]] = []
-    for index, value in enumerate(argv):
+    for position, (index, value) in enumerate(tokens):
         if value.startswith("@") and len(value) > 1:
             candidates.append((index, value[1:]))
-        if value in file_flags and index + 1 < len(argv):
-            candidate = argv[index + 1]
+        if value in file_flags and position + 1 < len(tokens):
+            value_index, candidate = tokens[position + 1]
             if value == "--from-file":
                 candidate = candidate.rsplit("=", 1)[-1]
-            candidates.append((index + 1, candidate))
+            candidates.append((value_index, candidate))
         option, delimiter, option_value_text = value.partition("=")
         if delimiter and (option in file_flags or option_value_text.startswith("@")):
             candidate = option_value_text.removeprefix("@")
             if option == "--from-file":
                 candidate = candidate.rsplit("=", 1)[-1]
             candidates.append((index, candidate))
+        elif (
+            len(value) > 2
+            and value[0] == "-"
+            and value[1] != "-"
+            and value[:2] in file_flags
+        ):
+            candidates.append((index, value[2:]))
 
     if executable == "gh" and argv[1:3] == ["gist", "create"]:
         candidates.extend(
@@ -594,19 +877,52 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
 
     files: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
-    for index, value in candidates:
-        key = (index, value)
-        if key in seen:
-            continue
-        seen.add(key)
+
+    def bind(index: int, value: str, required: bool) -> None:
+        if (index, value) in seen:
+            return
+        seen.add((index, value))
         if value == "-":
-            raise ActionError("stdin payloads cannot be bound to an approved action")
-        path = resolve_payload_path(root, value)
-        if not path.is_file():
-            raise ActionError(f"payload file does not exist: {value}")
-        files.append(
-            {"arg_index": index, "path": str(path), "sha256": sha256_file(path)}
-        )
+            if required:
+                raise ActionError("stdin payloads cannot be bound to an approved action")
+            return
+        try:
+            path = resolve_payload_path(root, value)
+            is_file = path.is_file()
+        except (OSError, ValueError):
+            is_file = False
+        if not is_file:
+            if required:
+                raise ActionError(f"payload file does not exist: {value}")
+            return
+        if required:
+            reject_symlinked_path(root, value)
+        try:
+            digest = sha256_file(path)
+        except OSError as exc:
+            if required:
+                raise ActionError(f"cannot read payload file {value}: {exc}") from exc
+            return
+        entry: dict[str, Any] = {
+            "arg_index": index,
+            "arg": value,
+            "path": str(path),
+            "sha256": digest,
+        }
+        if not required:
+            entry["implicit"] = True
+        files.append(entry)
+
+    for index, value in candidates:
+        bind(index, value, True)
+    for index, value in tokens:
+        for candidate in implicit_file_candidates(value):
+            bind(index, candidate, False)
+    if system == "confluence":
+        for index, value, required in confluence_attach_files(
+            root, list(files), attach_page_index(argv)
+        ):
+            bind(index, value, required)
     return files
 
 
@@ -947,6 +1263,15 @@ def action_payload(
 ) -> dict[str, Any]:
     actual_system = mutation_system(argv)
     if actual_system is None:
+        if (
+            argv
+            and Path(argv[0]).name.lower() == "kubectl"
+            and kubectl_command([word.lower() for word in argv[1:]]) is None
+        ):
+            raise ActionError(
+                "kubectl has a global option this guard does not recognize; "
+                "drop it or pass it as an environment setting, then prepare again"
+            )
         raise ActionError("command is not an allowlisted external mutation")
     if system != actual_system:
         raise ActionError(f"system must be {actual_system} for this command")
@@ -1139,9 +1464,22 @@ def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
         path = Path(entry["path"])
         if not path.is_absolute():
             path = resolve_payload_path(root, entry["path"])
+        argument = entry.get("arg")
+        if not isinstance(argument, str):
+            raise ActionError(
+                "manifest payload file entry has no argument to re-resolve; prepare it again"
+            )
+        try:
+            current = resolve_payload_path(root, argument)
+        except (OSError, ValueError) as exc:
+            raise ActionError(f"payload path cannot be resolved: {argument}") from exc
+        if current != path:
+            raise ActionError(
+                f"payload path now resolves elsewhere (symlink retargeted?): {argument}"
+            )
         if not path.is_file() or sha256_file(path) != entry.get("sha256"):
             raise ActionError(f"payload file changed after approval: {entry['path']}")
-        if surface:
+        if surface and not entry.get("implicit"):
             findings.extend(prose_gate_findings(root, path, surface))
     if findings:
         detail = "\n  ".join(findings)
@@ -1156,7 +1494,7 @@ def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
 def write_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f"{path.suffix}.tmp-{uuid.uuid4().hex}")
-    temporary.write_bytes(canonical_json(value) + b"\n")
+    temporary.write_bytes(canonical_bytes(value, ensure_ascii=True, trailing_newline=True))
     os.chmod(temporary, 0o600)
     temporary.replace(path)
 
@@ -1218,6 +1556,35 @@ def command_argvs(result: shell_scan.ScanResult):
         yield [UNRECOGNIZED_SHELL_COMMAND]
 
 
+def dynamic_args_are_reads(result: shell_scan.ScanResult) -> bool:
+    """True when the only dynamic parts are arguments of a `gh` read with a fixed verb.
+
+    `gh pr view $(git branch --show-current)` cannot become a mutation through its
+    argument, because the noun and verb are literal and `view` has no write flag. A
+    substitution in the executable or verb position, anywhere inside a nested script,
+    or around any other guarded CLI keeps failing closed: `gh api` and `kubectl get`
+    arguments can carry flags or resource names the static checks exist to read.
+    """
+    if result.unparseable or result.top_opaque - {"substitution"}:
+        return False
+    for invocation in result.invocations:
+        argv = invocation.argv
+        if not argv or Path(argv[0]).name.lower() not in GUARDED_EXECUTABLES:
+            continue
+        if "subst" in invocation.via or invocation.env_dynamic:
+            return False
+        if invocation.dynamic and not (
+            Path(argv[0]).name.lower() == "gh"
+            and len(argv) >= 3
+            and not any(invocation.dyn[:3])
+            and argv[1].lower() not in {"api", "auth"}
+            and mutation_system(argv) is None
+            and known_safe_external_command(argv)
+        ):
+            return False
+    return True
+
+
 def command_has_mutation(argvs: list[list[str]]) -> bool:
     return any(mutation_system(argv) for argv in argvs)
 
@@ -1277,7 +1644,7 @@ def known_safe_external_command(argv: list[str]) -> bool:
         if not words:
             return True
         if not command_path:
-            return all(word in AZURE_GLOBAL_FLAGS for word in words)
+            return all(word in AZURE_NO_COMMAND_FLAGS for word in words)
         if command_path[0] == "datafactory" and not azure_datafactory_read_only(
             command_path
         ):
@@ -1298,27 +1665,31 @@ def known_safe_external_command(argv: list[str]) -> bool:
             word in AZURE_READ_VERBS for word in command_path[1:]
         )
     if executable == "kubectl":
+        command = kubectl_command(words)
+        if command is None or not words:
+            return False
+        if not command:
+            return True
         if (
-            not words
-            or any(
+            any(
                 re.fullmatch(r"secrets?(?:\.[^./,]+)*\.?(?:/.*)?", resource)
-                for word in words[1:]
+                for word in words
                 for resource in word.split(",")
             )
-            or any(word == "--raw" or word.startswith("--raw=") for word in words[1:])
+            or any(word == "--raw" or word.startswith("--raw=") for word in words)
             or (
-                words[0] == "get"
+                command[0] == "get"
                 and any(
                     word in {"-f", "-k", "--filename", "--kustomize"}
                     or word.startswith(("--filename=", "--kustomize="))
-                    for word in words[1:]
+                    for word in words
                 )
             )
         ):
             return False
-        if words[0] == "config":
-            return len(words) >= 2 and words[1] in {"current-context", "get-contexts"}
-        return words[0] in {
+        if command[0] == "config":
+            return len(command) >= 2 and command[1] in {"current-context", "get-contexts"}
+        return command[0] in {
             "api-resources",
             "cluster-info",
             "describe",
@@ -1328,14 +1699,26 @@ def known_safe_external_command(argv: list[str]) -> bool:
             "version",
         }
     if executable == "terraform":
-        return terraform_subcommand(words) in {
-            "fmt",
-            "graph",
-            "plan",
-            "providers",
-            "validate",
-            "version",
-        }
+        command = terraform_command(words)
+        if not command:
+            return bool(words) and all(word in TERRAFORM_HELP_FLAGS for word in words)
+        subcommand, options = command[0], command[1:]
+        if subcommand in {"fmt", "graph", "plan", "providers", "validate", "version"}:
+            return True
+        if subcommand == "init":
+            return not terraform_flag_names(options) & TERRAFORM_STATE_MOVING_INIT_FLAGS
+        if subcommand == "output":
+            # `-json`, `-raw` and asking for one output by name print a sensitive
+            # value in clear text; a bare `terraform output` redacts it.
+            return not (
+                terraform_flag_names(options) & {"json", "raw"}
+                or any(not word.startswith("-") for word in options)
+            )
+        if subcommand == "state":
+            return options[:1] == ["list"]
+        if subcommand == "workspace":
+            return options[:1] in (["list"], ["show"])
+        return False
     return True
 
 
@@ -1367,7 +1750,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         action_dir
         / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex}.json"
     )
-    manifest = {"version": MANIFEST_VERSION, "created_at": utc_now(), "action": action}
+    manifest = {"version": MANIFEST_VERSION, "created_at": utc_now_iso(microseconds=False), "action": action}
     manifest["action_sha256"] = sha256(action)
     write_json(path, manifest)
     print(json.dumps({"manifest": str(path), "action": action}, sort_keys=True))
@@ -1389,7 +1772,7 @@ def cmd_authorize(args: argparse.Namespace) -> int:
     token = {
         "version": MANIFEST_VERSION,
         "action_sha256": manifest["action_sha256"],
-        "created_at": utc_now(),
+        "created_at": utc_now_iso(microseconds=False),
         "ttl_seconds": args.ttl_seconds,
     }
     write_json(path, token)
@@ -1502,7 +1885,7 @@ def cmd_guard(args: argparse.Namespace) -> int:
     reaches_guarded = mentions_guarded_executable(result.visible_text) or (
         result.unparseable and bool(SHELL_WORD_RE.search(result.visible_text))
     )
-    if unbindable_target and reaches_guarded:
+    if unbindable_target and reaches_guarded and not dynamic_args_are_reads(result):
         print(
             "BLOCKED: could not safely parse this command, and it names a guarded CLI "
             f"({', '.join(GUARDED_EXECUTABLES)}) or a shell.\n"
@@ -1540,7 +1923,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument(
         "--system",
         required=True,
-        choices=("github", "azure", "kubernetes", "terraform"),
+        choices=("github", "azure", "kubernetes", "terraform", "confluence"),
     )
     prepare.add_argument("--summary", required=True)
     prepare.add_argument("--github-owner")

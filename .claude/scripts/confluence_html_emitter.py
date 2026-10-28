@@ -20,6 +20,7 @@ from confluence_markup import (
     TAG_ALIAS,
     UNWRAP,
     UNWRAP_INLINE,
+    UNWRAP_TIGHT,
     VOID,
     Block,
     NestingViolationError,
@@ -104,7 +105,11 @@ class HtmlPlusEmitter(HTMLParser):
         on CSS gaps for separation, so `<span>1,643,173</span><span>-></span>`
         would weld into one run. Record that a separator may be needed and let
         the next text decide - emitting the space eagerly doubles it whenever
-        the following run already starts with whitespace, which corrupts <pre>."""
+        the following run already starts with whitespace, which corrupts <pre>.
+
+        Inside <pre> the source text is the layout, so no gap is ever recorded."""
+        if "pre" in self.stack:
+            return
         self.gap_pending = True
 
     def flush_gap(self) -> None:
@@ -185,7 +190,8 @@ class HtmlPlusEmitter(HTMLParser):
         if tag not in UNWRAP_INLINE:
             self.close_auto_p()
         self.stack.append("~unwrap")
-        self.emit_gap()
+        if tag not in UNWRAP_TIGHT:
+            self.emit_gap()
 
     # ---- nesting detection ------------------------------------------------
     def check_nesting(self, tag: str) -> None:
@@ -461,7 +467,8 @@ class HtmlPlusEmitter(HTMLParser):
                     break
             if not dropped_link and tag not in UNWRAP_INLINE:
                 self.close_auto_p()
-            self.emit_gap()
+            if tag not in UNWRAP_TIGHT:
+                self.emit_gap()
             return
         if (
             tag == "tr"
@@ -488,6 +495,11 @@ class HtmlPlusEmitter(HTMLParser):
             self.title_from_head += data
             return
         if self.drop_depth:
+            return
+        if "pre" in self.stack:
+            # Whitespace is content here: collapsing a whitespace-only node would
+            # turn the indentation between two highlighted spans into one space.
+            self.emit(escape(data))
             return
         if not data.strip():
             if self.last_char and not self.last_char.isspace():

@@ -23,7 +23,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import fsync_dir, sha256_file
+from nase_fs import fsync_dir, sha256_bytes, sha256_file
+from nase_json import canonical_bytes
 from workspace_lock import LockError, held
 
 VERSION = 1
@@ -266,14 +267,12 @@ def validated_members(
             f"archive declares {declared_bytes} uncompressed bytes, above the "
             f"{MAX_RESTORE_UNCOMPRESSED_BYTES} limit"
         )
-    for path, kind in types.items():
+    for path in types:
         parts = PurePosixPath(path).parts
         for index in range(1, len(parts)):
             parent = str(PurePosixPath(*parts[:index]))
             if types.get(parent) == "file":
                 raise RestoreError(f"archive has file-directory conflict at {parent!r}")
-        if kind == "file" and any(other.startswith(path + "/") for other in types):
-            raise RestoreError(f"archive has file-directory conflict at {path!r}")
     return shape, sorted(output, key=lambda item: str(item["path"]))
 
 
@@ -319,8 +318,7 @@ def inventory(path: Path) -> dict[str, Any]:
             "exists": True,
             "entries": sorted(entries, key=lambda item: str(item["path"])),
         }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    payload["inventory_hash"] = hashlib.sha256(encoded).hexdigest()
+    payload["inventory_hash"] = sha256_bytes(canonical_bytes(payload, ensure_ascii=True))
     payload["file_count"] = sum(item["type"] == "file" for item in payload["entries"])
     return payload
 
@@ -495,6 +493,11 @@ def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -
             mode = item.get("mode")
             if isinstance(mode, int) and mode:
                 destination.chmod(mode)
+            # Zip stores local wall-clock time. Keep it so month-based effort
+            # signals do not read every restored file as modified at restore time.
+            with contextlib.suppress(ValueError, OverflowError, OSError):
+                stamp = time.mktime((*info.date_time, 0, 0, -1))
+                os.utime(destination, (stamp, stamp))
 
 
 def copy_verified_archive(

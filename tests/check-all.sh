@@ -138,6 +138,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-fsd-review-gate.sh
   tests/scripts/test-pr-review-eval.sh
   tests/scripts/test-skill-eval-run.sh
+  tests/scripts/test-nase-json.sh
   tests/scripts/test-voice-profile-routing.sh
   tests/scripts/test-shared-workflow-extraction.sh
   tests/scripts/test-command-skill-size-budget.sh
@@ -146,6 +147,7 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-skill-overlap.sh
   tests/scripts/test-canonical-pointers.sh
   tests/scripts/test-boundary-terms.sh
+  tests/scripts/test-shared-doc-refs.sh
 )
 
 section() {
@@ -409,6 +411,10 @@ run_python_floor() {
 run_json() {
   section "JSON"
   run_gate "settings.json parses" bash -c 'python3 -m json.tool .claude/settings.json >/dev/null'
+  run_gate ".mcp.json parses when present" bash -c '
+    f=.mcp.json
+    [ ! -f "$f" ] || python3 -m json.tool "$f" >/dev/null
+  '
   # settings.local.json is git-ignored and hand-edited; a syntax error there can
   # silently disable or change hook behavior without touching a tracked file.
   run_gate "settings.local.json parses when present" bash -c '
@@ -417,14 +423,33 @@ run_json() {
   '
 }
 
-run_shellcheck_scripts() {
-  section "shellcheck (all shell)"
+# Shared by the full gate and the `--changed` gate so the flags and the SKIP line cannot drift.
+shellcheck_files() {
+  local label="$1"
+  shift
   if [[ -n "$SHELLCHECK_BIN" ]]; then
-    run_gate "shellcheck ${#SHELL_FILES[@]} shell file(s)" \
-      "$SHELLCHECK_BIN" -S warning "${SHELL_FILES[@]}"
+    run_gate "shellcheck $# $label shell file(s)" "$SHELLCHECK_BIN" -S warning "$@"
   else
     printf '%s\n' "$SHELLCHECK_SKIP"
   fi
+}
+
+run_shellcheck_scripts() {
+  section "shellcheck (all shell)"
+  shellcheck_files all "${SHELL_FILES[@]}"
+}
+
+# `--changed` runs run_fast, which skips the whole-tree shellcheck, so a changed shell file
+# was never linted until CI. Lint just those, drawn from SHELL_FILES so the file set matches
+# the full gate exactly.
+run_shellcheck_changed() {
+  local changed="$1" f changed_sh=()
+  while IFS= read -r f; do
+    changed_sh+=("$f")
+  done < <(printf '%s\n' "${SHELL_FILES[@]}" | grep -xFf <(printf '%s\n' "$changed") || true)
+  [[ "${#changed_sh[@]}" -gt 0 ]] || return 0
+  section "shellcheck (changed shell)"
+  shellcheck_files changed "${changed_sh[@]}"
 }
 
 run_actionlint() {
@@ -651,15 +676,22 @@ run_changed_extras() {
 
   # tests/lib/ for the same reason as the scripts branch below: 3 hook tests source
   # tests/lib/assert.sh.
-  if grep -qE '^(\.claude/hooks/|\.claude/lib/|tests/hooks/|tests/lib/)' <<< "$changed"; then
+  # settings.json is what the hook tests assert wiring and guard registration against.
+  if grep -qE '^(\.claude/hooks/|\.claude/lib/|\.claude/settings\.json$|tests/hooks/|tests/lib/)' <<< "$changed"; then
     run_hook_tests
   fi
   # tests/lib/ is in this list because 18 script tests source tests/lib/assert.sh: editing
   # the shared assertion helper changes what every one of them checks, and without this
   # it triggered no test run at all.
-  if grep -qE '^(\.claude/scripts/|tests/scripts/|tests/lib/|workspace/skills/scripts/|tests/check-all\.sh)' <<< "$changed"; then
+  # Script tests also read the prose and config the scripts consume: command and doc files
+  # (skill-safety-boundaries, terminology-discovery, jev-judge, slack-draft-templates,
+  # trace-role, workspace-quality-scan), roles.yaml (roles-schema), the workflows
+  # (github-actions-hardening), and the `tests/check-*.sh` gates that tests probe directly.
+  # An edit to only those files used to trigger none of them.
+  if grep -qE '^(\.claude/scripts/|\.claude/commands/|\.claude/docs/|\.claude/roles\.yaml$|\.github/workflows/|tests/scripts/|tests/lib/|tests/check-[^/]*\.sh$|workspace/skills/scripts/)' <<< "$changed"; then
     run_script_tests
   fi
+  run_shellcheck_changed "$changed"
   if grep -qE '^\.claude/commands/nase/[^/]+\.md$' <<< "$changed"; then
     run_skill_bash_blocks
   fi
@@ -757,6 +789,11 @@ print_summary() {
     printf '| %s | %s | %s | %s | `%s` |\n' "$section_name" "$gate" "$exit_code" "$duration" "$rerun" >&2
   done
 }
+
+# tests/scripts/test-check-all-routing.sh sources this file for its functions only.
+if [[ -n "${NASE_CHECK_ALL_SOURCE_ONLY:-}" ]]; then
+  return 0
+fi
 
 if [[ "$MODE" == "--list" ]]; then
   list_modes

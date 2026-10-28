@@ -179,7 +179,7 @@ trap cleanup_backup EXIT
 # ---------------------------------------------------------------------------
 COMMIT_DATE=$(date +%Y-%m-%d)
 COMMIT_LOG="$NASE_ROOT/workspace/logs/$COMMIT_DATE.md"
-REPOS=$(grep -v '^[[:space:]]*#' "$LOCAL_PATHS" | grep -v '^[[:space:]]*$' | grep -v '^backup-target=' | cut -d= -f2- || true)
+REPOS=$(nase_local_repo_paths "$LOCAL_PATHS")
 COMMITS=""
 COMMIT_HASHES=""
 if [ -n "$REPOS" ]; then

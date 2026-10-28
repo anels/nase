@@ -91,6 +91,32 @@ for wrapper in 'nohup' 'exec' 'nice' 'nice -n 5' 'timeout 5' 'timeout -s KILL 5'
   check "wrapper: $wrapper" "$wrapper gh pr merge 1" \
     '.invocations | any(.argv[0:4] == ["gh","pr","merge","1"] and .wrappers != [])'
 done
+for wrapper in 'rtk' 'rtk proxy' 'rtk bypass' 'rtk err' 'rtk test' 'rtk summary' 'direnv exec .' \
+  'mise exec --' 'mise exec node@20 --' 'mise x --' 'uv run' 'uv run --with requests' 'uv run --index-strategy first-index' 'uv run -P pkg' 'pnpm exec' \
+  'pnpm -C app exec' 'pnpm dlx' 'op run --' 'op run --env-file=a.env --' 'taskset 1' \
+  'taskset -c 0,1' 'chrt 10' 'chrt -r 10' 'runuser -u bob --' 'chroot /srv' 'systemd-run' \
+  'systemd-run --unit job -p Nice=1'; do
+  check "runner wrapper: $wrapper" "$wrapper gh pr merge 1" \
+    '.invocations | any(.argv[0:4] == ["gh","pr","merge","1"] and .wrappers != [])'
+done
+for runner in 'rtk git status' 'uv run pytest' 'mise exec -- node x.js' 'direnv allow' 'pnpm install'; do
+  check "runner is not a mutation: $runner" "$runner" \
+    '.invocations | all(.argv[0:4] != ["gh","pr","merge","1"])'
+done
+check "rtk forwards git directly" 'rtk git status' \
+  '.invocations | any(.argv == ["git","status"] and .wrappers == ["rtk"])'
+check "non-wrapping direnv stays the program" 'direnv allow' \
+  '.invocations | any(.argv == ["direnv","allow"] and .wrappers == [])'
+check "mise exec -c script is scanned" "mise exec -c 'gh pr merge 1'" \
+  '.invocations | any(.argv[0:4] == ["gh","pr","merge","1"])'
+check "runuser -c script is scanned" "runuser bob -c 'gh pr merge 1'" \
+  '.invocations | any(.argv[0:4] == ["gh","pr","merge","1"])'
+for shell in fish csh tcsh rbash; do
+  check "shell -c: $shell" "$shell -c 'gh pr merge 1'" \
+    '.invocations | any(.argv[0:4] == ["gh","pr","merge","1"])'
+done
+check "fish --command= script is scanned" "fish --command='gh pr merge 1'" \
+  '.invocations | any(.argv[0:4] == ["gh","pr","merge","1"])'
 check "wrapper names are reported" 'timeout 5 nohup gh pr merge 1' \
   '.invocations | any(.argv[0] == "gh" and .wrappers == ["timeout","nohup"])'
 check "xargs adds a dynamic trailing word" 'xargs gh pr merge 1' \

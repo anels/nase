@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import argparse
 import functools
-import importlib.util
-import io
 import json
 import re
 import shutil
@@ -30,6 +28,7 @@ from nase_gh import (
     failure_category,
 )
 from nase_gh import run as nase_gh_run
+from nase_script import load_script, stream_secret_kind
 
 EXIT_OK = 0
 EXIT_BROKEN = 1
@@ -88,24 +87,15 @@ class ValidationError(ValueError):
     """Invalid invocation or unsafe filesystem input."""
 
 
-def load_module(name: str, path: Path) -> Any:
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ValidationError(f"cannot load helper: {path.name}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-SECRET = load_module(
+SECRET = load_script(
     "nase_citation_secret_scan",
     SCRIPT_ROOT / ".claude" / "scripts" / "verify-bundle.py",
+    ValidationError,
 )
 
 
 def secret_kind(data: bytes) -> str | None:
-    hit = SECRET.scan_stream_for_secret(io.BytesIO(data))
-    return str(hit[0]) if hit else None
+    return stream_secret_kind(SECRET, data)
 
 
 def safe_text(value: Any, limit: int = 500) -> str | None:

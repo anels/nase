@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
 from nase_fs import sha256_bytes
+from nase_json import canonical_bytes
 
 ITEM_LIMIT = 64 * 1024
 CONTEXT_LIMIT = 256 * 1024
@@ -257,15 +258,6 @@ def git(
 
 def git_text(repo: Path, *args: str, **kwargs: Any) -> str:
     return git(repo, *args, **kwargs).decode("utf-8", "strict")
-
-
-def canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
 
 
 def safe_display_path(path: str) -> str:

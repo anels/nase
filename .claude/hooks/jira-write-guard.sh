@@ -74,7 +74,8 @@ fi
 
 # addCommentToJiraIssue and addOrEditJiraIssueComment are the same write on two
 # Atlassian MCP tool generations. Both are gated; matching only the older name
-# left comment writes ungated on the current MCP.
+# left comment writes ungated on the current MCP. addGraphContext creates the same
+# issue relations as createIssueLink through the Teamwork Graph, so it is gated too.
 case "$TOOL" in
   *__transitionJiraIssue|\
   *__editJiraIssue|\
@@ -82,7 +83,8 @@ case "$TOOL" in
   *__addCommentToJiraIssue|\
   *__addOrEditJiraIssueComment|\
   *__addWorklogToJiraIssue|\
-  *__createIssueLink)
+  *__createIssueLink|\
+  *__addGraphContext)
     ;;
   *)
     exit 0
@@ -227,7 +229,10 @@ CURRENT_ISSUES=$(printf '%s' "$INPUT" | jq -r '
     .tool_input.inwardIssueKey,
     .tool_input.outwardIssueKey,
     .tool_input.fromIssueKey,
-    .tool_input.toIssueKey
+    .tool_input.toIssueKey,
+    (.tool_input.relationshipType // "" | tostring) as $rel
+    | (if ($rel | startswith("jira-work-item-")) then .tool_input.objectIdentifier else null end),
+    (if ($rel | endswith("-jira-work-item")) then .tool_input.targetObjectIdentifier else null end)
   ]
   | map(select(. != null) | tostring)
   | unique
@@ -414,8 +419,8 @@ fi
 
 # Reverse check (defense in depth): the payload must not name an issue key that
 # the token did not approve, even if its sha happens to match. Batch mode
-# already enforces this; single-shot must too. This also covers createIssueLink,
-# whose payload names both endpoints.
+# already enforces this; single-shot must too. This also covers createIssueLink
+# and addGraphContext, whose payloads name both endpoints.
 if [ -n "$CURRENT_ISSUES" ] && [ -n "$APPROVED_ISSUES_CSV" ]; then
   while IFS= read -r current_issue; do
     [ -z "$current_issue" ] && continue

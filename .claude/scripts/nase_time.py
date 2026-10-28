@@ -61,3 +61,16 @@ def calendar_day(raw: str) -> datetime:
     keep their existing failure handling.
     """
     return datetime.strptime(raw, "%Y-%m-%d").astimezone()
+
+
+def utc_now_iso(*, microseconds: bool = True) -> str:
+    """The current instant as an ISO-8601 UTC string ending in `Z`.
+
+    Evidence and receipt files keep the fraction, which is zero-width on a whole second.
+    Write-action manifests drop it with `microseconds=False` so the stamp is stable to
+    the second.
+    """
+    now = datetime.now(timezone.utc)
+    if not microseconds:
+        now = now.replace(microsecond=0)
+    return now.isoformat().replace("+00:00", "Z")

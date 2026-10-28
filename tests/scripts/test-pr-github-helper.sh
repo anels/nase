@@ -300,8 +300,8 @@ JSON
 JSON
     ;;
   *)
-    cat <<'JSON'
-{"data":{"repository":{"pullRequest":{"headRefName":"feature/pr","baseRefName":"main","headRepository":{"nameWithOwner":"acme/widgets"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"THREAD_PAGE_2"},"nodes":[{"id":"T1","isResolved":false,"path":"src/a.ts","line":2,"comments":{"pageInfo":{"hasNextPage":true,"endCursor":"COMMENT_PAGE_2"},"nodes":[{"databaseId":100,"body":"fix this long reviewer claim","author":{"login":"claude"},"createdAt":"2026-06-01T00:00:00Z"}]}}]}}}}}
+    cat <<'JSON' | sed "s/__HEAD_OID__/${PR_HEAD_SHA:-missing}/"
+{"data":{"repository":{"pullRequest":{"headRefName":"feature/pr","headRefOid":"__HEAD_OID__","baseRefName":"main","headRepository":{"nameWithOwner":"acme/widgets"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"THREAD_PAGE_2"},"nodes":[{"id":"T1","isResolved":false,"path":"src/a.ts","line":2,"comments":{"pageInfo":{"hasNextPage":true,"endCursor":"COMMENT_PAGE_2"},"nodes":[{"databaseId":100,"body":"fix this long reviewer claim","author":{"login":"claude"},"createdAt":"2026-06-01T00:00:00Z"}]}}]}}}}}
 JSON
     ;;
 esac
@@ -466,7 +466,11 @@ import json
 import sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 assert [thread["id"] for thread in data["threads"]] == ["T1", "T3"]
+assert data["headMatchesPr"] is True, data
+assert data["headRefOid"], data
 t1 = data["threads"][0]
+assert t1["headVerified"] is True, t1
+assert "verified" not in t1["headExcerpt"], t1["headExcerpt"]
 assert t1["headExcerpt"]["available"] is True
 assert 'return "head"' in t1["headExcerpt"]["content"]
 assert t1["baseExcerpt"]["available"] is True
@@ -498,6 +502,25 @@ assert any(item["path"] == "src/a.ts" for item in data["adjacentSameFileOverlap"
 # Merge readiness reads all three feedback surfaces, not threads alone.
 assert [item["id"] for item in data["reviewSubmissions"]] == [601]
 assert data["issueComments"][0]["body"] == "Quality Gate failed"
+PY
+
+# A local origin/{head} from before the PR's last push still resolves, so headRefOk passes
+# while every excerpt describes code the PR no longer has. The live headRefOid is the only
+# thing that can tell the two apart.
+live_head_sha=$(git -C "$repo" commit-tree -p "$head_sha" -m "pushed after the last fetch" "$head_sha^{tree}")
+stale_dossiers="$TMPDIR_TEST/dossiers-stale.json"
+PR_HEAD_SHA="$live_head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" comment-dossiers "acme/widgets#42" --local-repo "$repo" --unresolved-only --context-lines 1 --max-body-chars 16 > "$stale_dossiers"
+assert_cmd "comment-dossiers marks excerpts unverified when the local head ref is stale" "$PYTHON_BIN" - "$stale_dossiers" "$live_head_sha" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data["headRefOid"] == sys.argv[2], data["headRefOid"]
+assert data["headMatchesPr"] is False, data["headMatchesPr"]
+assert data["guards"]["headRefOk"] is True, "the stale ref still resolves; that is the trap"
+t1 = data["threads"][0]
+assert t1["headVerified"] is False, t1
+assert t1["headExcerpt"]["available"] is True
+assert t1["headExcerpt"]["verified"] is False, t1["headExcerpt"]
 PY
 
 # --- same-repo guards ---------------------------------------------------------
@@ -658,8 +681,10 @@ import sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 assert data["refsResolved"] is False, "neither origin ref exists in a bare fresh repo"
 # Without the flag this output is identical to "the PR touched nothing", which is the
-# shape that silently discards a whole review.
-assert all(item["touchedByPr"] is False for item in data["candidates"])
+# shape that silently discards a whole review. With no head ref the diff says nothing, so
+# the verdict is unknown (None), never the False a caller drops silently.
+assert data["headMatchesPr"] is False, data
+assert all(item["touchedByPr"] is None for item in data["candidates"]), data["candidates"]
 PYEOF
 
 # PR scope is measured from the merge-base. With two-dot `base..head`, a commit that
@@ -774,6 +799,27 @@ assert gone["inBase"] is False and gone["inHead"] is False
 assert gone["touchedByPr"] is False
 assert gone["headExcerpt"] == {"available": False}
 PY
+
+scope_stale="$TMPDIR_TEST/finding-scope-stale.json"
+PR_HEAD_SHA="$live_head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" \
+  finding-scope "acme/widgets#42" --local-repo "$repo" --candidates "$scope_candidates" \
+  --context-lines 1 > "$scope_stale"
+assert_cmd "finding-scope reports unknown, not untouched, when the head ref is stale" \
+  "$PYTHON_BIN" - "$scope_stale" "$live_head_sha" "$scope_out" <<'PYEOF'
+import json
+import sys
+
+stale = json.load(open(sys.argv[1], encoding="utf-8"))
+fresh = json.load(open(sys.argv[3], encoding="utf-8"))
+assert fresh["headMatchesPr"] is True, fresh
+assert all(item["touchedByPr"] is not None for item in fresh["candidates"])
+assert stale["headRefOid"] == sys.argv[2], stale
+assert stale["headMatchesPr"] is False, stale
+assert stale["refsResolved"] is True, "the stale ref resolves; refsResolved cannot catch it"
+by_id = {item["id"]: item for item in stale["candidates"]}
+assert by_id["c1"]["touchedByPr"] is None, by_id["c1"]
+assert by_id["c1"]["headExcerpt"]["verified"] is False, by_id["c1"]["headExcerpt"]
+PYEOF
 
 assert_cmd "review-context issues its independent reads concurrently" \
   "$PYTHON_BIN" - "$SCRIPT" <<'PY'

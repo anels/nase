@@ -389,7 +389,7 @@ def append_sections(
     content = (original + "".join(additions)).encode("utf-8")
 
     def validate(tmp: Path) -> None:
-        written = tmp.read_text(encoding="utf-8")
+        written = tmp.read_bytes().decode("utf-8")
         if any(
             not entry_is_intact(written, value, section_text)
             for value, section_text in entries
@@ -515,7 +515,7 @@ def write_journal(root: Path, kind: str, data: dict[str, object]) -> None:
     ).encode("utf-8")
 
     def validate(tmp: Path) -> None:
-        if json.loads(tmp.read_text(encoding="utf-8")) != data:
+        if json.loads(tmp.read_bytes().decode("utf-8")) != data:
             raise ArchiveError(f"archive journal validation failed: {path}")
         safe_parent(root, path)
 

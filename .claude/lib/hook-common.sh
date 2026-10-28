@@ -42,6 +42,19 @@ nase_require() {
   return 0
 }
 
+# nase_local_repo_paths <file> - print one repo path per line from a .local-paths file.
+# Skips comments, blank lines, backup-target=, and the {Repo}-ai-attribution=on|off
+# switches, which share the KEY=VALUE shape but are not paths. Every reader of repo
+# paths calls this so the filter cannot drift. A missing file prints nothing; always
+# returns 0.
+nase_local_repo_paths() {
+  [ -r "${1:-}" ] || return 0
+  awk -F= '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ || $1 == "backup-target" || $1 ~ /-ai-attribution$/ { next }
+    { sub(/^[^=]*=/, ""); print }
+  ' "$1"
+}
+
 # nase_session_id [stdin_json] - print the session id, or nothing when unknown.
 # Always returns 0, so `SID=$(nase_session_id "$INPUT")` is safe under set -e.
 # Precedence:

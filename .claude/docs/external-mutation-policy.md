@@ -24,7 +24,7 @@ Canonical rule for skills that change state in systems outside the local workspa
 |--------|-----------|
 | **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. A canvas is a write too: `slack_create_canvas` and `slack_update_canvas` publish with no draft path, so `slack-send-guard.sh` blocks both. Put the canvas body in `workspace/tmp/{name}.md`, get explicit approval, and have the user create it. |
 | **Jira** | Comments, issue creation, and status transitions are mutations - they notify watchers and may auto-assign. Gate each one, except a transition whose class the autonomy level pre-authorizes (below). |
-| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, get explicit approval, only then call the tool. Never publish silently. Tool names differ by MCP generation; the current and older names are listed in `.claude/docs/mutation-reference.md → Confluence tool names`. |
+| **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, get explicit approval, only then call the tool. Never publish silently. Tool names differ by MCP generation; the current and older names are listed in `.claude/docs/mutation-reference.md → Confluence tool names`. Attachment upload has no MCP tool: `confluence-publish.py attach` posts PNG bytes to any page with the stored Atlassian token, so it runs only through `external-write-action.py --system confluence` (see Gate contract). |
 | **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, gated on its own payload by that hook. The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead. `discover` and `executeRead` are read-only and fine. |
 | **GitHub PR** | Opening a PR, merging, editing a description, adding labels, requesting reviewers, posting review comments - gate each, unless the autonomy level pre-authorizes the class. Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
 | **ADO pipeline** | Triggering a build is action-taking: gate it with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` - never `curl` with `$ADO_PAT`). |
@@ -64,7 +64,7 @@ Rules that apply at every level:
 
 ## Gate contract
 
-GitHub CLI, ADO, Azure, Kubernetes, and Terraform mutations use `.claude/scripts/external-write-action.py`, never a raw mutating shell command. Prepare the exact argv and payload files, show the emitted manifest plus payload content, then authorize and execute:
+GitHub CLI, ADO, Azure, Kubernetes, Terraform, and Confluence attachment-upload (`confluence-publish.py attach`, `--system confluence`) mutations use `.claude/scripts/external-write-action.py`, never a raw mutating shell command. Prepare the exact argv and payload files, show the emitted manifest plus payload content, then authorize and execute:
 
 ```bash
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
@@ -79,7 +79,9 @@ python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
 ```
 
-Show the exact argv, target, side effects, payload content (or its structured fields), and each payload SHA - a path and hash alone are not an adequate payload review. Do not put credentials in argv or payload files. For an `auto` class, show nothing and execute immediately, then write the audit line.
+Show the exact argv, target, side effects, payload content (or its structured fields), and each payload SHA - a path and hash alone are not an adequate payload review.
+
+`prepare` hashes every file the CLI will read, not only the files behind a known flag: the flag tables (`--body-file`, `-F`, `--in-file`, `--patch-file`, `-fFILE`, `key=@file`, ...) name the ones that must exist, and any other argv word that names an existing regular file is bound too, so a file-valued flag added later cannot slip past unhashed. The prose gate reads every bound file. A payload path may not be a symlink or sit under a user-owned symlinked directory, and `execute` re-resolves each path as written and refuses a file that now resolves elsewhere. For `confluence attach`, the plan's body file and every pending PNG are bound as well. Do not put credentials in argv or payload files. For an `auto` class, show nothing and execute immediately, then write the audit line.
 
 ### Private payload directory
 

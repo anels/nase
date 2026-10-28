@@ -36,7 +36,7 @@ import signal
 import sys
 from dataclasses import dataclass, field
 
-SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
+SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "rbash"})
 MAX_DEPTH = 12
 # A tracked variable longer than this is treated as dynamic, so `A=$A$A` repeated cannot
 # grow memory without bound.
@@ -251,6 +251,16 @@ class _Spec:
     dl: frozenset[str] = frozenset()
     assign: bool = False
     pos: int = 0
+    # Runners with a subcommand that carries the command (`direnv exec DIR cmd`): each
+    # pair is (subcommand, positional words to skip after it). With need_sub the program
+    # is a wrapper only when one of them follows, so `direnv allow` stays a plain program.
+    subs: tuple[tuple[str, int], ...] = ()
+    need_sub: bool = False
+    # After the subcommand, tool specs end at `--` (or, with no `--`, at the first word
+    # that is not `tool@version`): `mise exec node@20 -- cmd`.
+    dashes: bool = False
+    # The program is a wrapper only when one of these flags is present.
+    need_flag: frozenset[str] = frozenset()
 
 
 _SUDO_LONG = frozenset(
@@ -318,6 +328,111 @@ _WRAPPERS: dict[str, _Spec] = {
     "caffeinate": _Spec(sv="tw"),
     "unbuffer": _Spec(),
     "watch": _Spec(sv="ndwp", lv=frozenset({"--interval", "--differences"})),
+    # rtk forwards git, gh, kubectl and the like directly, and wraps a command through
+    # proxy, bypass, err, test and summary.
+    "rtk": _Spec(subs=tuple((name, 0) for name in ("proxy", "bypass", "err", "test", "summary"))),
+    "direnv": _Spec(subs=(("exec", 1),), need_sub=True),
+    "mise": _Spec(
+        sv="CcjE",
+        lv=frozenset({"--cd", "--command", "--jobs", "--env"}),
+        subs=(("exec", 0), ("x", 0)),
+        need_sub=True,
+        dashes=True,
+    ),
+    "uv": _Spec(
+        sv="pwfiPC",
+        lv=frozenset(
+            {
+                "--allow-insecure-host",
+                "--cache-dir",
+                "--color",
+                "--config-file",
+                "--config-setting",
+                "--config-settings-package",
+                "--default-index",
+                "--directory",
+                "--env-file",
+                "--exclude-newer",
+                "--exclude-newer-package",
+                "--extra",
+                "--extra-index-url",
+                "--find-links",
+                "--fork-strategy",
+                "--group",
+                "--index",
+                "--index-strategy",
+                "--index-url",
+                "--keyring-provider",
+                "--link-mode",
+                "--no-binary-package",
+                "--no-build-isolation-package",
+                "--no-build-package",
+                "--no-editable-package",
+                "--no-extra",
+                "--no-group",
+                "--no-sources-package",
+                "--only-group",
+                "--package",
+                "--prerelease",
+                "--prerelease-package",
+                "--project",
+                "--python",
+                "--python-platform",
+                "--refresh-package",
+                "--reinstall-package",
+                "--resolution",
+                "--upgrade-group",
+                "--upgrade-package",
+                "--with",
+                "--with-editable",
+                "--with-requirements",
+            }
+        ),
+        subs=(("run", 0),),
+        need_sub=True,
+    ),
+    "pnpm": _Spec(
+        sv="CF",
+        lv=frozenset({"--dir", "--filter", "--workspace-dir"}),
+        subs=(("exec", 0), ("dlx", 0)),
+        need_sub=True,
+    ),
+    "op": _Spec(
+        lv=frozenset({"--account", "--env-file", "--environment", "--session"}),
+        subs=(("run", 0),),
+        need_sub=True,
+    ),
+    "taskset": _Spec(pos=1),
+    "chrt": _Spec(
+        sv="TPD", lv=frozenset({"--sched-deadline", "--sched-period", "--sched-runtime"}), pos=1
+    ),
+    "chroot": _Spec(lv=frozenset({"--groups", "--userspec"}), pos=1),
+    "systemd-run": _Spec(
+        sv="HMupE",
+        lv=frozenset(
+            {
+                "--description",
+                "--gid",
+                "--host",
+                "--machine",
+                "--nice",
+                "--property",
+                "--service-type",
+                "--setenv",
+                "--slice",
+                "--uid",
+                "--unit",
+                "--working-directory",
+            }
+        ),
+    ),
+    # `runuser -u user -- cmd` runs cmd directly. The `runuser user -c 'cmd'` form has no
+    # -u and is read like `su` in _after_head.
+    "runuser": _Spec(
+        sv="ugGsc",
+        lv=frozenset({"--command", "--group", "--shell", "--supp-group", "--user"}),
+        need_flag=frozenset({"-u", "--user"}),
+    ),
 }
 
 
@@ -1288,6 +1403,21 @@ class _Parser:
             if spec is None:
                 break
             j, opts, assigns = self._parse_opts(words, index + 1, spec)
+            if spec.need_flag and not spec.need_flag & {flag for flag, _ in opts}:
+                break
+            if spec.subs:
+                known = dict(spec.subs)
+                sub = words[j] if j < len(words) else None
+                if sub is not None and not sub.dyn and sub.text in known:
+                    j = min(j + 1 + known[sub.text], len(words))
+                    if spec.dashes:
+                        j, more_opts = self._skip_tool_specs(words, j, spec)
+                    else:
+                        j, more_opts, more_assigns = self._parse_opts(words, j, spec)
+                        assigns += more_assigns
+                    opts += more_opts
+                elif spec.need_sub:
+                    break
             wrappers.append(name)
             for assign in assigns:
                 key = assign.text[: assign.assign_end].rstrip("+=")
@@ -1307,6 +1437,8 @@ class _Parser:
                     )
                 elif name == "flock" and flag == "-c":
                     scripts.append((text, "flock-c"))
+                elif name in ("mise", "runuser") and flag in ("-c", "--command"):
+                    scripts.append((text, f"{name}-c"))
             if name in ("sudo", "doas"):
                 flags = {f for f, _ in opts}
                 if flags & {"-s", "-i"} and j < len(words):
@@ -1325,6 +1457,23 @@ class _Parser:
                 tail_dynamic = True
             index = j
         return index, wrappers, scripts, tail_dynamic, cwds
+
+    @staticmethod
+    def _skip_tool_specs(
+        words: list[_Word], index: int, spec: _Spec
+    ) -> tuple[int, list[tuple[str, _Word | str | None]]]:
+        """Step over `mise exec`'s options and tool specs to the command it runs."""
+        n = len(words)
+        dashes = next(
+            (k for k in range(index, n) if words[k].text == "--" and not words[k].quoted), -1
+        )
+        if dashes >= 0:
+            _, opts, _ = _Parser._parse_opts(words[:dashes], index, spec)
+            return dashes + 1, opts
+        index, opts, _ = _Parser._parse_opts(words, index, spec)
+        while index < n and "@" in words[index].text and not words[index].text.startswith("-"):
+            index += 1
+        return index, opts
 
     @staticmethod
     def _parse_opts(
@@ -1458,7 +1607,7 @@ class _Parser:
             if positional:
                 self._nested(positional[0], "trap")
             return
-        if name == "su":
+        if name in ("su", "runuser"):
             for index, arg in enumerate(args):
                 if arg in ("-c", "--command") and index + 1 < len(args):
                     self._nested(args[index + 1], "su-c")
@@ -1549,6 +1698,15 @@ class _Parser:
                 if has_c and positional:
                     script_index = index
                 break
+            if arg == "--command" or arg.startswith("--command="):
+                has_c = True
+                if "=" in arg:
+                    self._nested(arg.partition("=")[2], "shell-c")
+                    return
+                if index + 1 < len(args):
+                    script_index = index + 1
+                index += 2
+                continue
             if arg.startswith("--"):
                 index += 2 if arg in ("--rcfile", "--init-file") else 1
                 continue

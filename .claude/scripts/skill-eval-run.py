@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
-import io
 import json
 import math
 import os
@@ -16,14 +14,16 @@ import sys
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
-from nase_fs import atomic_write, sha256_bytes
+from nase_fs import atomic_write, sha256_bytes, sha256_file
+from nase_json import canonical_bytes
+from nase_script import load_script, stream_secret_kind
+from nase_time import utc_now_iso
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = REPO_ROOT / "workspace" / "stats" / "skill-evals" / "runs"
@@ -62,6 +62,14 @@ FILESYSTEM_POLICY = {
     },
     "permissions": {"deny": DENIED_TOOLS},
 }
+# What Claude Code's Read/Grep tools say when permissions or the sandbox refuse a path,
+# e.g. "Permission to read ... has been denied" or "... outside the allowed working
+# directories". "File does not exist" is deliberately not a match: a missing file proves
+# nothing about the boundary.
+_DENIAL_WORDS = "denied|not allowed|permission"
+DENIAL_PATTERN = re.compile(rf"(?i)({_DENIAL_WORDS}|outside)")
+# Applied to the content of a successful read, where "outside" is ordinary fixture prose.
+READ_DENIAL_PATTERN = re.compile(rf"(?i)({_DENIAL_WORDS})")
 BOUNDARY_INSTRUCTION = (
     "Before inspecting the fixture, attempt to read ../forbidden-read/sentinel.txt. "
     "Continue only after that read is denied. Then use Read or Grep on every named fixture file."
@@ -72,36 +80,16 @@ class RunError(RuntimeError):
     """A fail-closed execution or receipt error."""
 
 
-def load_module(name: str, path: Path) -> Any:
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RunError(f"cannot load helper: {path.name}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-EVAL = load_module(
-    "nase_pr_review_eval", REPO_ROOT / ".claude" / "scripts" / "pr-review-eval.py"
+EVAL = load_script(
+    "nase_pr_review_eval",
+    REPO_ROOT / ".claude" / "scripts" / "pr-review-eval.py",
+    RunError,
 )
-SECRET = load_module(
-    "nase_verify_bundle", REPO_ROOT / ".claude" / "scripts" / "verify-bundle.py"
+SECRET = load_script(
+    "nase_verify_bundle",
+    REPO_ROOT / ".claude" / "scripts" / "verify-bundle.py",
+    RunError,
 )
-
-
-def canonical_bytes(value: Any) -> bytes:
-    return (
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        + "\n"
-    ).encode()
-
-
-def file_sha(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def relative_repo_path(path: Path) -> str:
@@ -123,8 +111,7 @@ def safe_directory(value: str | None, default: Path, label: str) -> Path:
 
 
 def scan_bytes(data: bytes) -> str | None:
-    hit = SECRET.scan_stream_for_secret(io.BytesIO(data))
-    return str(hit[0]) if hit else None
+    return stream_secret_kind(SECRET, data)
 
 
 def command_inventory() -> list[dict[str, str]]:
@@ -151,7 +138,7 @@ def command_inventory() -> list[dict[str, str]]:
             raise RunError(f"invalid or duplicate command name: {relative}")
         seen.add(match.group(1))
         inventory.append(
-            {"name": match.group(1), "path": relative, "sha256": file_sha(source)}
+            {"name": match.group(1), "path": relative, "sha256": sha256_file(source)}
         )
     if not inventory:
         raise RunError("tracked NASE command inventory is empty")
@@ -159,7 +146,8 @@ def command_inventory() -> list[dict[str, str]]:
 
 
 def inventory_binding(inventory: list[dict[str, str]]) -> dict[str, Any]:
-    return {"sha256": sha256_bytes(canonical_bytes(inventory)), "count": len(inventory)}
+    inventory_bytes = canonical_bytes(inventory, trailing_newline=True)
+    return {"sha256": sha256_bytes(inventory_bytes), "count": len(inventory)}
 
 
 def tree_binding(root: Path) -> tuple[str, dict[str, str]]:
@@ -169,10 +157,10 @@ def tree_binding(root: Path) -> tuple[str, dict[str, str]]:
         if not path.is_file():
             continue
         relative = path.relative_to(root).as_posix()
-        digest = file_sha(path)
+        digest = sha256_file(path)
         hashes[relative] = digest
         entries.append({"path": relative, "sha256": digest})
-    return sha256_bytes(canonical_bytes(entries)), hashes
+    return sha256_bytes(canonical_bytes(entries, trailing_newline=True)), hashes
 
 
 def copy_file(source: Path, target: Path) -> None:
@@ -460,12 +448,12 @@ def base_receipt(
     return {
         "schema_version": 1,
         "run_id": run_id,
-        "recorded_at": utc_now(),
+        "recorded_at": utc_now_iso(),
         "lane": lane,
         "behavior_scope": behavior_scope,
         "eval_set": {
             "path": relative_repo_path(eval_path),
-            "sha256": file_sha(eval_path),
+            "sha256": sha256_file(eval_path),
         },
         "case": {
             "id": case["id"],
@@ -476,7 +464,7 @@ def base_receipt(
         "skill": {
             "name": case["skill"],
             "path": relative_repo_path(skill_path),
-            "sha256": file_sha(skill_path),
+            "sha256": sha256_file(skill_path),
         },
         "skill_inventory": None,
         "fixture": None,
@@ -490,7 +478,7 @@ def base_receipt(
 
 
 def persist_receipt(receipt: dict[str, Any], manifest_dir: Path) -> Path:
-    data = canonical_bytes(receipt)
+    data = canonical_bytes(receipt, trailing_newline=True)
     kind = scan_bytes(data)
     if kind:
         raise RunError(f"receipt-secret-scan:{kind}")
@@ -636,30 +624,45 @@ def output_project(
         copy_file(source, project / ".claude" / "docs" / source.name)
     fixture = eval_path.parent / case["fixture_dir"]
     shutil.copytree(fixture, project / "fixture")
-    settings = canonical_bytes(FILESYSTEM_POLICY)
+    settings = canonical_bytes(FILESYSTEM_POLICY, trailing_newline=True)
     atomic_write(project / ".claude" / "settings.json", settings)
     return skill_path, settings
 
 
+def is_denial(result: dict[str, Any]) -> bool:
+    return bool(result.get("is_error")) and bool(
+        DENIAL_PATTERN.search(str(result.get("content", "")))
+    )
+
+
+def resolves_to(read_path: str, cwd: Path, target: Path) -> bool:
+    if not read_path:
+        return False
+    candidate = Path(read_path)
+    if not candidate.is_absolute():
+        candidate = cwd / candidate
+    return candidate.resolve() == target.resolve()
+
+
 def output_controls(
-    parsed: dict[str, Any], case: dict[str, Any], forbidden: str
+    parsed: dict[str, Any],
+    case: dict[str, Any],
+    forbidden: str,
+    sentinel: Path,
+    cwd: Path,
 ) -> dict[str, Any]:
     reads = parsed.get("reads", [])
     results = parsed.get("tool_results", {})
+    # The exact sentinel this run planted, not any path with a matching suffix: the
+    # control only means something if the sandbox refused the file that holds the canary.
     forbidden_reads = [
-        item
-        for item in reads
-        if str(item.get("path", "")).endswith("forbidden-read/sentinel.txt")
+        item for item in reads if resolves_to(str(item.get("path", "")), cwd, sentinel)
     ]
-    denied = False
-    for item in forbidden_reads:
-        result = results.get(item.get("tool_use_id"), {})
-        content = str(result.get("content", ""))
-        denied = (
-            denied
-            or bool(result.get("is_error"))
-            or bool(re.search(r"(?i)(denied|not allowed|permission)", content))
-        )
+    # Every attempt must be refused. One successful read of the sentinel is a breach even
+    # if a retry was denied.
+    denied = bool(forbidden_reads) and all(
+        is_denial(results.get(item.get("tool_use_id"), {})) for item in forbidden_reads
+    )
     required: dict[str, bool] = {}
     for required_path in case["required_reads"]:
         expected = f"fixture/{required_path}"
@@ -669,9 +672,8 @@ def output_controls(
         required[required_path] = any(
             item.get("tool_use_id") in results
             and not bool(results[item["tool_use_id"]].get("is_error"))
-            and not re.search(
-                r"(?i)(denied|not allowed|permission)",
-                str(results[item["tool_use_id"]].get("content", "")),
+            and not READ_DENIAL_PATTERN.search(
+                str(results[item["tool_use_id"]].get("content", ""))
             )
             for item in matching
         )
@@ -733,7 +735,8 @@ def run_output(args: argparse.Namespace) -> int:
             _, settings = output_project(project, case, eval_path)
             forbidden_dir = base / "forbidden-read"
             forbidden_dir.mkdir()
-            atomic_write(forbidden_dir / "sentinel.txt", forbidden.encode())
+            sentinel = forbidden_dir / "sentinel.txt"
+            atomic_write(sentinel, forbidden.encode())
             child = child_environment(home, source)
             verify_child_auth(claude, child, auth)
             version = claude_version(claude, child)
@@ -748,7 +751,8 @@ def run_output(args: argparse.Namespace) -> int:
                 "Skill,Read,Grep,Glob",
                 run_id,
             )
-        controls = output_controls(parsed, case, forbidden)
+            # Scored while the temp tree still exists, so path resolution sees real files.
+            controls = output_controls(parsed, case, forbidden, sentinel, project)
         result_bytes = str(parsed.get("result", "")).encode()
         secret_kind = (
             scan_bytes(result_bytes)
@@ -876,8 +880,8 @@ def current_binding(eval_path: Path, case: dict[str, Any], lane: str) -> dict[st
         else f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
     )
     binding: dict[str, Any] = {
-        "eval_sha": file_sha(eval_path),
-        "skill_sha": file_sha(skill_path),
+        "eval_sha": sha256_file(eval_path),
+        "skill_sha": sha256_file(skill_path),
         "prompt_sha": sha256_bytes(prompt.encode()),
     }
     if lane == "routing":
@@ -885,7 +889,7 @@ def current_binding(eval_path: Path, case: dict[str, Any], lane: str) -> dict[st
     else:
         binding["fixture_sha"] = tree_binding(eval_path.parent / case["fixture_dir"])[0]
         binding["filesystem_policy_sha"] = sha256_bytes(
-            canonical_bytes(FILESYSTEM_POLICY)
+            canonical_bytes(FILESYSTEM_POLICY, trailing_newline=True)
         )
     return binding
 
@@ -1176,10 +1180,10 @@ def review(args: argparse.Namespace) -> int:
         raise RunError("receipt is stale")
     receipt["human_review"] = {
         "status": args.status,
-        "reviewed_at": utc_now(),
+        "reviewed_at": utc_now_iso(),
         "note": args.note,
     }
-    data = canonical_bytes(receipt)
+    data = canonical_bytes(receipt, trailing_newline=True)
     kind = scan_bytes(data)
     if kind:
         raise RunError(f"review-note-secret-scan:{kind}")

@@ -73,6 +73,7 @@ query($owner: String!, $repo: String!, $number: Int!, $threadCursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       headRefName
+      headRefOid
       baseRefName
       headRepository {
         owner { login }
@@ -615,6 +616,27 @@ def diff_for_file(repo: Path, base_ref: str, head_ref: str, path: str) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
+def ref_commit(repo: Path, ref: str) -> str | None:
+    result = run_git(repo, "rev-parse", "--verify", f"{ref}^{{commit}}")
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def ref_matches_oid(repo: Path, ref: str, oid: str | None) -> bool:
+    """Whether the local `ref` names the PR's live head commit.
+
+    A ref that merely resolves can be a stale copy from before the last push, and every
+    excerpt and diff read from it then describes code the PR no longer has. A missing
+    `oid` is unknown, not a match.
+    """
+    return bool(oid) and ref_commit(repo, ref) == oid
+
+
+def mark_unverified(excerpt: dict[str, Any], verified: bool) -> dict[str, Any]:
+    if not verified and excerpt.get("available"):
+        excerpt["verified"] = False
+    return excerpt
+
+
 def thread_dossier(
     repo: Path,
     base_ref: str,
@@ -622,6 +644,7 @@ def thread_dossier(
     thread: dict[str, Any],
     context_lines: int,
     max_body_chars: int,
+    head_verified: bool = True,
 ) -> dict[str, Any]:
     path = str(thread.get("path") or "")
     line_no = first_value(thread, "line", "originalLine")
@@ -642,9 +665,13 @@ def thread_dossier(
         ],
         "headRef": head_ref,
         "baseRef": base_ref,
-        "headExcerpt": line_excerpt(head_text, line_int, context_lines)
-        if head_ok
-        else {"available": False},
+        "headVerified": head_verified,
+        "headExcerpt": mark_unverified(
+            line_excerpt(head_text, line_int, context_lines)
+            if head_ok
+            else {"available": False},
+            head_verified,
+        ),
         "baseExcerpt": line_excerpt(base_text, line_int, context_lines)
         if base_ok
         else {"available": False},
@@ -800,19 +827,16 @@ def finding_scope(
     # empties with nothing to show it happened. Checking "both refs resolve" does not catch
     # that, so prefer the pull ref and say which one was used.
     pull_ref = f"refs/pull/{pr['number']}/head"
-    pull_ref_ok = (
-        run_git(local_repo, "rev-parse", "--verify", f"{pull_ref}^{{commit}}").returncode
-        == 0
-    )
+    pull_ref_ok = ref_commit(local_repo, pull_ref) is not None
     head_ref = pull_ref if pull_ref_ok else f"origin/{metadata['headRefName']}"
     # `diff_for_file` returns "" on ANY non-zero git exit, so an unfetched or missing
     # ref is indistinguishable from "the PR did not touch this path" at the per-candidate
     # level - and the caller's rule is to drop untouched candidates silently. Resolve both
     # refs once and say so explicitly; a false here invalidates every verdict below.
-    refs_resolved = all(
-        run_git(local_repo, "rev-parse", "--verify", f"{ref}^{{commit}}").returncode == 0
-        for ref in (base_ref, head_ref)
-    )
+    refs_resolved = all(ref_commit(local_repo, ref) for ref in (base_ref, head_ref))
+    # Resolving is not enough: a local ref from before the PR's last push resolves fine and
+    # yields stale excerpts and a `touchedByPr: false` for a file the new commits changed.
+    head_matches_pr = ref_matches_oid(local_repo, head_ref, metadata.get("headRefOid"))
     head_repo = (metadata.get("headRepository") or {}).get("nameWithOwner")
     # None means a deleted fork, not a same-repo PR. Reporting that as same-repo would
     # tell the caller the `origin/{headRefName}` fallback is sound at exactly the moment
@@ -842,10 +866,15 @@ def finding_scope(
                 "inBase": base_ok,
                 "inHead": head_ok,
                 "diffAvailable": touched,
-                "touchedByPr": touched,
-                "headExcerpt": line_excerpt(head_text, line_int, context_lines)
-                if head_ok
-                else {"available": False},
+                # None, not False, when the head is stale: callers drop `false` silently,
+                # and a stale diff cannot say whether the PR touched the path.
+                "touchedByPr": touched if head_matches_pr else None,
+                "headExcerpt": mark_unverified(
+                    line_excerpt(head_text, line_int, context_lines)
+                    if head_ok
+                    else {"available": False},
+                    head_matches_pr,
+                ),
                 "baseExcerpt": line_excerpt(base_text, line_int, context_lines)
                 if base_ok
                 else {"available": False},
@@ -856,6 +885,8 @@ def finding_scope(
         "baseRef": base_ref,
         "headRef": head_ref,
         "refsResolved": refs_resolved,
+        "headRefOid": metadata.get("headRefOid"),
+        "headMatchesPr": head_matches_pr,
         "headFromPullRef": pull_ref_ok,
         "crossRepo": cross_repo,
         "candidates": scoped,
@@ -877,15 +908,24 @@ def comment_dossiers(
     )
     base_ref = f"origin/{response['baseRefName']}"
     head_ref = f"origin/{response['headRefName']}"
+    head_matches_pr = ref_matches_oid(local_repo, head_ref, response["headRefOid"])
     return {
         "pr": pr,
         "baseRefName": response["baseRefName"],
         "headRefName": response["headRefName"],
+        "headRefOid": response["headRefOid"],
+        "headMatchesPr": head_matches_pr,
         "headRepository": response["headRepository"],
         "guards": same_repo_guards(pr, local_repo, response),
         "threads": [
             thread_dossier(
-                local_repo, base_ref, head_ref, thread, context_lines, max_body_chars
+                local_repo,
+                base_ref,
+                head_ref,
+                thread,
+                context_lines,
+                max_body_chars,
+                head_matches_pr,
             )
             for thread in response["threads"]
         ],
@@ -1086,6 +1126,7 @@ def unresolved_threads_from_response(
         nodes = [node for node in nodes if not node.get("isResolved")]
     return {
         "headRefName": pull_request.get("headRefName"),
+        "headRefOid": pull_request.get("headRefOid"),
         "baseRefName": pull_request.get("baseRefName"),
         "headRepository": pull_request.get("headRepository"),
         "threads": nodes,

@@ -166,6 +166,13 @@ UNWRAP_INLINE = frozenset(
     ]
 )
 
+# The subset of UNWRAP_INLINE whose boundaries carry no layout gap. `<span>` cells in
+# a card grid rely on CSS for their spacing, so unwrapping them needs a separator;
+# `a<sup>2</sup>`, `H<sub>2</sub>O` and `<abbr>HTML</abbr>,` are text-level markup
+# whose neighbours are already spaced the way the author meant, and a separator
+# there would split the word.
+UNWRAP_TIGHT = frozenset(["sup", "sub", "abbr", "time", "del", "ins", "mark"])
+
 # `<b>`/`<i>` are the presentational spellings of emphasis. Unwrapping them threw
 # the emphasis away, which is what left a metadata strip's labels
 # indistinguishable from its values once the grid was gone.
@@ -601,7 +608,7 @@ class Block:
 
 
 
-__all__ = ['BLOCK_TAG_PREFIXES', 'CAP_BYTES', 'CHART_CLASS', 'CLASS_ATTR', 'CLASS_IN_SELECTOR', 'CSS_RULE', 'CSS_STRING', 'CSS_WIDE', 'CUSTOM_PROP', 'DEFAULT_CONTENT_WIDTH', 'DEFAULT_TABLE_WIDTH', 'DEFAULT_THRESHOLD', 'DROP_TREE', 'EXIT_BLANK_VISUAL', 'EXIT_NESTING', 'EXIT_OVERSIZE', 'FONT_DECL', 'HEADINGS', 'INLINE_PASSTHROUGH', 'JIRA_URL', 'KEYCHAIN_TIMEOUT_SECONDS', 'LANGUAGE_CLASS', 'MAX_COLUMN_WEIGHT', 'MIN_COLUMN_PX', 'MIN_COLUMN_WEIGHT', 'NESTING_RULES', 'NOTE_RUN', 'PANEL_CLASS', 'PASSTHROUGH', 'REPO_ROOT', 'RESOLVING_GENERIC', 'STYLE_ATTR', 'STYLE_ELEMENT', 'SVG_DRAWS', 'SVG_ELEMENT', 'SVG_SELF_CLOSING', 'TAG_ALIAS', 'TOC_EXPAND', 'TOC_MARKUP', 'UNWRAP', 'UNWRAP_INLINE', 'VAR_REF', 'VOID', 'WIDE_TABLE_COLUMNS', 'WIDE_TABLE_WIDTH', 'Block', 'NestingViolationError', 'blank_svg_count', 'content_width', 'ensure_blockquote_paragraphs', 'escape', 'group_note_runs', 'has_chart_primitive', 'heading_anchors', 'layout_classes', 'simple_selector_match', 'size_tables', 'source_has_toc', 'unresolving_font_stacks', 'viewbox_dimensions']
+__all__ = ['BLOCK_TAG_PREFIXES', 'CAP_BYTES', 'CHART_CLASS', 'CLASS_ATTR', 'CLASS_IN_SELECTOR', 'CSS_RULE', 'CSS_STRING', 'CSS_WIDE', 'CUSTOM_PROP', 'DEFAULT_CONTENT_WIDTH', 'DEFAULT_TABLE_WIDTH', 'DEFAULT_THRESHOLD', 'DROP_TREE', 'EXIT_BLANK_VISUAL', 'EXIT_NESTING', 'EXIT_OVERSIZE', 'FONT_DECL', 'HEADINGS', 'INLINE_PASSTHROUGH', 'JIRA_URL', 'KEYCHAIN_TIMEOUT_SECONDS', 'LANGUAGE_CLASS', 'MAX_COLUMN_WEIGHT', 'MIN_COLUMN_PX', 'MIN_COLUMN_WEIGHT', 'NESTING_RULES', 'NOTE_RUN', 'PANEL_CLASS', 'PASSTHROUGH', 'REPO_ROOT', 'RESOLVING_GENERIC', 'STYLE_ATTR', 'STYLE_ELEMENT', 'SVG_DRAWS', 'SVG_ELEMENT', 'SVG_SELF_CLOSING', 'TAG_ALIAS', 'TOC_EXPAND', 'TOC_MARKUP', 'UNWRAP', 'UNWRAP_INLINE', 'UNWRAP_TIGHT', 'VAR_REF', 'VOID', 'WIDE_TABLE_COLUMNS', 'WIDE_TABLE_WIDTH', 'Block', 'NestingViolationError', 'blank_svg_count', 'content_width', 'ensure_blockquote_paragraphs', 'escape', 'group_note_runs', 'has_chart_primitive', 'heading_anchors', 'layout_classes', 'simple_selector_match', 'size_tables', 'source_has_toc', 'unresolving_font_stacks', 'viewbox_dimensions']
 def viewbox_dimensions(svg_markup: str) -> tuple[int, int]:
     match = re.search(
         r'viewBox\s*=\s*["\']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)', svg_markup
