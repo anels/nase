@@ -61,7 +61,7 @@ First run `python3 .claude/scripts/todo-staleness-scan.py`, which reads dates an
 
 ### 6. Output
 
-Return focus, need-attention items, PR/Jira pulse, maintenance, and up to three concrete next actions. Keep raw query output and full tables out of chat.
+Return focus, need-attention items, PR/Jira pulse, maintenance, and up to three concrete next actions, with the Step 5 card as the last block of the plan. Keep raw query output and full tables out of chat.
 
 ### 7. Todo review
 

@@ -1,7 +1,3 @@
-# CLAUDE.md
-
----
-
 # AI Engineer Operating Manual
 
 **What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere, with their paths in `.local-paths`. Read `workspace/context.md` only for the Workspace Boundary Policy or project context.
@@ -21,10 +17,10 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Treat this repo as a Claude Code workspace kit, not a product repo: commands, hooks, shared docs, tests, and `workspace/` state are the product surface.
 - Prefer deterministic enforcement over prompt-only instructions. Risky behavior belongs in hooks, scripts, tests, or evals; prompts should explain the rule and call the guard.
 - Keep memory human-readable. Durable knowledge goes to Markdown/JSONL under `workspace/`; avoid opaque summaries that a human cannot inspect, diff, or delete.
-- Slice context before reading broadly. Use repo KB, domain maps, `gh`, `rg`, `ast-grep`, focused diffs, and workspace scan scripts before loading large logs or whole directories.
+- Slice context before reading broadly. Use repo KB, domain maps, `gh`, `rg`, `ast-grep`, focused diffs, and workspace scan scripts before loading large logs or whole directories. Read `.claude/docs/reference.md` only for layout, script, or architecture questions.
 - Require evidence for technical claims. PR findings, architecture notes, and audit conclusions need source paths, diffs, tests, logs, or command output; drop candidates that cannot be verified.
-- External writes stay gated: Slack drafts, Jira write tokens (single-shot or batch), Confluence size guards, and GitHub/Azure/Kubernetes/Terraform CLI mutations through payload-bound `external-write-action.py` manifests. `workspace/config.md → ## Autonomy → level:` may pre-authorize the named low-risk classes in `.claude/docs/external-mutation-policy.md → Autonomy level` (resolved by `python3 .claude/scripts/autonomy-policy.py --class {class}`); pre-authorization removes the human stop but never the manifest binding, hook, drift check, or audit line. The CLI Hook blocks raw writes and fails closed for unrecognized guarded CLI invocations. Slack draft bodies and `gh` payload prose additionally pass `prose-lint.py`, which fails open when unavailable because a quality check must never block a write on its own breakage.
-- New commands and skills should reuse shared docs/scripts first. Add a new abstraction only when it removes real repeated workflow complexity and include a local validation path.
+- External writes stay gated: Slack drafts, Jira write tokens (single-shot or batch), Confluence size guards, and GitHub/Azure/Kubernetes/Terraform CLI mutations through payload-bound `external-write-action.py` manifests. The CLI hook blocks raw writes and fails closed on unrecognized guarded CLI invocations. `workspace/config.md → ## Autonomy → level:` may pre-authorize the low-risk classes in `.claude/docs/external-mutation-policy.md → Autonomy level` (`python3 .claude/scripts/autonomy-policy.py --class {class}`); it removes the human stop, never the manifest binding, hook, drift check, or audit line. `prose-lint.py` also checks Slack draft bodies and `gh` payload prose, and fails open when unavailable.
+- New commands and skills reuse shared docs and scripts first. Add an abstraction only when it removes real repeated workflow complexity, and include a local validation path.
 
 ---
 
@@ -42,7 +38,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Put one-off artifacts under `workspace/tmp/`.
 
 ### Session Lifecycle
-- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. A hook line prefixed with its own name (`[session-start]`, `[prose-lint-guard]`) is meant for the user: surface it. End-of-turn reminders (`[session-end]`) reach the user directly as a system message, so do not repeat them. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
+- First setup: `/nase:init`. First session of the day: `/nase:today`. Run `/nase:tech-digest` only when the user asks for tech news or explicitly wants to refresh the digest. `/nase:help` lists every command. A hook line prefixed with its own name (`[session-start]`, `[prose-lint-guard]`) is meant for the user: surface it. End-of-turn reminders (`[session-end]`) reach the user directly as a system message, so do not repeat them. If hook output contains `[style-edit-detect]`, follow `.claude/docs/style-delta-capture.md`. Use `/nase:doctor` when the workspace feels off.
 
 ### Repo & KB Workflow
 - Before repo work, run `/nase:onboard <path-or-url>` or `/nase:onboard`, then read the repo KB via `workspace/kb/.domain-map.md`. Load only relevant KB files.
@@ -51,16 +47,14 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
-- For this repo before push: run the local gate under *CI Pipeline* below.
-- If `tests/check-local-sensitive-artifacts.sh` fails, treat the named ignored artifact as sensitive and inspect only through locally redacted output. Prepare the exact local removal or credential rotation, but require separate named approval before either action, then rerun the gate. Never render the matched value, stage the artifact, or suppress the gate.
+- For this repo before push: run `bash tests/check-all.sh`.
 
 ### Logging & External Services
 - Append real-time one-line entries to `workspace/logs/YYYY-MM-DD.md` for completions, mistakes, user corrections, and decisions. Format: `.claude/docs/daily-log-format.md`.
 - Slack: never call `slack_send_message`; always draft via `slack_send_message_draft`.
+- Atlassian MCP: set `contentFormat` on every body-bearing write, never rely on the default (`.claude/docs/jira-write-pattern.md`). `searchConfluence` requires `cql`. Quote a project key that is a JQL reserved word, as in `project = "IN"`.
+- Prepare one `external-write-action.py` token at a time; execute or remove the active one before preparing the next.
 - AI attribution: `.claude/docs/ai-attribution.md`; commits/PRs follow `.local-paths` per-repo config. Inline review comments and Slack drafts stay AI-clean.
-
-### Core Skills
-Run `/nase:help` for the full command list. Core loop: `/nase:today`, `/nase:onboard`, `/nase:design`, `/nase:fsd`, `/nase:discuss-pr`, `/nase:address-comments`, `/nase:prep-merge`, `/nase:wrap-up`. Full layout: `.claude/docs/reference.md`.
 
 ### Model Routing (subagents)
 Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
@@ -70,69 +64,33 @@ Delegate a survey - a read sweep whose answer is a conclusion, not the file cont
 
 ### Bash / Path Rules
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
+- A command that names `gh`, `az`, `kubectl`, or `terraform` must not capture with `VAR=$(...)` or use `eval`; external-cli-write-guard fails closed on both. Run the lookup as its own call and write the literal value into the next. `gh api -f/-F` needs an explicit `-X GET` for reads, or it becomes a POST.
 
-### CI Pipeline
-- Local gate: `bash tests/check-all.sh` (local `ruff`, `vermin` and `shellcheck` skip if missing; CI still runs all three). Run `bash tests/check-all.sh --links` separately for the optional local `lychee` check.
-- Python lint config is `.ruff.toml` at the repo root. Every ignore there carries the reason it is ignored; add a rule to that list only with one, and prefer a scoped `# noqa: RULE - why` at the single site that needs it.
-- `tests/check-boundary-terms.sh` enforces `workspace/context.md → Workspace Boundary Policy` over tracked files from the git-ignored `workspace/boundary-terms.txt`. It skips with a notice when that list is absent, and reports `path:line` with the term redacted. Replace a finding with a generic placeholder; never suppress the gate.
-
-### Runtime Dependencies
-- Required: `git`, `gh`, `jq`, and `python3` 3.10+. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.
-- Optional agent tools are warning-only. Use `/nase:doctor` for the baseline set, `/nase:doctor --deep` for the full probe, and `.claude/docs/cli-tooling.md` before adding new tool-dependent skill behavior.
-- `.local-paths` lives at repo root, is not backed up, and stores `backup-target=` plus `RepoName=/absolute/path` entries managed by `/nase:init` and `/nase:onboard`.
-
-### Hooks
-Hook registrations live in `.claude/settings.json`; hook behavior and file layout are summarized in `.claude/docs/reference.md`. Read those only when debugging or changing hooks.
-
-### Workspace Skills Syncing
-`session-start.sh` syncs `workspace/skills/*.md` to `.claude/commands/nase/workspace/`; each becomes `/nase:workspace:<name>`. It removes legacy generated native mirrors to avoid duplicate model invocation. Add a skill by creating `workspace/skills/<name>.md` and restarting.
-
-### CLAUDE.md Content Rules
-No runtime values here: use `workspace/logs/`, `workspace/tasks/`, or KB.
-
-### Reference Loading
-- Do not load docs/scripts inventories at session start. Read `.claude/docs/reference.md` only when you need workspace layout, shared-doc, script, KB, or architecture details.
-- Skills should reference shared docs instead of duplicating algorithms.
-- When changing a shared helper, command field set, or workflow phase, update the helper, consuming command, shared reference doc, and focused regression test together; `tests/check-shared-doc-refs.sh` catches missing paths, not semantic drift.
-
-### Hooks / Commands / Skills Scope
-- Create hooks, commands, and skills under `.claude/`. Writing to `~/.claude/` requires explicit user approval.
-- New skill proposals must answer: "what existing skill does this make redundant, and if none, why isn't this a flag on an existing one?" Refuse overlapping trigger clones.
+Rules for changing this repo's own commands, hooks, docs, scripts, and tests live in `.claude/rules/workspace-maintenance.md` and load when you touch those files.
 
 ---
 
 ## Communication
 
-- **Voice profile**: before drafting Slack, PR, Jira, Confluence, or other external text, follow `.claude/docs/voice-profile-routing.md` for the output surface; read `workspace/communication-style.md` when the routing capsule calls for the full profile or the draft is high-stakes
-- **Plain writing**: `.claude/docs/plain-writing-guard.md` is the cross-surface readability floor - fix shape, then syntax, then register, then templated shapes, and read its Part 5 non-rules before overcorrecting. `python3 .claude/scripts/prose-lint.py --surface <surface> --file <draft>` is its mechanical pass, and it blocks: gate findings fail Slack drafts and `gh` payload writes. Markers above the threshold mean the shape needs a rewrite, not a word swap. Escape with `NASE_PROSE_LINT=0` only when the flagged text is a quote from someone else. Never treat its output as evidence of authorship
-- **Slack messages**: keep concise and conversational; avoid verbose/formal drafts
-- **Jira links**: always include full Jira links (e.g. `https://your-org.atlassian.net/browse/PROJ-123`), never bare ticket numbers
-- **Review requests**: one short paragraph max; mention reviewer by name, link the PR
-
-## Style Learning Loop
-
-When the user corrects wording/tone on an external draft I produced (Slack, PR description/review comment, external doc), follow `.claude/docs/style-delta-capture.md`:
-- Address the edit, log a pending `[STYLE-DELTA]` line, and never write `workspace/communication-style.md` directly.
-- `/nase:wrap-up` Step 9 batches deltas and gates the write. Triggers, scope, log format, and the inline high-confidence gate all live in that doc.
-- A `[style-edit-detect]` hook reminder is a nudge to log the delta, not a license to write the style doc.
+- **Voice profile**: before drafting Slack, PR, Jira, Confluence, or other external text, follow `.claude/docs/voice-profile-routing.md` for the output surface; read `workspace/communication-style.md` when the routing capsule calls for the full profile or the draft is high-stakes.
+- **Plain writing**: `.claude/docs/plain-writing-guard.md` is the readability floor. Run `python3 .claude/scripts/prose-lint.py --surface <surface> --file <draft>`; gate findings fail Slack drafts and `gh` payload writes, and markers above the threshold mean rewrite the shape, not swap words. Escape with `NASE_PROSE_LINT=0` only when the flagged text quotes someone else. Never treat its output as evidence of authorship.
+- Slack messages stay concise and conversational. Always use full Jira links (`https://your-org.atlassian.net/browse/PROJ-123`), never bare ticket numbers. A review request is one short paragraph that names the reviewer and links the PR.
+- **Style corrections**: when the user corrects wording on an external draft you produced, follow `.claude/docs/style-delta-capture.md`. Log a pending `[STYLE-DELTA]` line and never write `workspace/communication-style.md` directly; `/nase:wrap-up` Step 9 gates that write.
 
 ## Code Review
 
-- **Don't over-escalate severity**: only mark something `critical` when there is clear, concrete evidence it is broken or exploitable
-- **Prefer measured assessments**: use `suggestion` or `nit` for style/minor issues; reserve `blocking` for real correctness bugs
-- **Verify environment impact before stating it**: never claim a change affects (or doesn't affect) a specific deployment environment without tracing the code path first
+- Mark `critical` only with concrete evidence the change is broken or exploitable. Use `suggestion` or `nit` for style and minor issues, and reserve `blocking` for real correctness bugs.
+- Trace the code path before claiming a change does or does not affect a specific deployment environment.
 
 ---
 
 ## Code Quality Standards
 
-- **Minimal changes**: write the minimum code needed - do not add unrequested features or refactor surrounding code
-- **"While we're at it" disclosure**: per the user's global CLAUDE.md, fix failing lint, failing tests, flaky tests, and broken-looking UI even when unrelated to the assigned task; name each such fix in the handoff and the PR description (filename + one-line description). Everything else you noticed, such as a refactor, rename, or unrequested feature, stays a follow-up note.
-- **No comments by default**: unless the user asks or the logic is genuinely non-obvious; `.claude/docs/code-comment-policy.md` owns when one is warranted and its shape
-- **Check dependencies first**: verify in the project's dependency file before using a library
-- **Do not weaken tests to hide failures**: fix production defects; update or add tests when intended behavior or contracts change
-- **Keep handoffs brief**: report requested results, verification commands, and unresolved blockers
-- **Verify before done**: run the repo's lint and typecheck commands after code changes; discover them from repo docs and CI first, and ask if they remain unknown. Propose any target repo `CLAUDE.md` update separately
+- **Minimal changes**: write the minimum code needed; do not add unrequested features or refactor surrounding code.
+- **"While we're at it" disclosure**: fix failing lint, failing tests, flaky tests, and broken-looking UI even when unrelated to the assigned task. Name each such fix in the handoff and the PR description (filename + one-line description). Everything else you noticed, such as a refactor, rename, or unrequested feature, stays a follow-up note.
+- **No comments by default**: unless the user asks or the logic is genuinely non-obvious; `.claude/docs/code-comment-policy.md` owns when one is warranted and its shape.
+- **Do not weaken tests to hide failures**: fix production defects; update or add tests when intended behavior or contracts change.
+- **Verify before done**: run the repo's lint and typecheck commands after code changes; discover them from repo docs and CI first, and ask if they remain unknown. Report the requested results, verification commands, and unresolved blockers. Propose any target repo `CLAUDE.md` update separately.
 
 ## Skill Output Discipline
 

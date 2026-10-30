@@ -159,6 +159,12 @@ expect_guard_rc "gh pr create inside unquoted git submodule foreach is blocked" 
 expect_guard_rc "plain gh api read stays a read" 0 "gh api repos/owner/example"
 expect_guard_rc "gh api include flag stays a read" 0 "gh api -i repos/owner/example"
 expect_guard_rc "gh api explicit GET stays a read" 0 "gh api -X GET repos/owner/example"
+expect_guard_rc "gh api explicit GET with fields sends query parameters" 0 \
+  "gh api -X GET search/code -f q=example --jq '.items[].path'"
+expect_guard_rc "gh api fields without a method switch to POST" 10 \
+  "gh api search/issues -f q=example"
+expect_guard_rc "gh api explicit GET with a body file is blocked" 10 \
+  "gh api -X GET repos/owner/example --input body.json"
 expect_guard_rc "gh api paginate stays a read" 0 "gh api --paginate repos/owner/example/issues"
 expect_guard_rc "gh api header value is not read as a cluster" 0 \
   "gh api -H 'Accept: application/vnd.github+json' repos/owner/example"
@@ -331,7 +337,7 @@ expect_rc "stdin gist payload is blocked" 2 \
 expect_guard_rc "raw gh auth token is blocked" 10 "gh auth token"
 expect_guard_rc "gh auth status token output is blocked" 10 "gh auth status --show-token"
 expect_guard_rc "gh auth status short token flag is blocked" 10 "gh auth status -at"
-expect_guard_rc "raw gh auth switch is blocked" 10 "gh auth switch --user personal"
+expect_guard_rc "gh auth switch only changes the local active account" 0 "gh auth switch --user personal"
 expect_guard_rc "raw gh auth logout is blocked" 10 "gh auth logout --hostname github.com"
 expect_guard_rc "gh auth status remains read-only" 0 "gh auth status --active"
 expect_guard_rc "dynamic executable variable is blocked" 10 'GH=gh; $GH pr create --draft --title Example'
@@ -468,6 +474,18 @@ expect_guard_rc "Azure access-token output is blocked" 10 "az account get-access
 expect_guard_rc "raw Azure login is blocked" 10 "az login"
 expect_guard_rc "raw Azure logout is blocked" 10 "az logout"
 expect_guard_rc "Azure account show remains read-only" 0 "az account show"
+expect_guard_rc "az account set only retargets the local CLI" 0 "az account set --subscription example"
+expect_guard_rc "az cloud set only retargets the local CLI" 0 "az cloud set --name AzureCloud"
+expect_guard_rc "az monitor query text that mentions a token is not a secret read" 0 \
+  "az monitor app-insights query --app example -g rg --analytics-query \"traces | where message has 'token'\""
+expect_guard_rc "az monitor query flag naming a secret is still blocked" 10 \
+  "az monitor app-insights query --app example -g rg --analytics-query requests --secret x"
+expect_guard_rc "az keyvault secret show stays blocked" 10 "az keyvault secret show --vault-name v -n s"
+expect_guard_rc "az cdn endpoint show is a read" 0 "az cdn endpoint show -g rg --profile-name p -n e"
+expect_guard_rc "az cdn endpoint purge is still a mutation" 10 \
+  "az cdn endpoint purge -g rg --profile-name p -n e --content-paths /"
+expect_guard_rc "az costmanagement query is a read" 0 \
+  "az costmanagement query --type ActualCost --scope /subscriptions/example --timeframe MonthToDate"
 expect_guard_rc "az devops invoke defaults to GET and stays read-only" 0 "az devops invoke --area build --resource timeline --route-parameters project=Analytics buildId=1 --org https://dev.azure.com/example --api-version 7.1"
 expect_guard_rc "az devops invoke explicit GET stays read-only" 0 "az devops invoke --area build --resource logs --http-method get --org https://dev.azure.com/example"
 expect_guard_rc "az devops invoke POST is blocked" 10 "az devops invoke --area build --resource builds --http-method POST --in-file body.json --org https://dev.azure.com/example"

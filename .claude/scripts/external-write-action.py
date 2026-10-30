@@ -59,6 +59,8 @@ AZURE_MUTATING_VERBS = {
     "unassign",
     "update",
 }
+# These only change which subscription or cloud the local CLI targets; nothing remote changes.
+AZURE_LOCAL_CONFIG_COMMANDS = (["account", "set"], ["cloud", "set"])
 AZURE_READ_VERBS = {
     "check",
     "describe",
@@ -83,7 +85,10 @@ AZURE_SAFE_READ_GROUPS = {
     "appconfig",
     "backup",
     "cloud",
+    "cdn",
+    "consumption",
     "cosmosdb",
+    "costmanagement",
     "deployment",
     "devops",
     "disk",
@@ -269,6 +274,20 @@ def azure_http_flags(
         if tuple(command_path[: len(prefix)]) == prefix:
             return flags
     return None
+
+
+def azure_words_without_query_text(words: list[str]) -> list[str]:
+    """Drop the value of `--analytics-query` so log text that mentions a token is not a secret read."""
+    kept: list[str] = []
+    skip_value = False
+    for word in words:
+        if skip_value:
+            skip_value = False
+        elif word == "--analytics-query":
+            skip_value = True
+        elif not word.startswith("--analytics-query="):
+            kept.append(word)
+    return kept
 
 
 def azure_secret_listing_options(words: list[str]) -> list[str]:
@@ -461,6 +480,8 @@ def mutation_system(argv: list[str]) -> str | None:
             return "azure"
         if command_path[:2] == ["pipelines", "run"]:
             return "azure"
+        if command_path in AZURE_LOCAL_CONFIG_COMMANDS:
+            return None
         if any(word in AZURE_MUTATING_VERBS for word in command_path):
             return "azure"
         return None
@@ -1598,6 +1619,8 @@ def known_safe_external_command(argv: list[str]) -> bool:
         if not words:
             return True
         if words[0] == "auth":
+            if words[1:2] == ["switch"]:
+                return True
             shows_token = any(
                 word == "--show-token"
                 or word.startswith("--show-token=")
@@ -1616,12 +1639,17 @@ def known_safe_external_command(argv: list[str]) -> bool:
             if not understood:
                 return False
             methods = option_values(api_args, "--method", "-X")
-            has_payload = any(
+            has_body = bool(option_values(api_args, "--input"))
+            has_fields = any(
                 option_values(api_args, name)
-                for name in ("-f", "-F", "--raw-field", "--field", "--input")
+                for name in ("-f", "-F", "--raw-field", "--field")
             )
-            return not has_payload and all(
-                method.upper() in READ_HTTP_METHODS for method in methods
+            # With an explicit GET or HEAD, gh sends fields as query parameters.
+            # Without a method, any field makes gh switch to POST.
+            return (
+                not has_body
+                and not (has_fields and not methods)
+                and all(method.upper() in READ_HTTP_METHODS for method in methods)
             )
         if words[0] == "search":
             return len(words) >= 2 and words[1] in {
@@ -1652,9 +1680,11 @@ def known_safe_external_command(argv: list[str]) -> bool:
         if command_path == AZURE_SECRET_NAME_LISTING:
             options = azure_secret_listing_options(words)
             return not AZURE_SENSITIVE_READ_RE.search(" ".join(options))
-        if AZURE_SENSITIVE_READ_RE.search(" ".join(words)):
+        if AZURE_SENSITIVE_READ_RE.search(" ".join(azure_words_without_query_text(words))):
             return False
         if command_path[0] == "version":
+            return True
+        if command_path in AZURE_LOCAL_CONFIG_COMMANDS:
             return True
         http_flags = azure_http_flags(command_path)
         if http_flags:
