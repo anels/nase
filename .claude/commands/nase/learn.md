@@ -3,6 +3,8 @@ name: nase:learn
 description: "Research and save a tip, URL, YouTube video, repo, or cross-project pattern to KB. Use for remember this, learn from this, a URL, or a YouTube link."
 argument-hint: "<tip/url/youtube-link/repo/topic>"
 category: Learning & reflection
+model: sonnet
+effort: medium
 ---
 
 Turn one input into sourced, reusable KB knowledge. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then check `.claude/docs/confidential-marker.md` before loading session material.

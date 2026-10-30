@@ -180,7 +180,7 @@ Run two mechanical checks against the **staged** content, before apply. Both cat
 
 ```bash
 python3 .claude/scripts/citation-validator.py "{staged_path}" \
-  --root nase="$NASE_ROOT" --repo-root {alias}="{repo_path}" --format json
+  --root nase="$(git rev-parse --show-toplevel)" --repo-root {alias}="{repo_path}" --format json
 python3 .claude/scripts/effort-state.py --file "{staged_path}" --evaluate-transition
 ```
 

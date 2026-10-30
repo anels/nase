@@ -3,6 +3,8 @@ name: nase:address-comments
 description: "Resolve existing PR review feedback with fixes or replies. Use for address comments, handle PR feedback, or resolve threads."
 argument-hint: "<pr-url-or-number>"
 category: Git workflow
+model: sonnet
+effort: high
 ---
 
 **Input:** $ARGUMENTS - a GitHub PR URL or number

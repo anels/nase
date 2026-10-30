@@ -3,6 +3,8 @@ name: nase:today
 description: "Build a daily plan from workspace, PR, Jira, Slack, and Confluence context, then re-check open todos. Use for today, standup, or what should I work on."
 argument-hint: "[date or focus]"
 category: Learning & reflection
+model: sonnet
+effort: medium
 ---
 
 Create a concise daily plan from current evidence. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `.claude/docs/closing-block.md` for the final card.

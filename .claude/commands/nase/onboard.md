@@ -3,6 +3,8 @@ name: nase:onboard
 description: "Onboard or refresh repo context in the workspace KB. Use for onboard, refresh KB, add repo, or a repo path or URL."
 argument-hint: "[repo|url] [--group N] [--all-groups] [--force] [--no-curate]"
 category: Knowledge base
+model: sonnet
+effort: medium
 ---
 
 Build or refresh compact repo knowledge without dumping the repository into context. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/kb-write-routing.md -> Shared admission contract`, and `.claude/docs/kb-template.md`.

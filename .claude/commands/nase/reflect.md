@@ -3,6 +3,8 @@ name: nase:reflect
 description: "Reflect on completed work and extract lessons. Use after a feature, fix, or debugging session, or for post-mortem."
 argument-hint: "[completed task] [--auto-accept]"
 category: Learning & reflection
+model: sonnet
+effort: medium
 ---
 
 Fresh reflections capture more than end-of-day summaries. Also invoked by `/nase:wrap-up`.

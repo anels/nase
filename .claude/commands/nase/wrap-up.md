@@ -3,6 +3,8 @@ name: nase:wrap-up
 description: "Capture end-of-day reflection, lessons, KB updates, and a journal entry. Use for wrap up, end of day, or closing out."
 argument-hint: "[day summary]"
 category: Learning & reflection
+model: sonnet
+effort: medium
 ---
 
 Close the day in one bounded pass. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.

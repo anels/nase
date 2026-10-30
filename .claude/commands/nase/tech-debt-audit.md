@@ -3,6 +3,8 @@ name: nase:tech-debt-audit
 description: "Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for a tech debt audit."
 argument-hint: "<repo-path>"
 category: Security & maintenance
+model: sonnet
+effort: high
 disable-model-invocation: true
 ---
 

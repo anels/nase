@@ -3,6 +3,8 @@ name: nase:restore
 description: "Restore workspace/ from a backup. Use after migration or deletion, or for sync workspace, recover, or pull backup."
 argument-hint: "[backup path]"
 category: Backup & restore
+model: haiku
+effort: low
 disable-model-invocation: true
 ---
 

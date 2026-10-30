@@ -3,6 +3,8 @@ name: nase:estimate-eta
 description: "Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, or estimate this."
 argument-hint: "<task-or-feature>"
 category: Reporting
+model: sonnet
+effort: medium
 ---
 
 **Task to estimate:** $ARGUMENTS

@@ -1,13 +1,13 @@
 ---
 name: nase:kb-review
-description: "Audit KB and workspace hygiene, then apply safe repairs. Use for review KB, curate KB, stale data, or clean up KB."
+description: "Audit KB and workspace hygiene, apply repairs. Use for review KB, curate KB, stale data, or clean up KB."
 argument-hint: "[workspace/path] [--kb-only] [--report-only|--repair]"
 category: Knowledge base
+model: sonnet
+effort: medium
 ---
-
 Audit the KB and the workspace mechanisms that keep it trustworthy, apply the repairs whose correct value is already decided, and gate the rest. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/workspace-write-guard.md`.
-
-Content rules live in `.claude/docs/kb-lifecycle-layers.md`. This file owns scope, scanning, repair authority, and the report.
+Content rules: kb-lifecycle-layers.md. This file owns scope, scanning, repair authority, and the report.
 
 ## Scope and mode
 

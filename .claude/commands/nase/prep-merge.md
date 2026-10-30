@@ -3,6 +3,8 @@ name: nase:prep-merge
 description: "Prepare a PR for merge: threads, history, verification, metadata. Use with a PR URL only for explicit prep merge, ready-to-merge, or squash and push."
 argument-hint: "<pr-url-or-number>"
 category: Git workflow
+model: sonnet
+effort: high
 ---
 
 Prepare one PR without merging it. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/pr-input-guard.md`, `.claude/docs/repo-task-flow.md`, `.claude/docs/external-mutation-policy.md`, and `.claude/docs/effort-transitions.md → Prep-Merge Update`.
@@ -41,7 +43,18 @@ python3 .claude/scripts/pr-github-helper.py prep-state "$PR_URL" --local-repo "{
    body in a later gate, because different bytes break the hash the approved manifest bound.
    Gate 12 deletes it.
 
-9. Show the exact commit, target branch, force-push ref, PR title, and body. Require explicit confirmation immediately before history rewrite/push and GitHub edits.
+9. Show the exact commit, target branch, force-push ref, PR title, and body. Then gate with one `AskUserQuestion` immediately before any history rewrite, push, or GitHub edit (per `external-mutation-policy.md` → the gate must be the last step before the side-effect, not a generic earlier "should we proceed?"):
+
+```
+question: "Ready to squash, force-push, and update PR metadata for {repo}#{number}?"
+header: "Confirm push"
+options:
+  - label: "Squash and push" (Recommended), description: "Runs Gate 10-11 with the exact commit/body shown above"
+  - label: "Squash only, no push", description: "Rewrite local history but stop before force-push; push later"
+  - label: "Cancel", description: "Leave the PR and worktree untouched"
+```
+
+Only "Squash and push" proceeds to Gate 10; "Squash only" runs Gate 10's local rewrite and stops; "Cancel" stops here. Any mismatch after approval invalidates the payload and requires a new preview.
 10. Route every GitHub mutation through `.claude/scripts/external-write-action.py`. Use `--force-with-lease` only, bind the expected remote head, then prove the pushed commit is the PR head.
 11. Update PR metadata only after the push is verified. Re-read title/body/head/checks and follow `.claude/docs/pr-gates-consumption.md`.
 12. Update the linked effort through its guarded lifecycle transition, clean the worktree with the verified remote ref, delete `workspace/tmp/prep-merge/pr-{number}-body.md`, and report blockers or merge readiness. Append the daily-log entry per `.claude/docs/daily-log-format.md`, whose self-logging rule makes that bullet the durable completion record:

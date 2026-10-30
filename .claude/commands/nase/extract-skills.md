@@ -3,6 +3,8 @@ name: nase:extract-skills
 description: "Extract reusable patterns from this session into nase skills. Use for extract pattern, save technique, capture workflow, or after non-trivial work."
 argument-hint: "[session notes or topic]"
 category: Learning & reflection
+model: sonnet
+effort: medium
 disable-model-invocation: true
 ---
 

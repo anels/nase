@@ -3,6 +3,8 @@ name: nase:design
 description: "Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill a plan, or review a design."
 argument-hint: "<feature/request> [--auto|--interactive|--grill|--review]"
 category: Design & implementation
+model: sonnet
+effort: high
 ---
 
 Turn a request into a concrete, tracked, junior-implementable design. This command never edits product code.
@@ -37,9 +39,9 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 1. Resolve the repo with `.claude/docs/repo-resolution.md`. Load relevant KB, repo `CLAUDE.md`/README/docs, code paths, callers, tests, history, active efforts, and primary external sources.
 2. Prove applicable reproduction, root cause, scale/usage, coverage, rollout, and observability assumptions. Mark missing evidence as a gap that cannot support another claim.
 3. Map entry points, changed functions/types, downstream callers, tests, and operational surfaces. Do not invent paths.
-4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. Quick fixes may use two one-line options.
+4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. Quick fixes may use two one-line options. Model routing: default to `verifier` (sonnet) for scoring and `worker` (sonnet) for traces; route to `architect` (opus) only when the decision is a cross-repo or security-shaped architecture call with no local precedent a verifier pass cannot cover (see `.claude/roles.yaml` → `architect` use_when). "This feels important" is not a trigger.
 5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
-6. Self-review up to three times against the quality criteria below, scoring each round with a **verifier** subagent (`Agent(model="sonnet", tools=[Read, Grep, Glob, Bash])`, the role `.claude/roles.yaml` assigns to draft scoring) so the pass is read-only and independent. Research fixable gaps before asking the user.
+6. Self-review up to three times against the quality criteria below, scoring each round with a **verifier** subagent (`Agent(model="sonnet", effort="medium", tools=[Read, Grep, Glob, Bash])`, the role `.claude/roles.yaml` assigns to draft scoring) so the pass is read-only and independent. Research fixable gaps before asking the user.
 7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Run `citation-validator.py` and `effort-state.py --evaluate-transition` against the staged content first, as `.claude/docs/design-auto-mode.md → 5a` specifies. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
 8. Optional Jira creation: read `.claude/docs/external-mutation-policy.md`, then use a fresh payload-bound token and a concrete approval immediately before the write. Skip this step, and that read, when no Jira issue is being created.
 9. Stop after saving. Chat returns the file path and a short decision summary.

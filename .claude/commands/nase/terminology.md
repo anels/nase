@@ -3,6 +3,8 @@ name: nase:terminology
 description: "Define, update, or look up scope-aware, cross-linked terminology. Use for what does X mean, add a term, or glossary."
 argument-hint: "<term> [source:private]|list [scope:<l>]|define/update <term> scope:<l>=<def>"
 category: Knowledge base
+model: sonnet
+effort: medium
 ---
 
 Maintain the terminology KB - one file per term, one `## Scope:` section per

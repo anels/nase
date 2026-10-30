@@ -3,6 +3,8 @@ name: nase:recap
 description: "Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, or summarize a period."
 argument-hint: "[days|week|month] [--verbose]"
 category: Reporting
+model: sonnet
+effort: medium
 ---
 
 Create a sourced recap from bounded workspace data. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.

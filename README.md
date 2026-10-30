@@ -248,7 +248,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 |---------|---------|
 | `/nase:kb-gap-detect` | Find missing KB topics from logs and lessons. Use for knowledge gap or what should I document; kb-review finds stale entries. |
 | `/nase:kb-merge` | Import a teammate's shared KB with safe merge previews. Use for import KB, merge KB, or a kb-teamshare export. |
-| `/nase:kb-review` | Audit KB and workspace hygiene, then apply safe repairs. Use for review KB, curate KB, stale data, or clean up KB. |
+| `/nase:kb-review` | Audit KB and workspace hygiene, apply repairs. Use for review KB, curate KB, stale data, or clean up KB. |
 | `/nase:kb-search` | Search KB files for topics, keywords, and related entries. Use for search KB, find in KB, or is X documented. |
 | `/nase:kb-teamshare` | Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, or share skills. |
 | `/nase:kb-update` | Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract. |
@@ -281,8 +281,8 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | `/nase:discuss-pr` | Review a PR and draft evidence-backed inline findings. Use for review PR, analyze PR, self-review, or a PR URL; not for existing feedback. |
 | `/nase:improve-commit-message` | Rewrite the latest commit message to repo conventions. Use for improve commit, fix commit message, amend, clean up commit, or before push. |
 | `/nase:prep-merge` | Prepare a PR for merge: threads, history, verification, metadata. Use with a PR URL only for explicit prep merge, ready-to-merge, or squash and push. |
-| `/nase:request-review` | Find PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, approval, or ping code owners. |
-| `/nase:simplify` | Simplify recently modified code without changing behavior. Use for simplify, clean up code, refactor for clarity, or deslop. |
+| `/nase:request-review` | Find PR reviewers, stage Slack drafts. Use with PR URLs to request review, approval, or ping owners. |
+| `/nase:simplify` | Simplify recently modified code. Use for simplify, clean up, or deslop. |
 
 ### Reporting
 
@@ -292,7 +292,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | `/nase:efforts` | Reconcile active efforts with live PR and Jira state. Use for effort status, sync efforts, stalled work, or what am I working on. |
 | `/nase:estimate-eta` | Estimate effort and ETA for a task or feature. Use for how long will this take, when can we ship, or estimate this. |
 | `/nase:kb-usage` | Report which skills read or surface KB files and which mapped files are unused. Use for KB usage or top KB files. |
-| `/nase:publish-confluence` | Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts intact. Use for publish to Confluence or share this report. |
+| `/nase:publish-confluence` | Publish a local Markdown or HTML artifact to Confluence with tables, code, charts. Use for publish to Confluence. |
 | `/nase:recap` | Generate a weekly or monthly work recap with improvement suggestions. Use for recap, review my work, or summarize a period. |
 | `/nase:skill-usage` | Report skill usage, outcomes, and context hotspots. Use for skill stats, skill token cost, or deprecate skills. |
 | `/nase:stats` | Display workspace activity counts and charts. Use for show stats, how active am I, or 7/30/all-time activity. |

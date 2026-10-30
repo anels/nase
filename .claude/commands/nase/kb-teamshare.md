@@ -3,6 +3,8 @@ name: nase:kb-teamshare
 description: "Export sanitized KB files or workspace skills for teammates. Use for share my KB, export knowledge base, or share skills."
 argument-hint: "<kb-path-or-skill>"
 category: Knowledge base
+model: sonnet
+effort: medium
 disable-model-invocation: true
 ---
 
