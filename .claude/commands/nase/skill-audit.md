@@ -3,6 +3,8 @@ name: nase:skill-audit
 description: "Scan skills for injection, exfiltration, unsafe operations, and credential risks. Use for audit skills or skill security."
 argument-hint: "[skill path]"
 category: Security & maintenance
+model: sonnet
+effort: medium
 disable-model-invocation: true
 ---
 

@@ -1,12 +1,12 @@
 ---
 name: nase:request-review
-description: "Find PR reviewers and stage Slack DM drafts. Use with PR URLs to request review, approval, or ping code owners."
+description: "Find PR reviewers, stage Slack drafts. Use with PR URLs to request review, approval, or ping owners."
 argument-hint: "<pr-url>... [--mode re-review-ping]"
 category: Git workflow
+model: sonnet
+effort: medium
 ---
-
 # PR Review Requester
-
 Find the right reviewers for one or more PRs and stage Slack DM drafts.
 
 Fan-out threshold: stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch work. Prefer compact script output before spawning agents.
@@ -55,7 +55,7 @@ Read the KB path returned by repo resolution once. Extract ownership signals in 
 
 If the KB has no Ownership Map (repo not yet onboarded), skip to 3b.
 
-If the KB yields confident owners for all changed areas, keep them as primary candidates and use 3b to validate the touched-path mapping. If CODEOWNERS is unavailable, corroborate with recent scoped history and label the remaining uncertainty rather than treating an old KB row as current authority.
+If the KB yields confident owners for all changed areas, keep them as primary candidates and use 3b to validate the touched-path mapping. If CODEOWNERS is unavailable, corroborate with recent scoped history and label the remaining uncertainty; an old KB row is not current authority.
 
 **3b. Validate with CODEOWNERS**
 
@@ -73,9 +73,9 @@ gh api "repos/{owner}/{repo}/codeowners/errors" --jq '.errors[]? | [.line, .kind
 ```
 If errors are returned, report them and avoid treating the fallback matcher as authoritative for affected lines.
 
-Prefer a repo-provided or installed CODEOWNERS parser when one is already available (for example a checked-in script, a package-lock-backed `npx` command, or a language-native parser). If no parser is available, use the documented fallback below and label it `fallback CODEOWNERS match`.
+Prefer a repo-provided or installed CODEOWNERS parser when available (checked-in script, package-lock `npx`, or language-native parser). If no parser is available, use the documented fallback below and label it `fallback CODEOWNERS match`.
 
-For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd). If the fallback matcher cannot confidently model a pattern, report the file under `unresolved owner candidates` instead of guessing.
+For each changed file, scan CODEOWNERS top-to-bottom and keep the **last** matching rule (GitHub's behavior). Collect all `@handle` entries from matching rules. Skip `@org/team` entries (teams can't be DM'd). If a pattern can't be modeled, report under `unresolved owner candidates`.
 
 Path patterns follow gitignore-style glob semantics. The two that a matcher gets wrong:
 
@@ -162,7 +162,7 @@ Use one `AskUserQuestion` call with both entries; the harness renders them in or
 
 **Question 1 - select recipients** (`multiSelect: true`):
 
-Present each resolved person as a selectable option, pre-selected, labelled with their real name and a brief reason (`Alice Smith` - "14 commits to changed files"). List unresolved handles in the question text, not as options. The "Other" free-text option lets the user add someone not on the list.
+Present the top 4 resolved people (by evidence strength) as selectable options, pre-selected, with name+reason (`Alice Smith` - "14 commits to changed files"). Harness caps one `AskUserQuestion` at 4 options, so list anyone beyond top 4 (handle + evidence) in question text; "Other" lets adding by handle. List unresolved handles in question text, never as options.
 
 **Question 2 - message preview** (single-select; include it whenever there is a handle to write to - the candidate list by default, the caller's handles in `--mode re-review-ping`, where question 1 is skipped and this is the only entry):
 
@@ -178,4 +178,4 @@ Stage drafts only for the people confirmed in question 1 - or, in re-review-ping
 
 ## Step 9 - Stage DM drafts (parallel)
 
-Use `slack_send_message_draft` (never `slack_send_message`) with each person's Slack user ID as `channel_id`. Report which drafts were created and which failed. Then stop - do not also assign the same people on GitHub. Slack ping is the request; the GitHub review queue updates when the reviewer actually leaves a review.
+Use `slack_send_message_draft` (never `slack_send_message`) with each Slack user ID as `channel_id`. Report which drafts were created and which failed. Then stop - do not also assign the same people on GitHub. Slack ping is the request; the GitHub review queue updates when the reviewer actually leaves a review.

@@ -3,6 +3,8 @@ name: nase:kb-update
 description: "Persist durable knowledge tied to one repo. Use for update KB, add a repo constraint, or document an API contract."
 argument-hint: "<repo/topic/fact>"
 category: Knowledge base
+model: sonnet
+effort: medium
 ---
 
 The KB is the workspace's long-term memory - it outlives individual sessions.

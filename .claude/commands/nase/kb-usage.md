@@ -3,6 +3,8 @@ name: nase:kb-usage
 description: "Report which skills read or surface KB files and which mapped files are unused. Use for KB usage or top KB files."
 argument-hint: "[--window N|all] [--top N] [--verbose]"
 category: Reporting
+model: haiku
+effort: low
 disable-model-invocation: true
 ---
 

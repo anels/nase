@@ -3,6 +3,8 @@ name: nase:effort-rollup
 description: "Build a monthly delivery report from live PR and Jira state. Use for effort rollup, impact report, month in review, or what did I ship."
 argument-hint: "<YYYY-MM> [--repo <name>] [--md-only]"
 category: Reporting
+model: haiku
+effort: low
 ---
 
 Generate an evidence-backed monthly delivery report. Follow `.claude/docs/language-config.md` → Minimum Step 0 block, then `.claude/docs/skill-contract.md`. The Step 7 promotion into `workspace/recaps/` is a durable workspace write: stage, diff, and drift-check it per `.claude/docs/workspace-write-guard.md`.

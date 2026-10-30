@@ -3,6 +3,8 @@ name: nase:kb-gap-detect
 description: "Find missing KB topics from logs and lessons. Use for knowledge gap or what should I document; kb-review finds stale entries."
 argument-hint: "[--days N] [--since D] [--until D] [--repo NAME] [--auto]"
 category: Knowledge base
+model: sonnet
+effort: medium
 disable-model-invocation: true
 ---
 

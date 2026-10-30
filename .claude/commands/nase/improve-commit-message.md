@@ -3,6 +3,8 @@ name: nase:improve-commit-message
 description: "Rewrite the latest commit message to repo conventions. Use for improve commit, fix commit message, amend, clean up commit, or before push."
 argument-hint: "[--auto-accept] [--repo <abs-path>]"
 category: Git workflow
+model: sonnet
+effort: medium
 ---
 
 Good commit messages are searchable documentation. When someone runs `git log --oneline` six months from now, each line should tell them what changed and why - without opening the diff.

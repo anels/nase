@@ -1,12 +1,12 @@
 ---
 name: nase:simplify
-description: "Simplify recently modified code without changing behavior. Use for simplify, clean up code, refactor for clarity, or deslop."
+description: "Simplify recently modified code. Use for simplify, clean up, or deslop."
 argument-hint: "[diff scope]"
 category: Git workflow
+model: sonnet
+effort: medium
 ---
-
 Cleanup pass on recently-modified code: deletion-first anti-slop cleanup plus `code-simplifier` readability refinement, with behavior preserved exactly.
-
 Replaces the retired Anthropic bundled `/simplify` (removed in Claude Code v2.1.147). Uses whichever `code-simplifier` subagent is installed (`code-simplifier:code-simplifier` or `pr-review-toolkit:code-simplifier`), with the anti-slop contract embedded in the dispatch prompt.
 
 **Input:** `$ARGUMENTS` - optional scope override (`--scope=<glob>`), `--review`, `--dry-run`, `--verbose`.
@@ -84,6 +84,8 @@ first that is actually available and hold it as `$SIMPLIFIER_AGENT`:
 
 Never guess a name that is not in the list; an unavailable `subagent_type` fails the call
 outright rather than degrading, which costs a round trip mid-workflow.
+
+When spawning the resolved simplifier, pass `model="sonnet"` and `effort="medium"` explicitly; otherwise it inherits the session model and an Opus session bills the whole pass at Opus.
 
 If neither is available, fall back to self-review:
 - Check each file against the cleanup targets in Step 3, including the comment pass against `.claude/docs/code-comment-policy.md`.

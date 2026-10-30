@@ -1,12 +1,12 @@
 ---
 name: nase:publish-confluence
-description: "Publish a local Markdown or HTML artifact to Confluence with tables, code, and charts intact. Use for publish to Confluence or share this report."
+description: "Publish a local Markdown or HTML artifact to Confluence with tables, code, charts. Use for publish to Confluence."
 argument-hint: "<path-to-md-or-html> [--space KEY] [--parent ID] [--rasterize-only CLASS]"
 category: Reporting
+model: sonnet
+effort: medium
 ---
-
-Publish a finished local `.md`/`.html` artifact as a Confluence page, preserving structure and rendering charts that Confluence cannot express. Triggers: "publish to Confluence", "share this report on the wiki", "put this doc on Confluence", or a path to a local report.
-
+Publish a finished local `.md`/`.html` artifact as a Confluence page, preserving structure and rendering charts Confluence cannot express. Triggers: "publish to Confluence", "share this report on the wiki", "put this doc on Confluence", or a path to a local report.
 **Input:** `$ARGUMENTS` - an absolute path to a local `.md` or `.html` file. Optional: `--title`, `--rasterize-only <class>`, `--no-rasterize`, `--rasterize <selector>`, all of which pass straight through to `confluence-publish.py plan`. Two more are consumed here rather than by the script: `--space KEY` and `--parent ID` pin the destination, so the targeting ladder skips its search rungs and the confirm presents that space and parent as the only candidate.
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/external-mutation-policy.md` - every Confluence write goes through draft-first plus an `AskUserQuestion` showing the concrete payload. Conversion rules live in `.claude/docs/confluence-publish-conversion.md`; format selection and ADF mechanics in `.claude/docs/confluence-adf-pattern.md`; the ledger write follows `.claude/docs/workspace-write-guard.md` (append-only exception).

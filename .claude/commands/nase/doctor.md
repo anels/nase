@@ -3,6 +3,8 @@ name: nase:doctor
 description: "Diagnose nase workspace config, hooks, backups, tools, and skill sync. Use for doctor, health check, hooks not firing, or after migration."
 argument-hint: "[--deep]"
 category: Setup & health
+model: haiku
+effort: low
 ---
 
 Run a read-only workspace health check. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Keep diagnostics in `conversation:`.

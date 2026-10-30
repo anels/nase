@@ -3,6 +3,8 @@ name: nase:discuss-pr
 description: "Review a PR and draft evidence-backed inline findings. Use for review PR, analyze PR, self-review, or a PR URL; not for existing feedback."
 argument-hint: "<pr-url-or-number>"
 category: Git workflow
+model: sonnet
+effort: high
 ---
 
 ## Language

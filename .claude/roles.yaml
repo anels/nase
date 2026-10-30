@@ -12,6 +12,11 @@
 # Each role also declares an `effort:` tier (low|medium|high) — the reasoning
 # budget to pass with the model. Apply the Effort scaling rule below to size
 # effort to the actual task, not just the role.
+#
+# NOTE: `effort` is advisory metadata here. Spawn sites MUST pass `effort=` to
+# `Agent(...)` for it to take effect; a role name alone does not carry it. The
+# one inline spawn in design.md and the simplify dispatch now do; the rest are
+# tracked as a P1 follow-up (see roles routing table below).
 
 roles:
   lookup:
@@ -80,8 +85,8 @@ roles:
 #   design             KB + repo + workspace context scans           (persisted haiku agents)
 #   design             auto Step 4a scoring the draft                verifier
 #   design             grill branch resolution (codebase/config)     lookup
-#   design             architecture trade-off with no local          architect
-#                      precedent, cross-repo or security-shaped
+#   design             architecture trade-off with no local          architect  (reserved: no live spawn site yet;
+#                      precedent, cross-repo or security-shaped     see design.md Step 4 for activation rule)
 #   discuss-pr         PR metadata / changed files                   (nase-pr-metadata-reader, haiku)
 #   discuss-pr         Step 5b code traces                           trace-role.py resolve (worker by default)
 #   discuss-pr         Step 6.5 code traces                          worker

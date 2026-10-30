@@ -3,6 +3,8 @@ name: nase:tech-digest
 description: "Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, what's new, or morning digest."
 argument-hint: "[--refresh]"
 category: Knowledge base
+model: sonnet
+effort: medium
 ---
 
 Build a current, source-linked digest only when requested. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/content-hash-cache.md`.

@@ -19,10 +19,12 @@ updating the daily log, or promoting a saved report:
 
 ```bash
 python3 .claude/scripts/citation-validator.py "$ARTIFACT" \
-  --root nase="$NASE_ROOT" \
+  --root nase="$(git rev-parse --show-toplevel)" \
   --repo-root repo-alias="$REPO_ROOT" \
   --format json
 ```
+
+`$NASE_ROOT` is only exported inside hook processes; resolve it locally with `git rev-parse` as above so the gate actually runs (exit 3 means "checked nothing").
 
 Repeat `--repo-root ALIAS=PATH` for each available checkout. New report
 producers MUST emit repo-qualified source citations such as

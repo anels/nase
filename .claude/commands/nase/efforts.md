@@ -3,6 +3,8 @@ name: nase:efforts
 description: "Reconcile active efforts with live PR and Jira state. Use for effort status, sync efforts, stalled work, or what am I working on."
 argument-hint: "[--by-scope|--by-repo] [--verbose] [--closed]"
 category: Reporting
+model: haiku
+effort: low
 ---
 
 ## Purpose

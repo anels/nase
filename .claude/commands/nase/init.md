@@ -3,6 +3,8 @@ name: nase:init
 description: "Initialize or reconfigure an idempotent nase workspace. Use for first-time setup, a new machine, missing config, configure, or bootstrap."
 argument-hint: "[--reconfigure]"
 category: Setup & health
+model: sonnet
+effort: medium
 ---
 
 Initialize only this checkout's ignored workspace state. Existing values are defaults; reruns must be idempotent.
