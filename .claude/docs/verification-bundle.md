@@ -82,6 +82,8 @@ A changed file may carry a credential-shaped constant the repository has already
 
 An acknowledgement suppresses only the line it hashes, so a real secret on any other line still stops the bundle. A single-line or minified file has one line, so one acknowledgement there covers the whole file. A missing or malformed allowlist is fatal rather than ignored, and more than 64 acknowledged lines in one file stops the bundle too. The acknowledgement buys a bundle, not a diff - the credential-like bytes still force the diff out and the bundle declares a `CANDIDATE` `credential_like_diff_omitted` gap, which keeps the reducer off `PROCEED`. Hand-editing a flagged file to get past the gate is not the alternative to this flag.
 
+The same acknowledgements apply to a context file the reducer asked for with `--context-request-file`. The embedded content carries a `<redacted-line:hash>` marker in place of each acknowledged line, and any other credential-shaped line still stops the bundle. Without this, the context that the omitted diff makes the reviewer request could never be built.
+
 ## Bound Context
 
 When the reducer returns `CONTEXT`, pass its output to the next bundle:

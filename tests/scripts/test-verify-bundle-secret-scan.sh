@@ -627,6 +627,55 @@ class CandidateAllowlistTest(unittest.TestCase):
         self.assertEqual(module.load_secret_scan_allowlist(None), set())
 
 
+class ContextAllowlistTest(unittest.TestCase):
+    """A context file the reviewer asked for honors the same acknowledgements as the candidate scan."""
+
+    SANCTIONED = b"DEFAULT_" + b"PASSWORD" + b' = "legacy-canary-4831"'
+
+    def build_contexts(self, lines: list[bytes]) -> list[dict]:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        repo = Path(directory)
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        (repo / "cfg.py").write_bytes(b"\n".join(lines) + b"\n")
+        subprocess.run(["git", "-C", str(repo), "add", "cfg.py"], check=True)
+        tree_oid = subprocess.run(
+            ["git", "-C", str(repo), "write-tree"], check=True, capture_output=True, text=True
+        ).stdout.strip()
+        return module.resolve_contexts(
+            repo, tree_oid, tree_oid, [{"tree": "CANDIDATE", "path": "cfg.py"}]
+        )
+
+    def key(self, line: bytes, path: str = "cfg.py") -> tuple[str, str]:
+        return hashlib.sha256(line).hexdigest(), path
+
+    def test_unacknowledged_context_secret_still_blocks_the_bundle(self):
+        contexts = self.build_contexts([b"import os", self.SANCTIONED])
+        with self.assertRaises(SystemExit):
+            module.context_secret_preflight(contexts, set())
+
+    def test_acknowledged_context_line_is_redacted_and_no_longer_blocks(self):
+        contexts = self.build_contexts([b"import os", self.SANCTIONED, b"print(os.name)"])
+        module.context_secret_preflight(contexts, {self.key(self.SANCTIONED)})
+        content = contexts[0]["content"]
+        self.assertIn("import os", content)
+        self.assertIn("print(os.name)", content)
+        self.assertIn("<redacted-line:", content)
+        self.assertNotIn("legacy-canary-4831", content)
+
+    def test_acknowledgement_covers_only_its_own_context_line(self):
+        later = b"client_" + b"secret" + b"=abcdefgh12345678"
+        contexts = self.build_contexts([self.SANCTIONED, b"import os", later])
+        with self.assertRaises(SystemExit):
+            module.context_secret_preflight(contexts, {self.key(self.SANCTIONED)})
+
+    def test_context_allowlist_is_keyed_on_the_exact_line_and_path(self):
+        for key in (self.key(self.SANCTIONED + b" "), self.key(self.SANCTIONED, "other.py")):
+            contexts = self.build_contexts([self.SANCTIONED])
+            with self.subTest(key=key), self.assertRaises(SystemExit):
+                module.context_secret_preflight(contexts, {key})
+
+
 class DiffOmissionGapTest(unittest.TestCase):
     """An acknowledged line unblocks the build; the diff it suppresses stays a gap."""
 

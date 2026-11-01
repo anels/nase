@@ -55,6 +55,8 @@ PY
 
 assert_cmd "roles.yaml documents Effort scaling rule" grep -q "Effort scaling" "$ROLES"
 assert_cmd "roles.yaml gates automated downgrade on eval" grep -qi "eval gate" "$ROLES"
+assert_cmd "roles.yaml escalates effort upward only on a failed re-run" grep -q "re-running a check that just failed" "$ROLES"
+assert_cmd "roles.yaml keeps the failure re-run upward only" grep -q "failure re-run is upward only" "$ROLES"
 assert_cmd "architecture.md role table has Effort column" grep -q "| Role | Model | Effort |" "$ARCH"
 assert_cmd "architecture.md documents verifier role" grep -q '| `verifier` | `sonnet` | `medium` |' "$ARCH"
 assert_cmd "architecture.md documents checker role" grep -q '| `checker` | `haiku` | `medium` |' "$ARCH"

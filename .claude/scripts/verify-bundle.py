@@ -798,11 +798,41 @@ def secret_preflight(
             )
 
 
-def context_secret_preflight(contexts: list[dict[str, Any]]) -> None:
+def redact_acknowledged_lines(content: str, path: str, allowlist: set[tuple[str, str]]) -> str:
+    """Replace each credential-shaped line that the allowlist acknowledges for `path`.
+
+    The marker matches `redact_sensitive_lines`, so the reviewer still sees where the line sits
+    and the assembled-bundle scan has nothing left to trip on. An unacknowledged line is kept,
+    which leaves it for the preflight to reject.
+    """
+    lines = content.split("\n")
+    acknowledged = 0
+    for index, line in enumerate(lines):
+        encoded = line.rstrip("\r").encode("utf-8", "surrogateescape")
+        if not secret_kind(encoded):
+            continue
+        digest = hashlib.sha256(encoded).hexdigest()
+        if (digest, path) not in allowlist:
+            continue
+        acknowledged += 1
+        if acknowledged > ALLOWLIST_MAX_SKIPS:
+            raise SystemExit(
+                f"context {safe_display_path(path)} acknowledges more than {ALLOWLIST_MAX_SKIPS} "
+                "credential-shaped lines; bundle was not written"
+            )
+        lines[index] = f"<redacted-line:{digest[:12]}>"
+    return "\n".join(lines)
+
+
+def context_secret_preflight(
+    contexts: list[dict[str, Any]], allowlist: set[tuple[str, str]]
+) -> None:
     for item in contexts:
         content = item.get("content")
         if content is None:
             continue
+        content = redact_acknowledged_lines(content, item["path"], allowlist)
+        item["content"] = content
         kind = secret_kind(content.encode("utf-8"))
         if kind:
             raise SystemExit(
@@ -1181,22 +1211,15 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         raise SystemExit("task must be valid UTF-8") from exc
     if len(task_bytes) > ITEM_LIMIT:
         raise SystemExit("task exceeds the 64 KiB bundle item limit")
-    secret_preflight(
-        repo,
-        tree_oid,
-        paths,
-        task,
-        inventory,
-        evidence,
-        load_secret_scan_allowlist(args.secret_scan_allowlist),
-    )
+    allowlist = load_secret_scan_allowlist(args.secret_scan_allowlist)
+    secret_preflight(repo, tree_oid, paths, task, inventory, evidence, allowlist)
     contexts = resolve_contexts(
         repo,
         base_oid,
         tree_oid,
         requests,
     )
-    context_secret_preflight(contexts)
+    context_secret_preflight(contexts, allowlist)
     evidence_projection = project_payload(canonical_bytes(evidence))
     # Computed here rather than in build_bundle so --candidate-tree-only reports it too:
     # the diff-size gate in fsd-implementation-loop.md reads this number before a bundle

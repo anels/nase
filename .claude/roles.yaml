@@ -131,6 +131,14 @@ roles:
 #     - trivial / mechanical / answer-is-in-the-output  → drop one tier (floor: low)
 #     - complex / ambiguous / multi-constraint / first attempt at a hard problem
 #                                                       → raise one tier (cap: high)
+#     - re-running a check that just failed (verifier, checker, or a worker retry)
+#                                                       → raise one tier for the re-run
+#                                                         (cap: high), and stop at the first
+#                                                         tier that settles it
+#   The failure re-run is upward only, so it needs no eval gate: it spends more tokens
+#   and cannot make a result worse. Do not use it to justify a lower first attempt.
+#   Source: stepwise effort escalation in dair-ai/Prompt-Engineering-Guide,
+#   pages/guides/reasoning-llms.en.mdx.
 #   Manual-only: this is a judgment the dispatcher applies per spawn. Never wire
 #   an automated effort/model downgrade without a quality eval gate proving the
 #   routing is correct (a cheaper misroute is silently wrong).
