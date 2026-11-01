@@ -199,7 +199,7 @@ Use them when a repeated workflow needs isolated, read-only candidate gathering 
 | `checker` | `haiku` | `medium` | Read-only per-item checks with a closed answer set. Used only for the bot-comment batch-verify in `/nase:discuss-pr`. |
 | `architect` | `opus` | `high` | Unfamiliar codebases, security, architecture, design. |
 
-Default to `worker`; do not use `architect` for `lookup` work. Each role also carries an `effort:` tier; size it to the task via the Effort scaling rule in `roles.yaml` (drop one tier for trivial/mechanical sub-steps, raise one for complex/ambiguous work - model and effort move independently). Automated effort/model downgrade requires a quality eval gate first.
+Default to `worker`; do not use `architect` for `lookup` work. Each role also carries an `effort:` tier; size it to the task via the Effort scaling rule in `roles.yaml` (drop one tier for trivial/mechanical sub-steps, raise one for complex/ambiguous work or for the re-run of a check that just failed - model and effort move independently). Automated effort/model downgrade requires a quality eval gate first.
 
 ---
 
