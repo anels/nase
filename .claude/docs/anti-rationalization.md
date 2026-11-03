@@ -14,6 +14,10 @@ Source pattern: [addyosmani/agent-skills](https://github.com/addyosmani/agent-sk
 | "It's a small change, scope check is overkill." | Scope creep is the single biggest determinant of whether a PR stays mergeable. Touch only what was asked. |
 | "I know the SHA / line / count, I'll type it." | A value you typed is a claim. Read it from a command and paste the output. A truncated display (a short SHA, `head` output, a table cell) is not the value. |
 | "The verifier refuted it / the gate failed / the search returned nothing." | A negative verdict is evidence about the run, not about the claim. Check what the harness actually read: which source, which ref, which toolset. Then drop the claim, or not. |
+| "Verified / all of them / always / unchanged / green / no findings." | Each word is its own claim. Put the check's scope in the same sentence: which command, which ref, which files. If the check can be re-run to cover the claim, re-run it; if not, narrow the claim to what the check covered. |
+| "Same non-zero exit code before and after, so nothing new." | An unchanged exit code does not show that no findings were added. Compare the outputs. |
+| "My KB note says the system does this, so it does." | A KB note is a claim recorded earlier, whoever wrote it; it locates evidence but is not live evidence of current state. |
+| "That count was off, I'll correct it." | Count with a command over the exact symbol and classify each hit by shape. If you cannot, state no number. Once a count in a draft has been revised, do not publish another unverified count. |
 
 ## `/nase:fsd` - Phase 6.5 Pre-Push Verification Gate
 
