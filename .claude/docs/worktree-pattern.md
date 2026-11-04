@@ -8,6 +8,7 @@
 - Recovery: branch already used by another worktree
 - Recovery: a concurrent session moved your worktree
 - Cleanup
+- Sweep
 
 Shared worktree creation and cleanup pattern used by nase skills.
 
@@ -131,3 +132,31 @@ here means quarantine-and-report:
 
 Automated consumers must keep cleanup-only state and research artifacts on
 return `3`. Never run cleanup at all when the workflow used the primary checkout.
+
+## Sweep
+
+Cleanup quarantines and never deletes, so `{worktree_root}` accumulates locked
+`.{name}.nase-cleanup-{id}` directories and live worktrees whose PRs merged. A sweep
+removes them, run by `/nase:wrap-up` Step 13:
+
+```bash
+python3 "$NASE_ROOT/.claude/scripts/worktree-sweep.py" scan --out {report}
+python3 "$NASE_ROOT/.claude/scripts/worktree-sweep.py" apply --report {report}
+```
+
+`scan` is read-only and sorts every directory into one category. Only `removable` is
+ever deleted: the worktree is clean and GitHub ties its HEAD commit to a merged PR.
+Every `keep-*` category is a reason to leave it: `keep-open-pr`, `keep-dirty`,
+`keep-unpushed` (GitHub lacks the commit), `keep-no-pr`, `keep-locked` (locked by
+something other than the quarantine), `keep-in-use`, and `keep-unreadable`. An
+unknown answer from git or GitHub is `keep-unreadable`, never `removable`.
+
+The evidence is the commit-to-PR association, not a branch ref. A squash merge deletes
+the remote branch, so a ref check cannot tell a merged branch from lost work.
+
+`apply` re-checks each item before removal because a session can commit into a
+worktree after the scan. It skips anything that is now dirty, moved HEAD, or sits outside
+the root, refuses a report whose root differs from its own `--root`, never passes
+`--force`, and prunes afterwards. Deletion is permanent, so the calling skill asks the
+user between the two commands; the script never prompts.
+`tests/scripts/test-worktree-sweep.sh` covers each category and the skip cases.

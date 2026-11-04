@@ -45,6 +45,13 @@ python3 .claude/scripts/tmp-prune.py --apply --manifest workspace/tmp/tmp-prune-
 ```
 
 The script's docstring owns which entries it deletes. Deletion is permanent: backups exclude `workspace/tmp/`, so the manifest is the only record. Report the removed count, the MB freed, and the manifest path; never list the paths in chat. A prune failure is recorded and does not fail the wrap-up.
-13. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, the prune line from Step 12, and the closing card as the final visible block - echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
+13. Sweep spent worktrees so `~/.nase-worktrees` stops growing. Run the read-only scan first:
+
+```bash
+python3 .claude/scripts/worktree-sweep.py scan --out workspace/tmp/worktree-sweep-{today}.json
+```
+
+On `removable=0` in its summary line, or a scan failure, record `worktree-sweep=none` and move on. Otherwise ask once with `AskUserQuestion`, stating the removable count, the MB it frees, and the kept counts, because deletion is permanent and the script never prompts. Only on a yes, run `python3 .claude/scripts/worktree-sweep.py apply --report workspace/tmp/worktree-sweep-{today}.json`. Never edit the report, and never apply without that answer. `.claude/docs/worktree-pattern.md → Sweep` owns the categories. Report the removed count and MB freed; never list paths in chat.
+14. Append one self-log line, then close the chat reply with: the journal path, up to five highlights, the prune line from Step 12, the sweep line from Step 13, and the closing card as the final visible block - echoed from the journal, code-fenced per `.claude/docs/closing-block.md`.
 
 Chained skill failures are recorded once and do not erase successful sibling steps. Never convert a skipped conditional step into a completion claim.
