@@ -8,7 +8,7 @@ This doc is the generic floor. `.claude/docs/voice-profile-routing.md` owns the 
 
 **Scope:** outbound English text only. Local `workspace/` files, code, code comments, and repo docs are out of scope.
 
-**Rules dated 2026-08-28.** Marker vocabulary decays once it is published: Kobak et al. state their own method fails when an author strips the style words, and `delve` / `intricate` / `showcasing` / `realm` measurably dropped in arXiv abstracts after they were publicly named. Re-measure by 2027-02 instead of treating the list as permanent.
+**Rules dated 2026-08-28; compression rule added 2026-11-05.** Marker vocabulary decays once it is published: Kobak et al. state their own method fails when an author strips the style words, and `delve` / `intricate` / `showcasing` / `realm` measurably dropped in arXiv abstracts after they were publicly named. Re-measure by 2027-02 instead of treating the list as permanent.
 
 ## Contents
 
@@ -95,10 +95,11 @@ Instruction-tuned models overuse a small set of constructions that add length wi
 | Nominalization (`perform a migration of`) | ~2.1x, d=1.23 | Verb (`migrate`) |
 | Phrasal coordination (`accurate and reliable and timely`) | ~1.9x, d=0.81 | Pick the one that is load-bearing |
 
-Two more:
+Three more:
 
 - **Short sentences are nearly absent from model output.** Keep them. A three-word sentence after a long one is the cheapest readability gain available.
 - **Models avoid specifics, and the syntax follows.** Human professional writing carries bare proper-name noun phrases, measure phrases, fragments, and attribution verbs. Model writing replaces those with modifier-stacked coordinated noun phrases. Replace the stacks with names, dates, measures, and attributed statements.
+- **Compression tracks reading difficulty.** Clark, Martin, and Mahowald (arXiv:2610.29162, preprint; observational for the model comparison) report that, in conversation, most of the nine frontier and near-frontier models they tested use more reduced object relative clauses (`the file we changed`), more noun stacks of three or more, and longer dependencies than human text. They hypothesize that a pressure for information density during post-training drives it, and a length-penalty fine-tune supports the hypothesis. No linter rule covers these, because detecting them needs a parser. Rewrite them by hand. Split a stack of three or more nouns (`invoice approval workflow` becomes `the workflow that approves invoices`). Keep `that` where it helps the reader parse the clause. Treat caveman-style compression the same way. Keep it in interactive chat and out of PR bodies, review comments, Jira, and Confluence text. Slack register is set by `workspace/communication-style.md`.
 
 **Active voice is a readability rule here, not an anti-AI rule.** Models use agentless passive at roughly *half* the human rate, so passive-heavy prose is not an LLM tell and "use active voice" does not remove the AI signature. Keep the rule because dropping the actor leaves the reader unable to tell who must act - which is exactly the failure mode of a hedged review comment. Google's own guide sanctions passive in three cases: emphasizing the object, de-emphasizing blame, and when the actor is irrelevant. A blanket ban overshoots the source.
 
@@ -182,6 +183,7 @@ No single marker is decisive. Co-occurrence is what a reader registers.
 - [ ] Every claim that needs a name, number, date, or link has one
 - [ ] At least one short sentence, and sentence lengths visibly vary
 - [ ] No trailing `-ing` clause doing the work of a sentence
+- [ ] No stack of three or more nouns; optional `that` kept where it aids parsing
 - [ ] No Tier 1 or Tier 2 word (Part 3)
 - [ ] No fixed opener or closer, no antithesis frame, no mechanical triad
 - [ ] No hedging preamble in front of a verified claim
@@ -233,6 +235,7 @@ When the user corrects a draft in a way that implies a reusable rule, follow `.c
 |---|---|---|
 | Kobak, Gonzalez-Marquez, Horvat & Lause, *Delving into LLM-assisted writing in biomedical publications through excess vocabulary*, Science Advances 11:eadt3813, 2025 | verified | Excess vocabulary is style words (66% verbs, 14% adjectives); 13.5% lower bound on 2024 abstracts; the method's own evadability caveat |
 | Reinhart et al., *Do LLMs write like humans?*, PNAS 122:e2422455122, 2025 | verified | Participial clauses ~5.3x (d=1.38), nominalization ~2.1x (d=1.23), that-subject ~2.6x, phrasal coordination ~1.9x; agentless passive at ~0.5x; instruction tuning as the cause; informal-register prompts do not remove it |
+| Clark, Martin & Mahowald, *Why is AI-generated language so hard to understand?*, arXiv:2610.29162, 2026 | extracted | Most of the nine frontier and near-frontier models tested use more reduced object relatives, noun stacks (3+), and longer dependencies than human text in conversation; hypothesized information-density pressure during post-training, tested with a length-penalty fine-tune; preprint, observational for the model comparison |
 | Liang, Yuksekgonul, Mao, Wu & Zou, *GPT detectors are biased against non-native English writers*, Patterns, 2023 | verified | 61.22% detector false-positive rate; 5.19% to 56.65% when plain language is applied; perplexity as the operative signal |
 | arXiv:2505.01877, human identification of LLM text (n=254) | verified | 55.4% untrained / 65.1% trained accuracy; specificity as the only cue surviving training (p=0.044); AI text judged more readable |
 | AI code-review effectiveness study (16 tools, 178 repos, 22,000+ comments) | extracted | Hunk vs file anchoring (51.9% vs 87.0% unaddressed); comment length rho=-0.24; code ratio rho=+0.89; human 60% vs AI 0.9-19.2% |
