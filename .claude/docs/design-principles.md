@@ -16,6 +16,18 @@ The principle set is the same everywhere; what changes is the **order** you appl
 
 **Elegance** is a design-phase dimension layered on top of these (a coherent shape: fewer moving parts, clear boundaries, natural fit with existing patterns, no cleverness for its own sake). It is not in the core implementation ordering below; `/nase:design` weaves it in (typically right after KISS) when evaluating design options. Implementation and cleanup work from the five core principles.
 
+## Merge gate for duplicated code
+
+DRY above means reuse what exists. It does not mean merge look-alike code. Duplication is cheap to remove later, and a wrong abstraction is expensive to undo. Copies are one thing only when a single decision by a single owner would change all of them at the same time.
+
+- **Wait for three:** leave the second copy inline and merge once the pattern repeats three times for the same reason. Look-alike code with different owners is coincidental duplication, so leave it.
+- **Test:** "who would I consult about this change, and would every copy change together?" Mixed answers mean coincidence, not duplication.
+- **Smell:** props or parameters like `mode`, `variant`, `isSpecial`, or one new flag per new requirement. Unrelated things were merged.
+- **Recovery:** inline the shared code back into each caller, then extract only the part that shares a reason to change.
+- **Share from day one:** primitives, design tokens, accessibility behavior, and logic a standard dictates need no waiting period.
+
+Source: [Stack Overflow blog, 2026-11-05](https://stackoverflow.blog/2026/11/05/don-t-build-the-reusable-component-yet/) - a heuristic from one team's frontend work, not measured.
+
 ## Dynamic ordering by scenario
 
 Classify the work, then lead with the matching order:
@@ -38,6 +50,6 @@ Why the orders differ:
 
 - **`/nase:design`** - declare the ordering as the lens before presenting options; evaluate each option by which principles it honors or violates, with Elegance as an explicit dimension.
 - **`/nase:fsd` Phase 3.6** - classify `task_type`, store the matching `principle_order`, and apply the lead principle during Green (implement only what the principle requires) and the full order during Refactor.
-- **`/nase:simplify`** - use the order to decide what to cut; the reuse-first ladder operationalizes DRY + YAGNI.
+- **`/nase:simplify`** - use the order to decide what to cut; the reuse-first ladder operationalizes DRY + YAGNI, and the merge gate decides which duplicates to consolidate.
 
 The classification is a lens, not a cage - if a task genuinely spans two scenarios, lead with the higher-altitude one and note the blend.
