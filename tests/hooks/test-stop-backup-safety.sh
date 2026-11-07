@@ -333,12 +333,21 @@ printf '%s\n' "$credential_key = \"two word canary\"" > "$repo/workspace/local-c
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
-assert_exit "backup rejects quoted plaintext credential before archive" 1 "$rc" "$out"
-if ! find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
-  printf 'PASS  credential rejection creates no archive\n'
+assert_exit "backup with quoted plaintext credential still runs" 0 "$rc" "$out"
+assert_contains "quoted plaintext credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
+if grep -q '\[WARNING\] credential-like values in workspace were backed up' \
+  "$repo/workspace/logs/.backup-status" 2>/dev/null; then
+  printf 'PASS  the advisory warning is recorded in .backup-status for the next session\n'
   pass=$((pass + 1))
 else
-  printf 'FAIL  credential rejection created an archive\n' >&2
+  printf 'FAIL  the advisory warning is missing from .backup-status\n' >&2
+  fail=$((fail + 1))
+fi
+if find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
+  printf 'PASS  quoted plaintext credential is advisory and the archive is created\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  quoted plaintext credential blocked the archive\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -350,12 +359,13 @@ printf '{\\"%s\\":\\"%s\\"}\n' "$credential_key" "escaped-json-canary-4831" \
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
-assert_exit "backup rejects escaped JSON credential before archive" 1 "$rc" "$out"
-if ! find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
-  printf 'PASS  escaped JSON credential creates no archive\n'
+assert_exit "backup with escaped JSON credential still runs" 0 "$rc" "$out"
+assert_contains "escaped JSON credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
+if find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
+  printf 'PASS  escaped JSON credential is advisory and the archive is created\n'
   pass=$((pass + 1))
 else
-  printf 'FAIL  escaped JSON credential created an archive\n' >&2
+  printf 'FAIL  escaped JSON credential blocked the archive\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -367,12 +377,13 @@ printf '%s=%s%s%s\n' "$credential_key" '"""' "triple-quoted-canary-4831" '"""' \
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
-assert_exit "backup rejects triple-quoted credential before archive" 1 "$rc" "$out"
-if ! find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
-  printf 'PASS  triple-quoted credential creates no archive\n'
+assert_exit "backup with triple-quoted credential still runs" 0 "$rc" "$out"
+assert_contains "triple-quoted credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
+if find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
+  printf 'PASS  triple-quoted credential is advisory and the archive is created\n'
   pass=$((pass + 1))
 else
-  printf 'FAIL  triple-quoted credential created an archive\n' >&2
+  printf 'FAIL  triple-quoted credential blocked the archive\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -383,12 +394,13 @@ printf '%s := "%s"\n' "$credential_key" "short-declaration-canary" > "$repo/work
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
-assert_exit "backup rejects a short-declaration credential" 1 "$rc" "$out"
-if ! find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
-  printf 'PASS  short-declaration rejection creates no archive\n'
+assert_exit "backup with a short-declaration credential still runs" 0 "$rc" "$out"
+assert_contains "a short-declaration credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
+if find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
+  printf 'PASS  a short-declaration credential is advisory and the archive is created\n'
   pass=$((pass + 1))
 else
-  printf 'FAIL  short-declaration rejection created an archive\n' >&2
+  printf 'FAIL  a short-declaration credential blocked the archive\n' >&2
   fail=$((fail + 1))
 fi
 
@@ -401,12 +413,13 @@ printf '"\n' >> "$repo/workspace/local-config.txt"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
-assert_exit "backup rejects an overlong quoted credential" 1 "$rc" "$out"
-if ! find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
-  printf 'PASS  overlong credential rejection creates no archive\n'
+assert_exit "backup with an overlong quoted credential still runs" 0 "$rc" "$out"
+assert_contains "an overlong quoted credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
+if find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
+  printf 'PASS  an overlong quoted credential is advisory and the archive is created\n'
   pass=$((pass + 1))
 else
-  printf 'FAIL  overlong credential rejection created an archive\n' >&2
+  printf 'FAIL  an overlong quoted credential blocked the archive\n' >&2
   fail=$((fail + 1))
 fi
 

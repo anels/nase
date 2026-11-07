@@ -7,6 +7,22 @@ SOURCE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ROOT="${NASE_SENSITIVE_SCAN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "$ROOT" || exit 1
 
+# `--advisory` (last argument) downgrades credential-like hits to warnings in the
+# `--workspace` and `--archive` scans. Unsafe links, unreadable files, incomplete
+# coverage, and manifest drift stay fatal. Tracked files are never scanned here.
+NASE_SCAN_ADVISORY=0
+if [ "$#" -gt 0 ] && [ "${!#}" = "--advisory" ]; then
+  NASE_SCAN_ADVISORY=1
+  set -- "${@:1:$#-1}"
+fi
+export NASE_SCAN_ADVISORY
+
+# Refuse a silent no-op: `--advisory` only means something to these two modes.
+if [ "$NASE_SCAN_ADVISORY" = "1" ] && [ "${1:-}" != "--workspace" ] && [ "${1:-}" != "--archive" ]; then
+  printf 'FAIL: --advisory is only valid with --workspace or --archive.\n' >&2
+  exit 2
+fi
+
 if [ "${1:-}" = "--stdin" ]; then
   python3 - "$SOURCE_ROOT" 3<&0 <<'PY'
 import importlib.util
@@ -102,18 +118,20 @@ fi
 
 if [ "${1:-}" = "--archive" ]; then
   if [ "$#" -ne 3 ]; then
-    printf 'Usage: %s --archive ZIP MANIFEST_JSON\n' "$0" >&2
+    printf 'Usage: %s --archive ZIP MANIFEST_JSON [--advisory]\n' "$0" >&2
     exit 2
   fi
   python3 - "$SOURCE_ROOT" "$2" "$3" <<'PY'
 import hashlib
 import importlib.util
 import json
+import os
 import pathlib
 import stat
 import sys
 import zipfile
 
+advisory = os.environ.get("NASE_SCAN_ADVISORY") == "1"
 source_root = pathlib.Path(sys.argv[1]).resolve()
 archive_path = pathlib.Path(sys.argv[2])
 manifest_path = pathlib.Path(sys.argv[3])
@@ -141,6 +159,7 @@ unreadable = set()
 incomplete = set()
 files = 0
 actual = {}
+advisory_hits = 0
 try:
     expected = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(expected, dict):
@@ -234,6 +253,14 @@ if allowlist_error is not None:
     )
     raise SystemExit(1)
 
+if hits and advisory:
+    print("WARN: credential-like values found in backup snapshot. Values are redacted:")
+    for member, line, kind in sorted(hits):
+        suffix = f":{line}" if line else ""
+        print(f"{member}{suffix}\t{kind}")
+    advisory_hits = len(hits)
+    hits = []
+
 if hits or unsafe or unreadable or incomplete:
     if hits:
         print("FAIL: credential-like values found in backup snapshot. Values are redacted:", file=sys.stderr)
@@ -254,7 +281,13 @@ if hits or unsafe or unreadable or incomplete:
             print(item, file=sys.stderr)
     raise SystemExit(1)
 
-print("PASS: backup snapshot contains no credential-like values or unsafe members.")
+if advisory_hits:
+    print(
+        f"WARN: {advisory_hits} credential-like hit(s) left in the published "
+        "snapshot because --advisory downgrades them to warnings."
+    )
+else:
+    print("PASS: backup snapshot contains no credential-like values or unsafe members.")
 PY
   exit $?
 fi
@@ -277,10 +310,12 @@ if spec is None or spec.loader is None:
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
+advisory = os.environ.get("NASE_SCAN_ADVISORY") == "1"
 workspace = root / "workspace"
 hits = []
 unreadable = set()
 unsafe_links = set()
+advisory_hits = 0
 
 # Reviewed exceptions: `{sha256-of-line}  {workspace-relative path}  # reason`.
 # Keyed by content hash rather than line number so appending to or compacting a
@@ -384,6 +419,14 @@ if allowlist_error is not None:
     print(f"FAIL: {ALLOWLIST_PATH.name} is unusable: {allowlist_error}", file=sys.stderr)
     raise SystemExit(1)
 
+if hits and advisory:
+    print("WARN: credential-like values found in the ignored workspace. Values are redacted:")
+    for path, line, kind in sorted(hits):
+        suffix = f":{line}" if line else ""
+        print(f"{path}{suffix}\t{kind}")
+    advisory_hits = len(hits)
+    hits = []
+
 if hits or unreadable or unsafe_links:
     if hits:
         print("FAIL: credential-like values found in the ignored workspace. Values are redacted:", file=sys.stderr)
@@ -417,13 +460,19 @@ if stale:
     for digest, target in sorted(stale):
         print(f"{digest[:12]}...  {target}", file=sys.stderr)
 
-print("PASS: no credential-like values found in the ignored workspace.")
+if advisory_hits:
+    print(
+        f"WARN: {advisory_hits} credential-like hit(s) left in the ignored workspace "
+        "because --advisory downgrades them to warnings."
+    )
+else:
+    print("PASS: no credential-like values found in the ignored workspace.")
 PY
   exit $?
 fi
 
 if [ "$#" -ne 0 ]; then
-  printf 'Usage: %s [--workspace|--stdin|--manifest SOURCE_DIR OUTPUT_JSON|--archive ZIP MANIFEST_JSON]\n' "$0" >&2
+  printf 'Usage: %s [--workspace [--advisory]|--stdin|--manifest SOURCE_DIR OUTPUT_JSON|--archive ZIP MANIFEST_JSON [--advisory]]\n' "$0" >&2
   exit 2
 fi
 

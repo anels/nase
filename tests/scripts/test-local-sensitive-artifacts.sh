@@ -54,6 +54,34 @@ assert_cmd "full workspace scan reports only the affected path" \
 assert_cmd "full workspace scan never echoes the credential value" \
   bash -c '! grep -q recovery_canary_4735 "$1"' _ "$TMPROOT/full-workspace.err"
 
+run_scan "$workspace_root" "$TMPROOT/advisory" "$TMPROOT/advisory.rc" --workspace --advisory
+assert_cmd "advisory workspace scan exits 0 on a credential hit" \
+  test "$(cat "$TMPROOT/advisory.rc")" = "0"
+assert_cmd "advisory workspace scan still names the affected path" \
+  grep -q 'workspace/scripts/recovery.py' "$TMPROOT/advisory.out"
+assert_cmd "advisory workspace scan labels the hit as a warning" \
+  grep -q '^WARN: credential-like' "$TMPROOT/advisory.out"
+assert_cmd "advisory workspace scan reports how many hits were downgraded" \
+  grep -q '^WARN: 1 credential-like hit(s) left in the ignored workspace' "$TMPROOT/advisory.out"
+assert_cmd "advisory workspace scan does not claim a clean pass" \
+  bash -c '! grep -q "^PASS: no credential-like" "$1"' _ "$TMPROOT/advisory.out"
+assert_cmd "advisory workspace scan never echoes the credential value" \
+  bash -c '! cat "$1" "$2" | grep -q recovery_canary_4735' _ "$TMPROOT/advisory.out" "$TMPROOT/advisory.err"
+
+run_scan "$TMPROOT" "$TMPROOT/advisory-alone" "$TMPROOT/advisory-alone.rc" --advisory
+assert_cmd "--advisory without a supported mode fails with usage" \
+  test "$(cat "$TMPROOT/advisory-alone.rc")" = "2"
+assert_cmd "--advisory without a supported mode explains the refusal" \
+  grep -q 'only valid with --workspace or --archive' "$TMPROOT/advisory-alone.err"
+
+advisory_link_root="$TMPROOT/advisory-symlink-root"
+mkdir -p "$advisory_link_root/workspace" "$advisory_link_root/outside"
+printf 'outside marker\n' > "$advisory_link_root/outside/file.txt"
+ln -s "$advisory_link_root/outside/file.txt" "$advisory_link_root/workspace/external-link.txt"
+run_scan "$advisory_link_root" "$TMPROOT/advisory-link" "$TMPROOT/advisory-link.rc" --workspace --advisory
+assert_cmd "advisory workspace scan still fails closed on a symlink" \
+  test "$(cat "$TMPROOT/advisory-link.rc")" = "1"
+
 unreadable_root="$TMPROOT/unreadable-workspace-root"
 mkdir -p "$unreadable_root/workspace"
 printf 'safe\n' > "$unreadable_root/workspace/unreadable.txt"
@@ -275,6 +303,20 @@ if command -v zip >/dev/null 2>&1; then
     test "$(cat "$TMPROOT/archive-bad.rc")" = "1"
   assert_cmd "archive scan never echoes the credential value" \
     bash -c '! grep -q allowlist_canary_7781 "$1"' _ "$TMPROOT/archive-bad.err"
+
+  set +e
+  bash "$SCAN" --archive "$TMPROOT/bad.zip" "$TMPROOT/bad-manifest.json" --advisory \
+    >"$TMPROOT/archive-advisory.out" 2>"$TMPROOT/archive-advisory.err"
+  printf '%s\n' "$?" >"$TMPROOT/archive-advisory.rc"
+  set -e
+  assert_cmd "advisory archive scan exits 0 on a credential hit" \
+    test "$(cat "$TMPROOT/archive-advisory.rc")" = "0"
+  assert_cmd "advisory archive scan labels the hit as a warning" \
+    grep -q '^WARN: credential-like' "$TMPROOT/archive-advisory.out"
+  assert_cmd "advisory archive scan does not claim a clean pass" \
+    bash -c '! grep -q "^PASS: backup snapshot contains no" "$1"' _ "$TMPROOT/archive-advisory.out"
+  assert_cmd "advisory archive scan never echoes the credential value" \
+    bash -c '! cat "$1" "$2" | grep -q allowlist_canary_7781' _ "$TMPROOT/archive-advisory.out" "$TMPROOT/archive-advisory.err"
 
   printf '%s\n' "$prose_line" > "$archive_root/workspace/kb/runbook.md"
   printf 'notahash  kb/runbook.md\n' > "$archive_root/workspace/.secret-scan-allowlist"
