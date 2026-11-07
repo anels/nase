@@ -7,6 +7,16 @@ SOURCE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ROOT="${NASE_SENSITIVE_SCAN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "$ROOT" || exit 1
 
+# `--advisory` (last argument) downgrades credential-like hits to warnings in the
+# `--workspace` and `--archive` scans. Unsafe links, unreadable files, incomplete
+# coverage, and manifest drift stay fatal. Tracked files are never scanned here.
+NASE_SCAN_ADVISORY=0
+if [ "$#" -gt 0 ] && [ "${!#}" = "--advisory" ]; then
+  NASE_SCAN_ADVISORY=1
+  set -- "${@:1:$#-1}"
+fi
+export NASE_SCAN_ADVISORY
+
 if [ "${1:-}" = "--stdin" ]; then
   python3 - "$SOURCE_ROOT" 3<&0 <<'PY'
 import importlib.util
@@ -109,11 +119,13 @@ if [ "${1:-}" = "--archive" ]; then
 import hashlib
 import importlib.util
 import json
+import os
 import pathlib
 import stat
 import sys
 import zipfile
 
+advisory = os.environ.get("NASE_SCAN_ADVISORY") == "1"
 source_root = pathlib.Path(sys.argv[1]).resolve()
 archive_path = pathlib.Path(sys.argv[2])
 manifest_path = pathlib.Path(sys.argv[3])
@@ -234,6 +246,13 @@ if allowlist_error is not None:
     )
     raise SystemExit(1)
 
+if hits and advisory:
+    print("WARN: credential-like values found in backup snapshot. Values are redacted:")
+    for member, line, kind in sorted(hits):
+        suffix = f":{line}" if line else ""
+        print(f"{member}{suffix}\t{kind}")
+    hits = []
+
 if hits or unsafe or unreadable or incomplete:
     if hits:
         print("FAIL: credential-like values found in backup snapshot. Values are redacted:", file=sys.stderr)
@@ -277,6 +296,7 @@ if spec is None or spec.loader is None:
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
+advisory = os.environ.get("NASE_SCAN_ADVISORY") == "1"
 workspace = root / "workspace"
 hits = []
 unreadable = set()
@@ -383,6 +403,13 @@ elif workspace.is_dir():
 if allowlist_error is not None:
     print(f"FAIL: {ALLOWLIST_PATH.name} is unusable: {allowlist_error}", file=sys.stderr)
     raise SystemExit(1)
+
+if hits and advisory:
+    print("WARN: credential-like values found in the ignored workspace. Values are redacted:")
+    for path, line, kind in sorted(hits):
+        suffix = f":{line}" if line else ""
+        print(f"{path}{suffix}\t{kind}")
+    hits = []
 
 if hits or unreadable or unsafe_links:
     if hits:

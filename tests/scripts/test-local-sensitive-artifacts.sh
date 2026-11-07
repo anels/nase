@@ -54,6 +54,24 @@ assert_cmd "full workspace scan reports only the affected path" \
 assert_cmd "full workspace scan never echoes the credential value" \
   bash -c '! grep -q recovery_canary_4735 "$1"' _ "$TMPROOT/full-workspace.err"
 
+run_scan "$workspace_root" "$TMPROOT/advisory" "$TMPROOT/advisory.rc" --workspace --advisory
+assert_cmd "advisory workspace scan exits 0 on a credential hit" \
+  test "$(cat "$TMPROOT/advisory.rc")" = "0"
+assert_cmd "advisory workspace scan still names the affected path" \
+  grep -q 'workspace/scripts/recovery.py' "$TMPROOT/advisory.out"
+assert_cmd "advisory workspace scan labels the hit as a warning" \
+  grep -q '^WARN: credential-like' "$TMPROOT/advisory.out"
+assert_cmd "advisory workspace scan never echoes the credential value" \
+  bash -c '! cat "$1" "$2" | grep -q recovery_canary_4735' _ "$TMPROOT/advisory.out" "$TMPROOT/advisory.err"
+
+advisory_link_root="$TMPROOT/advisory-symlink-root"
+mkdir -p "$advisory_link_root/workspace" "$advisory_link_root/outside"
+printf 'outside marker\n' > "$advisory_link_root/outside/file.txt"
+ln -s "$advisory_link_root/outside/file.txt" "$advisory_link_root/workspace/external-link.txt"
+run_scan "$advisory_link_root" "$TMPROOT/advisory-link" "$TMPROOT/advisory-link.rc" --workspace --advisory
+assert_cmd "advisory workspace scan still fails closed on a symlink" \
+  test "$(cat "$TMPROOT/advisory-link.rc")" = "1"
+
 unreadable_root="$TMPROOT/unreadable-workspace-root"
 mkdir -p "$unreadable_root/workspace"
 printf 'safe\n' > "$unreadable_root/workspace/unreadable.txt"

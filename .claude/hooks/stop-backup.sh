@@ -295,11 +295,18 @@ if [ "$MIN_INTERVAL_MINUTES" -gt 0 ]; then
 fi
 
 # This is the final live-tree gate, after every hook-owned workspace mutation.
-if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$NASE_ROOT" bash "$SENSITIVE_SCAN" --workspace 2>&1); then
+# Credential-like hits are advisory: workspace/ is git-ignored, so they cannot reach
+# GitHub. Unsafe links, unreadable files, and incomplete coverage still fail closed.
+if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$NASE_ROOT" bash "$SENSITIVE_SCAN" --workspace --advisory 2>&1); then
   printf '%s\n' "$SCAN_OUTPUT" >&2
   log_status "ERROR" "workspace security preflight failed; backup not created"
   exit 1
 fi
+case "$SCAN_OUTPUT" in
+  *"WARN: credential-like"*)
+    log_status "WARNING" "credential-like values in workspace were backed up; list them with: bash tests/check-local-sensitive-artifacts.sh --workspace --advisory"
+    ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Create and validate a local zip snapshot before external publication.
@@ -316,7 +323,7 @@ if ! cp -a "$SRC/." "$SNAPSHOT_WORKSPACE/"; then
   log_status "ERROR" "workspace could not be copied into the private snapshot"
   exit 1
 fi
-if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$SNAPSHOT_DIR" bash "$SENSITIVE_SCAN" --workspace 2>&1); then
+if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$SNAPSHOT_DIR" bash "$SENSITIVE_SCAN" --workspace --advisory 2>&1); then
   printf '%s\n' "$SCAN_OUTPUT" >&2
   log_status "ERROR" "private workspace snapshot failed security validation"
   exit 1
@@ -509,7 +516,7 @@ if ! bash "$SENSITIVE_SCAN" --manifest "$SNAPSHOT_WORKSPACE" "$POST_ARCHIVE_MANI
   log_status "ERROR" "private workspace snapshot changed during archive creation"
   exit 1
 fi
-if ! SCAN_OUTPUT=$(bash "$SENSITIVE_SCAN" --archive "$LOCAL_ZIP_PATH" "$SOURCE_MANIFEST" 2>&1); then
+if ! SCAN_OUTPUT=$(bash "$SENSITIVE_SCAN" --archive "$LOCAL_ZIP_PATH" "$SOURCE_MANIFEST" --advisory 2>&1); then
   printf '%s\n' "$SCAN_OUTPUT" >&2
   log_status "ERROR" "local backup snapshot failed security validation; backup not published"
   exit 1
