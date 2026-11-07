@@ -122,8 +122,8 @@ Selection rule:
 |-------|-------|
 | **Problem fit** | Whether the PR solves the framed problem end-to-end without overreaching or leaving the main gap open |
 | **Logic correctness** | Branch conditions, state transitions, null/default behavior, async/race risks, idempotency, data loss, bad fallbacks |
-| **Design/elegance** | Whether a simpler local pattern, clearer API boundary, smaller abstraction, or less duplicated flow would solve the same problem better |
-| **Architecture** | DRY violations, KISS violations, layering issues, SRP violations, abstraction quality |
+| **Design/elegance** | Whether a simpler local pattern, clearer API boundary, smaller abstraction, or less duplicated flow that passes the merge gate would solve the same problem better |
+| **Architecture** | DRY violations (apply the merge gate in `.claude/docs/design-principles.md` first: copies that change for different reasons are not a violation, and a merged module growing `mode`/`variant` flags is a finding), KISS violations, layering issues, SRP violations, abstraction quality |
 | **Security** | Input validation, header injection, credential exposure, SSRF, auth bypass risks |
 | **Testability** | Missing coverage for new paths, tests that only chase signatures, untestable designs. **Also emit a verification-bar recommendation** (see Step 5.5 classification) and check the PR body for a test plan section - if absent for any non-trivial change, emit a `[MED]` finding tagged `Verification gap`. |
 | **Git history** | Patterns rejected in past PRs, recurring comments on the same files, regressions |
