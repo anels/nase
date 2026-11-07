@@ -335,6 +335,14 @@ out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/h
 rc=$?
 assert_exit "backup with quoted plaintext credential still runs" 0 "$rc" "$out"
 assert_contains "quoted plaintext credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
+if grep -q '\[WARNING\] credential-like values in workspace were backed up' \
+  "$repo/workspace/logs/.backup-status" 2>/dev/null; then
+  printf 'PASS  the advisory warning is recorded in .backup-status for the next session\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  the advisory warning is missing from .backup-status\n' >&2
+  fail=$((fail + 1))
+fi
 if find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null | grep -q .; then
   printf 'PASS  quoted plaintext credential is advisory and the archive is created\n'
   pass=$((pass + 1))

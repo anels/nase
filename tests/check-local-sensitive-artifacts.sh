@@ -17,6 +17,12 @@ if [ "$#" -gt 0 ] && [ "${!#}" = "--advisory" ]; then
 fi
 export NASE_SCAN_ADVISORY
 
+# Refuse a silent no-op: `--advisory` only means something to these two modes.
+if [ "$NASE_SCAN_ADVISORY" = "1" ] && [ "${1:-}" != "--workspace" ] && [ "${1:-}" != "--archive" ]; then
+  printf 'FAIL: --advisory is only valid with --workspace or --archive.\n' >&2
+  exit 2
+fi
+
 if [ "${1:-}" = "--stdin" ]; then
   python3 - "$SOURCE_ROOT" 3<&0 <<'PY'
 import importlib.util
@@ -112,7 +118,7 @@ fi
 
 if [ "${1:-}" = "--archive" ]; then
   if [ "$#" -ne 3 ]; then
-    printf 'Usage: %s --archive ZIP MANIFEST_JSON\n' "$0" >&2
+    printf 'Usage: %s --archive ZIP MANIFEST_JSON [--advisory]\n' "$0" >&2
     exit 2
   fi
   python3 - "$SOURCE_ROOT" "$2" "$3" <<'PY'
@@ -153,6 +159,7 @@ unreadable = set()
 incomplete = set()
 files = 0
 actual = {}
+advisory_hits = 0
 try:
     expected = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(expected, dict):
@@ -251,6 +258,7 @@ if hits and advisory:
     for member, line, kind in sorted(hits):
         suffix = f":{line}" if line else ""
         print(f"{member}{suffix}\t{kind}")
+    advisory_hits = len(hits)
     hits = []
 
 if hits or unsafe or unreadable or incomplete:
@@ -273,7 +281,13 @@ if hits or unsafe or unreadable or incomplete:
             print(item, file=sys.stderr)
     raise SystemExit(1)
 
-print("PASS: backup snapshot contains no credential-like values or unsafe members.")
+if advisory_hits:
+    print(
+        f"WARN: {advisory_hits} credential-like hit(s) left in the published "
+        "snapshot because --advisory downgrades them to warnings."
+    )
+else:
+    print("PASS: backup snapshot contains no credential-like values or unsafe members.")
 PY
   exit $?
 fi
@@ -301,6 +315,7 @@ workspace = root / "workspace"
 hits = []
 unreadable = set()
 unsafe_links = set()
+advisory_hits = 0
 
 # Reviewed exceptions: `{sha256-of-line}  {workspace-relative path}  # reason`.
 # Keyed by content hash rather than line number so appending to or compacting a
@@ -409,6 +424,7 @@ if hits and advisory:
     for path, line, kind in sorted(hits):
         suffix = f":{line}" if line else ""
         print(f"{path}{suffix}\t{kind}")
+    advisory_hits = len(hits)
     hits = []
 
 if hits or unreadable or unsafe_links:
@@ -444,13 +460,19 @@ if stale:
     for digest, target in sorted(stale):
         print(f"{digest[:12]}...  {target}", file=sys.stderr)
 
-print("PASS: no credential-like values found in the ignored workspace.")
+if advisory_hits:
+    print(
+        f"WARN: {advisory_hits} credential-like hit(s) left in the ignored workspace "
+        "because --advisory downgrades them to warnings."
+    )
+else:
+    print("PASS: no credential-like values found in the ignored workspace.")
 PY
   exit $?
 fi
 
 if [ "$#" -ne 0 ]; then
-  printf 'Usage: %s [--workspace|--stdin|--manifest SOURCE_DIR OUTPUT_JSON|--archive ZIP MANIFEST_JSON]\n' "$0" >&2
+  printf 'Usage: %s [--workspace [--advisory]|--stdin|--manifest SOURCE_DIR OUTPUT_JSON|--archive ZIP MANIFEST_JSON [--advisory]]\n' "$0" >&2
   exit 2
 fi
 
