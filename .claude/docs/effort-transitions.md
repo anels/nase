@@ -69,6 +69,13 @@ Used by `/nase:fsd` Phase 8b when `$ARGUMENTS` contains a slug matching
 - `- [ ] PR opened` -> `- [x] PR opened — {PR URL or branch_name}` when a PR or branch exists
 - Frontmatter `status:` -> `in-progress`
 
+When a parallel wave opened several PRs (`.claude/docs/fsd-parallel-prs.md`), the main thread
+makes this one edit after the join. Each PR that has a planned row flips it from
+`- [ ] PR2 - {scope}` to `- [x] PR2 - {scope} — {PR URL or branch_name}`. The generic
+`PR opened` row is filled by the first PR to open in the effort, and only while it is still
+unchecked. A deferred PR keeps its unchecked row. A PR whose agent returned neither a `pr_url`
+nor a pushed branch keeps its row unchecked too.
+
 Skip silently if no slug can be inferred.
 
 ## Prep-Merge Update

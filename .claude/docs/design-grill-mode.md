@@ -63,7 +63,7 @@ Read the plan content (effort doc body or raw text). Extract every branch where 
 - Ambiguous wording in design body ("we could", "either X or Y", "TBD", "later") → each is a branch.
 - Missing constraints - invariants the plan asserts without specifying (error mode, retry semantics, idempotency, ordering, concurrency, schema migration, rollout, observability, ownership).
 - Architectural choices the plan glosses over - interface shape, seam location, data path.
-- Review packaging ambiguity - proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, or implementation phases being treated as PRs without justification.
+- Review packaging ambiguity - proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, a PR row missing `Depends on` / `External blockers` / `Touches` / `fsd-ready` (`.claude/docs/pr-plan-readiness.md`), an `External blockers: none` with no evidence, two `fsd-ready: yes` PRs sharing a `Touches` path in the same repo with no safe-overlap note, or implementation phases being treated as PRs without justification.
 
 Output internally: a list `branches: [{id, topic, why-it-matters, persona, load_bearing, depends_on: [branch-id]}]`. Assign each branch a stable `id`. Set `depends_on: []` only when the branch can be resolved independently; when a branch's valid options or recommendation depend on another decision, list that prerequisite's id. Set `load_bearing: true` for security, data-loss, irreversibility, and cross-team-coordination branches.
 

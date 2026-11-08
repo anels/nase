@@ -97,6 +97,8 @@ roles:
 #   fsd                Phase 6.4 candidate review                    verifier
 #   fsd                phase-isolation subagents                     worker
 #                      (fsd-phase-decomposition.md Step 5)
+#   fsd                parallel PR wave agents                       worker
+#                      (fsd-parallel-prs.md Fan out)
 #   wrap-up            log / stats / effort scans                    (nase-workspace-state-scanner, haiku)
 #   simplify           Step 5-6 anti-slop pass                       (code-simplifier plugin agent)
 #   tech-debt-audit    Step 7 tech-debt-review sanity pass           verifier

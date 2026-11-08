@@ -55,7 +55,20 @@ Set `pr_head_ref = origin/{headRefName}` for Phase 3 code reads and Phase 5 work
 
 Capture both thread `id` (GraphQL resolve) and `databaseId` (REST reply); they are not interchangeable.
 
-PR feedback has three surfaces: inline review threads, review *submission* bodies, and issue comments. Read `reviewSubmissions` and `issueComments` from the same dossier JSON before reporting a zero. Stop with "No unresolved comments found" only when all three carry no actionable item; a bot verdict counts as actionable, and bots split across surfaces - SonarCloud posts its verdict as an issue comment, `claude-code-review` posts findings in a submission body. Actionable items outside the thread surface have no thread to resolve: handle them in the code and say in the final report which surface each came from. Neither surface has a resolved flag, so a bot's verdict is only its **newest** comment - an older "Quality Gate failed" superseded by a later pass is history, not work.
+PR feedback has three surfaces: inline review threads, review *submission* bodies, and issue comments. Read `reviewSubmissions` and `issueComments` from the same dossier JSON before reporting a zero. Stop with "No unresolved comments found" only when all three carry no actionable item and neither `merge_conflict` nor `required_failures` (below) has work; a bot verdict counts as actionable, and bots split across surfaces - SonarCloud posts its verdict as an issue comment, `claude-code-review` posts findings in a submission body. Actionable items outside the thread surface have no thread to resolve: handle them in the code and say in the final report which surface each came from. Neither surface has a resolved flag, so a bot's verdict is only its **newest** comment - an older "Quality Gate failed" superseded by a later pass is history, not work.
+
+**Merge health.** Read two things, both read-only, and record them for the plan:
+
+```bash
+gh pr view {number} --repo {owner}/{repo} --json mergeable
+gh pr checks {number} --repo {owner}/{repo} --required --json name,bucket,state,workflow,link
+```
+
+`gh pr checks` exits non-zero when any check is not green or when none match `--required` - that is expected signal, not a tool failure; parse its JSON rather than its exit code (`.claude/docs/pr-gates-consumption.md` §4).
+
+- `merge_conflict` is true when `mergeable` is `CONFLICTING`. When it is `UNKNOWN`, GitHub is still computing: re-run after a few seconds, up to 3 times. If it stays `UNKNOWN`, decide locally with `git -C {repo_path} merge-tree --write-tree origin/{headRefName} origin/{baseRefName}`: conflict blocks mean conflicts, while an error naming a missing ref is not one.
+- `required_failures` is the list of `{name, link}` whose `bucket` is `fail` or `cancel`. `pending` is not work. If `--required` reports that no required checks exist, the list is empty.
+- GitHub does not run `pull_request` workflows on a conflicting PR, so a PR with `merge_conflict` may show no check results at all. Treat an empty result there as unknown, not green. The conflict fix lands with the Phase 8 push.
 
 ## Phase 3: Build Dossiers, Evaluate, & Present Plan
 
@@ -136,6 +149,9 @@ Found {N} unresolved review threads:
      evidence: {why no code change is needed}
      reply: {draft_reply_summary}
   ...
+
+Merge state: {clean | conflicts with origin/{baseRefName} -> Phase 5.5 merges the base and resolves}
+Required checks failing: {none | {check names} -> reproduce locally and fix}
 ```
 
 ## Phase 4: User Override & Confirm Execution

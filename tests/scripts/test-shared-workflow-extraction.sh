@@ -59,10 +59,34 @@ do
   assert_cmd "$doc phase doc exists" test -f ".claude/docs/$doc.md"
 done
 
+assert_cmd "PR plan readiness doc exists" test -f .claude/docs/pr-plan-readiness.md
+assert_cmd "FSD parallel PRs doc exists" test -f .claude/docs/fsd-parallel-prs.md
+assert_contains "fsd runs several fsd-ready PRs as one wave" .claude/commands/nase/fsd.md 'Several `fsd-ready` PRs run as one wave'
+assert_contains "fsd intake routes multi-PR plans to the wave doc" .claude/docs/fsd-intake-and-setup.md 'fsd-parallel-prs\.md'
+assert_contains "design core contract requires the readiness table" .claude/commands/nase/design.md 'pr-plan-readiness\.md'
+assert_contains "design auto mode writes the readiness table" .claude/docs/design-auto-mode.md 'pr-plan-readiness\.md'
+assert_contains "design grill flags missing readiness columns" .claude/docs/design-grill-mode.md 'pr-plan-readiness\.md'
+assert_contains "readiness rule makes unknown blockers not ready" .claude/docs/pr-plan-readiness.md 'unknown is not `none`'
+assert_contains "wave doc keeps shared-file writes on the main thread" .claude/docs/fsd-parallel-prs.md 'Only the main thread writes shared files'
+assert_contains "wave asks once when a legacy plan is silent on readiness" .claude/docs/fsd-parallel-prs.md 'silent on `Depends on` or `External blockers`'
+assert_contains "wave persists KB before cleaning up worktrees" .claude/docs/fsd-parallel-prs.md 'Runs Phase 9 for each PR'
+assert_contains "effort transitions flips per-PR rows after a wave" .claude/docs/effort-transitions.md 'Each PR that has a planned row flips it'
+assert_contains "readiness prefixes paths when the plan spans repos" .claude/docs/pr-plan-readiness.md 'prefix each path with its repo'
+assert_contains "wave never runs two agents in one checkout" .claude/docs/fsd-parallel-prs.md 'Never run two agents in one checkout'
+assert_contains "wave opens a draft PR only on the shared answer" .claude/docs/fsd-parallel-prs.md 'a draft PR only when `open_pr` is true'
+assert_contains "wave re-dispatches a blocked agent with its brief" .claude/docs/fsd-parallel-prs.md 'fresh `Agent\(\)` call'
+assert_contains "address-comments judges accept diffs after the merge commit" .claude/docs/address-comments-delivery.md 'git -C \{worktree_path\} diff \{merge_sha\}\.\.HEAD'
+assert_contains "address-comments stages resolved conflicts before the marker check" .claude/docs/address-comments-delivery.md 'diff HEAD --check'
+assert_contains "address-comments resolves the base SHA before reading its checks" .claude/docs/address-comments-delivery.md 'base_sha=\$\(git -C \{repo_path\} rev-parse origin/\{baseRefName\}\)'
+assert_contains "address-comments keeps generated-file conflicts whole-side" .claude/docs/address-comments-delivery.md 'lockfiles and generated files are the exception'
 assert_contains "address-comments loads analysis on demand" .claude/commands/nase/address-comments.md 'address-comments-analysis\.md'
 assert_contains "address-comments loads delivery after confirmation" .claude/commands/nase/address-comments.md 'address-comments-delivery\.md'
-assert_contains "address-comments entrypoint skips PR gates" .claude/commands/nase/address-comments.md 'PR Gates are skipped'
-assert_not_contains "address-comments delivery does not run gh pr checks" .claude/docs/address-comments-delivery.md 'gh pr checks'
+assert_contains "address-comments entrypoint puts conflicts and Required checks in scope" .claude/commands/nase/address-comments.md 'merge conflict with the base branch and a failing \*\*Required\*\* check are in scope'
+assert_contains "address-comments entrypoint forbids rebase for conflicts" .claude/commands/nase/address-comments.md 'Never rebase'
+assert_contains "address-comments entrypoint still forbids waiting on post-push CI" .claude/commands/nase/address-comments.md 'Do not poll or wait for CI'
+assert_contains "address-comments analysis reads Required checks only" .claude/docs/address-comments-analysis.md 'gh pr checks .* --required'
+assert_contains "address-comments delivery resolves conflicts by merging the base" .claude/docs/address-comments-delivery.md 'git -C \{worktree_path\} merge --no-ff --no-commit origin/\{baseRefName\}'
+assert_contains "address-comments delivery fixes failing Required checks" .claude/docs/address-comments-delivery.md '## Phase 6\.5: Fix Failing Required Checks'
 assert_not_contains "address-comments does not reference pr gate remediation helper" .claude/docs/address-comments-delivery.md 'pr-gate-remediation'
 assert_not_contains "address-comments does not claim PR gates green" .claude/docs/address-comments-delivery.md 'PR gates: all green'
 

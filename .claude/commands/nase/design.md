@@ -16,7 +16,7 @@ Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md
 1. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for the effort doc.
 2. Apply `.claude/docs/design-principles.md`. Choose the simplest high-quality long-term shape. Development cost informs ETA, not design selection.
 3. Default to one PR. Split into multiple PRs only when a repo, compatibility/rollout, mechanical-noise, 1500-changed-line (the `git diff --stat` total for the PR), or distinct-owner boundary makes one PR harder to review safely.
-4. Record `Target PR count`, dependency order for a split, `Reviewability`, and `Validation - how to get the real number`.
+4. Record `Target PR count`, `Reviewability`, and `Validation - how to get the real number`. Write the `### PR Plan` as the table in `.claude/docs/pr-plan-readiness.md`: each PR row with `Scope`, `Depends on`, `External blockers`, `Touches`, and a derived `fsd-ready` flag. `/nase:fsd` builds every `fsd-ready: yes` PR in parallel, so a flag that is wrong either holds back work that could start or starts work that cannot finish.
 5. Ask only questions that code, KB, docs, history, telemetry, or official sources cannot answer. Batch genuine human decisions.
 
 ## Mode routing
@@ -57,6 +57,7 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 - Risk: failure, migration, rollout, security, observability, and recovery paths are addressed where applicable.
 - Elegance: few moving parts, clear ownership, existing patterns, no speculative layer.
 - Reviewability: one PR by default; justified splits include order and independent value.
+- PR readiness: every PR has `Depends on`, `External blockers`, `Touches`, and `fsd-ready`, each `none` backed by evidence; no two ready PRs share a path in the same repo unless the overlap is marked safe.
 - Readiness: a junior can implement without making another design decision.
 - ETA: derived from the implementation steps with an honest confidence range.
 
