@@ -85,20 +85,19 @@ Five config decisions exist. It is not five questions: a design handoff usually 
 | Q0 done-definition | `### Success Criteria` exists | those criteria |
 | Q1 execution mode | `### Implementation Plan` states the dependency graph | 1-2 steps → `Direct`. ≥3 steps, any branch marked parallel → `Team`. ≥3 steps, all sequential → `Direct with Phase isolation` |
 | Q2 worktree | Frontmatter has an explicit `worktree: yes` / `worktree: no` | that value |
-| Q3 draft PR | `### PR Plan` exists and names a PR strategy | `Yes - draft PR`. Explicit "no PR" / "local only" → `No` |
+| Q3 draft PR and consent | Never derive `Yes`. A PR plan can say a PR is wanted, but only the user can pre-authorize creating it. Derive `No` only when the plan says "no PR" / "local only" | `No` |
 | Q4 strict TDD | The plan states test-first / RED→GREEN per step, or says tests are follow-up | that value |
 
 State each derived value in one line with its source, so the user can correct it without being re-asked the whole set:
 
 ```
 Derived from workspace/efforts/{slug}.md: done-definition = Success Criteria;
-execution mode = Direct with Phase isolation (4 sequential steps);
-draft PR = yes (PR Plan: Target PR count 1).
+execution mode = Direct with Phase isolation (4 sequential steps).
 ```
 
 **Then ask the gaps** in one `AskUserQuestion` `questions` array. Four entries is the harness maximum, so: with any derivation the gaps fit in one call; with none derived, ask Q0-Q3 in the first call and Q4 in a second call immediately after - never a fifth entry in one array.
 
-Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR"), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
+Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 starts with "Yes - draft PR"), `pr_preauthorized` = (Q3 = "Yes - draft PR, create without asking again"), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
 
 **Options for the entries you do ask:**
 
@@ -128,7 +127,8 @@ questions:
     header: "Pull Request"
     multiSelect: false
     options:
-      - label: "Yes - draft PR" , description: "Push branch and open a draft PR (you review and promote when ready)"
+      - label: "Yes - draft PR, create without asking again" , description: "Push the branch and open a draft PR when the work is verified, with no second question at the end. This also covers the one edit that appends the Verification section to that PR. Labels, reviewers and marking ready still ask. The PR title and body are shown in the final report."
+      - label: "Yes - draft PR, ask before creating" , description: "Push the branch, then show the exact PR title and body and ask once more before opening a draft PR"
       - label: "No"             , description: "Just commit and push the branch"
   - question: "Enforce strict TDD? (RED→GREEN→Refactor hard gates per slice)"
     header: "Strict TDD"
@@ -141,6 +141,7 @@ questions:
 **Post-answer handling:**
 - If Q0 = "Spec the criteria": after the batched call returns, do a single follow-up `AskUserQuestion` with a free-text prompt to collect the criteria. Store as `success_criteria`.
 - If Q1 = "Team": ignore the Q4 (Strict TDD) answer - TDD gating is per-direct-mode only.
+- Q3 is the only PR question of the run. When `pr_preauthorized = true`, Phases 8 and 8.5 never ask it again.
 - Proceed to Phase 3 immediately; do not pause for more input.
 
 ---

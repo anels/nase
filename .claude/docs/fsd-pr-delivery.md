@@ -18,7 +18,7 @@ If `review_outcome = not-run`, the PR body states it in whichever section carrie
 
 Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command. The helper enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`), so there is no separate snippet to run and no `gh auth` call to make - those are blocked.
 
-Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation - unless `python3 .claude/scripts/autonomy-policy.py --class pr-create-draft` reports `decision: auto`, in which case the level pre-authorizes this one creation: still show the payload, then prepare and execute it and append the audit entry with `python3 .claude/scripts/daily-log-append.py autonomy "pr-create-draft {repo_owner}/{repo_name} {manifest}"`. Pre-authorization never removes the manifest binding or the account guard:
+Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation, unless one of two pre-authorizations applies. Either `pr_preauthorized = true`, because the user chose "create without asking again" in the intake (Q3), or `python3 .claude/scripts/autonomy-policy.py --class pr-create-draft` reports `decision: auto`. In both cases the user already consented, so still show the payload, then prepare and execute it without a question and append the audit entry with `python3 .claude/scripts/daily-log-append.py autonomy "pr-create-draft {repo_owner}/{repo_name} {manifest}"` (add `run pre-authorized` to the entry for the first case). The run-level consent covers only this one draft PR from this run's own branch. It never removes the manifest binding, the account guard or the prose gates, and it does not apply when a Phase 6 blocker or a failed gate stopped the run, because no PR is opened then. The question below is for every other run:
 
 ```
 question: "Create this draft PR?"
@@ -88,7 +88,7 @@ Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 becaus
 
 Skill-specific outputs:
 
-1. **Append to PR body** only if `open_pr = true` and matrix has rows. Show the exact `## Verification` section and gate `gh pr edit` via `AskUserQuestion`:
+1. **Append to PR body** only if `open_pr = true` and matrix has rows. Show the exact `## Verification` section. When `pr_preauthorized = true`, the intake consent covers this one `gh pr edit --body-file` of the PR this run created, so run it through its manifest without a question and append the audit entry the same way as in Phase 8. It does not cover any other edit, a label, a reviewer or `gh pr ready`. Otherwise gate `gh pr edit` via `AskUserQuestion`:
    ```
    question: "Append this Verification section to the draft PR?"
    header: "PR Verification"

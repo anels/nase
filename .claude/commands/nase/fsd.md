@@ -23,7 +23,7 @@ Follow:
 
 - Before push, build/lint, the full test suite, and flake checks must be green. Attribute failures, then fix them. The full rule lives in `.claude/docs/fsd-implementation-loop.md -> Engineering Excellence Bar`.
 - Never commit directly to `main`, `master`, `develop`, or `release/*`; always use a feature branch.
-- A PR is optional but, when requested, is always draft and every PR mutation has its own concrete approval gate.
+- A PR is optional but, when requested, is always draft. The intake asks about it once (Q3). A run the user pre-authorized (`pr_preauthorized`) creates the draft PR and appends its Verification section without asking again. Every other PR mutation (label, reviewer, ready) keeps its own concrete approval gate.
 - Use the design PR plan unless a repo, release, reviewer-owner, or hard diff-size boundary forces a split.
 - For touched source/config paths, preserve the KB lookup shape `mentions:<path>`.
 - Continue after upfront configuration unless blocked at an explicitly named checkpoint.
@@ -37,7 +37,7 @@ tell whether a missing value is a skipped step or a dropped one.
 | Phase | Owner and load point | State it must return |
 |---|---|---|
 | 0 | This entrypoint: validate input. | - |
-| 1-3 and 3.7 | Read `.claude/docs/fsd-intake-and-setup.md` when entering Phase 1. | `success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `open_pr`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints` |
+| 1-3 and 3.7 | Read `.claude/docs/fsd-intake-and-setup.md` when entering Phase 1. | `success_criteria`, `success_criteria_from_design`, `design_constraints`, `canonical_task_spec`, `design_impl_plan`, `design_pr_plan`, `repo_hint_from_design`, `execution_mode`, `worktree`, `open_pr`, `pr_preauthorized`, `tdd_mode`, `topology`, `gate_profile`, `module_inventory`, `branch_name`, `branch_slug`, `work_root`, `kb_path_constraints` |
 | 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `total_lines_changed`, `bundle_sha256` |
 | 6.4 | Read `.claude/docs/fsd-candidate-review.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
 | 7 | This entrypoint plus `commit-push-pattern.md`. | - |
