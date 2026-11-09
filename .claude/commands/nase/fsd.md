@@ -21,12 +21,12 @@ Follow:
 
 ## Standing invariants
 
-- Before push, build/lint, the full test suite, and flake checks must be green. Attribute failures, then fix them. The full rule lives in `.claude/docs/fsd-implementation-loop.md -> Engineering Excellence Bar`.
-- Never commit directly to `main`, `master`, `develop`, or `release/*`; always use a feature branch.
+- Before push, build/lint, the full test suite, and flake checks must be green. Attribute failures, then fix them. Full rule: `.claude/docs/fsd-implementation-loop.md -> Engineering Excellence Bar`.
+- Never commit to `main`, `master`, `develop`, or `release/*`; use a feature branch.
 - A PR is optional but, when requested, is always draft. The intake asks about it once (Q3). A run the user pre-authorized (`pr_preauthorized`) creates the draft PR and appends its Verification section without asking again. Every other PR mutation (label, reviewer, ready) keeps its own concrete approval gate.
-- Use the design PR plan unless a repo, release, reviewer-owner, or hard diff-size boundary forces a split.
+- Follow the design PR plan unless a repo, rollout, churn, owner, or size boundary forces a split. Several `fsd-ready` PRs run as one wave: `.claude/docs/fsd-parallel-prs.md`.
 - For touched source/config paths, preserve the KB lookup shape `mentions:<path>`.
-- Continue after upfront configuration unless blocked at an explicitly named checkpoint.
+- Continue after upfront configuration unless blocked at a named checkpoint.
 
 ## Phase map and state contract
 

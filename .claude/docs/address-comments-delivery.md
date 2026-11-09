@@ -3,7 +3,9 @@
 ## Contents
 
 - Phase 5: Setup Worktree
+- Phase 5.5: Resolve Merge Conflicts
 - Phase 6: Execute Changes
+- Phase 6.5: Fix Failing Required Checks
 - Phase 7: Build & Test (max 5 iterations)
 - Phase 7.25: Optional Post-Edit CLI Gates
 - Phase 7.5: Review-Thread Resolution Gate
@@ -29,6 +31,36 @@ git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 ```
 
 Finalize `module_inventory`: keep KB version or derive 5-15 lines inside `{worktree_path}` from top-level src/helper/service/util/client files. Prefer existing modules.
+
+## Phase 5.5: Resolve Merge Conflicts
+
+Skip when `merge_conflict` is false. Run it before Phase 6 so thread fixes land on the merged code, not on a base that is about to change under them.
+
+Merge the base into the PR branch. Do not rebase: a rebase rewrites the pushed history and needs a force-push, which this command never does.
+
+```bash
+git -C {worktree_path} fetch origin {baseRefName}
+git -C {worktree_path} merge --no-ff --no-commit origin/{baseRefName}
+```
+
+Resolve each conflicted file (`git -C {worktree_path} diff --name-only --diff-filter=U`) by reading both sides and the merge base (`git show :1:{path}`, `:2:`, `:3:`). Keep the intent of the PR and the intent of the base change. Never use `-X ours`, `-X theirs`, or `git checkout --ours/--theirs` on a whole hand-written file to make the markers go away; that silently drops one side's work.
+
+- Lockfiles and generated files: take the base version, then regenerate with the repo's own command from KB or `CLAUDE.md`. Do not hand-merge them. This is the one whole-side case, and it is safe only because the generator rebuilds the content.
+- Both sides changed the same logic and the right result is not obvious from the code, tests, or KB: stop and ask with `AskUserQuestion`. Show the two hunks and your proposed merge.
+- Stage each resolved file (`git -C {worktree_path} add {path}`), then confirm no markers remain in those files: `git -C {worktree_path} diff HEAD --check -- {resolved_paths}` must be clean and `git -C {worktree_path} grep -n -E '^(<<<<<<<|>>>>>>>) ' -- {resolved_paths}` must find nothing.
+
+Commit the merge with a subject that satisfies `gate_profile.commit_format`, such as `chore: merge {baseRefName} into {pr_branch}`:
+
+```bash
+git -C {worktree_path} commit -m "chore: merge {baseRefName} into {pr_branch}"
+git -C {worktree_path} rev-parse HEAD   # record as merge_sha
+```
+
+If the merge reports `Already up to date`, there is nothing to resolve: record the current `HEAD` as `merge_sha` and continue.
+
+Set `no_commit=false` and record `merge_sha`. The merge is pushed by Phase 8 with everything else; it gets no separate push or approval gate. Phase 7.5 gates the Phase 6 thread fixes, not this merge commit.
+
+The merge moves line numbers. Re-locate each accepted thread's code in the merged tree before Phase 6 instead of trusting the Phase 3 excerpt. Phase 7 builds and tests the merged result, so a conflict that resolved textually but broke behavior fails there.
 
 ## Phase 6: Execute Changes
 
@@ -70,6 +102,30 @@ question the original guard answered: does the condition it now skips occur in p
 State the answer in the reply and name the production input that still triggers the guard.
 A gate that disables the guard for the only shape production sends turns a loud failure
 into a silent no-op under a green suite.
+
+## Phase 6.5: Fix Failing Required Checks
+
+Skip when `required_failures` is empty. Run it after Phase 6 so one Phase 7 loop covers both the thread fixes and the check fixes.
+
+For each failing check, in this order:
+
+1. **Read the failure.** For GitHub Actions the `link` has the shape `.../actions/runs/{run_id}/job/{job_id}`; pass the number after `/runs/` to `gh run view {run_id} --repo {owner}/{repo} --log-failed`, not the job id. For another provider (Azure Pipelines, SonarCloud), open the details the check exposes through its own CLI or API. Quote the shortest decisive error line. If the log is unreadable with the tools at hand, say so and ask; do not guess a cause.
+2. **Check the base first.** Resolve the base commit and read the same check on it (`gh pr checks` does not cover the base):
+
+   ```bash
+   base_sha=$(git -C {repo_path} rev-parse origin/{baseRefName})
+   gh api "repos/{owner}/{repo}/commits/${base_sha}/check-runs" \
+     --jq '.check_runs[] | select(.name == "{check_name}") | {name, conclusion, html_url}'
+   ```
+
+   If `conclusion` is anything other than `success`, `neutral`, `skipped`, or `null` (still running) there too, the base is already red for this check. Report that and ask whether to fix it here; do not change this PR's code to hide a base failure. An empty result means the base did not run that check: say so instead of calling it green.
+3. **Reproduce locally.** Run the same command the check runs, as taken from the workflow file or the log. Fix only after you see the failure in your own terminal. A fix you cannot reproduce is a guess.
+4. **Fix the cause.** Fix the production code. Do not weaken, skip, or delete a test, loosen a threshold, or add a lint ignore to turn the check green. If the test itself is wrong because the intended behavior changed, update it and say why. If the check is flaky (it passes on re-run with no code change), report it as flaky and do not edit code for it.
+5. **Re-run the same command** and keep the passing output as evidence.
+
+A Required failure that was caused by the merge conflict is already fixed by Phase 5.5; confirm it by running its command, then move on. A failure needing a secret, a deploy, or a service that is not available locally cannot be reproduced: report it as blocked with the evidence and leave it.
+
+Phase 7 then runs the repo's configured gates on the whole diff. Do not wait for the new CI run after the push (see the entrypoint invariants), and say in the final report that these fixes are verified locally only.
 
 ### For decline threads:
 
@@ -121,12 +177,12 @@ follow `.claude/docs/anti-rationalization.md → Universal`.
 ## Phase 7: Build & Test (max 5 iterations)
 
 Get configured build, lint, typecheck, and test commands from the KB file or repo's `CLAUDE.md`.
-Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding. After all gates pass, apply the Step 2.6 test-presence soft gate against `origin/{pr_branch}` - if an accepted thread changed logic but the diff adds no test, the Phase 6 "ensure test coverage" promise was missed; add the test or record the justification in the reply for that thread.
+Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding. After all gates pass, apply the Step 2.6 test-presence soft gate against the Phase 6 edits (`{merge_sha}..HEAD` plus the working tree when Phase 5.5 ran, otherwise `origin/{pr_branch}`) - if an accepted thread changed logic but the diff adds no test, the Phase 6 "ensure test coverage" promise was missed; add the test or record the justification in the reply for that thread.
 On success: proceed to Phase 7.5.
 
 ## Phase 7.25: Optional Post-Edit CLI Gates
 
-Run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) against the diff vs `origin/{pr_branch}`, probing as that document's *Running the post-edit gates* section specifies.
+Run the changed-file-type gates from `.claude/docs/cli-tooling.md -> Skill Integration Map` (`fsd` / `address-comments` row) against the Phase 6 edits - the same diff Phase 8 judges - probing as that document's *Running the post-edit gates* section specifies.
 
 Apply a formatter or scanner fix only when it stays inside the accepted thread's scope. Scanner output is not reviewer intent: check each finding against the review thread as well as the diff before expanding the patch.
 
@@ -136,8 +192,22 @@ Follow `.claude/docs/pr-review-fix-verification.md → Review-Thread Resolution 
 
 ## Phase 8: Commit & Push
 
-If there are no code changes after Phase 6:
-- If the final post-Phase-4 dossier/action map has any `accept` threads, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
+Judge the accept-thread check against the Phase 6 edits only. A Phase 5.5 merge commit is base content and proves nothing about a thread, and `git diff origin/{pr_branch}` now contains it. When Phase 5.5 ran, compare against the recorded `merge_sha`; otherwise compare against `origin/{pr_branch}`:
+
+```bash
+# with a merge commit
+git -C {worktree_path} diff {merge_sha}..HEAD
+git -C {worktree_path} status --porcelain
+# without one
+git -C {worktree_path} diff origin/{pr_branch}
+git -C {worktree_path} status --porcelain
+```
+
+If the final post-Phase-4 dossier/action map has any `accept` thread and that diff is empty, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
+
+A Phase 5.5 merge commit or a Phase 6.5 fix means there is something to push: follow the commit & push sequence below, committing any uncommitted Phase 6 edits first.
+
+If there are no code changes after Phase 6 and neither a merge commit nor a Phase 6.5 fix exists:
 - If the final dossier/action map has only `reply-only` / `decline` threads, skip commit and push. Set `no_commit=true`, report `No code changes; proceeding to review replies/resolution only.`, skip Phase 8b, and continue to Phase 9.
 
 **Re-verify worktree HEAD before commit** - a concurrent session can move your branch and drop edits; recover per `worktree-pattern.md`.
@@ -276,6 +346,8 @@ PR comments addressed ✓
   Replies:         {N} threads
   Resolved:        {total_resolved} / {total_threads}
   Build/test:      passed (iteration {N})
+  Merge conflict:  {resolved via merge of origin/{baseRefName} | none}
+  Required checks: {N} fixed (local re-run passed), {M} blocked or flaky: {names}   # omit when none failed
   Worktree:        {retained path or n/a}
   Slack pings:     {M} drafts staged for {comma-separated logins}   # omit when 0
   Commit:          {short_sha} - {commit_subject}                   # omit when no commit
@@ -294,6 +366,8 @@ Follow `.claude/docs/pr-next-step-handoff.md -> Address-Comments Handoff`.
 ## Error handling
 
 - Never force-push or change tests merely to make them pass.
+- Resolve conflicts by merging the base in, never by rebase. Never take one whole side of a hand-written source file to clear the markers; lockfiles and generated files are the exception, taken from the base and regenerated.
+- A Required check you could not reproduce, or that fails on the base too, is reported with evidence and left alone. It is never "fixed" by weakening the check.
 - Reply before resolve; never resolve a declined thread.
 - On partial API failure, report exact failed thread IDs for manual recovery.
 - If reviewer intent remains ambiguous, ask instead of guessing.

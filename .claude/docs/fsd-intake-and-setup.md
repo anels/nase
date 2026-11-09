@@ -18,7 +18,7 @@ Research first; minimize questions. Read `workspace/context.md`, then `workspace
 - `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.
 - The latest `## Grill Session → ### Constraints for implementation` block (if any) → store as `design_constraints`. These are evidence-backed decisions - carry them into Phase 4 and every subagent prompt; do not re-litigate them silently.
 - `### Implementation Plan` → store as `design_impl_plan` (per-step files/tests/done + dependency graph). Seed Phase 3.7 decomposition from these steps instead of re-deriving them; the design already marked which steps are parallel vs sequential.
-- `### PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases.
+- `### PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases. When the plan has more than one PR, read it per `.claude/docs/pr-plan-readiness.md` and follow `.claude/docs/fsd-parallel-prs.md`: build all `fsd-ready` PRs together, with the effort-doc intake run once for the wave, repo inference and `gate_profile` run once per distinct repo, the Phase 2 prompt run once for the wave, and Phases 1.5 and 3 run per PR.
 - `## Topology` (if present) → seed Phase 1.5 with it instead of rebuilding; Phase 3 finalization re-verifies the listed paths still exist in `{work_root}`.
 - Frontmatter `repo:` → store as `repo_hint_from_design`; use it as the target repo unless the user explicitly named a different one.
 
