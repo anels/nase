@@ -37,6 +37,14 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-backup.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-claim-check.sh"
+          }
+        ]
       }
     ],
     "StopFailure": [
@@ -65,6 +73,14 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-archive.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-notice.sh"
           }
         ]
       }

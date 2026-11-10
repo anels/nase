@@ -20,6 +20,17 @@ if [ -z "$NASE_ROOT" ]; then
   exit 0
 fi
 
+# Read the SessionStart payload (best-effort) so we can tell a compaction resume
+# apart from a fresh start. Never block on a missing/empty stdin.
+INPUT=""
+if [ ! -t 0 ]; then
+  INPUT=$(cat 2>/dev/null || true)
+fi
+SESSION_SOURCE=""
+if [ -n "$INPUT" ] && command -v jq >/dev/null 2>&1; then
+  SESSION_SOURCE=$(printf '%s' "$INPUT" | jq -r '.source // empty' 2>/dev/null || true)
+fi
+
 DATE=$(date +%Y-%m-%d)
 LOG="$NASE_ROOT/workspace/logs/$DATE.md"
 mkdir -p "$NASE_ROOT/workspace/logs"
@@ -138,6 +149,9 @@ SKILL_SYNC_CHANGED=0
     if [ "$HAS_COMMITS" -eq 1 ]; then
       echo "[session-start] You have commits today — consider running /nase:reflect to capture learnings"
     fi
+  fi
+  if [ "$SESSION_SOURCE" = "compact" ]; then
+    echo "[session-start] Resuming after compaction. Re-read the effort doc named in the last session note before acting; treat the compaction summary as a claim, not evidence."
   fi
 } > "$BUFFER"
 

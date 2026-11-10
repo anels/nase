@@ -45,7 +45,7 @@ Run all of `ready_prs`. There is no cap and no "first one only" default: PRs tha
 
 ## Fan out
 
-Spawn one `Agent()` per PR in a single message, so they run concurrently. Use the `worker` role from `.claude/roles.yaml`, passing that role's `model`, `effort`, and `tools` as written there. Each brief carries:
+Spawn one `Agent()` per PR in a single message, so they run concurrently. Use the `worker` role from `.claude/roles.yaml`, passing that role's `model`, `effort`, and `tools` as written there. Each spawn uses a **fresh context window** — never reuse an agent across PRs, and never carry one PR's transcript into another. Candidate-review fixes go to a fresh worker too, not the one that implemented the phase. Each brief carries:
 
 - the effort slug, the PR id, and that PR's `canonical_task_spec`, `design_constraints`, `topology`, `gate_profile`, `branch_name`, `work_root`, and the shared Phase 2 answers
 - the instruction to run `/nase:fsd` Phases 3.5 through 8.5 for that PR only, from `.claude/commands/nase/fsd.md`, with every standing invariant and every gate unchanged: green build, lint, tests, and flake checks before push; one fresh candidate review; a draft PR only when `open_pr` is true, created without a second question only when `pr_preauthorized` is true, and otherwise returned as a blocker with the proposed title and body
