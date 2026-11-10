@@ -33,7 +33,7 @@ The helper matches `$ARGUMENTS` case-insensitively, in this order, and returns t
 FILES=$(bash .claude/scripts/scope-files.sh "$ARGUMENTS")
 ```
 
-Add a repo path as a second argument (`... "$ARGUMENTS" /abs/path/to/repo`) to scope another checkout; paths come back relative to it. When you do, carry that repo path into Step 6 and state it in the dispatch prompt - `$FILES` is relative, and a subagent given bare relative paths resolves them against this workspace instead of the target checkout.
+Add a repo path as a second argument (`... "$ARGUMENTS" /abs/path/to/repo`) to scope another checkout; paths come back relative to it. Carry that repo path into Step 6 and state it in the dispatch prompt - `$FILES` is relative, so bare relative paths resolve against this workspace, not the target checkout.
 
 If `$FILES` is empty → output `No modified files in scope. Nothing to simplify.` and stop.
 
@@ -97,7 +97,8 @@ Otherwise continue to Step 6.
 
 ### 6. Dispatch subagent
 
-Launch the `$SIMPLIFIER_AGENT` subagent resolved in Step 5 via the Agent tool. Pass:
+Launch the `$SIMPLIFIER_AGENT` subagent resolved in Step 5 via the Agent tool, with a fresh context
+window (no caller transcript). Pass:
 - The deduplicated file list from `$FILES` (Step 1), plus the repo root they are relative to whenever Step 1 was given a second argument
 - Instruction:
   - Refine each file for clarity, consistency, maintainability, and anti-slop cleanup following the project's CLAUDE.md conventions.

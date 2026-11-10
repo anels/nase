@@ -8,7 +8,7 @@
 
 # Compact instructions
 
-When compacting, preserve active repo/path/branch, current task/plan, changed files, verification run, and failing output. Drop raw logs, full diffs, broad search dumps, and superseded reasoning.
+When compacting, preserve active repo/path/branch, current task/plan, changed files, verification run, and failing output. Drop raw logs, full diffs, broad search dumps, and superseded reasoning. The `PreCompact` hook emits a checkpoint reminder before compression — append the active state to the effort doc or daily log first; the post-compaction session restarts with only the summary, so re-read the effort doc named in the last session note before acting.
 
 Compacting is the last of five context moves, not the first reach. At a phase boundary, work `.claude/docs/context-boundary.md` top to bottom: continue → clear → hand off → subagent → compact.
 
@@ -47,6 +47,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 ### Git & Code Workflow
 - Before coding: check branch/status. Clean default branch → create a worktree from `origin/{default-branch}` and use absolute paths. Non-default or dirty checkout → ask first.
 - Commit sequence: `/nase:simplify` → commit → `/nase:improve-commit-message` → `git push`.
+- Completion claims are mechanically checked: the `Stop` hook (`stop-claim-check.sh`) warns when a "tests pass / build clean" claim has no passing verification run behind it, or when files changed after the last passing run. Treat the warning as a gate, not a suggestion.
 - For this repo before push: run `bash tests/check-all.sh`.
 
 ### Logging & External Services
