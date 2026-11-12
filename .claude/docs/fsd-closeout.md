@@ -12,7 +12,7 @@ This reference owns the end of a `/nase:fsd` run: the Phase 10 report, the succe
 For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
 `workspace/tmp/fsd-research-{branch_slug}.md` before reporting.
 
-**First build the Success-Criteria Ledger.** One row per `success_criteria` item (from Phase 2 / the design doc), each mapped to exactly one:
+**First build the Success-Criteria Ledger.** When Phase 8.6 ran, it already built it, so reuse that result. One row per `success_criteria` item (from Phase 2 / the design doc), each mapped to exactly one:
 - `proven` - cite the evidence: a test name, a Phase 8.5 matrix row, or a check run. A green build is not proof a criterion is met.
 - `waived` - recorded reason.
 - `blocked` - named blocker.
@@ -46,22 +46,29 @@ FSD {done ✓ | conditional ⚠ | not-closed ✗}
   Context:     {context batch count}
   QA blocker:  {infrastructure/evidence blocker or "none"}
   PR:          {PR URL} - or "not opened"
+  Ready:       {ready_state} - `n/a` when no PR was opened
   Worktree:    {worktree_report}
 
 Criteria: - omit block if "Manual verify"
   - {criterion} - proven: {evidence}
   - {criterion} - waived: {reason} - or blocked: {blocker}
 
-Verification before promote (full matrix appended to PR body):
+Verification matrix (full matrix appended to PR body):
   🔥 Critical:  {critical layer label} - {why} - omit if no critical row
   Caveat:      {coverage caveat} - omit if none
   Required:    {list required rows by short label}
   Recommended: {list recommended rows by short label} - omit if none
 
-Next: open the draft PR, run the Verification matrix, then promote to "ready for review".
+Next: {next_step}
 ```
 
-If Phase 8.5 produced no rows (pure docs / comments change), omit the entire "Verification before promote" block.
+Pick `next_step` from `ready_state`:
+- `ready`: `request reviewers with /nase:request-review {pr_url}`.
+- `draft - {reasons}`: `clear {reasons}, then run /nase:prep-merge {pr_url} or mark it ready yourself`. Print every unmet condition from Phase 8.6, not only the first.
+- `ready - unverified ({reasons})`: `the PR is already ready for review but {reasons} - re-draft it or clear them before asking for review`.
+- `n/a`: `open a PR, run the Verification matrix, then mark it ready`.
+
+If Phase 8.5 produced no rows (pure docs / comments change), omit the entire "Verification matrix" block.
 
 If the Phase 1 gate-profile load used the live-fetch fallback, add the stale-KB note from `.claude/docs/pr-gates-consumption.md` §2 (`Run /nase:onboard {repo} to persist`).
 
@@ -89,6 +96,6 @@ Skip failed or routine no-surprise runs; routine wins dilute downstream skill-op
 - **Worktree path** - always take it from `.claude/docs/worktree-pattern.md -> Naming Convention` (`$HOME/.nase-worktrees/{repo_name}-{suffix}`). Never create it inside the repo, which causes git nesting issues, and never under `/tmp`, which the OS sweeps.
 - **Secrets** - if unsure about a file during the staging scan, stop and ask rather than committing and reverting later.
 - **Test loop bound** - 5 cumulative iterations is a hard cap and the review pass does not reset it. Exhaust automatic repairs before surfacing an evidence or infrastructure terminal state.
-- **PR is always draft** - FSD never opens a ready-for-review PR. Promotion is a human decision.
+- **PR opens as draft** - FSD never opens a ready-for-review PR. Only Phase 8.6 marks it ready, and only when all four conditions hold. No other phase runs `gh pr ready`.
 
 </error_handling>
