@@ -170,7 +170,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 ### Implement a feature or fix
 
 - `/nase:design` handles complex tasks: KB + external-doc research, 2–3 approaches, tradeoffs, a tracked junior-implementable effort doc. By default it runs an end-to-end auto pass (research → multi-persona grill → review) and asks any genuine human-input questions in one batch at the end; use `--interactive` to steer it turn by turn. Skip it for simple fixes.
-- `/nase:fsd` handles code → test → fix → commit → push → draft PR. For large features use **Direct with Phase isolation**; for hard TDD use **Yes** at the TDD prompt.
+- `/nase:fsd` handles code → test → fix → commit → push → draft PR, then marks it ready when every gate is green. For large features use **Direct with Phase isolation**; for hard TDD use **Yes** at the TDD prompt.
 - `/nase:fsd` and `/nase:address-comments` each run one fresh-context read-only verifier subagent before pushing or replying. The reviewer is local, so the gate always runs.
 - Reviewer discovery uses KB → git history → CODEOWNERS, then stages Slack DM drafts.
 - Review feedback is handled interactively: obvious fixes applied, ambiguous comments discussed one by one.
@@ -181,7 +181,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
   answer end-of-run questions     # auto asks only what evidence couldn't resolve, batched at the end
   /nase:design --interactive <task>  # (optional) steer the design turn by turn instead
   /nase:design --grill <slug>    # (optional) multi-persona stress-test of the plan
-/nase:fsd <task>               # implement → test → commit → push → draft PR
+/nase:fsd <task>               # implement → test → commit → push → PR (ready when all gates pass)
 /nase:request-review <PR-URL>  # find right reviewers, stage Slack DM drafts
   ⏳ wait for feedback
 /nase:address-comments <PR-URL> # deep-dive each unresolved comment → fix/reply → push → resolve threads
@@ -271,7 +271,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | Command | Purpose |
 |---------|---------|
 | `/nase:design` | Research and write an implementation design without coding. Use for design, brainstorm, plan feature, kickoff, grill a plan, or review a design. |
-| `/nase:fsd` | Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, or fire and forget. |
+| `/nase:fsd` | Implement and verify a feature or fix through a PR, marked ready once every gate passes. Use for fsd, just do it, run autonomously, or fire and forget. |
 
 ### Git workflow
 

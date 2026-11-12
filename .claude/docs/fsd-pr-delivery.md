@@ -1,11 +1,12 @@
 # FSD PR Delivery
 
-This reference owns three `/nase:fsd` phases. Phases 8 and 8.5 - the pull request itself and the verification matrix posted on it - only run when `open_pr = true`. Phase 8c, the KB update, runs on every FSD run, so a PR = No run loads this document for that section alone.
+This reference owns four `/nase:fsd` phases. Phases 8, 8.5 and 8.6 - the pull request itself, the verification matrix posted on it, and the gate that marks it ready - only run when `open_pr = true`. Phase 8c, the KB update, runs on every FSD run, so a PR = No run loads this document for that section alone.
 
 ## Contents
 
 - [Phase 8: Pull Request (if PR = Yes)](#phase-8-pull-request-if-pr--yes)
 - [Phase 8.5: Verification Matrix](#phase-85-verification-matrix)
+- [Phase 8.6: Ready Gate](#phase-86-ready-gate)
 - [Phase 8c: KB Update](#phase-8c-kb-update)
 
 ## Phase 8: Pull Request (if PR = Yes)
@@ -67,14 +68,15 @@ gh pr view {pr_number} --repo {repo_owner}/{repo_name} --json isDraft,url \
 If `isDraft` is false, the PR is already published for review. Say so on its own line in the Phase 10
 report, and offer to re-draft through a gated `external-write-action.py` manifest for
 `gh pr ready --undo` (gh refuses `--undo` on plans that do not support re-drafting; if it does,
-leave the PR ready and say so rather than retrying). Never report "draft PR opened" without
+leave the PR ready and say so rather than retrying). If the user re-drafts it, Phase 8.6 does not
+mark it ready again (`ready_state = draft - re-drafted by user`). Never report "draft PR opened" without
 having read the flag back.
 
 ---
 
 ## Phase 8.5: Verification Matrix
 
-Build a verification matrix so the reviewer knows what to run before promoting the draft PR.
+Build a verification matrix so the reviewer knows what to run before approving the PR.
 
 Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 because fsd is producing the plan. Phase 6.1 final canonical test evidence becomes the Unit `✅ done` row.
 
@@ -113,11 +115,75 @@ Skill-specific outputs:
    python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
    python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
    ```
-   Append only; never overwrite. Skip when matrix has no rows.
+   Append only; never overwrite. Skip when matrix has no rows. Record `verification_in_body`: `true` once appended, `false` when the edit was skipped or declined, `n/a` when the matrix has no rows.
 
 2. **Surface in Phase 10 report**: pass critical layer and caveat to final report.
 
 3. **No PR**: render the matrix in Phase 10.
+
+---
+
+## Phase 8.6: Ready Gate
+
+Runs only when `open_pr = true` and Phase 8 returned a `pr_url`. "Ready for review" tells the reviewer that nothing is left for FSD to check, so a PR leaves draft only when FSD verified it end to end. Any other PR stays draft and Phase 10 says why. The gate runs after the Phase 8.5 body edit, so the reviewer opens a PR whose Verification section is already there.
+
+**1. Build the ledger.** Run the Success-Criteria Ledger and `closure_state` derivation from `fsd-closeout.md -> Phase 10` now, after Phase 8.5 produced its evidence. A wave agent already returned `closure_state`; use that value and skip this step.
+
+**2. Test the conditions.** Test Closed, Verified, and Unblocked first, all three even after one fails, so the report names every local blocker. When any of them is unmet, skip the CI check, because it would only add a wait, and report `CI not checked`.
+
+| Condition | Met when |
+|---|---|
+| Closed | `closure_state = done`. Anything else, including a missing value, is unmet. |
+| Verified | No `required` Phase 8.5 row is `not run by fsd`, the 🔥 critical row included, and `verification_in_body` is `true` or `n/a` (a skipped Phase 8.5 edit is unmet). A run with no rows (docs-only change) is met. A PR with a required row that needs a deployment or credentials stays draft by design, so the reviewer runs that row before marking it ready. |
+| Unblocked | The PR's `design_pr_plan` row has `Depends on = none` and `External blockers = none`. A run with no plan row is met. |
+| CI green | Every check on the PR head passed, required or not, per the CI check below. |
+
+**CI check.** First confirm the PR carries the pushed commit. `gh pr view {pr_number} -R {repo_owner}/{repo_name} --json headRefOid --jq .headRefOid` must equal `git -C {work_root} rev-parse HEAD`; a mismatch is unmet (`head moved`). `git -C {work_root} status --porcelain` must print nothing, because `done` binds the committed tree; otherwise unmet (`worktree changed after review`). Then wait for the checks, as its own Bash call with `timeout: 600000`, no `$(...)`, and no loop. Ignore its exit code, because the read below decides:
+
+```bash
+gh pr checks {pr_number} -R {repo_owner}/{repo_name} --watch --fail-fast
+```
+
+Then read the final state once, as its own call. A watch that timed out or stopped at the first failure still leaves a state to read:
+
+```bash
+gh pr checks {pr_number} -R {repo_owner}/{repo_name} --json bucket --jq '[.[].bucket] | unique | join(",")'
+```
+
+Check the buckets in this order:
+
+- `fail` or `cancel` is unmet (`CI failed`).
+- `pending` is unmet (`CI still pending`). CI slower than the 10-minute cap ends here, and `/nase:prep-merge` is the way to mark the PR ready once it turns green.
+- Only `pass` and `skipping`, with at least one `pass`, is met. Only `skipping` is unmet (`no CI ran`), because a skipped check proves nothing.
+- No output (the CLI prints `no checks reported` and exits `1`) means no checks yet. Poll for up to 120 seconds for the first check to appear, with one bounded `until` loop in a single Bash call and no bare foreground `sleep`, which the harness blocks. Then run the watch and the read once more. A second empty read is unmet (`no CI evidence`), since no checks is not green. A repo that skips CI on drafts lands here, and its PR stays draft by design.
+- A read the CLI guard blocks is unmet too. Do not work around the guard.
+
+**3. Decide.** Any unmet condition means no mutation: set `ready_state = draft - {every unmet reason}` and stop. A PR already ready at Phase 8 with all four met is `ready_state = ready`; stop. A PR already ready with a condition unmet keeps Phase 8's re-draft offer and gets `ready_state = ready - unverified ({every unmet reason})`; stop. A PR the user re-drafted at Phase 8 stays draft: `ready_state = draft - re-drafted by user`; stop.
+
+**4. Mark ready.** All four are met, so ask the policy with `python3 .claude/scripts/autonomy-policy.py --class pr-mark-ready`. On `auto`, show the manifest below, run it without a question, and append the audit entry with `python3 .claude/scripts/daily-log-append.py autonomy "pr-mark-ready {repo_owner}/{repo_name}#{pr_number} {manifest}"`. On any other value, gate it first:
+
+```
+question: "Mark this PR ready for review?"
+header: "Ready"
+options:
+  - label: "Mark ready"
+    description: "Run gh pr ready on the PR. Reviewers see it as ready for review."
+  - label: "Keep draft"
+    description: "Leave the PR as draft; mark it later with /nase:prep-merge or gh pr ready"
+```
+
+If kept draft, set `ready_state = draft - kept by user`. Otherwise prepare, show, authorize, and execute this action:
+
+```bash
+MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
+  --system github --summary "mark PR ready {repo_owner}/{repo_name}#{pr_number}" -- \
+  gh pr ready {pr_number} -R {repo_owner}/{repo_name} | jq -r .manifest)
+jq . "$MANIFEST"
+python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+```
+
+Then read `isDraft` back with the Phase 8 command. `false` means `ready_state = ready`. `true` means `ready_state = draft - gh pr ready did not take effect`; report it and do not retry. Never report a PR as ready without the readback.
 
 ---
 

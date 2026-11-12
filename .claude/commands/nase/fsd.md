@@ -1,6 +1,6 @@
 ---
 name: nase:fsd
-description: "Implement and verify a feature or fix through a draft PR. Use for fsd, just do it, run autonomously, or fire and forget."
+description: "Implement and verify a feature or fix through a PR, marked ready once every gate passes. Use for fsd, just do it, run autonomously, or fire and forget."
 argument-hint: "<task description or effort doc>"
 category: Design & implementation
 model: sonnet
@@ -23,7 +23,7 @@ Follow:
 
 - Before push, build/lint, the full test suite, and flake checks must be green. Attribute failures, then fix them. Full rule: `.claude/docs/fsd-implementation-loop.md -> Engineering Excellence Bar`.
 - Never commit to `main`, `master`, `develop`, or `release/*`; use a feature branch.
-- A PR is optional but, when requested, is always draft. The intake asks about it once (Q3). A run the user pre-authorized (`pr_preauthorized`) creates the draft PR and appends its Verification section without asking again. Every other PR mutation (label, reviewer, ready) keeps its own concrete approval gate.
+- A PR is optional and opens as draft. The intake asks once (Q3). A pre-authorized run (`pr_preauthorized`) creates it and appends its Verification section without asking again. Only Phase 8.6 marks it ready, when every ready condition holds. Label and reviewer keep their own approval gates.
 - Follow the design PR plan unless a repo, rollout, churn, owner, or size boundary forces a split. Several `fsd-ready` PRs run as one wave: `.claude/docs/fsd-parallel-prs.md`.
 - For touched source/config paths, preserve the KB lookup shape `mentions:<path>`.
 - Continue after upfront configuration unless blocked at a named checkpoint.
@@ -41,10 +41,10 @@ tell whether a missing value is a skipped step or a dropped one.
 | 3.5-6.1 | Read `.claude/docs/fsd-implementation-loop.md` when entering Phase 3.5. | `research_gate_findings`, `task_type`, `principle_order`, `reuse_findings`, `pre_impl_grep_findings`, `tested_candidate_tree_oid`, `candidate_tree_oid`, `changed_path_count`, `total_lines_changed`, `bundle_sha256` |
 | 6.4 | Read `.claude/docs/fsd-candidate-review.md` at Phase 6.4 and follow the named sections. | `qa_round`, `review_action`, `review_outcome`, `reviewed_candidate_tree_oid`, `disclose_unreviewed_repair`, `approved_candidate_tree_oid` |
 | 7 | This entrypoint plus `commit-push-pattern.md`. | - |
-| 8, 8.5 | Read `.claude/docs/fsd-pr-delivery.md` at Phase 8; skip both when `open_pr = false`. | `pr_url` |
+| 8-8.6 | Read `.claude/docs/fsd-pr-delivery.md` at Phase 8; skip all when `open_pr = false`. | `pr_url`, `verification_in_body`, `ready_state` |
 | 8c | `fsd-pr-delivery.md -> Phase 8c`, read on **every** run. | - |
 | 8b | `effort-transitions.md -> FSD Update`. | - |
-| 9-10 | This entrypoint owns Phase 9 worktree quarantine; `.claude/docs/fsd-closeout.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. | `worktree_report` |
+| 9-10 | This entrypoint owns Phase 9 worktree quarantine; `.claude/docs/fsd-closeout.md` owns Phase 10 closeout, closure ledger, report, logging, and error handling. Phase 8.6 already read it when it ran. | `worktree_report` |
 
 ## Phase 0: Input Guard
 
@@ -88,15 +88,9 @@ Any mismatch invalidates `review_action` and the bound tree. Do not push. Restar
 
 ---
 
-## Phase 8: Pull Request (if PR = Yes)
+## Phases 8-8.6: Pull request, verification, ready gate (if PR = Yes)
 
-Follow `.claude/docs/fsd-pr-delivery.md → Phase 8`. It owns template and gate-profile conformance, the explicit draft-PR confirmation, and the payload-bound GitHub action.
-
----
-
-## Phase 8.5: Verification Matrix
-
-Follow `.claude/docs/fsd-pr-delivery.md → Phase 8.5`. It owns local execution, evidence recording, and the separately approved PR-body update.
+Follow `.claude/docs/fsd-pr-delivery.md`. Phase 8 creates the draft PR, Phase 8.5 runs the verification matrix and updates the PR body, and Phase 8.6 marks the PR ready only when every ready condition holds.
 
 ---
 

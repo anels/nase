@@ -49,8 +49,8 @@ Spawn one `Agent()` per PR in a single message, so they run concurrently. Use th
 
 - the effort slug, the PR id, and that PR's `canonical_task_spec`, `design_constraints`, `topology`, `gate_profile`, `branch_name`, `work_root`, and the shared Phase 2 answers
 - the instruction to run `/nase:fsd` Phases 3.5 through 8.5 for that PR only, from `.claude/commands/nase/fsd.md`, with every standing invariant and every gate unchanged: green build, lint, tests, and flake checks before push; one fresh candidate review; a draft PR only when `open_pr` is true, created without a second question only when `pr_preauthorized` is true, and otherwise returned as a blocker with the proposed title and body
-- the instruction to **skip** Phase 8b, Phase 8c, Phase 9, and Phase 10. Those write shared state or quarantine worktrees; the main thread runs them after the join
-- what to return: `pr_id`, `branch_name`, `pr_url` or `none`, `closure_state`, `review_outcome`, `worktree_path`, the branch's `head_sha`, KB discoveries as text, and any human blocker as one question
+- the instruction to **skip** Phase 8.6, Phase 8b, Phase 8c, Phase 9, and Phase 10. Phase 8.6 appends an audit entry to the shared daily log, and the others write shared state or quarantine worktrees; the main thread runs them after the join
+- what to return: `pr_id`, `branch_name`, `pr_url` or `none`, `closure_state`, `review_outcome`, `unrun_required_rows` (the `required` Phase 8.5 rows marked `not run by fsd`, or `none`), `verification_in_body`, `worktree_path`, the branch's `head_sha`, KB discoveries as text, and any human blocker as one question
 
 **Only the main thread writes shared files.** The effort doc, `workspace/tasks/todo.md`, and the daily log are one file each across the whole wave; each repo's KB is one file per repo. Agents writing them concurrently race on the same path, and the workspace write guard's staged files collide. Agents write only inside their own worktree and `workspace/tmp/` paths that carry their `branch_slug`.
 
@@ -60,10 +60,11 @@ An agent cannot ask the user. It returns `blocked` with the question and stops. 
 
 When every agent has returned, the main thread:
 
-1. Runs Phase 8b once for the wave, following `.claude/docs/effort-transitions.md → FSD Update` (multi-PR rows).
-2. Runs Phase 8c once per distinct repo, from the KB discoveries that repo's agents returned.
-3. Runs Phase 9 for each PR's `worktree_path`, following `.claude/commands/nase/fsd.md → Phase 9`, and records its `worktree_report`. A worktree that returned `2` is reported as `n/a (stopped at invalid)`; the other PRs still join.
-4. Runs Phase 10 once as a combined report: one line per PR with its `pr_url`, `closure_state`, `review_outcome`, and `worktree_report`, then the `deferred_prs` with reasons. Append one daily-log line per PR, per `.claude/docs/daily-log-format.md`.
+1. Runs Phase 8.6 for each PR that has a `pr_url`, following `.claude/docs/fsd-pr-delivery.md → Phase 8.6`, with the `closure_state`, `unrun_required_rows`, and `verification_in_body` that PR's agent returned and `{work_root}` set to that PR's worktree. Take `{repo_owner}`, `{repo_name}`, and `{pr_number}` from that PR's `pr_url`. A PR with no `pr_url` gets `ready_state = n/a`. All PRs are already pushed, so their CI runs concurrently. Issue every PR's CI wait as parallel Bash calls in one message, so the join waits once, not once per PR. Only the CI waits run in parallel: prepare, authorize, and execute each `gh pr ready` one PR at a time, because only one `external-write-action.py` token may be active. Records each PR's `ready_state`.
+2. Runs Phase 8b once for the wave, following `.claude/docs/effort-transitions.md → FSD Update` (multi-PR rows).
+3. Runs Phase 8c once per distinct repo, from the KB discoveries that repo's agents returned.
+4. Runs Phase 9 for each PR's `worktree_path`, following `.claude/commands/nase/fsd.md → Phase 9`, and records its `worktree_report`. A worktree that returned `2` is reported as `n/a (stopped at invalid)`; the other PRs still join.
+5. Runs Phase 10 once as a combined report: one line per PR with its `pr_url`, `closure_state`, `review_outcome`, `ready_state`, and `worktree_report`, then the `deferred_prs` with reasons. Append one daily-log line per PR, per `.claude/docs/daily-log-format.md`.
 
 ## Failure and follow-up
 

@@ -127,8 +127,8 @@ questions:
     header: "Pull Request"
     multiSelect: false
     options:
-      - label: "Yes - draft PR, create without asking again" , description: "Push the branch and open a draft PR when the work is verified, with no second question at the end. This also covers the one edit that appends the Verification section to that PR. Labels, reviewers and marking ready still ask. The PR title and body are shown in the final report."
-      - label: "Yes - draft PR, ask before creating" , description: "Push the branch, then show the exact PR title and body and ask once more before opening a draft PR"
+      - label: "Yes - draft PR, create without asking again" , description: "Push the branch and open a draft PR when the work is verified, with no second question at the end. This also covers the one edit that appends the Verification section to that PR. Marking it ready follows your autonomy level and happens only when every ready condition holds. Labels and reviewers still ask. The PR title and body are shown in the final report."
+      - label: "Yes - draft PR, ask before creating" , description: "Push the branch, then show the exact PR title and body and ask once more before opening a draft PR. Marking it ready follows your autonomy level and happens only when every ready condition holds."
       - label: "No"             , description: "Just commit and push the branch"
   - question: "Enforce strict TDD? (RED→GREEN→Refactor hard gates per slice)"
     header: "Strict TDD"
@@ -141,7 +141,7 @@ questions:
 **Post-answer handling:**
 - If Q0 = "Spec the criteria": after the batched call returns, do a single follow-up `AskUserQuestion` with a free-text prompt to collect the criteria. Store as `success_criteria`.
 - If Q1 = "Team": ignore the Q4 (Strict TDD) answer - TDD gating is per-direct-mode only.
-- Q3 is the only PR question of the run. When `pr_preauthorized = true`, Phases 8 and 8.5 never ask it again.
+- Q3 is the only question about creating the PR and appending its Verification section. When `pr_preauthorized = true`, Phases 8 and 8.5 never ask it again. Phase 8.6 is separate: at `guided` autonomy it asks before marking ready.
 - Proceed to Phase 3 immediately; do not pause for more input.
 
 ---
