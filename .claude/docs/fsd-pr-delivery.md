@@ -85,7 +85,7 @@ Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 becaus
 - When `claudeRunSkills.recipes` exists and the change affects runtime behavior, include `/verify` as a required behavioral row and run it before manual smoke rows that duplicate the same coverage.
 - Attempt the 🔥 critical row above all when it can run locally.
 - Record outcomes as `✅ done` with the actual output as evidence.
-- Skip rows needing deployment, external environments, or credentials fsd doesn't hold. Mark those `not run by fsd` explicitly; never fabricate.
+- Skip rows needing deployment, external environments, or credentials fsd doesn't hold. Keep the row's requirement level and mark it `not run` with one short reason the reviewer can read - `required, not run, needs staging credentials` is the shape. The Status cell never says who ran or skipped the row, so it never names fsd. Never fabricate.
 - If the 🔥 critical row exists and could not be run locally, say so in the Phase 10 report's Critical line.
 
 Skill-specific outputs:
@@ -134,7 +134,7 @@ Runs only when `open_pr = true` and Phase 8 returned a `pr_url`. "Ready for revi
 | Condition | Met when |
 |---|---|
 | Closed | `closure_state = done`. Anything else, including a missing value, is unmet. |
-| Verified | No `required` Phase 8.5 row is `not run by fsd`, the 🔥 critical row included, and `verification_in_body` is `true` or `n/a` (a skipped Phase 8.5 edit is unmet). A run with no rows (docs-only change) is met. A PR with a required row that needs a deployment or credentials stays draft by design, so the reviewer runs that row before marking it ready. |
+| Verified | No `required` Phase 8.5 row is marked `not run`, the 🔥 critical row included, and `verification_in_body` is `true` or `n/a` (a skipped Phase 8.5 edit is unmet). A run with no rows (docs-only change) is met. A PR with a required row that needs a deployment or credentials stays draft by design, so the reviewer runs that row before marking it ready. |
 | Unblocked | The PR's `design_pr_plan` row has `Depends on = none` and `External blockers = none`. A run with no plan row is met. |
 | CI green | Every check on the PR head passed, required or not, per the CI check below. |
 

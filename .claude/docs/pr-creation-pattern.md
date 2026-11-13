@@ -6,6 +6,7 @@
 - [2. Draft PR Description](#2-draft-pr-description)
   - [2a. No local-only path references](#2a-no-local-only-path-references)
   - [2b. No unexplained plan-internal labels](#2b-no-unexplained-plan-internal-labels)
+  - [2c. No tool names or plan ids outside the workspace](#2c-no-tool-names-or-plan-ids-outside-the-workspace)
 - [3. PR Title = Commit Subject](#3-pr-title--commit-subject)
 - [4. Co-Author Preservation](#4-co-author-preservation)
 
@@ -105,6 +106,12 @@ grep -nE '(^|[^[:alnum:]_`])[B-HJ-Z]([^[:alnum:]_`]|$)' /tmp/pr-body.md
 The second grep skips `A` and `I` because they are ordinary English words, so a body that labels its cases `A` or `I` needs the reread, not the grep, to catch them.
 
 This applies to the PR title too. Because the title must equal the commit subject (§3), a label in the title means the *subject* needs rewriting - fix it there via `/nase:improve-commit-message` rather than letting title and subject diverge.
+
+### 2c. No tool names or plan ids outside the workspace
+
+External text says nothing about the skill, workflow or phase that produced it. Every string the run writes follows that rule - branch name, PR title, PR body, commit message, review reply - so none of them carries `fsd`, `nase`, a phase name, or an id from the local plan (`pr75`, `REQ-003`). The reviewer cannot look any of that up and learns nothing from it. Say what happened instead: `not run, the unit tests cover it with a real git and a bare remote`, not `not run by fsd, ...`.
+
+AI attribution is the one exception: §4 makes it a per-repo choice.
 
 ## 3. PR Title = Commit Subject
 
