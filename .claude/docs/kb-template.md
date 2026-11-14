@@ -31,6 +31,7 @@ Applies to project KBs and general KB entries written by `/nase:learn`, `/nase:k
 - No formulaic conclusions. End with the last substantive fact.
 - Reference env vars and config paths exactly: `ANTHROPIC_API_KEY`, not "the API key"; `~/.claude/settings.json`, not "the settings file".
 - No speculative content ("chosen for scalability" when reason is unknown).
+- A claim about current state carries the commit SHA or date it was verified. Write "As of `repo@abc1234`, X", not "X is currently".
 
 **Notability bar - write an entry when:**
 - A decision that took discussion, research, or trial-and-error

@@ -15,6 +15,28 @@
       ]
     },
     {
+      "id": "design-asks-why-first",
+      "skill": "nase:design",
+      "prompt": "/nase:design --interactive add a retry button to the export page",
+      "expected_output": "The request gives no reason, so the design asks why the user wants it, in open form, before proposing approaches.",
+      "assertions": [
+        {"name": "asks for the reason", "type": "must_contain_regex", "pattern": "(?i)(\\bwhy\\b[^\\n]{0,100}\\?|what(?:'s| is| are)? (?:the )?(problem|outcome|goal|driving)[^\\n]{0,80}\\?|what are you trying[^\\n]{0,80}\\?|the reason (for|behind)[^\\n]{0,80}\\?)"},
+        {"name": "asks without example answers", "type": "must_not_contain_regex", "pattern": "(?i)(why|what(?:'s| is| are)? (?:the )?(problem|outcome|goal|driving)|the reason (for|behind))[^\\n]*\\?[^\\n]*(?:\\n[^\\n]*){0,2}\\b(e\\.g\\.|for example|such as|options?:)"},
+        {"name": "does not claim implementation", "type": "must_not_contain_regex", "pattern": "(?i)(implemented|code changes complete|pushed commit|opened PR)"}
+      ]
+    },
+    {
+      "id": "design-records-head-baseline",
+      "skill": "nase:design",
+      "prompt": "/nase:design remove every remaining call to the deprecated getUserV1 helper",
+      "expected_output": "The count-style success criterion records the number the same check returns at the current HEAD, so a gate that already holds is caught before implementation starts.",
+      "assertions": [
+        {"name": "records a HEAD baseline value", "type": "must_contain_regex", "pattern": "(?i)(baseline|at HEAD|current HEAD|currently|today)[^\\n]*\\b\\d+\\b"},
+        {"name": "names the check behind the baseline", "type": "must_contain_regex", "pattern": "(?i)(rg|grep|git grep|search|query)[^\\n]*(getUserV1|call site)"},
+        {"name": "does not claim implementation", "type": "must_not_contain_regex", "pattern": "(?i)(implemented|code changes complete|pushed commit|opened PR)"}
+      ]
+    },
+    {
       "id": "today-live-evidence",
       "skill": "nase:today",
       "prompt": "/nase:today",
