@@ -18,6 +18,7 @@ Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md
 3. Default to one PR. Split into multiple PRs only when a repo, compatibility/rollout, mechanical-noise, 1500-changed-line (the `git diff --stat` total for the PR), or distinct-owner boundary makes one PR harder to review safely.
 4. Record `Target PR count`, `Reviewability`, and `Validation - how to get the real number`. Write the `### PR Plan` as the table in `.claude/docs/pr-plan-readiness.md`: each PR row with `Scope`, `Depends on`, `External blockers`, `Touches`, and a derived `fsd-ready` flag. `/nase:fsd` builds every `fsd-ready: yes` PR in parallel, so a flag that is wrong either holds back work that could start or starts work that cannot finish.
 5. Ask only questions that code, KB, docs, history, telemetry, or official sources cannot answer. Batch genuine human decisions.
+6. When the request does not say why the user wants it, ask why before proposing approaches in interactive mode. A linked Jira ticket, effort doc, or spec often states it, so read those first. Ask open-ended, with no example reasons. `--auto` queues it for the Step 4.5 batch instead, where the recommended option states the reason the design inferred from evidence.
 
 ## Mode routing
 
@@ -50,7 +51,7 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 ## Quality criteria
 
 - Specificity: measurable values replace vague adjectives.
-- Testability: success criteria are observable and have runnable checks.
+- Testability: success criteria are observable and have runnable checks. A count or match criterion records its baseline: the value the same check returns at the current HEAD, so a gate that already holds is caught before implementation starts.
 - Grounding: load-bearing claims cite paths, commands, telemetry, or primary sources.
 - Scope: goals and non-goals define clear boundaries.
 - Root cause: bug designs include reproduction evidence and fix the originating cause.

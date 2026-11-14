@@ -31,6 +31,9 @@ If `$ARGUMENTS` contains `--auto-accept`, used by `/nase:wrap-up`, then exactly 
    - **What pattern or rule can I extract?** - generalizable to future tasks
    - **Any new tool/technique discovered?** - worth remembering
    - **Could a check have caught it?** - a test, lint rule, or hook that fails on this mistake. If yes, the fix is that check, not a lesson.
+   - **Any dead steering?** - a line in `CLAUDE.md`, a skill, or a shared doc that did not change what the agent did. Step 5 proposes cutting it; worth asking when those files are long.
+   - **Any costly tool call?** - a search, fetch, or script that burned many tokens for a small answer. If it will recur, name a cheaper path.
+   - **What could the agent not see?** - a log, status, or source it needed and could not read. If it will recur, name how to expose it.
 
    Focus on the question with the strongest signal - not every question needs a deep answer every time.
 
