@@ -121,7 +121,7 @@ Selection rule:
 | Agent | Focus |
 |-------|-------|
 | **Problem fit** | Whether the PR solves the framed problem end-to-end without overreaching or leaving the main gap open |
-| **Logic correctness** | Branch conditions, state transitions, null/default behavior, async/race risks, idempotency, data loss, bad fallbacks |
+| **Logic correctness** | Branch conditions, state transitions, null/default behavior, async/race risks, idempotency, data loss, bad fallbacks; error paths: an error swallowed or only logged while the caller still sees success, a side effect applied before the durable write, a silent coercion of null or empty input to a default |
 | **Design/elegance** | Whether a simpler local pattern, clearer API boundary, smaller abstraction, or less duplicated flow that passes the merge gate would solve the same problem better |
 | **Architecture** | DRY violations (apply the merge gate in `.claude/docs/design-principles.md` first: copies that change for different reasons are not a violation, and a merged module growing `mode`/`variant` flags is a finding), KISS violations, layering issues, SRP violations, abstraction quality |
 | **Security** | Input validation, header injection, credential exposure, SSRF, auth bypass risks |
