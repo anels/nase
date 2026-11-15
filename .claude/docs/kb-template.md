@@ -49,6 +49,8 @@ Applies to project KBs and general KB entries written by `/nase:learn`, `/nase:k
 
 **State the boundary for actionable guidance.** Say when the guidance does *not* apply and name any blind spot in the source, not only when to apply it. A trigger without a boundary is incomplete; `/nase:kb-review` flags it. This adapts the same source's RIA++ **B (Boundary)** field: the counter-example is often the load-bearing half.
 
+**Where a dated entry goes.** File a durable dated event as a `### YYYY-MM-DD - title` entry under the file's topical `##` section, or under a `## Dated Findings` section when none fits. Never append it below a `##` whose title is itself one dated event. `kb-search` treats a `##` section as everything up to the next `##`, so a match in that title's own text returns the whole run of later entries as one result and hides each of them. One file reached 44 entries under a single incident title this way.
+
 **Page shapes** - use as section types within KB files:
 - **Entity** - a stable named thing (a library, subsystem, third-party service)
 - **Decision** - "why we chose X" - include rejected alternatives and their cost

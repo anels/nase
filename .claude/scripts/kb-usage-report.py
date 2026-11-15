@@ -20,7 +20,29 @@ from nase_time import parse_ts
 
 KB_EXTENSIONS = {".md", ".sql"}
 VALID_ACCESS = {"read", "resolve", "search-result"}
-VALID_SOURCE = {"read-hook", "kb-domain-resolve", "kb-search"}
+VALID_SOURCE = {
+    "read-hook",
+    "grep-hook",
+    "bash-hook",
+    "kb-domain-resolve",
+    "kb-search",
+}
+# Skills that sweep the whole KB as their job. Their reads say nothing about whether a
+# file helps real work, and they mark every file "read" (one run of kb-review alone
+# covered 149 of 150), which hides the files nobody else touches.
+MAINTENANCE_SKILLS = {
+    "kb-review",
+    "kb-update",
+    "kb-gap-detect",
+    "onboard",
+    "learn",
+    "terminology",
+    "extract-skills",
+    "doctor",
+    "workspace:sync-skill-docs",
+    "workspace:optimize-skills-from-lessons",
+}
+IDLE_DAYS = 60
 
 
 def parse_now(value: str | None) -> datetime:
@@ -73,6 +95,7 @@ def load_events(
         access = str(payload.get("access", ""))
         source = str(payload.get("source", ""))
         session = str(payload.get("session", "") or "unknown")
+        chars = payload.get("chars")
         if (
             ts is None
             or file_path is None
@@ -91,6 +114,7 @@ def load_events(
                 "access": access,
                 "source": source,
                 "session": session,
+                "chars": chars if isinstance(chars, int) and chars >= 0 else None,
             }
         )
     return events, malformed
@@ -122,6 +146,13 @@ def last_used(events: list[dict[str, Any]], key: str, value: str) -> str:
     return max(timestamps).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def file_size(root: pathlib.Path, rel: str) -> str:
+    try:
+        return f"{(root / rel).stat().st_size / 1024:.0f}KB"
+    except OSError:
+        return "missing"
+
+
 def table(headers: list[str], rows: list[list[str]]) -> list[str]:
     lines = [
         "| " + " | ".join(headers) + " |",
@@ -150,6 +181,27 @@ def build_report(
     accessing_skills = {event["skill"] for event in events}
     unread_mapped = sorted(mapped - read_files)
     unobserved_mapped = sorted(mapped - accessed_files)
+
+    consumer_events = [e for e in events if e["skill"] not in MAINTENANCE_SKILLS]
+    consumer_read_files = {e["file"] for e in consumer_events if e["access"] == "read"}
+    consumer_read_events = sum(1 for e in consumer_events if e["access"] == "read")
+    consumer_unread_mapped = sorted(mapped - consumer_read_files)
+    idle_cutoff = now - timedelta(days=IDLE_DAYS)
+    # Idle needs 60 days of history to mean anything. A ledger that started later than
+    # that would list every file it never saw as idle.
+    idle_applicable = (args.window == "all" or int(args.window) >= IDLE_DAYS) and any(
+        e["ts"] <= idle_cutoff for e in events
+    )
+    consumer_recent_files = {
+        e["file"] for e in consumer_events if e["ts"] >= idle_cutoff
+    }
+    idle_mapped = sorted(mapped - consumer_recent_files) if idle_applicable else []
+    chars_by_file: Counter[str] = Counter()
+    chars_reads: Counter[str] = Counter()
+    for event in events:
+        if event["chars"] is not None:
+            chars_by_file[event["file"]] += event["chars"]
+            chars_reads[event["file"]] += 1
 
     file_counts = Counter(event["file"] for event in events)
     skill_counts = Counter(event["skill"] for event in events)
@@ -181,6 +233,14 @@ def build_report(
         f"- Skills accessing KB: {len(accessing_skills)}",
         f"- Unread mapped KB files: {len(unread_mapped)}",
         f"- Unobserved mapped KB files: {len(unobserved_mapped)}",
+        f"- Consumer reads (maintenance skills excluded): {consumer_read_events}",
+        f"- Mapped KB files never read by a consumer: {len(consumer_unread_mapped)}",
+        "- Mapped KB files with no consumer event in the last "
+        + (
+            f"{IDLE_DAYS} days: {len(idle_mapped)}"
+            if idle_applicable
+            else f"{IDLE_DAYS} days: n/a (window or ledger is shorter)"
+        ),
         f"- Malformed lines skipped: {malformed}",
         "",
     ]
@@ -233,7 +293,52 @@ def build_report(
         ]
     )
 
+    lines.append("## Mapped KB Files Never Read By A Consumer")
+    lines.append(
+        f"Maintenance skills ({', '.join(sorted(MAINTENANCE_SKILLS))}) are left out, because "
+        "they sweep every file."
+    )
+    if consumer_unread_mapped:
+        lines.extend(
+            f"- `{file_path}` ({file_size(root, file_path)})"
+            for file_path in consumer_unread_mapped
+        )
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    if idle_applicable:
+        lines.append(f"## Mapped KB Files Idle For {IDLE_DAYS} Days")
+        if idle_mapped:
+            lines.extend(
+                f"- `{file_path}` ({file_size(root, file_path)})"
+                for file_path in idle_mapped
+            )
+        else:
+            lines.append("- none")
+        lines.append("")
+
+    top_chars = sorted_counter(chars_by_file)[:top_n]
+    if top_chars:
+        lines.extend(
+            [
+                "## Context Loaded By Read (characters)",
+                *table(
+                    ["File", "Characters", "Reads"],
+                    [
+                        [f"`{file_path}`", str(total), str(chars_reads[file_path])]
+                        for file_path, total in top_chars
+                    ],
+                ),
+                "",
+            ]
+        )
+
     lines.append("## Unread Mapped KB Files")
+    lines.append(
+        "Counts every skill, so one maintenance sweep marks the whole KB read. Use the "
+        "consumer list above to judge usefulness."
+    )
     if unread_mapped:
         lines.extend(f"- `{file_path}`" for file_path in unread_mapped)
     else:
@@ -263,6 +368,8 @@ def build_report(
         "skills": len(accessing_skills),
         "unread": len(unread_mapped),
         "unobserved": len(unobserved_mapped),
+        "consumer_unread": len(consumer_unread_mapped),
+        "idle": len(idle_mapped) if idle_applicable else None,
         "top_files": top_files,
         "top_skills": top_skills,
         "malformed": malformed,
@@ -285,6 +392,7 @@ def format_summary(summary: dict[str, Any], output: pathlib.Path | None) -> str:
         f"- Skills accessing KB: {summary['skills']}",
         f"- Unread mapped KB files: {summary['unread']}",
         f"- Unobserved mapped KB files: {summary['unobserved']}",
+        f"- Mapped KB files never read by a consumer: {summary['consumer_unread']}",
         f"- Top files: {render_top(summary['top_files'])}",
         f"- Top skills: {render_top(summary['top_skills'])}",
     ]

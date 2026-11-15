@@ -202,9 +202,11 @@ assert_contains "T12: first path gets its own section" "$out" '## KB Search'
 assert_contains "T12: absent path is reported, not omitted" "$out" 'mentions:zzzz-absent'
 assert_contains "T12: absent path says no results" "$out" 'no results'
 if [ "$(printf '%s\n' "$out" | grep -c '^## KB Search')" = "3" ]; then
-  pass "T12: one section per path"
+  pass=$((pass + 1))
+  printf 'PASS  %s\n' "T12: one section per path"
 else
-  fail "T12: one section per path"
+  fail=$((fail + 1))
+  printf 'FAIL  %s\n' "T12: one section per path" >&2
 fi
 # The fuzzy fallback is global by design: it fires only when the whole sweep found
 # nothing, so a path with no hits alongside a path that has them gets no fallback.
@@ -253,6 +255,104 @@ assert_not_contains "T13: confidence:medium skips the default entry" "$out" "Def
 assert_contains "T13: confidence:medium finds the **Confidence**: spelling" "$out" "Outside-colon medium entry"
 out=$(bash "$SCRIPT" "defaultconf" confidence:low 2>&1)
 assert_not_contains "T13: confidence:low does not match low inside flow" "$out" "Flow medium entry"
+
+# ── T14: a short plain word matches as a whole word, longer words stay substrings ──
+mkdir -p "$FIXTURE/workspace/kb/projects"
+cat > "$FIXTURE/workspace/kb/projects/short-term.md" <<'EOF'
+# Short term fixture
+
+### 2026-06-07 Outbound NAT gateway
+Outbound traffic leaves through the NAT gateway.
+
+### 2026-06-08 Alternative native rollout
+The alternative rollout is native and international.
+
+### 2026-06-09 Folders layout
+The shortfolders layout keeps two folders.
+EOF
+
+out=$(bash "$SCRIPT" "NAT" 2>&1)
+assert_contains "T14: short word finds the whole-word entry" "$out" "Outbound NAT gateway"
+assert_not_contains "T14: short word skips alternative/native/international" "$out" "Alternative native rollout"
+out=$(bash "$SCRIPT" "NAT" in:projects --with-score 2>&1)
+assert_contains "T14: NAT still counts as one result" "$out" "1 result(s)"
+out=$(bash "$SCRIPT" "folder" 2>&1)
+assert_contains "T14: a long word still matches inside folders" "$out" "Folders layout"
+out=$(bash "$SCRIPT" "C++" 2>&1)
+assert_contains "T14: punctuated terms stay substring matches" "$out" "C++ literal search"
+
+# ── T15: a truncated result names where the hits sit ──────────────────────────
+mkdir -p "$FIXTURE/workspace/kb/ops"
+for i in 01 02 03 04 05 06 07 08; do
+  printf '# Spread %s\n\n### 2026-07-%s Spread entry\nspreadtoken lives here.\n' "$i" "$i" \
+    > "$FIXTURE/workspace/kb/projects/spread-$i.md"
+done
+for i in 01 02 03; do
+  printf '# Ops spread %s\n\n### 2026-07-%s Ops spread entry\nspreadtoken lives here too.\n' "$i" "$i" \
+    > "$FIXTURE/workspace/kb/ops/spread-$i.md"
+done
+out=$(bash "$SCRIPT" "spreadtoken" 2>&1)
+assert_contains "T15: truncation notice is kept" "$out" "Showing the top 10 of 11"
+assert_contains "T15: hit distribution names the areas" "$out" "Hits by area (narrow with in:<area>): projects 8, ops 3"
+out=$(bash "$SCRIPT" "spreadtoken" in:ops 2>&1)
+assert_not_contains "T15: no distribution when the area is already filtered" "$out" "Hits by area"
+out=$(bash "$SCRIPT" "longtoken" 2>&1)
+assert_not_contains "T15: no distribution when nothing was truncated" "$out" "Hits by area"
+
+# ── T17: a short word still finds its plural and its snake_case form ────────
+cat > "$FIXTURE/workspace/kb/projects/boundary.md" <<'EOF'
+# Boundary fixture
+
+### 2026-08-10 Plural form
+The suite runs many tests in parallel.
+
+### 2026-08-11 Snake case form
+Set the env_var before the run.
+EOF
+
+out=$(bash "$SCRIPT" "test" 2>&1)
+assert_contains "T17: test finds tests" "$out" "Plural form"
+out=$(bash "$SCRIPT" "env" 2>&1)
+assert_contains "T17: env finds env_var" "$out" "Snake case form"
+
+# ── T18: the area hint only names areas that in: accepts ─────────────────────
+mkdir -p "$FIXTURE/workspace/kb/terminology"
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+  printf '# Term %s\n\n### 2026-09-%s Term entry\nareatoken lives here.\n' "$i" "$i" \
+    > "$FIXTURE/workspace/kb/terminology/area-$i.md"
+done
+out=$(bash "$SCRIPT" "areatoken" 2>&1)
+assert_contains "T18: a directory in: rejects is reported as other" "$out" "Hits by area (narrow with in:<area>): other 12"
+assert_not_contains "T18: terminology is not offered as a filter" "$out" "terminology 12"
+
+# ── T16: the fuzzy fallback needs two of the words, and ignores tiny ones ────
+cat > "$FIXTURE/workspace/kb/projects/fuzzy.md" <<'EOF'
+# Fuzzy fixture
+
+### 2026-08-01 Dropbox storage design
+Dropbox stores blocks in a content-addressed layout.
+
+### 2026-08-02 Dropbox billing
+Dropbox invoices arrive monthly.
+
+### 2026-08-03 Storage layout for blocks
+The storage layout groups blocks by hash.
+EOF
+
+out=$(bash "$SCRIPT" "dropbox storage nomatchword" 2>&1)
+assert_contains "T16: fuzzy fallback is still announced" "$out" "partial match"
+assert_contains "T16: entry holding two query words is kept" "$out" "Dropbox storage design"
+assert_not_contains "T16: entry holding one query word is dropped" "$out" "Dropbox billing"
+out=$(bash "$SCRIPT" "ai dropbox storage zzmiss" 2>&1)
+assert_contains "T16: two-letter word does not stop a real match" "$out" "Dropbox storage design"
+out=$(bash "$SCRIPT" "dropbox zzmissone zzmisstwo" 2>&1)
+rc=$?
+assert_exit "T16: one matching word of three finds nothing" 2 "$rc"
+out=$(bash "$SCRIPT" "dropbox storage design zzmiss" 2>&1)
+assert_contains "T16: four words keep an entry that holds three" "$out" "Dropbox storage design"
+out=$(bash "$SCRIPT" "dropbox storage hash zzmiss" 2>&1)
+rc=$?
+assert_exit "T16: four words drop entries that hold only two" 2 "$rc"
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
