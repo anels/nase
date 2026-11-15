@@ -32,6 +32,10 @@ Search discipline (these are review/lookup lanes, not open-ended exploration):
 - Every tool result is costly persistent context. Pull evidence, not background.
 - Rationale: [GitHub's 2026-07-10 analysis](https://github.blog/ai-and-ml/github-copilot/better-tools-made-copilot-code-review-worse-heres-how-we-actually-improved-it/) found that generic exploration instructions made reviews costlier and less effective; review-specific instructions then cut average cost about 20% at held quality. This discipline is scoped to review/verification; open-ended tasks legitimately search broad.
 
+## Brief opening
+
+Open every `Agent()` brief with two lines: the goal (what the user asked for and why) and the smallest change or answer that would satisfy it. A subagent sees only its brief, so without them it optimizes the narrow task it was handed and drifts from the goal. The rest of the brief follows those two lines. `tests/check-subagent-dispatch.sh` checks only the fresh-context qualifier, because dispatch sites are prose and a keyword check for the goal would pass on any mention of the word.
+
 ## Fan-out slices
 
 When a skill dispatches several scanners over disjoint KB domains or repos:
