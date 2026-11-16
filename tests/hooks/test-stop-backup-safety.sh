@@ -763,6 +763,63 @@ assert_exit "old lock without a pid is recovered" 0 "$rc" "$out"
 assert_contains "old lock without a pid is reported stale" "$out" "removing stale backup lock"
 assert_exit "old lock without a pid lets the backup publish" 1 "$(count_archives "$target")" "$out"
 
+# Several runs that all see the same dead owner must not each reclaim the lock. The harness
+# runs the hook's own lock block (cut out by markers) in parallel and counts the runs that
+# believe they hold the lock at the same time. rm -rf then mkdir lets two of them in.
+lock_block_script() {
+  local hook_file="$1" out_file="$2" tail_cmd="$3"
+  {
+    printf 'set -euo pipefail\nlog_status() { :; }\nTARGET="$1"\n'
+    printf 'while [ ! -e "$TARGET/go" ]; do :; done\n'
+    sed -n '/^LOCK_DIR=/,/^trap cleanup_backup EXIT/p' "$hook_file"
+    printf '%s\n' "$tail_cmd"
+  } > "$out_file"
+}
+
+lock_race_rounds_with_overlap() {
+  local acq="$1" rounds="$2" bad=0 t n dead
+  for _ in $(seq "$rounds"); do
+    t=$(mktemp -d "$fixture/lock-race.XXXXXX")
+    sleep 0 & dead=$!
+    wait "$dead"
+    mkdir "$t/.backup-lock"
+    printf '%s\n' "$dead" > "$t/.backup-lock/pid"
+    for _ in 1 2 3 4 5 6; do
+      bash "$acq" "$t" >> "$t/out" 2>/dev/null &
+    done
+    sleep 0.2
+    : > "$t/go"
+    wait
+    n=$(grep -c ACQ "$t/out" || true)
+    [ "$n" -gt 1 ] && bad=$((bad + 1))
+    rm -rf "$t"
+  done
+  printf '%s' "$bad"
+}
+
+acq_new="$fixture/lock-acq-new.sh"
+lock_block_script "$HOOK" "$acq_new" 'echo ACQ; sleep 0.3'
+overlap_rounds=$(lock_race_rounds_with_overlap "$acq_new" 20)
+assert_exit "concurrent stale-lock reclaim never admits two holders" 0 "$overlap_rounds" "rounds with >1 holder: $overlap_rounds"
+
+# The exit trap must not delete a lock that another run has since taken over.
+acq_own="$fixture/lock-acq-own.sh"
+lock_block_script "$HOOK" "$acq_own" 'echo 4242 > "$LOCK_PID"'
+t=$(mktemp -d "$fixture/lock-own.XXXXXX")
+: > "$t/go"
+bash "$acq_own" "$t" >/dev/null 2>&1
+lock_present=no
+[ -d "$t/.backup-lock" ] && lock_present=yes
+assert_contains "exit trap leaves a lock that another pid owns" "$lock_present" "yes"
+t=$(mktemp -d "$fixture/lock-own2.XXXXXX")
+: > "$t/go"
+acq_plain="$fixture/lock-acq-plain.sh"
+lock_block_script "$HOOK" "$acq_plain" 'true'
+bash "$acq_plain" "$t" >/dev/null 2>&1
+lock_present=no
+[ -d "$t/.backup-lock" ] && lock_present=yes
+assert_contains "exit trap removes the lock its own run holds" "$lock_present" "no"
+
 # --- .local-paths without a backup-target= line -------------------------------------
 # grep exits 1 on no match; under pipefail that used to abort the script silently, so the
 # "target path is empty" ERROR below it was unreachable and nothing ever got backed up.

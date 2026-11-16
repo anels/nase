@@ -10,7 +10,7 @@ section such as `## Commits`), formatted as `- {HH:MM} | {tag}: {summary}`.
 Usage: python3 .claude/scripts/daily-log-append.py TAG SUMMARY [--root PATH] [--time HH:MM]
 
   TAG      skill tag from daily-log-format.md (e.g. `fsd`, `review`, `kb-review`)
-  SUMMARY  one line; newlines are rejected
+  SUMMARY  one line; line breaks and control characters are rejected
   --root   nase repo root (default: derived from script location)
   --time   override HH:MM (tests); default is local wall-clock time
 
@@ -30,16 +30,21 @@ import pathlib
 import re
 import sys
 
+from nase_fs import atomic_write
 from nase_time import local_now
 
 TAG_RE = re.compile(r"^[a-z0-9][a-z0-9:-]*$")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# Every character str.splitlines() treats as a line break, plus the remaining C0/C1 controls. Tab stays legal.
+LINE_BREAK_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029]")
 
 
 def insert_entry(text: str, entry: str, day: str) -> str:
     if not text.strip():
         return f"# Work Log — {day}\n\n## Sessions\n\n{entry}\n"
-    lines = text.splitlines()
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
     try:
         start = next(i for i, line in enumerate(lines) if line.strip() == "## Sessions")
     except StopIteration:
@@ -67,7 +72,7 @@ def main() -> int:
     if not TAG_RE.match(args.tag):
         print(f"invalid tag: {args.tag!r}", file=sys.stderr)
         return 2
-    if not summary or "\n" in summary or "\r" in summary:
+    if not summary or LINE_BREAK_RE.search(summary):
         print("summary must be a single non-empty line", file=sys.stderr)
         return 2
     if args.time is not None and not TIME_RE.match(args.time):
@@ -80,14 +85,17 @@ def main() -> int:
 
     path = pathlib.Path(args.root) / "workspace" / "logs" / f"{day}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a+", encoding="utf-8") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        handle.seek(0)
-        updated = insert_entry(handle.read(), entry, day)
-        handle.seek(0)
-        handle.truncate()
-        handle.write(updated)
-        handle.flush()
+    with open(path.parent / ".daily-log.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            raw = path.read_bytes().decode("utf-8", errors="surrogateescape")
+        except FileNotFoundError:
+            raw = ""
+        crlf = "\r\n" in raw
+        updated = insert_entry(raw.replace("\r\n", "\n"), entry, day)
+        if crlf:
+            updated = updated.replace("\n", "\r\n")
+        atomic_write(path, updated.encode("utf-8", errors="surrogateescape"))
     print(path)
     return 0
 

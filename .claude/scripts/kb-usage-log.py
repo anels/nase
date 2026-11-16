@@ -21,6 +21,7 @@ from typing import Any
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from nase_git import resolve_root
+from nase_json import parse_jsonl_objects
 from nase_time import parse_ts
 
 ALLOWED_ACCESS = {"read", "resolve", "search-result"}
@@ -99,8 +100,8 @@ def reap_stale_contexts(root: pathlib.Path, now: datetime) -> int:
             continue
         try:
             payload = json.loads(entry.read_text(encoding="utf-8"))
-            ts = parse_ts(str(payload.get("ts", "")))
-        except Exception:
+            ts = parse_ts(str(payload.get("ts", ""))) if isinstance(payload, dict) else None
+        except (OSError, ValueError):
             ts = None
         try:
             if ts is None or (now - ts).total_seconds() > CONTEXT_TTL_SECONDS:
@@ -130,7 +131,7 @@ def normalize_kb_file(root: pathlib.Path, file_path: str) -> str | None:
     full = raw if raw.is_absolute() else root / raw
     try:
         rel = full.resolve(strict=False).relative_to(root.resolve(strict=False))
-    except Exception:
+    except ValueError:
         return None
 
     parts = rel.parts
@@ -226,11 +227,8 @@ def recent_duplicate(jsonl: pathlib.Path, event: dict[str, Any], now: datetime) 
     except Exception:
         return False
 
-    for line in reversed(lines):
-        try:
-            existing = json.loads(line)
-        except Exception:  # noqa: S112 - a malformed line is skipped data, not an error path
-            continue
+    recent, _ = parse_jsonl_objects(lines)
+    for existing in reversed(recent):
         if not all(
             existing.get(k) == event.get(k)
             for k in ("skill", "file", "access", "source", "session", "chars")

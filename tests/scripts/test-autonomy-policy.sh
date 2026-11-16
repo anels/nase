@@ -78,6 +78,70 @@ level: auto'
 out=$(run --class jira-transition-progress)
 assert_contains "level outside the autonomy section is ignored" <(printf '%s' "$out") '"level": "guided"'
 
+# --- examples and ambiguity never raise the level -------------------------
+check_level() {
+  local name="$1" want_level="$2" want_reason="$3"
+  out=$(run --class pr-create-draft)
+  assert_contains "$name: level is $want_level" <(printf '%s' "$out") "\"level\": \"$want_level\""
+  assert_contains "$name: reason is $want_reason" <(printf '%s' "$out") "\"level_reason\": \"$want_reason\""
+}
+
+write_config '## Autonomy
+```
+level: auto
+```
+level: guided'
+check_level "fenced example before the real key" guided configured
+
+write_config '## Autonomy
+```
+level: auto
+```'
+check_level "fenced key only" guided no-level
+
+write_config '## Autonomy
+~~~
+level: auto'
+check_level "unterminated fence blanks the rest" guided no-level
+
+write_config '```
+## Autonomy
+level: auto
+```'
+check_level "fenced section" guided no-autonomy-section
+
+write_config '## Autonomy
+<!--
+level: auto
+-->
+level: standard'
+check_level "HTML comment before the real key" standard configured
+
+write_config '## Autonomy
+<!-- level: auto -->'
+check_level "commented-out key" guided no-level
+
+write_config '## Autonomy
+level: standard
+level: auto'
+check_level "conflicting keys" guided ambiguous-level
+
+write_config '## Autonomy
+level: auto
+level: "auto"'
+check_level "repeated identical key" auto configured
+
+write_config '## Autonomy
+  level: auto'
+check_level "indented key" guided no-level
+
+write_config '## Autonomy
+level: auto
+
+## Autonomy
+level: guided'
+check_level "duplicate section heading" guided ambiguous-autonomy-section
+
 # --- unknown class --------------------------------------------------------
 write_config '## Autonomy
 level: auto'

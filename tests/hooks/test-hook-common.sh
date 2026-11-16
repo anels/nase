@@ -430,6 +430,95 @@ assert_cmd "the loop ran hooks against NASE_ROOT (workspace log created)" \
   bash -c 'ls "$1"/workspace/logs/*.md >/dev/null 2>&1' _ "$loop_ws"
 
 # ---------------------------------------------------------------------------
+# .claude/lib/redact.jq scrub: secrets vanish, ordinary words are left alone
+# ---------------------------------------------------------------------------
+REDACT_PRELUDE=$(cat "$ROOT/.claude/lib/redact.jq")
+scrub_text() {
+  jq -rn --arg s "$1" "$REDACT_PRELUDE"' $s | scrub'
+}
+
+# redact_pos INPUT FRAGMENT: scrub must remove FRAGMENT from INPUT.
+redact_pos() {
+  local out
+  out=$(scrub_text "$1")
+  case "$out" in
+    *"$2"*) fail "redact: leaks '$2' from: $1 -> $out" ;;
+    *) pass "redact: removes $2" ;;
+  esac
+}
+
+# redact_neg INPUT: scrub must return INPUT unchanged.
+redact_neg() {
+  local out
+  out=$(scrub_text "$1")
+  if [ "$out" = "$1" ]; then
+    pass "redact: leaves alone: $1"
+  else
+    fail "redact: over-redacts '$1' -> '$out'"
+  fi
+}
+
+redact_pos 'password="hunter2xyz" ok' 'hunter2xyz'
+redact_pos "password='hunter2xyz' ok" 'hunter2xyz'
+redact_pos 'Password=Hunter2xyz;Server=x' 'Hunter2xyz'
+redact_pos '{"password":"hunter2xyz","u":"a"}' 'hunter2xyz'
+redact_pos '{"api_key": "abcd1234efgh"}' 'abcd1234efgh'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'secret: "two words here" after' 'words here'
+redact_pos 'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCY' 'wJalrXUtnFEMI'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE' 'AKIAIOSFODNN7EXAMPLE'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'ASIAIOSFODNN7EXAMPLE and more' 'ASIAIOSFODNN7EXAMPLE'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789' 'mnopqrstuvwxyz'
+redact_pos 'ghp_abcdefghijklmnopqrstuvwxyz0123456789' 'abcdefghijkl'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'xoxb-1234567890-abcdefghijkl' '1234567890'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'xoxp-1234567890-abcdefghijkl' '1234567890'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'xoxa-2-1234567890-abcdefghijkl' '1234567890'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'xapp-1-A0123456789-abcdefghij' 'A0123456789'
+redact_pos 'glpat-abcdefghijklmnopqrst12' 'abcdefghijklmnopqrst12'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'npm_abcdefghijklmnopqrstuvwxyz0123' 'abcdefghijklmnopqrstuvwxyz'
+redact_pos 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r' 'eyJzdWIi'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'DefaultEndpointsProtocol=https;AccountName=a;AccountKey=abc123+/def456==;EndpointSuffix=x' 'abc123+/def456'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'https://a.blob.core.windows.net/c?sv=2020&sig=abc%2Bdef%3D&se=2030' 'abc%2Bdef'
+redact_pos 'Endpoint=sb://x/;SharedAccessKey=abc123def456ghi=' 'abc123def456ghi'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'Authorization: Basic dXNlcjpwYXNzd29yZA==' 'dXNlcjpwYXNzd29yZA'
+redact_pos 'Authorization: Bearer abcdef1234567890' 'abcdef1234567890'
+redact_pos 'Authorization: Bearer abc.def.ghi' 'abc.def.ghi'
+redact_pos 'curl -H "Authorization: token abcdef1234567890" x' 'abcdef1234567890'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'token=abc123' 'abc123'
+redact_pos 'client_secret: s3cr3t-value-here' 's3cr3t-value'
+redact_pos 'clientSecret=s3cr3tvalue' 's3cr3tvalue'
+redact_pos 'pat=abcdef123' 'abcdef123'
+redact_pos 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz' 'abcdefghijklmnop'  # gitleaks:allow pragma: allowlist secret
+redact_pos 'https://user:p4ss@host/x' 'p4ss'
+redact_pos $'-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----' 'MIIEabc'  # gitleaks:allow pragma: allowlist secret
+redact_pos $'-----BEGIN PRIVATE KEY-----\nMIIEtruncated' 'MIIEtruncated'  # gitleaks:allow pragma: allowlist secret
+
+redact_neg 'compat: layer loaded'
+redact_neg 'path=/usr/bin and tokenizer: bpe'
+redact_neg 'disk-encryption-configuration-service-name-long'
+redact_neg 'error: token expired after 5m'
+redact_neg 'secretary=alice'
+redact_neg 'format=json sigma=3'
+redact_neg 'bytes: 12 passwords reset policy'
+redact_neg 'basic configuration of the service'
+redact_neg 'git commit -m "fix: update pattern"'
+redact_neg 'status=401 url=https://api.github.com/repos/o/r'
+redact_neg 'keyword=foo monkey=bar'
+redact_neg 'https://example.com:8080/path'
+redact_neg 'bearer tokens are fine'
+
+# The two failure trackers are the consumers; a JSON-shaped secret has to reach neither log.
+ws="$TMPROOT/ws-redact"
+mkdir -p "$ws"
+printf '%s' '{"tool_name":"Bash","error":"HTTP 401 {\"password\": \"hunter2xyz\"} Authorization: Bearer abcdef1234567890"}' \
+  | "${CLEAN[@]}" NASE_ROOT="$ws" bash "$HOOKS/track-tool-failure.sh" >/dev/null 2>&1
+assert_eq "track-tool-failure: JSON password and Bearer value are redacted" "false" \
+  "$(jq 'any(.error; contains("hunter2xyz") or contains("abcdef1234567890"))' "$ws/workspace/stats/tool-failures.jsonl" 2>/dev/null | tail -1)"
+printf '%s' '{"error":"client_secret=s3cr3tvalue"}' \
+  | "${CLEAN[@]}" NASE_ROOT="$ws" bash "$HOOKS/track-session-failure.sh" >/dev/null 2>&1
+assert_eq "track-session-failure: client_secret value is redacted" "false" \
+  "$(jq 'any(.error; contains("s3cr3tvalue"))' "$ws/workspace/stats/session-failures.jsonl" 2>/dev/null | tail -1)"
+
+# ---------------------------------------------------------------------------
 if [ "$failures" -eq 0 ]; then
   printf '\nhook-common tests passed.\n'
   exit 0

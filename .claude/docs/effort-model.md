@@ -113,9 +113,9 @@ cannot live in `status:`. Set `tracking_only: true` alongside `owner:` when a
 different engineer owns code delivery and this workspace only tracks, reviews, and
 unblocks.
 
-Efforts already in `done/` age out to `workspace/efforts/archive/{YYYY}/` after 60
-days via `pre-compact-archive.sh`, so both paths converge - the flag only decides
-whether the effort passes through the delivery record on its way there.
+Efforts already in `done/` age out to `workspace/efforts/archive/{YYYY}/` (the year of the
+file's mtime) after 60 days via `pre-compact-archive.sh`, so both paths converge - the flag
+only decides whether the effort passes through the delivery record on its way there.
 
 ## Multi-Deliverable Efforts
 

@@ -7,11 +7,14 @@ cd "$ROOT"
 
 failures=0
 
+# shellcheck source=../lib/workspace-skip.sh
+source "$ROOT/tests/lib/workspace-skip.sh"
+
 pass() { printf 'PASS  %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; failures=$((failures + 1)); }
 
 check_file_available() {
-  local name="$1" file="$2"
+  local name="$1" file="$2" status=0
 
   if [[ -f "$file" ]]; then
     return 0
@@ -19,7 +22,13 @@ check_file_available() {
 
   case "$file" in
     workspace/skills/*)
-      printf 'SKIP  %s (local workspace skill missing: %s)\n' "$name" "$file"
+      ws_file_status "$file" || status=$?
+      if [[ "$status" -eq 2 ]]; then
+        fail "$name (workspace/skills exists but the file is missing: $file)"
+      else
+        ws_count_skip
+        printf 'SKIP  %s (local workspace skill missing: %s)\n' "$name" "$file"
+      fi
       ;;
     *)
       fail "$name (tracked file missing: $file)"
@@ -166,6 +175,9 @@ if [[ -d workspace/skills ]]; then
   else
     fail "duplicate security review skill is removed"
   fi
+else
+  ws_count_skip
+  ws_count_skip
 fi
 
 # These five carried the same preamble as pasted prose in two drifting phrasings. It now
@@ -215,6 +227,8 @@ do
   assert_contains "${agent} uses plan permissions" "$path" 'permissionMode: plan'
   assert_not_contains "${agent} does not grant Bash" "$path" 'Bash'
 done
+
+ws_skip_summary
 
 if [[ "$failures" -eq 0 ]]; then
   printf '\nworkspace skill P1 regression tests passed.\n'

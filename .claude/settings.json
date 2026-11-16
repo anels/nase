@@ -16,7 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" session-start.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" session-start.sh",
+            "timeout": 30
           }
         ]
       }
@@ -26,7 +27,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-todos.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-todos.sh",
+            "timeout": 10
           }
         ]
       },
@@ -34,7 +36,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-backup.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-backup.sh",
+            "timeout": 150
           }
         ]
       },
@@ -42,7 +45,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-claim-check.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-claim-check.sh",
+            "timeout": 10
           }
         ]
       }
@@ -52,7 +56,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_EVENT_NAME=StopFailure bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-session-failure.sh"
+            "command": "HOOK_EVENT_NAME=StopFailure bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-session-failure.sh",
+            "timeout": 10
           }
         ]
       }
@@ -62,7 +67,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_EVENT_NAME=WorktreeRemove bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" worktree-log.sh"
+            "command": "HOOK_EVENT_NAME=WorktreeRemove bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" worktree-log.sh",
+            "timeout": 10
           }
         ]
       }
@@ -72,7 +78,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-archive.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-archive.sh",
+            "timeout": 30
           }
         ]
       },
@@ -80,7 +87,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-notice.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-compact-notice.sh",
+            "timeout": 30
           }
         ]
       }
@@ -90,7 +98,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill-prompt.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill-prompt.sh",
+            "timeout": 10
           }
         ]
       },
@@ -98,7 +107,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" style-edit-detect.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" style-edit-detect.sh",
+            "timeout": 10
           }
         ]
       }
@@ -109,27 +119,30 @@
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_EVENT_NAME=UserPromptExpansion bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill-prompt.sh"
+            "command": "HOOK_EVENT_NAME=UserPromptExpansion bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill-prompt.sh",
+            "timeout": 10
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Monitor",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" block-dangerous-git.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" block-dangerous-git.sh",
+            "timeout": 15
           }
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Monitor",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" external-cli-write-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" external-cli-write-guard.sh",
+            "timeout": 15
           }
         ]
       },
@@ -138,7 +151,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" slack-send-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" slack-send-guard.sh",
+            "timeout": 15
           }
         ]
       },
@@ -147,7 +161,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" prose-lint-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" prose-lint-guard.sh",
+            "timeout": 15
           }
         ]
       },
@@ -156,7 +171,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" atlassian-generic-write-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" atlassian-generic-write-guard.sh",
+            "timeout": 15
           }
         ]
       },
@@ -165,7 +181,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" confluence-size-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" confluence-size-guard.sh",
+            "timeout": 15
           }
         ]
       },
@@ -174,7 +191,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" jira-write-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" jira-write-guard.sh",
+            "timeout": 15
           }
         ]
       },
@@ -183,11 +201,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-edit-write-fact-force.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" pre-edit-write-fact-force.sh",
+            "timeout": 15
           },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" daily-log-format-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" daily-log-format-guard.sh",
+            "timeout": 15
           }
         ]
       }
@@ -198,7 +218,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-kb-read.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-kb-read.sh",
+            "timeout": 10
           }
         ]
       },
@@ -207,7 +228,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-skill.sh",
+            "timeout": 10
           }
         ]
       },
@@ -216,11 +238,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" post-edit-shellcheck.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" post-edit-shellcheck.sh",
+            "timeout": 30
           },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" post-edit-ruff.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" post-edit-ruff.sh",
+            "timeout": 30
           }
         ]
       }
@@ -230,7 +254,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_EVENT_NAME=PostToolUseFailure bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-tool-failure.sh"
+            "command": "HOOK_EVENT_NAME=PostToolUseFailure bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-tool-failure.sh",
+            "timeout": 10
           }
         ]
       }
@@ -240,7 +265,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "HOOK_EVENT_NAME=SubagentStop bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-subagent.sh"
+            "command": "HOOK_EVENT_NAME=SubagentStop bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" track-subagent.sh",
+            "timeout": 10
           }
         ]
       }

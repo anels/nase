@@ -45,6 +45,13 @@ set -uo pipefail
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT" || exit 1
 
+# Assertions on git-ignored workspace/ files skip on a fresh clone. Count them so the skip
+# is visible, and fail when workspace/skills/ exists but a named skill file does not.
+# shellcheck source=lib/workspace-skip.sh
+source "$ROOT/tests/lib/workspace-skip.sh"
+ws_skip_file_init
+trap 'rm -f "$WS_SKIP_FILE"' EXIT
+
 # Skills under review
 SKILL_DIRS=(.claude/commands/nase workspace/skills)
 
@@ -480,6 +487,10 @@ section "D13: branch-derived workspace/tmp artifacts use slugs"
 d13_hits=$(python3 - <<'PY'
 from pathlib import Path
 import re
+import sys
+
+sys.path.insert(0, "tests/lib")
+import workspace_skip  # noqa: E402
 
 paths = [
     Path(".claude/commands/nase/fsd.md"),
@@ -490,7 +501,7 @@ paths = [
 unsafe = re.compile(r"workspace/tmp/[^\n\x60]*\{(?:branch_name|branch)\}")
 hits = []
 for path in paths:
-    if not path.exists():
+    if not workspace_skip.present(path, hits):
         continue
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if unsafe.search(line):
@@ -538,6 +549,10 @@ fi
 section "D15: critical KB workflows preserve lookup markers"
 d15_hits=$(python3 - <<'PY'
 from pathlib import Path
+import sys
+
+sys.path.insert(0, "tests/lib")
+import workspace_skip  # noqa: E402
 
 markers = (
     "repo-resolution.md",
@@ -562,7 +577,7 @@ targets = [
 hits = []
 for filename in targets:
     path = Path(filename)
-    if not path.exists():
+    if not workspace_skip.present(path, hits):
         continue
     text = path.read_text(encoding="utf-8")
     if not any(marker in text for marker in markers):
@@ -864,6 +879,10 @@ fi
 section "D22: KB writers reconcile current state without noise"
 d22_hits=$(python3 - <<'PY'
 from pathlib import Path
+import sys
+
+sys.path.insert(0, "tests/lib")
+import workspace_skip  # noqa: E402
 
 required = {
     ".claude/commands/nase/onboard.md": [
@@ -938,10 +957,7 @@ required = {
 hits = []
 for filename, tokens in required.items():
     path = Path(filename)
-    if not path.exists():
-        if filename.startswith("workspace/"):
-            continue
-        hits.append(f"  {path}: missing")
+    if not workspace_skip.present(path, hits):
         continue
     text = path.read_text(encoding="utf-8")
     for token in tokens:
@@ -966,10 +982,7 @@ for filename, forbidden in {
     "workspace/kb/.domain-map.md": ["last-loaded:"],
 }.items():
     path = Path(filename)
-    if not path.exists():
-        if filename.startswith("workspace/"):
-            continue
-        hits.append(f"  {path}: missing")
+    if not workspace_skip.present(path, hits):
         continue
     text = path.read_text(encoding="utf-8")
     for token in forbidden:
@@ -1221,6 +1234,7 @@ else
 fi
 
 # ---------- Result ---------------------------------------------------------
+ws_skip_summary
 printf '\n'
 if [[ $failed -eq 0 ]]; then
   if [[ $warnings -eq 0 ]]; then

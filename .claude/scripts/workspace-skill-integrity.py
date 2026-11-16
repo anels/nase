@@ -10,6 +10,8 @@ import os
 import re
 from pathlib import Path
 
+from nase_fs import atomic_write
+
 MANIFEST_VERSION = 1
 MARKER = "<!-- NASE-GENERATED-WORKSPACE-SKILL"
 
@@ -98,13 +100,10 @@ def write_manifest(root: Path) -> dict[str, object]:
     }
     payload = {"version": MANIFEST_VERSION, "sources": sources}
     path = manifest_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    atomic_write(
+        path, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
     )
-    os.chmod(temporary, 0o600)
-    temporary.replace(path)
+    os.chmod(path, 0o600)
     return payload
 
 

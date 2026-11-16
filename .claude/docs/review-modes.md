@@ -40,7 +40,7 @@ as separate passes` / `Never self-approve in the same active context`.
 
 Default pattern: one subagent per delegation.
 
-- Route it through the `verifier` role in `.claude/roles.yaml`: `tools: [Read, Grep, Glob, Bash]` with no Edit/Write. The whitelist is the read-only guarantee; an agent that merely promises not to write is weaker, and the parent gate's report should say which of the two applied.
+- Route it through the `verifier` role in `.claude/roles.yaml`. The role is read-only by its prompt prefix, which is advisory. A persisted agent in `.claude/agents/*.md` with a `tools:` frontmatter is the only enforced whitelist, so the parent gate's report should say which of the two applied.
 - Pass the mode's template as the subagent's instructions verbatim, and the per-call payload as its prompt.
 - Give it the artifact and the contract, and nothing else. Withholding your classification, severity, and expected verdict is the whole mechanism: a reviewer told the answer cannot independently reach it.
 - Pass absolute paths. A subagent resolves relative paths against its own cwd, which is not necessarily the worktree under review.

@@ -159,9 +159,8 @@ assert_contains \
 
 # Both parsers must read only the path token. If either starts consuming the
 # rest of the line, a `[retired:...]` field would corrupt the resolved path.
-assert_cmd \
-  "kb-domain-resolve.sh still takes only the first token after the arrow" \
-  grep -Fq "awk '{print \$1}'" "$RESOLVE_SCRIPT"
+# The resolver's shape is pinned by behavior (the end-to-end check below), not by
+# its source text, so it can change how it extracts the token.
 
 # End-to-end: a domain map carrying the field must still resolve to the bare path.
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/kb-retired-XXXXXX")

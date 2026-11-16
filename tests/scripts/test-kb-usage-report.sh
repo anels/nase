@@ -75,6 +75,10 @@ assert_contains "T1: no-data report explains empty ledger" "$(cat "$empty_report
 
 cat > "$FIXTURE/workspace/stats/kb-usage.jsonl" <<'EOF'
 not-json
+[1]
+"x"
+5
+null
 {"ts":"2026-06-12T00:00:00Z","skill":"fsd","file":"workspace/kb/projects/a.md","access":"read","source":"read-hook","session":"s1"}
 {"ts":"2026-06-12T01:00:00Z","skill":"fsd","file":"workspace/kb/projects/a.md","access":"resolve","source":"kb-domain-resolve","session":"s1"}
 {"ts":"2026-06-11T00:00:00Z","skill":"unknown","file":"workspace/kb/general/b.sql","access":"search-result","source":"kb-search","session":"s2"}
@@ -97,7 +101,7 @@ assert_contains "T2: summary distinguishes surfaced files" "$out" "KB files surf
 assert_contains "T2: summary counts skills including unknown" "$out" "Skills accessing KB: 2"
 assert_contains "T2: summary counts unread mapped files" "$out" "Unread mapped KB files: 2"
 assert_contains "T2: summary counts unobserved mapped files" "$out" "Unobserved mapped KB files: 1"
-assert_contains "T2: report records malformed lines skipped" "$body" "Malformed lines skipped: 1"
+assert_contains "T2: report records malformed lines skipped" "$body" "Malformed lines skipped: 5"
 assert_contains "T2: top files sorted by event count" "$body" "workspace/kb/projects/a.md"
 assert_contains "T2: source breakdown includes search results" "$body" "search-result"
 assert_contains "T2: unread search-only file is listed" "$body" "workspace/kb/general/b.sql"

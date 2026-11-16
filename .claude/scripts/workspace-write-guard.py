@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import sha256_file
+from nase_fs import fsync_dir, sha256_file
 from workspace_lock import LockError, held
 
 ALLOWED_DIRS = (
@@ -220,14 +220,6 @@ def positive_int(value: str) -> int:
 def fsync_file(path: Path) -> None:
     with path.open("rb") as handle:
         os.fsync(handle.fileno())
-
-
-def fsync_dir(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def cmd_apply(args: argparse.Namespace) -> None:

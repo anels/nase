@@ -221,6 +221,28 @@ assert_exit "T12: a query plus several paths is refused" 1 "$rc"
 assert_contains "T12: the refusal says what to do" "$out" 'drop the separate query'
 rm -f "$FIXTURE/workspace/kb/general/multi.md"
 
+# With several paths and no exact hit, the fuzzy fallback would split the joined paths into
+# words and print an entry that mentions three of them under no `mentions:` header.
+cat > "$FIXTURE/workspace/kb/general/fuzzy-multi.md" <<'EOF'
+# Fuzzy multi-path fixture
+
+### 2026-05-20 Alpha parser notes
+**Tags:** parser
+**Confidence:** high
+The alpha module hands its tokens to the parser stage.
+EOF
+out=$(bash "$SCRIPT" mentions:alpha-module mentions:parser-nothing mentions:gammaz 2>&1)
+rc=$?
+assert_exit "T12: several paths with no exact hit report nothing found" 2 "$rc"
+assert_not_contains "T12: no fuzzy fallback across several paths" "$out" 'partial match'
+assert_not_contains "T12: no entry is printed under a mentions: header" "$out" 'Alpha parser notes'
+# A single path keeps its fuzzy fallback, so the same words still find the entry.
+out=$(bash "$SCRIPT" mentions:alpha-module-parser-nothing 2>&1)
+rc=$?
+assert_exit "T12: a single path still falls back to fuzzy" 0 "$rc"
+assert_contains "T12: a single path reports partial matches" "$out" 'partial match'
+rm -f "$FIXTURE/workspace/kb/general/fuzzy-multi.md"
+
 # T13: `high` is the unwritten default, so confidence:high matches an entry with no field
 # and confidence:medium does not.
 cat > "$FIXTURE/workspace/kb/general/confidence.md" <<'EOF'

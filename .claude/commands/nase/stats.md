@@ -57,7 +57,7 @@ Follow `.claude/docs/cli-tooling.md` for optional large-data aggregation. Probe 
 
 `.claude/docs/workspace-data-gathering.md` owns the collection algorithm and the confidential-session exclusions; `/nase:recap` reads the same doc over the same sources. Follow it for *what* to gather and how to exclude, and keep only the per-day CSV shaping below local to this skill.
 
-Steps 1-3 below are a mechanical per-day sweep whose answer is a row of counts, not the file contents. For a range over 14 days delegate them to one **lookup** agent (`model=haiku`, `effort=low`, `tools=[Read, Grep, Glob, Bash]`, prompt prefixed with the `lookup` `prompt_prefix` from `.claude/roles.yaml`) and take back only the CSV path. Run them inline only for short ranges.
+Steps 1-3 below are a mechanical per-day sweep whose answer is a row of counts, not the file contents. For a range over 14 days delegate them to one **lookup** agent (role `lookup` per `.claude/roles.yaml`: `model=haiku`, `effort=low`, prompt prefixed with the `lookup` `prompt_prefix` from `.claude/roles.yaml`) and take back only the CSV path. Run them inline only for short ranges.
 
 1. Source the state file, then collect into `$STATS_DIR`:
 

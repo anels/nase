@@ -54,7 +54,27 @@ CLASSES: dict[str, dict[str, str]] = {
 }
 
 AUTONOMY_SECTION_RE = re.compile(r"^##\s+Autonomy\s*$", re.MULTILINE)
-LEVEL_RE = re.compile(r"^\s*level\s*:\s*(\S+)\s*$", re.MULTILINE)
+LEVEL_RE = re.compile(r"^level\s*:\s*(\S+)\s*$", re.MULTILINE)
+COMMENT_RE = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+
+
+def live_text(text: str) -> str:
+    """Blank HTML comments and fenced code, keeping line count, so examples never parse as config."""
+    text = COMMENT_RE.sub(lambda m: re.sub(r"[^\n]", "", m.group()), text)
+    out, fence = [], None
+    for line in text.split("\n"):
+        marker = FENCE_RE.match(line)
+        if fence is None and marker:
+            fence = marker.group(1)
+            out.append("")
+        elif fence is not None:
+            if marker and marker.group(1) == fence:
+                fence = None
+            out.append("")
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 def read_level(root: Path) -> tuple[str, str]:
@@ -67,16 +87,23 @@ def read_level(root: Path) -> tuple[str, str]:
     except OSError as exc:
         return "guided", f"unreadable-config:{exc.__class__.__name__}"
 
-    section = AUTONOMY_SECTION_RE.search(text)
-    if not section:
+    text = live_text(text)
+    sections = list(AUTONOMY_SECTION_RE.finditer(text))
+    if not sections:
         return "guided", "no-autonomy-section"
+    if len(sections) > 1:
+        return "guided", "ambiguous-autonomy-section"
+    section = sections[0]
     tail = text[section.end():]
     next_section = re.search(r"^##\s+", tail, re.MULTILINE)
     body = tail[: next_section.start()] if next_section else tail
-    match = LEVEL_RE.search(body)
-    if not match:
+    matches = LEVEL_RE.findall(body)
+    if not matches:
         return "guided", "no-level"
-    value = match.group(1).strip().strip("\"'").lower()
+    values = {m.strip("\"'").lower() for m in matches}
+    if len(values) > 1:
+        return "guided", "ambiguous-level"
+    value = values.pop()
     if value not in LEVELS:
         return "guided", f"invalid-level:{value}"
     return value, "configured"

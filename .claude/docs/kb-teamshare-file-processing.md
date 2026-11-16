@@ -84,7 +84,7 @@ question: "general/dotnet.md — how to handle the flagged items above?"
 header: "Privacy: dotnet.md"
 options:
   - label: "Include all flagged items"
-    description: "Jira link, codename, team name — all go in as-is"
+    description: "Jira link, codename, team name - all go in as-is"
   - label: "Remove all flagged items"
     description: "Strip everything in the ⚠️ list"
   - label: "Replace flagged items with [redacted]"

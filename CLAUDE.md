@@ -8,7 +8,7 @@
 
 # Compact instructions
 
-When compacting, preserve active repo/path/branch, current task/plan, changed files, verification run, and failing output. Drop raw logs, full diffs, broad search dumps, and superseded reasoning. The `PreCompact` hook emits a checkpoint reminder before compression — append the active state to the effort doc or daily log first; the post-compaction session restarts with only the summary, so re-read the effort doc named in the last session note before acting.
+When compacting, preserve active repo/path/branch, current task/plan, changed files, verification run, and failing output. Drop raw logs, full diffs, broad search dumps, and superseded reasoning. The `PreCompact` hook emits a checkpoint reminder before compression. Append the active state to the effort doc or daily log first; the post-compaction session restarts with only the summary, so re-read the effort doc named in the last session note before acting.
 
 Compacting is the last of five context moves, not the first reach. At a phase boundary, work `.claude/docs/context-boundary.md` top to bottom: continue → clear → hand off → subagent → compact.
 
@@ -19,7 +19,7 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 - Keep memory human-readable. Durable knowledge goes to Markdown/JSONL under `workspace/`; avoid opaque summaries that a human cannot inspect, diff, or delete.
 - Slice context before reading broadly. Use repo KB, domain maps, `gh`, `rg`, `ast-grep`, focused diffs, and workspace scan scripts before loading large logs or whole directories. Read `.claude/docs/reference.md` only for layout, script, or architecture questions.
 - Require evidence for technical claims. PR findings, architecture notes, and audit conclusions need source paths, diffs, tests, logs, or command output; drop candidates that cannot be verified.
-- External writes stay gated: Slack drafts, Jira write tokens (single-shot or batch), Confluence size guards, and GitHub/Azure/Kubernetes/Terraform CLI mutations through payload-bound `external-write-action.py` manifests. The CLI hook blocks raw writes and fails closed on unrecognized guarded CLI invocations. `workspace/config.md → ## Autonomy → level:` may pre-authorize the low-risk classes in `.claude/docs/external-mutation-policy.md → Autonomy level` (`python3 .claude/scripts/autonomy-policy.py --class {class}`); it removes the human stop, never the manifest binding, hook, drift check, or audit line. `prose-lint.py` also checks Slack draft bodies and `gh` payload prose, and fails open when unavailable.
+- External writes stay gated: Slack drafts, Jira write tokens (single-shot or batch), Confluence size guards, and GitHub/Azure/Kubernetes/Terraform CLI mutations through payload-bound `external-write-action.py` manifests. The CLI hook denies the raw write shapes it knows and any guarded CLI invocation it cannot parse. It bounds honest mistakes, not a determined caller, and known gaps remain (a script written to a file and then run, `xargs sh -c`, names built dynamically inside interpreter code). `workspace/config.md → ## Autonomy → level:` may pre-authorize the low-risk classes in `.claude/docs/external-mutation-policy.md → Autonomy level` (`python3 .claude/scripts/autonomy-policy.py --class {class}`); it removes the human stop, never the manifest binding, hook, drift check, or audit line. `prose-lint.py` also checks Slack draft bodies and `gh` payload prose, and fails open when unavailable.
 - New commands and skills reuse shared docs and scripts first. Add an abstraction only when it removes real repeated workflow complexity, and include a local validation path.
 
 ---
@@ -59,13 +59,13 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 
 ### Model Routing (subagents)
 Project-level subagent prompts live in `.claude/agents/`. `.claude/roles.yaml` defines lightweight local role names for ad hoc `Agent()` routing.
-Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`verifier`/`checker`/`architect` model/tool routing.
-When spawning a subagent via `Agent()`, pass `tools=` matching the role or agent whitelist - `lookup`, `verifier`, and `checker` are read-only (no Edit/Write). Default `worker`; do not use `architect` for lookup work.
+Use the persisted agents when a workflow names them; use roles.yaml when a workflow only needs `lookup`/`worker`/`verifier`/`checker`/`architect` model and effort routing.
+The only enforced tool whitelist for a subagent is the `tools:` frontmatter of a persisted agent in `.claude/agents/*.md`. A role in `roles.yaml` supplies `model`, `effort`, and a `prompt_prefix` as advisory metadata, and this Claude Code build's `Agent()` has no `tools` parameter, so a spawn site names the role and passes `model` and `effort` without claiming a whitelist. `lookup`, `verifier`, and `checker` are read-only by their prompt prefix, not by enforcement. Default `worker`; do not use `architect` for lookup work.
 Delegate a survey - a read sweep whose answer is a conclusion, not the file contents - and delegate it in ad hoc work, not only in a named skill phase. A subagent's reads never enter this conversation, so the sweep costs a brief plus a short report instead of several file dumps. Keep a read inline when you already know the file and the line, when the raw text is the deliverable, or when you must edit what you just read.
 
 ### Bash / Path Rules
 - Bash resets `cwd` between calls; use `git -C /absolute/path <cmd>`. The nase workspace is not the product repo. After pushed worktree work, use `.claude/scripts/worktree-cleanup.py` with the exact remote ref and full pushed HEAD. Retain the claimed clean quarantine plus dirty, locked, unverifiable, or primary worktrees.
-- A command that names `gh`, `az`, `kubectl`, or `terraform` must not capture with `VAR=$(...)` or use `eval`; external-cli-write-guard fails closed on both. Run the lookup as its own call and write the literal value into the next. `gh api -f/-F` needs an explicit `-X GET` for reads, or it becomes a POST.
+- Do not capture the output of `gh`, `az`, `kubectl`, or `terraform` with `VAR=$(...)`, backticks, or `eval`; external-cli-write-guard denies a command it cannot parse that names one of them. Run the lookup as its own call and write the literal value into the next. The one allowed substitution captures the manifest path that `external-write-action.py prepare ... -- <cli>` prints. `gh api -f/-F` needs an explicit `-X GET` for reads, or it becomes a POST.
 
 Rules for changing this repo's own commands, hooks, docs, scripts, and tests live in `.claude/rules/workspace-maintenance.md` and load when you touch those files.
 

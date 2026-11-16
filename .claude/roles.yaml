@@ -1,22 +1,22 @@
-# Subagent Role Catalog — nase workspace
+# Subagent Role Catalog - nase workspace
 # Skills reference role names (e.g., "role: lookup") instead of hardcoding models.
-# To change model routing, edit this file — all skills pick up the change.
+# To change model routing, edit this file - all skills pick up the change.
 #
 # Usage in skills:
 #   "Spawn a **lookup** agent to scan the repo structure."
 #   → AI reads this file, maps lookup → haiku, includes prompt_prefix
 #
 # Usage in main conversation:
-#   Agent(model="haiku", prompt="This is a simple lookup — keep reasoning minimal. ...")
+#   Agent(model="haiku", prompt="This is a simple lookup - keep reasoning minimal. ...")
 #
-# Each role also declares an `effort:` tier (low|medium|high) — the reasoning
+# Each role also declares an `effort:` tier (low|medium|high) - the reasoning
 # budget to pass with the model. Apply the Effort scaling rule below to size
 # effort to the actual task, not just the role.
 #
-# NOTE: `effort` is advisory metadata here. Spawn sites MUST pass `effort=` to
-# `Agent(...)` for it to take effect; a role name alone does not carry it. The
-# one inline spawn in design.md and the simplify dispatch now do; the rest are
-# tracked as a P1 follow-up (see roles routing table below).
+# NOTE: `model`, `effort`, `prompt_prefix`, and `tools` are advisory metadata here. A
+# spawn site must pass `model=` and `effort=` to `Agent(...)` and put the
+# `prompt_prefix` in the prompt for them to take effect; a role name alone carries
+# none of them. Spawn sites in the routing table below name the role and the values.
 
 roles:
   lookup:
@@ -24,7 +24,7 @@ roles:
     effort: low
     tools: [Read, Grep, Glob, Bash]   # Bash for readonly probes (git log, ls, gh api); no Edit/Write
     description: Fast data gathering, simple lookups, grep/glob scans
-    prompt_prefix: "This is a simple lookup — keep reasoning minimal."
+    prompt_prefix: "This is a simple lookup - keep reasoning minimal."
     use_when:
       - Log/git analysis, file listing, grep/glob searches
       - Doctor checks, tech-digest source fetching
@@ -67,7 +67,7 @@ roles:
   architect:
     model: opus
     effort: high
-    tools: ["*"]                       # unrestricted — architectural work may need anything
+    tools: ["*"]                       # unrestricted - architectural work may need anything
     description: Deep analysis, architecture, security, unfamiliar codebases
     prompt_prefix: null
     use_when:
@@ -104,6 +104,12 @@ roles:
 #   tech-debt-audit    Step 7 tech-debt-review sanity pass           verifier
 #   today              Step 7 todo-review item re-checks             verifier
 #   kb-review          broad review, disjoint KB domains             (nase-context-kb-researcher, haiku)
+#   stats              Steps 1-3 sweep over a range above 14 days    lookup
+#   skill-audit        per-file verdict batches when target is all   verifier
+#   terminology        local repo grep for a term                    lookup
+#   learn              fetch-and-extract sweep over 3+ sources       worker
+#   onboard            per-repo structure survey, up to 4 at a time  (nase-repo-state-scanner)
+#   recap              broad range, disjoint date slices             (nase-workspace-state-scanner)
 #
 # Ad hoc work is the larger share of sweeping: most repo reading in this workspace
 # happens in the main loop with no skill named at all. The routing rule in CLAUDE.md
@@ -127,7 +133,7 @@ roles:
 #
 # Effort scaling (size reasoning to the task, not just the role):
 #   Start from the role's `effort:`, then adjust by one tier on the low|medium|high
-#   ladder before spawning. Do NOT change the model — effort and model move
+#   ladder before spawning. Do NOT change the model - effort and model move
 #   independently (a haiku lookup can stay low; an opus design can drop to medium
 #   for a mechanical sub-step).
 #     - trivial / mechanical / answer-is-in-the-output  → drop one tier (floor: low)
@@ -146,11 +152,15 @@ roles:
 #   routing is correct (a cheaper misroute is silently wrong).
 #
 # Tool whitelist enforcement:
-#   When spawning a subagent via Agent() against a ROLE from this file, pass `tools=`
-#   matching that role's `tools:` list. lookup, verifier, and checker MUST NOT receive
-#   Edit/Write, because they are read-only roles.
-#   A spawn that names a persisted agent from `.claude/agents/` instead passes NO `tools=`,
-#   because that agent pins its own whitelist in frontmatter. All five are `Read, Grep, Glob` with
+#   The only enforced whitelist is a persisted agent's `tools:` frontmatter in
+#   `.claude/agents/*.md`. The `tools:` lists on the roles above are advisory, because
+#   this Claude Code build's Agent tool has no `tools` parameter (it has `model` and
+#   `effort`). A spawn site names the role and does not claim a whitelist was passed.
+#   lookup, verifier, and checker are read-only by their prompt_prefix and by the
+#   spawn site's own instruction, not by enforcement. A step that needs enforced
+#   read-only runs through a persisted agent instead.
+#   A spawn that names a persisted agent from `.claude/agents/` gets that agent's
+#   whitelist from its frontmatter. All five are `Read, Grep, Glob` with
 #   no Bash, which `tests/scripts/test-workspace-skill-p1-fixes.sh` asserts, so they are
 #   NARROWER than `lookup`. A spawn site that needs `gh`, `git log`, or any shell probe
 #   runs it in the main thread and pastes the result into the agent's prompt. Never widen
@@ -161,12 +171,12 @@ roles:
 # Default-model note (Claude Code 2.1.197, 2026-06-30):
 #   Claude Sonnet 5 is now the Claude Code *default* model (native 1M-token context).
 #   The roles above pin models explicitly, so lookup/worker/verifier/architect routing
-#   is unaffected — but any UNPINNED path (a bare Agent() with no model=, plugin skills,
+#   is unaffected - but any UNPINNED path (a bare Agent() with no model=, plugin skills,
 #   the native Explore agent) now resolves to Sonnet 5 instead of the previous default.
 #   Do NOT silently promote Sonnet 5 to architect/verifier here on the strength of it
 #   being the new default: run a quality eval first (see the Manual-only note above and
 #   feedback_no-auto-model-downgrade-without-eval). The 1M-native window does not relax
-#   the context-slicing stance — keep slicing before broad reads.
+#   the context-slicing stance - keep slicing before broad reads.
 #
 # Haiku note (Claude Code 2.1.304, 2026-10-21):
 #   The `haiku` alias resolves to Haiku 5.5 on the Anthropic API. On Bedrock, Vertex, and

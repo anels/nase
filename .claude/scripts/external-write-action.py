@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +23,8 @@ import nase_git
 import shell_scan
 from nase_fs import sha256_bytes, sha256_file
 from nase_json import canonical_bytes
-from nase_time import utc_now_iso
+from nase_time import parse_ts, utc_now_iso
+from workspace_lock import pid_alive
 
 TOKEN_TTL_SECONDS = 300
 # Deliberately generous: one `terraform apply` or `az deployment create` can
@@ -410,10 +413,10 @@ def sha256(value: Any) -> str:
 
 
 def parse_timestamp(value: str) -> datetime:
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ActionError("token created_at is invalid") from exc
+    parsed = parse_ts(value)
+    if parsed is None:
+        raise ActionError("token created_at is invalid")
+    return parsed
 
 
 def mutation_system(argv: list[str]) -> str | None:
@@ -1342,8 +1345,10 @@ def load_manifest(root: Path, path: Path) -> tuple[Path, dict[str, Any]]:
         data = json.loads(resolved.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ActionError(f"cannot read manifest: {exc}") from exc
-    if data.get("version") != MANIFEST_VERSION or not isinstance(
-        data.get("action"), dict
+    if (
+        not isinstance(data, dict)
+        or data.get("version") != MANIFEST_VERSION
+        or not isinstance(data.get("action"), dict)
     ):
         raise ActionError("manifest schema is invalid")
     action = data["action"]
@@ -1375,12 +1380,21 @@ PROSE_SURFACES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("pr", "comment"), "github-review-reply"),
     (("pr", "review"), "github-review-reply"),
     (("issue", "comment"), "github-review-reply"),
+    (("issue", "create"), "github-pr-body"),
+    (("issue", "edit"), "github-pr-body"),
+    (("release", "create"), "github-pr-body"),
+    (("release", "edit"), "github-pr-body"),
+    (("pr", "merge"), "github-pr-body"),
 )
+PROSE_INLINE_FLAGS = {"--body", "-b", "--title", "-t", "--notes", "-n", "--subject"}
+PROSE_INLINE_FIELDS = {"body", "title", "name"}
 PROSE_TEXT_SUFFIXES = {"", ".md", ".txt", ".markdown"}
 PROSE_BODY_KEYS = {"body", "body_text"}
 # `gh api .../pulls/{n}/reviews` is how a review is actually submitted, so the
 # endpoint form has to be recognized too, not just the `gh pr` porcelain.
-PROSE_API_ENDPOINTS = re.compile(r"/(pulls|issues)/", re.IGNORECASE)
+PROSE_API_ENDPOINTS = re.compile(
+    r"(?:^|/)(?:pulls|issues|releases)(?:[/?]|$)", re.IGNORECASE
+)
 
 
 def prose_surface(argv: list[str]) -> str | None:
@@ -1399,6 +1413,33 @@ def prose_surface(argv: list[str]) -> str | None:
         if tuple(words[: len(prefix)]) == prefix:
             return surface
     return None
+
+
+def prose_inline_texts(argv: list[str]) -> list[tuple[str, str]]:
+    """Return (label, text) pairs for prose passed inline in argv, not through a file.
+
+    `--body "..."`, `--title=...`, `-b...`, and `gh api -f body=...`. A value that starts
+    with `@` is a file reference, which the payload-file pass already reads.
+    """
+    found: list[tuple[str, str]] = []
+    is_api = argv[1:2] == ["api"]
+    for index, word in enumerate(argv[1:], 1):
+        if not word.startswith("-") or len(word) < 2:
+            continue
+        if word.startswith("--"):
+            flag, has_value, value = word.partition("=")
+        else:
+            flag, value = word[:2], word[2:].removeprefix("=")
+            has_value = bool(value)
+        if not has_value:
+            value = argv[index + 1] if index + 1 < len(argv) else ""
+        if is_api and flag in {"-f", "-F", "--raw-field", "--field"}:
+            key, delimiter, text = value.partition("=")
+            if delimiter and key in PROSE_INLINE_FIELDS and not text.startswith("@"):
+                found.append((f"argv[{index}] {key}", text))
+        elif not is_api and flag in PROSE_INLINE_FLAGS and value.strip():
+            found.append((f"argv[{index}] {flag}", value))
+    return found
 
 
 def prose_bodies(path: Path) -> list[tuple[str, str]]:
@@ -1438,15 +1479,29 @@ def prose_bodies(path: Path) -> list[tuple[str, str]]:
 
 
 def prose_gate_findings(root: Path, path: Path, surface: str) -> list[str]:
+    return lint_prose_texts(root, prose_bodies(path), surface)
+
+
+def lint_prose_texts(
+    root: Path, texts: list[tuple[str, str]], surface: str
+) -> list[str]:
     """Return gate-level prose findings. Never raises: the linter is a quality
-    check, not a security control, so a broken linter must not block a write."""
+    check, not a security control, so a broken linter must not block a write. It must
+    not be silent either, so a skipped or failed lint says so on stderr."""
+    if not texts:
+        return []
     if os.environ.get("NASE_PROSE_LINT") == "0":
+        print("NOTE: NASE_PROSE_LINT=0; payload prose was not linted.", file=sys.stderr)
         return []
     lint = root / ".claude" / "scripts" / "prose-lint.py"
     if not lint.is_file():
+        print(
+            "WARNING: prose-lint.py is missing; payload prose was not linted.",
+            file=sys.stderr,
+        )
         return []
     findings: list[str] = []
-    for label, text in prose_bodies(path):
+    for label, text in texts:
         try:
             completed = subprocess.run(
                 [
@@ -1467,6 +1522,10 @@ def prose_gate_findings(root: Path, path: Path, surface: str) -> list[str]:
             )
             report = json.loads(completed.stdout)
         except (OSError, ValueError, subprocess.SubprocessError):
+            print(
+                f"WARNING: prose-lint failed on {label}; it was not linted.",
+                file=sys.stderr,
+            )
             continue
         findings.extend(
             f"{label}:{item['line']} {item['rule']} {item['message']} -> fix: {item['fix']}"
@@ -1479,6 +1538,10 @@ def prose_gate_findings(root: Path, path: Path, surface: str) -> list[str]:
 def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
     surface = prose_surface(action.get("argv") or [])
     findings: list[str] = []
+    if surface:
+        findings.extend(
+            lint_prose_texts(root, prose_inline_texts(action["argv"]), surface)
+        )
     for entry in action.get("payload_files", []):
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise ActionError("manifest payload file entry is invalid")
@@ -1575,6 +1638,148 @@ def command_argvs(result: shell_scan.ScanResult):
             yield [UNRECOGNIZED_SHELL_COMMAND]
     if result.nested_opaque:
         yield [UNRECOGNIZED_SHELL_COMMAND]
+
+
+# Programs whose arguments are data to them, so a guarded CLI name among those arguments
+# is text, not a command: `which gh`, `grep gh file`, `git log -- az`.
+INERT_PROGRAMS = frozenset({
+    "echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "which", "type", "whereis", "man",
+    "cat", "head", "tail", "wc", "ls", "git", "jq", "sed", "diff", "cmp", "sort", "uniq", "cut",
+    "tr", "tee", "test", "[", "[[", "true", "false", "basename", "dirname", "realpath", "cd",
+    "mkdir", "touch", "cp", "mv", "rm", "chmod", "stat", "file", "open", "pbcopy", "less", "more",
+    "date", "sleep", "read", "export", "unset", "set", "local", "declare", "alias", "unalias",
+    "ack", "zgrep", "mdfind", "vim",
+})
+# Common words that are also program names. As the head of a command they are inert, but
+# they turn up as plain arguments (`docker run --name test img ...`), so they must not end
+# the scan of a carrier's arguments.
+AMBIGUOUS_ARGUMENT_WORDS = frozenset({
+    "test", "[", "[[", "file", "type", "set", "read", "local", "date", "open", "more", "man",
+    "stat", "export", "unset", "declare", "alias", "unalias", "sleep", "true", "false", "cd",
+})
+# Programs that hand their arguments to another host, container, or terminal as a command.
+EXEC_WRAPPERS = frozenset({
+    "ssh", "docker", "podman", "sudo", "doas", "su", "script", "tmux", "screen", "watch",
+    "nsenter",
+})
+# `npm install -g terraform` names a package, not a command. Only these subcommands are data.
+PACKAGE_MANAGERS = frozenset({
+    "npm", "pnpm", "yarn", "pip", "pip3", "brew", "apt", "apt-get", "cargo", "uv", "gem",
+})
+PACKAGE_DATA_SUBCOMMANDS = frozenset({
+    "install", "i", "add", "remove", "uninstall", "update", "upgrade", "info", "view",
+    "search", "list", "ls", "show", "test", "outdated",
+})
+# A heredoc can run to thousands of lines; no command in it is longer than this window.
+INLINE_TOKEN_WINDOW = 32
+# Interpreters whose inline code or stdin script cannot be parsed here.
+INTERPRETERS_RE = re.compile(r"^(?:python[\d.]*|pypy3?|node|nodejs|deno|bun|perl|ruby|php|lua|osascript|awk|gawk|mawk|pwsh|powershell|tclsh|expect|groovy|jshell)$")
+INLINE_CODE_FLAGS = frozenset({"-c", "-e", "-E", "-r", "-p", "--eval", "--command", "-command", "-Command", "--print"})
+INTERPRETER_EXEC_RE = re.compile(
+    r"subprocess|os\.(?:system|popen|exec\w*|spawn\w*)|popen|child_process|exec(?:Sync|File)\b|\bspawn(?:Sync)?\(|system\s*\(|"
+    r"Open3|shell_exec|passthru|do shell script|IO\.popen|Runtime\.getRuntime|ProcessBuilder",
+)
+SCRIPT_FILE_RE = re.compile(r"\.(?:py|js|mjs|cjs|ts|rb|pl|php|lua|sh)$")
+
+
+def _carried_words(argv: list[str]) -> list[str]:
+    """The arguments a carrier hands on, up to the first program that only reads them.
+
+    `ssh host grep 'gh pr merge' log` ends at `grep`: what follows is its pattern.
+    """
+    words = argv[1:]
+    for index, word in enumerate(words):
+        name = Path(word).name.lower()
+        if name in INERT_PROGRAMS and name not in AMBIGUOUS_ARGUMENT_WORDS:
+            return words[:index]
+    return words
+
+
+def _package_data_call(name: str, argv: list[str]) -> bool:
+    if name not in PACKAGE_MANAGERS:
+        return False
+    subcommand = next((word for word in argv[1:] if not word.startswith("-")), "")
+    return subcommand in PACKAGE_DATA_SUBCOMMANDS
+
+
+def _nested_scripts(words: list[str]):
+    for word in words:
+        if re.search(r"\s", word) and GUARDED_MENTION_RE.search(word):
+            yield word
+
+
+def _interpreter_code(inv: shell_scan.Invocation, command: str) -> str | None:
+    """Return the code text an interpreter runs when it is inline or fed on stdin."""
+    argv = inv.argv
+    name = Path(argv[0]).name.lower()
+    if re.match(r"^(?:awk|gawk|mawk)$", name):
+        return next((w for w in argv[1:] if not w.startswith("-")), None)
+    skip_value = False
+    for i, word in enumerate(argv[1:], 1):
+        if skip_value:
+            skip_value = False
+            continue
+        if word in PYTHON_VALUE_OPTIONS:
+            skip_value = True
+            continue
+        short = word.startswith("-") and not word.startswith("--") and len(word) > 1
+        if word in INLINE_CODE_FLAGS or (short and word[-1] in "ceE"):
+            return " ".join(argv[i + 1 :])
+        if not word.startswith("-"):
+            return None  # a script file: the rest are its arguments, which are data
+    if inv.script_stdin or inv.stdin in {"heredoc", "herestring"}:
+        body = re.search(r"<<-?\s*[\"']?\w+", command)
+        return command[body.start() :] if body else command
+    return None
+
+
+def carrier_argvs(result: shell_scan.ScanResult, command: str):
+    """Yield argv tails of guarded CLIs that a non-guarded, non-inert program would run.
+
+    Default-deny instead of a longer wrapper list: a guarded name that starts a
+    mutation-shaped tail inside the argv of a program that is not guarded and not known to
+    treat its arguments as data is judged as if it ran directly. `ssh host gh pr view 1`
+    stays allowed (read), `ssh host gh pr merge 1` is blocked. Quoted arguments are
+    re-scanned as scripts. Inline interpreter code and stdin scripts cannot be parsed, so
+    they are read only when they contain an exec primitive, and then as loose tokens.
+    Arguments after `interpreter script.py` belong to that script and are data.
+    """
+    for inv in result.invocations:
+        argv = inv.argv
+        if not argv or inv.function_call or inv.head_dynamic or "eval" in inv.via:
+            continue
+        name = Path(argv[0]).name.lower()
+        if name in UNBINDABLE_HEADS:
+            continue
+        if name in GUARDED_EXECUTABLES or name in INERT_PROGRAMS or inv.is_shell():
+            continue
+        if _package_data_call(name, argv):
+            continue
+        if INTERPRETERS_RE.match(name):
+            code = _interpreter_code(inv, command)
+            if code is not None:
+                if INTERPRETER_EXEC_RE.search(code):
+                    tokens = re.findall(r"[\w./:=@-]+|--?[\w-]+", code)
+                    for i, token in enumerate(tokens):
+                        window = tokens[i : i + INLINE_TOKEN_WINDOW]
+                        if token.lower() in GUARDED_EXECUTABLES and mutation_system(window):
+                            yield window
+                continue
+        words = _carried_words(argv)
+        guarded_at = next(
+            (i for i, w in enumerate(words) if Path(w).name.lower() in GUARDED_EXECUTABLES),
+            len(words),
+        )
+        if INTERPRETERS_RE.match(name) and any(
+            SCRIPT_FILE_RE.search(w) for w in words[:guarded_at]
+        ):
+            continue
+        for i, word in enumerate(words):
+            if Path(word).name.lower() in GUARDED_EXECUTABLES and mutation_system(words[i:]):
+                yield words[i:]
+        if name in EXEC_WRAPPERS:
+            for text in _nested_scripts(words):
+                yield from command_argvs(shell_scan.scan(text))
 
 
 def dynamic_args_are_reads(result: shell_scan.ScanResult) -> bool:
@@ -1787,6 +1992,59 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+CLAIM_GRACE_SECONDS = 60
+CLAIM_NAME_RE = re.compile(r"\.executing-(?:(\d+)-(\d+)-)?[0-9a-f]{32}$")
+
+
+def claim_is_stale(claim: Path, now: float | None = None) -> bool:
+    """A claim is abandoned when its executor is gone or past its own kill deadline.
+
+    The owner pid and the deadline ride in the file name, so they land atomically with the
+    rename that claims the token. The deadline also covers pid reuse: no live executor can
+    outlast its own `--timeout-seconds` by more than the grace period.
+    """
+    now = time.time() if now is None else now
+    match = CLAIM_NAME_RE.search(claim.name)
+    if match and match.group(1):
+        if now > int(match.group(2)) + CLAIM_GRACE_SECONDS:
+            return True
+        return not pid_alive(int(match.group(1)))
+    try:  # pre-upgrade claim with no owner info: fall back to the longest legal run
+        age = now - claim.stat().st_mtime
+    except OSError:
+        return False
+    return age > EXECUTE_TIMEOUT_SECONDS + TOKEN_TTL_SECONDS + CLAIM_GRACE_SECONDS
+
+
+def token_is_expired(path: Path, now: float | None = None) -> bool:
+    """An unreadable or past-TTL token can never pass verify_token, so it is not 'active'."""
+    try:
+        token = json.loads(path.read_text(encoding="utf-8"))
+        created = parse_timestamp(str(token.get("created_at", "")))
+        ttl = token.get("ttl_seconds")
+        if not isinstance(ttl, int) or isinstance(ttl, bool):
+            return True
+    except (OSError, ValueError, AttributeError, ActionError):
+        return True
+    current = (
+        datetime.now(timezone.utc)
+        if now is None
+        else datetime.fromtimestamp(now, timezone.utc)
+    )
+    return (current - created).total_seconds() > ttl
+
+
+def discard_dead_file(path: Path, reason: str) -> None:
+    """Rename first so two concurrent authorizers cannot both delete and then both re-create."""
+    graveyard = path.with_name(f"{path.name}.discarded-{uuid.uuid4().hex}")
+    try:
+        path.replace(graveyard)
+    except FileNotFoundError:
+        return
+    graveyard.unlink(missing_ok=True)
+    print(f"NOTE: removed {reason}: {path.name}", file=sys.stderr)
+
+
 def cmd_authorize(args: argparse.Namespace) -> int:
     _, manifest = load_manifest(args.root, args.manifest)
     if not 0 < args.ttl_seconds <= TOKEN_TTL_SECONDS:
@@ -1794,18 +2052,27 @@ def cmd_authorize(args: argparse.Namespace) -> int:
             f"token TTL must be between 1 and {TOKEN_TTL_SECONDS} seconds"
         )
     path = token_path(args.root)
-    active_claim = next(path.parent.glob(f"{path.name}.executing-*"), None)
-    if path.exists() or active_claim is not None:
-        raise ActionError(
-            "an external-write token is already active; execute or remove it before authorizing another action"
-        )
     token = {
         "version": MANIFEST_VERSION,
         "action_sha256": manifest["action_sha256"],
         "created_at": utc_now_iso(microseconds=False),
         "ttl_seconds": args.ttl_seconds,
     }
-    write_json(path, token)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path.with_name(f"{path.name}.lock"), "a") as lock:
+        # Two authorizers must not both pass the "already active" check below.
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for claim in path.parent.glob(f"{path.name}.executing-*"):
+            if claim_is_stale(claim):
+                discard_dead_file(claim, "abandoned external-write claim")
+        if path.exists() and token_is_expired(path):
+            discard_dead_file(path, "expired external-write token")
+        active_claim = next(path.parent.glob(f"{path.name}.executing-*"), None)
+        if path.exists() or active_claim is not None:
+            raise ActionError(
+                "an external-write token is already active; execute or remove it before authorizing another action"
+            )
+        write_json(path, token)
     print(
         json.dumps(
             {"token": str(path), "expires_in_seconds": args.ttl_seconds}, sort_keys=True
@@ -1814,10 +2081,14 @@ def cmd_authorize(args: argparse.Namespace) -> int:
     return 0
 
 
-def claim_token(root: Path) -> tuple[Path, dict[str, Any]]:
+def claim_token(root: Path, timeout_seconds: float) -> tuple[Path, dict[str, Any]]:
     """Atomically move the one-shot token out of circulation before execution."""
     path = token_path(root)
-    claimed = path.with_name(f"{path.name}.executing-{uuid.uuid4().hex}")
+    # The claim also covers the preflight lookups that run before the bounded mutation.
+    deadline = int(time.time() + timeout_seconds + 2 * GITHUB_PREFLIGHT_TIMEOUT_SECONDS)
+    claimed = path.with_name(
+        f"{path.name}.executing-{os.getpid()}-{deadline}-{uuid.uuid4().hex}"
+    )
     try:
         path.replace(claimed)
     except FileNotFoundError as exc:
@@ -1827,11 +2098,14 @@ def claim_token(root: Path) -> tuple[Path, dict[str, Any]]:
     except (OSError, json.JSONDecodeError) as exc:
         claimed.unlink(missing_ok=True)
         raise ActionError(f"external-write token is invalid: {exc}") from exc
+    if not isinstance(token, dict):
+        claimed.unlink(missing_ok=True)
+        raise ActionError("external-write token is invalid: not a JSON object")
     return claimed, token
 
 
 def verify_token(token: dict[str, Any], manifest: dict[str, Any]) -> None:
-    if token.get("version") != MANIFEST_VERSION:
+    if not isinstance(token, dict) or token.get("version") != MANIFEST_VERSION:
         raise ActionError("external-write token schema is invalid")
     if token.get("action_sha256") != manifest.get("action_sha256"):
         raise ActionError("external-write token does not match this manifest")
@@ -1849,7 +2123,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
         raise ActionError("execute timeout must be a positive number of seconds")
     token_file: Path | None = None
     try:
-        token_file, token = claim_token(args.root)
+        token_file, token = claim_token(args.root, args.timeout_seconds)
         _, manifest = load_manifest(args.root, args.manifest)
         verify_token(token, manifest)
         action = manifest["action"]
@@ -1924,7 +2198,7 @@ def cmd_guard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 10
-    argvs = list(command_argvs(result))
+    argvs = list(command_argvs(result)) + list(carrier_argvs(result, command))
     if command_has_mutation(argvs):
         print(
             "BLOCKED: raw external mutation. Prepare, show, authorize, and execute the action with "

@@ -23,7 +23,7 @@ You deferred these at the end-of-run prompt. Provide answers below, then run `/n
 
 | # | Question | Why it needs you | What was tried | Default assumption used | Affects |
 |---|----------|-----------------|----------------|------------------------|---------|
-| 1 | {question} | {business/stakeholder decision — no codebase signal} | {sources checked} | {conservative default} | {design section} |
+| 1 | {question} | {business/stakeholder decision - no codebase signal} | {sources checked} | {conservative default} | {design section} |
 ```
 
 Each row must be a concrete, actionable question - not "clarify scope" but "Should the export endpoint support CSV only, or also Excel? Default: CSV-only (matches existing download endpoints in `src/api/export.ts`)."

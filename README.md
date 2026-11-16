@@ -31,7 +31,7 @@ Then inside Claude Code:
 /nase:init                    # set AI name, configure backup & language, create workspace/
 /nase:onboard /path/to/repo   # onboard a repo (local path or GitHub URL)
 /nase:onboard                 # refresh ALL already-onboarded repos from workspace/context.md
-/nase:today                   # morning kickoff — what to focus on today
+/nase:today                   # morning kickoff - what to focus on today
 ```
 
 Run `/nase:help` anytime for the full command overview.
@@ -42,7 +42,7 @@ Optionally, add a shell alias to launch nase from anywhere:
 <summary>bash / zsh (~/.bashrc or ~/.zshrc)</summary>
 
 ```bash
-# Claude Code — nase workspace (adjust path to your clone location)
+# Claude Code - nase workspace (adjust path to your clone location)
 nase() { cd ~/my-workspace && claude "$@"; }
 ```
 
@@ -52,7 +52,7 @@ nase() { cd ~/my-workspace && claude "$@"; }
 <summary>PowerShell ($PROFILE)</summary>
 
 ```powershell
-# Claude Code — nase workspace (adjust path to your clone location)
+# Claude Code - nase workspace (adjust path to your clone location)
 function Invoke-NaseClaude { Set-Location "$HOME\my-workspace"; claude @args }
 Set-Alias -Name nase -Value Invoke-NaseClaude
 ```
@@ -110,6 +110,7 @@ in `.claude/docs/cli-tooling.md`.
 |-----|----------|-------|
 | **Atlassian** (Confluence + Jira) | `/nase:onboard` reads Confluence docs; Jira ticket lookup in reports | [Atlassian Rovo MCP Server](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/use-atlassian-rovo-mcp-server/) |
 | **Slack** | `/nase:request-review` - resolves GitHub handles to Slack users and stages DM drafts; direct sends are blocked by a hook | [Slack MCP Server](https://docs.slack.dev/ai/slack-mcp-server/) |
+| **ms-learn** | Microsoft Learn grounding for Microsoft surfaces (`.claude/docs/ms-learn-grounding.md`); the only server declared in the project's `.mcp.json` | Declared in `.mcp.json` (`https://learn.microsoft.com/api/mcp`); no setup needed |
 
 [Configure MCP servers](https://code.claude.com/docs/en/mcp) with `claude mcp add`; Claude Code stores project-scoped servers in `.mcp.json` and user- or local-scoped servers in `~/.claude.json`. GitHub workflows use `gh` CLI by default.
 
@@ -161,10 +162,10 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 ```
 /nase:today                    # morning: sync statuses, surface priorities, plan focus
 /nase:onboard                  # refresh repo context for the day
-  focused work                  # implement, review PRs, debug — whatever's on the list
+  focused work                  # implement, review PRs, debug - whatever's on the list
 /nase:reflect                  # after completing a task: extract learnings while fresh
   ... more work ...
-/nase:wrap-up                  # evening: reflect → learn → kb-update → journal
+/nase:wrap-up                  # evening: reflect and learn when warranted → kb-update → journal
 ```
 
 ### Implement a feature or fix
@@ -186,7 +187,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
   ⏳ wait for feedback
 /nase:address-comments <PR-URL> # deep-dive each unresolved comment → fix/reply → push → resolve threads
   ⏳ iterate until approved
-/nase:prep-merge <PR-URL>      # rebase, squash, clean up, un-draft
+/nase:prep-merge <PR-URL>      # rebase, squash, clean up; mark-ready is a separate approval
   merge ✓
 ```
 
@@ -315,9 +316,9 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 
 Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destructive git patterns before execution: direct or wrapped `git reset --hard`, `clean -f`, `branch -D`, unsafe alias injection, hook/signing bypass flags, protected-branch pushes to any remote, and remote branch deletion. This is defense-in-depth, not a full shell sandbox.
 
-External-write hooks block direct Slack sends, require a fresh prompted Jira write token plus explicit body format, stop oversized or non-ADF Confluence page writes, and reject raw GitHub/Azure/Kubernetes/Terraform CLI mutations. Use Slack drafts, explicit Jira confirmation, a `workspace/tmp/` Confluence patch, or an approved `external-write-action.py` manifest when those guards fire.
+External-write hooks block every Slack write tool except drafts, require a fresh prompted Jira write token plus explicit body format, stop oversized Confluence page writes and writes with an unset body format, and reject raw GitHub/Azure/Kubernetes/Terraform CLI mutations. Use Slack drafts, explicit Jira confirmation, a `workspace/tmp/` Confluence patch, or an approved `external-write-action.py` manifest when those guards fire.
 
-Other hooks: `SessionStart` creates today's log, reports backup status, and syncs local `workspace/skills` into generated `/nase:workspace:*` command wrappers; `UserPromptSubmit` records slash-command recognition, `UserPromptExpansion` records activation, and `PostToolUse:Skill` records tool outcome; `Stop` backs up `workspace/` only after credential, coverage, and symlink checks pass, then verifies the private snapshot and final archive against the same content manifest before publication, and now also runs a claim check that warns when a "tests pass / build clean" claim lacks a passing verification run or follows an unverified edit; `StopFailure`, `PostToolUseFailure`, and `SubagentStop` write redacted bounded failure/subagent summaries; `PostToolUse:Read` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` lints edited files and blocks on a finding - `shellcheck` for `.sh`, `ruff` for `.py`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts and emits a checkpoint reminder before compression. `WorktreeCreate` is intentionally unwired because Claude Code expects that hook to create and print the worktree path.
+Other hooks: `SessionStart` creates today's log, reports backup status, and syncs local `workspace/skills` into generated `/nase:workspace:*` command wrappers; `UserPromptSubmit` records slash-command recognition, `UserPromptExpansion` records activation, and `PostToolUse:Skill` records tool outcome; `Stop` backs up `workspace/` only after credential, coverage, and symlink checks pass, then verifies the private snapshot and final archive against the same content manifest before publication, and now also runs a claim check that warns when a "tests pass / build clean" claim lacks a passing verification run or follows an unverified edit; `StopFailure`, `PostToolUseFailure`, and `SubagentStop` write redacted bounded failure/subagent summaries; `PostToolUse:Read|Grep|Glob|Bash` logs KB reads to `workspace/stats/kb-usage.jsonl`; `PreToolUse:Edit|Write|MultiEdit` fact-forces the first source-file edit per session; `PostToolUse:Edit|Write` lints edited files and blocks on a finding - `shellcheck` for `.sh`, `ruff` for `.py`; worktree removal logs lifecycle; `PreCompact` rotates old lessons/efforts and emits a checkpoint reminder before compression. `WorktreeCreate` is intentionally unwired because Claude Code expects that hook to create and print the worktree path.
 
 Full table with behavior details: [`docs/architecture.md` - Hooks that gate tool calls](docs/architecture.md#hooks-that-gate-tool-calls).
 
@@ -329,14 +330,14 @@ The `Stop` hook reads `backup-target` from `.local-paths` (set by `/nase:init`).
 
 ```
 nase/
-  .claude/             kit — subagents, slash commands, hooks, scripts, settings (tracked; local settings/skills and generated wrappers ignored)
+  .claude/             kit - subagents, slash commands, hooks, scripts, settings (tracked; local settings/skills and generated wrappers ignored)
   docs/                deeper docs (architecture, internals); assets/ holds diagram sources and rendered SVGs
   evals/               offline eval cases for high-frequency skills
   tests/               CI gates
   CLAUDE.md            AI identity + operating rules (tracked)
   README.md            this file
-  .local-paths         machine-specific paths — backup target, repo paths (not tracked)
-  workspace/           your content — KB, logs, journals, skills, tasks (not tracked)
+  .local-paths         machine-specific paths - backup target, repo paths (not tracked)
+  workspace/           your content - KB, logs, journals, skills, tasks (not tracked)
 ```
 
 | Path | In git? | Reason |

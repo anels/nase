@@ -19,6 +19,7 @@ set -euo pipefail
 
 SINGLE_TOKEN_TTL_SECONDS=300
 BATCH_TOKEN_TTL_SECONDS=900
+BATCH_TOKEN_MAX_OPS=100
 
 block_without_log() {
   local reason="$1"
@@ -151,9 +152,10 @@ block() {
     echo "BLOCKED by jira-write-guard: $reason."
     echo ""
     echo "This Jira mutation tool ($TOOL) requires a fresh JSON token at"
-    echo "workspace/.jira-write-token before it can execute. The token must be"
-    echo "written by the calling skill after an AskUserQuestion has shown the"
-    echo "payload(s) and the user has approved."
+    echo "workspace/.jira-write-token before it can execute. Write it only with"
+    echo ".claude/scripts/jira-write-token.py, and only after an AskUserQuestion"
+    echo "has shown the payload(s) and the user has approved. Never write the"
+    echo "token file by hand or without that approval."
     echo ""
     echo "Single-shot token (one mutation, exact payload):"
     echo "  {"
@@ -274,13 +276,19 @@ esac
 if [ "$IS_BATCH" = "1" ]; then
   CREATED_AT=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.created_at // ""')
   MAX_OPS=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.max_ops // ""')
-  TTL=$(printf '%s' "$TOKEN_CONTENT" | jq -r --argjson d "$BATCH_TOKEN_TTL_SECONDS" '.ttl_seconds // $d')
+  TTL=$(printf '%s' "$TOKEN_CONTENT" | jq -r --argjson d "$BATCH_TOKEN_TTL_SECONDS" '
+    (.ttl_seconds // $d) | if type == "number" and . > $d then $d else . end')
   PAYLOAD_SUMMARY=$(printf '%s' "$TOKEN_CONTENT" | jq -r '.payload_summary // ""')
 
   [ -z "$CREATED_AT" ] && block "batch token missing created_at"
   [[ "$MAX_OPS" =~ ^[0-9]+$ ]] || block "batch token max_ops must be a positive integer"
+  [ "${#MAX_OPS}" -le 4 ] && [ "$MAX_OPS" -le "$BATCH_TOKEN_MAX_OPS" ] \
+    || block "batch token max_ops exceeds the ceiling of ${BATCH_TOKEN_MAX_OPS}"
   [ "$MAX_OPS" -gt 0 ] || block "batch token exhausted (max_ops=0)"
   [[ "$TTL" =~ ^[0-9]+$ ]] || block "batch token ttl_seconds must be an integer"
+  # ttl_seconds may only shorten the window; the ceiling is the documented default.
+  # A digit string too long for shell arithmetic is clamped without a numeric test.
+  [ "${#TTL}" -le 9 ] && [ "$TTL" -le "$BATCH_TOKEN_TTL_SECONDS" ] || TTL=$BATCH_TOKEN_TTL_SECONDS
 
   # Optional tool allowlist. When present the current tool must match (exact
   # name or suffix, to tolerate MCP namespace-prefix differences).

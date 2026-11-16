@@ -125,6 +125,33 @@ recovered_nonce=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])
 assert_cmd "dead stale lock is recovered" test "$recovered_nonce" != "stale"
 python3 "$SCRIPT" release --root "$TMPROOT" --nonce "$recovered_nonce"
 
+# A recorded pid that cannot name a process must not read as alive. `true` is an int in
+# Python and signals pid 1, 0 signals the whole process group, -1 signals everything the
+# user owns, and 2**70 overflows os.kill, so each one used to hold the lock forever or crash.
+for bad_pid in 1180591620717411303424 true 0 -1; do
+  mkdir -p "$TMPROOT/.nase-locks/workspace-mutation.lock"
+  printf '{"pid":%s,"nonce":"stale-bad-pid"}\n' "$bad_pid" > "$TMPROOT/.nase-locks/workspace-mutation.lock/owner.json"
+  python3 - "$TMPROOT/.nase-locks/workspace-mutation.lock" <<'PY'
+import os
+import sys
+import time
+
+old = time.time() - 30
+os.utime(sys.argv[1], (old, old))
+PY
+  python3 "$SCRIPT" acquire --root "$TMPROOT" --timeout-ms 100 --owner-pid $$ \
+    > "$TMPROOT/bad-pid.json" 2> "$TMPROOT/bad-pid.err"
+  bad_pid_rc=$?
+  assert_cmd "stale lock owned by pid $bad_pid is reclaimed" test "$bad_pid_rc" = "0"
+  assert_cmd "reclaiming pid $bad_pid raises no traceback" bash -c '! grep -q Traceback "$1"' _ "$TMPROOT/bad-pid.err"
+  bad_pid_nonce=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["nonce"])' "$TMPROOT/bad-pid.json" 2>/dev/null || true)
+  if [ -n "$bad_pid_nonce" ]; then
+    python3 "$SCRIPT" release --root "$TMPROOT" --nonce "$bad_pid_nonce"
+  else
+    rm -rf "$TMPROOT/.nase-locks/workspace-mutation.lock"
+  fi
+done
+
 touch "$TMPROOT/.nase-locks/workspace-mutation.recovery.guard"
 mkdir -p "$TMPROOT/.nase-locks/workspace-mutation.lock"
 printf '{"pid":99999999,"nonce":"stale-after-crash"}\n' > "$TMPROOT/.nase-locks/workspace-mutation.lock/owner.json"

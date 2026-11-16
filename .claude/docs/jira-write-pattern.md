@@ -30,9 +30,9 @@ So when a comment or description must mention/notify someone, send the whole bod
 
 1. `AskUserQuestion` showing the target issue(s) and the mention(s).
 2. Write a batch token (`approved_issues`, `max_ops`, `created_at`) - see `.claude/docs/mutation-reference.md` → Batch token.
-3. Call `editJiraIssue` / `addCommentToJiraIssue` with `contentFormat: "adf"`.
+3. Call `editJiraIssue` / `addCommentToJiraIssue` with `contentFormat: "adf"`. `addOrEditJiraIssueComment`, the comment tool on the current MCP, takes `contentFormat` `markdown` or `html` only, so an ADF comment needs the older `addCommentToJiraIssue`.
 
-`createJiraIssue` cannot use a batch token (no issue key exists yet), so it is markdown-only - create the issue in markdown, then add the mention via an ADF `addCommentToJiraIssue` or `editJiraIssue` under a batch token.
+`createJiraIssue` cannot use a batch token (no issue key exists yet), so it is markdown-only - create the issue in markdown, then add the mention via an ADF `addCommentToJiraIssue` or `editJiraIssue` under a batch token. On the current MCP, where only `addOrEditJiraIssueComment` exists, put the mention in `editJiraIssue` instead.
 
 ### Links render without ADF
 

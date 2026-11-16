@@ -69,12 +69,12 @@ content, and expands correspondingly further into storage format.
 
 ## Formats and thresholds
 
-`.claude/hooks/confluence-size-guard.sh` caps any page body at **60 000 bytes** and accepts
+`.claude/hooks/confluence-size-guard.sh` caps any page body at **70 000 bytes** and accepts
 `adf`, `html`, `markdown`. Split thresholds leave headroom under that cap:
 
 | Kind | `contentFormat` | Threshold | Why |
 |---|---|---|---|
-| `.html` | `html` (Confluence HTML+) | 55 000 | 5 KB headroom under the cap. |
+| `.html` | `html` (Confluence HTML+) | 55 000 | 15 KB headroom under the cap. |
 | `.md` | `markdown` (passthrough) | 35 000 | Derived from the 0.668 ratio (equivalent point is 37 000), rounded down for margin. |
 
 ## HTML → HTML+ mapping

@@ -500,7 +500,7 @@ assert got.utcoffset() == timedelta(0), got.utcoffset()
 '
 
 run_case "parse_ts returns None for an unreadable value instead of raising" "$PRELUDE"'
-for bad in ("", "not-a-timestamp", "2026-13-45T99:99:99Z", None, 17, []):
+for bad in ("", "not-a-timestamp", "2026-13-45T99:99:99Z", "0001-01-01T00:00:00+05:00", None, 17, []):
     assert nase_time.parse_ts(bad) is None, bad
 '
 

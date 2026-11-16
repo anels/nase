@@ -6,9 +6,23 @@ source "$ROOT/tests/lib/stage-scripts.sh"
 FIXTURE=$(mktemp -d)
 trap 'rm -rf "$FIXTURE"' EXIT
 
+# Pin the clock year so no run races midnight on 31 Dec, and so a wrong "current year"
+# directory can never be mistaken for the right one. Only `date +%Y` is faked.
+CLOCK_YEAR=2031
+OLD_YEAR=2020
+DEC_YEAR=2025
+REAL_DATE=$(command -v date)
+mkdir -p "$FIXTURE/bin"
+cat > "$FIXTURE/bin/date" <<SHIM
+#!/usr/bin/env bash
+if [[ "\$*" == "+%Y" ]]; then echo $CLOCK_YEAR; else exec "$REAL_DATE" "\$@"; fi
+SHIM
+chmod +x "$FIXTURE/bin/date"
+export PATH="$FIXTURE/bin:$PATH"
+
 repo="$FIXTURE/repo"
 mkdir -p "$repo/.claude/hooks" "$repo/.claude/scripts" \
-  "$repo/workspace/tasks" "$repo/workspace/efforts/done" "$repo/workspace/efforts/archive/$(date +%Y)" \
+  "$repo/workspace/tasks" "$repo/workspace/efforts/done" "$repo/workspace/efforts/archive/$OLD_YEAR" \
   "$repo/workspace/tmp"
 git -C "$repo" init -q
 cp "$ROOT/.claude/hooks/pre-compact-archive.sh" "$repo/.claude/hooks/"
@@ -27,20 +41,27 @@ path.write_text(
 )
 PY
 
-year=$(date +%Y)
 printf 'source content\n' > "$repo/workspace/efforts/done/collision.md"
-printf 'destination content\n' > "$repo/workspace/efforts/archive/$year/collision.md"
+printf 'destination content\n' > "$repo/workspace/efforts/archive/$OLD_YEAR/collision.md"
 touch -t 202001010000 "$repo/workspace/efforts/done/collision.md"
 
 printf 'move content\n' > "$repo/workspace/efforts/done/move.md"
 touch -t 202001010000 "$repo/workspace/efforts/done/move.md"
 
+# A December file archived long after the new year still belongs to its own year.
+printf 'december content\n' > "$repo/workspace/efforts/done/december.md"
+touch -t 202512201200 "$repo/workspace/efforts/done/december.md"
+
 out=$(cd "$repo" && bash .claude/hooks/pre-compact-archive.sh 2>&1)
 
 test ! -e "$repo/workspace/efforts/done/move.md"
-grep -qx 'move content' "$repo/workspace/efforts/archive/$year/move.md"
+grep -qx 'move content' "$repo/workspace/efforts/archive/$OLD_YEAR/move.md"
+test ! -e "$repo/workspace/efforts/archive/$CLOCK_YEAR"
+test ! -e "$repo/workspace/efforts/done/december.md"
+grep -qx 'december content' "$repo/workspace/efforts/archive/$DEC_YEAR/december.md"
+grep -qF "archive/{$OLD_YEAR,$DEC_YEAR}/" <<<"$out"
 grep -qx 'source content' "$repo/workspace/efforts/done/collision.md"
-grep -qx 'destination content' "$repo/workspace/efforts/archive/$year/collision.md"
+grep -qx 'destination content' "$repo/workspace/efforts/archive/$OLD_YEAR/collision.md"
 grep -q 'retained workspace/efforts/done/collision.md' <<<"$out"
 grep -q 'nase-archive:' "$repo/workspace/tasks/lessons-archive.md"
 test "$(wc -c < "$repo/workspace/tasks/lessons.md")" -lt 81920
@@ -109,7 +130,7 @@ for cwd_kind in non-git other-git; do
   touch -t 202001010000 "$repo/workspace/efforts/done/override-$cwd_kind.md"
   out=$(cd "$cwd" && NASE_ROOT="$repo" bash "$repo/.claude/hooks/pre-compact-archive.sh" 2>&1)
   test ! -e "$repo/workspace/efforts/done/override-$cwd_kind.md"
-  grep -qx "override $cwd_kind" "$repo/workspace/efforts/archive/$year/override-$cwd_kind.md"
+  grep -qx "override $cwd_kind" "$repo/workspace/efforts/archive/$OLD_YEAR/override-$cwd_kind.md"
   if [ "$cwd_kind" = other-git ]; then
     test -e "$cwd/workspace/efforts/done/other.md"
   fi

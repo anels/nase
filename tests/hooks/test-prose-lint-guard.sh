@@ -158,5 +158,44 @@ done
 run_hook "$(payload_with text "$SLOP")" "PATH=$STUB_BIN"
 expect_silent_pass "an unreachable linter lets a would-be-blocked body through"
 
+# --- linter crash fails open ------------------------------------------------
+# An uncaught Python exception exits 1, the same code the linter uses for "findings".
+# The hook tells them apart by the linter's own `Result: FAIL` verdict line.
+FAKE_ROOT=$(mktemp -d)
+trap 'rm -rf "$STUB_BIN" "$FAKE_ROOT"' EXIT
+mkdir -p "$FAKE_ROOT/.claude/scripts"
+printf 'raise RuntimeError("linter crashed")\n' >"$FAKE_ROOT/.claude/scripts/prose-lint.py"
+run_hook "$(payload_with text "$SLOP")" "NASE_ROOT=$FAKE_ROOT"
+expect_crash_notice() {
+  if [[ "$RC" -eq 0 && "$ERR" == *"[prose-lint-guard] linter crashed; draft not linted"* ]]; then
+    ok "$1"
+  else
+    bad "$1" "rc=$RC err=$ERR"
+  fi
+}
+expect_crash_notice "a linter that crashes with a traceback fails open with a notice"
+
+printf 'import sys\nprint("partial output")\nsys.exit(1)\n' >"$FAKE_ROOT/.claude/scripts/prose-lint.py"
+run_hook "$(payload_with text "$SLOP")" "NASE_ROOT=$FAKE_ROOT"
+expect_crash_notice "exit 1 without a Result: FAIL verdict fails open with a notice"
+
+printf 'import sys\nprint("Result: FAIL - 1 gate finding(s) must be fixed.")\nsys.exit(1)\n' >"$FAKE_ROOT/.claude/scripts/prose-lint.py"
+run_hook "$(payload_with text "$SLOP")" "NASE_ROOT=$FAKE_ROOT"
+if [[ "$RC" -eq 2 ]] && grep -q 'Result: FAIL' <<<"$ERR"; then
+  ok "exit 1 with a Result: FAIL verdict still blocks"
+else
+  bad "exit 1 with a Result: FAIL verdict still blocks" "rc=$RC err=$ERR"
+fi
+
+# The hook keys on the string above, so pin it against the real linter: if
+# prose-lint.py ever renames the verdict line, the guard would silently stop blocking.
+REAL_REPORT=$(python3 "$ROOT/.claude/scripts/prose-lint.py" --surface slack-channel --file "$SLOP" 2>/dev/null)
+REAL_RC=$?
+if [[ "$REAL_RC" -eq 1 ]] && grep -q 'Result: FAIL' <<<"$REAL_REPORT"; then
+  ok "the real linter prints Result: FAIL on a bad draft"
+else
+  bad "the real linter prints Result: FAIL on a bad draft" "rc=$REAL_RC"
+fi
+
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

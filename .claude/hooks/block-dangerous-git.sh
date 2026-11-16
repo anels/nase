@@ -700,7 +700,7 @@ apply_policy() {
     block "git subcommand '$subcmd' uses a variable or substitution this guard cannot verify (use a literal subcommand)"
   fi
   case "$subcmd" in
-    reset|clean|branch|checkout|restore|tag|reflog|commit|push|merge|rebase|cherry-pick|config)
+    reset|clean|branch|checkout|switch|restore|tag|reflog|stash|update-ref|commit|push|merge|rebase|cherry-pick|config)
       guard_dynamic_flag_words "$subcmd"
       ;;
   esac
@@ -720,7 +720,48 @@ apply_policy() {
         block 'git branch -D/--delete --force (force-deletes branch)'
       fi
       ;;
+    switch)
+      if has_short_flag "f" || has_flag "--force" || has_flag "--discard-changes"; then
+        block 'git switch -f/--discard-changes (discards local changes)'
+      fi
+      ;;
+    stash)
+      [ "${NORM_ARGS[1]:-}" = "clear" ] && block 'git stash clear (drops every stash)'
+      ;;
+    update-ref)
+      # --stdin carries its own delete commands, which this guard cannot read.
+      has_flag "--stdin" && block 'git update-ref --stdin (can delete branch, tag or stash refs this guard cannot read)'
+      # Only a branch, tag, remote, stash or backup ref: tooling keeps its own refs
+      # (refs/nase/...) and deletes them with update-ref -d. Only operands are matched, so a
+      # -m message that mentions heads/ is not a ref.
+      if has_short_flag "d" || has_flag "--delete"; then
+        local ref_skip=0 ref_args_done=0 ref_arg
+        for ref_arg in "${NORM_ARGS[@]:1}"; do
+          if [ "$ref_skip" -eq 1 ]; then
+            ref_skip=0
+            continue
+          fi
+          if [ "$ref_args_done" -eq 0 ]; then
+            if [ "$ref_arg" = "--" ]; then
+              ref_args_done=1
+              continue
+            fi
+            if option_takes_value "$ref_arg"; then
+              ref_skip=1
+              continue
+            fi
+            [[ "$ref_arg" == -* ]] && continue
+          fi
+          if [[ "$ref_arg" =~ ^(refs/)?(heads|tags|remotes)/ ]] || [[ "$ref_arg" =~ ^refs/(stash|original/) ]]; then
+            block 'git update-ref -d on a branch, tag, remote, stash or backup ref (bypasses branch -D, tag -d and stash clear)'
+          fi
+        done
+      fi
+      ;;
     checkout|restore)
+      if [ "$subcmd" = "checkout" ] && { has_short_flag "f" || has_flag "--force"; }; then
+        block 'git checkout -f/--force (discards local changes)'
+      fi
       if has_whole_tree_pathspec; then
         # `git restore --staged` rewrites index entries from HEAD and leaves every file
         # alone, so a whole-tree pathspec cannot discard work there. Adding --worktree,
