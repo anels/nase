@@ -107,6 +107,36 @@ assert_not_contains "T2: old event outside window is excluded" "$body" "workspac
 assert_not_contains "T2: path inside a multi-line domain-map comment is not mapped" "$body" "workspace/kb/projects/<name>.md"
 assert_not_contains "T2: path inside a single-line domain-map comment is not mapped" "$body" "workspace/kb/ops/single-comment.md"
 
+# ── T3: maintenance sweeps are kept apart from consumer use ──────────────────
+cat > "$FIXTURE/workspace/stats/kb-usage.jsonl" <<'EOF'
+{"ts":"2026-11-14T00:00:00Z","skill":"kb-review","file":"workspace/kb/ops/unused.md","access":"read","source":"read-hook","session":"m1"}
+{"ts":"2026-11-14T01:00:00Z","skill":"kb-review","file":"workspace/kb/projects/a.md","access":"read","source":"read-hook","session":"m1"}
+{"ts":"2026-11-14T02:00:00Z","skill":"fsd","file":"workspace/kb/projects/a.md","access":"read","source":"read-hook","session":"c1","chars":1200}
+{"ts":"2026-08-01T00:00:00Z","skill":"design","file":"workspace/kb/general/b.sql","access":"read","source":"bash-hook","session":"c2"}
+{"ts":"2026-11-14T03:00:00Z","skill":"design","file":"workspace/kb/projects/a.md","access":"search-result","source":"grep-hook","session":"c3"}
+EOF
+
+report="$FIXTURE/workspace/stats/kb-usage-all.md"
+out=$(NASE_ROOT="$FIXTURE" python3 "$SCRIPT" --window all --top 5 --now 2026-11-15T12:00:00Z --output "$report" 2>&1)
+body=$(cat "$report" 2>/dev/null)
+assert_contains "T3: grep-hook and bash-hook events are accepted" "$body" "grep-hook"
+assert_not_contains "T3: new sources are not counted as malformed" "$body" "Malformed lines skipped: 1"
+assert_contains "T3: consumer reads leave out maintenance skills" "$body" "Consumer reads (maintenance skills excluded): 2"
+assert_contains "T3: a file only a maintenance skill read counts as never read" "$out" "Mapped KB files never read by a consumer: 1"
+assert_contains "T3: the maintenance-only file is listed" "$body" "\`workspace/kb/ops/unused.md\`"
+assert_contains "T3: files with no recent consumer event are counted" "$body" "no consumer event in the last 60 days: 2"
+assert_contains "T3: idle section lists the old consumer file" "$body" "## Mapped KB Files Idle For 60 Days"
+assert_contains "T3: characters loaded by Read are reported" "$body" "| \`workspace/kb/projects/a.md\` | 1200 | 1 |"
+
+out=$(NASE_ROOT="$FIXTURE" python3 "$SCRIPT" --window 30 --top 5 --now 2026-11-15T12:00:00Z --output "$report" --verbose 2>&1)
+assert_contains "T3: a short window says idle is not applicable" "$out" "n/a (window or ledger is shorter)"
+assert_not_contains "T3: a short window has no idle section" "$out" "## Mapped KB Files Idle For"
+
+# A ledger that began less than 60 days ago cannot say a file was idle for 60 days.
+out=$(NASE_ROOT="$FIXTURE" python3 "$SCRIPT" --window all --top 5 --now 2026-08-20T12:00:00Z --output "$report" --verbose 2>&1)
+assert_contains "T3: a young ledger says idle is not applicable" "$out" "n/a (window or ledger is shorter)"
+assert_not_contains "T3: a young ledger has no idle section" "$out" "## Mapped KB Files Idle For"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

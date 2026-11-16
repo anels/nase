@@ -154,8 +154,7 @@ fi
 # encoded as \x1f, the encoding the results file uses.
 extract_scored_blocks() {
   local file="$1"
-  KB_SEARCH_PATTERN="$2" \
-  KB_SEARCH_TERMS="$3" \
+  KB_SEARCH_TERMS="$2" \
   KB_SINCE="$SINCE_DATE" \
   KB_TAG="$TAG_FILTER" \
   KB_CONFIDENCE="$CONF_FILTER" \
@@ -217,13 +216,33 @@ extract_scored_blocks() {
       return !found && tolower(wanted) == "high"
     }
 
+    function line_matches(low,   i) {
+      for (i = 1; i <= term_count; i++) {
+        if (low ~ match_regex[i]) return 1
+      }
+      return 0
+    }
+
     BEGIN {
       US = sprintf("%c", 31)
-      pattern = tolower(ENVIRON["KB_SEARCH_PATTERN"])
       # Escaping only adds backslashes before metacharacters, so lowercasing the
       # regex-escaped terms is still safe.
       term_count = split(ENVIRON["KB_SEARCH_TERMS"], terms, US)
-      for (i = 1; i <= term_count; i++) lower_terms[i] = tolower(terms[i])
+      for (i = 1; i <= term_count; i++) {
+        lower_terms[i] = tolower(terms[i])
+        # A short plain word (NAT, EF, DB) matches as a whole word. As a substring it
+        # hits "alternative", "native" and "international", and the real entries drown.
+        # Longer terms and anything with punctuation (paths, flags, `C++`) stay
+        # substring matches, because "folder" must still find "folders". The boundary is
+        # spelled out rather than `\b`, which BSD awk does not support. An underscore
+        # is a boundary so `env` still finds `env_var`, and a trailing `s` is allowed
+        # so `test` still finds `tests`.
+        if (length(lower_terms[i]) <= 4 && lower_terms[i] ~ /^[a-z0-9]+$/) {
+          match_regex[i] = "(^|[^a-z0-9])" lower_terms[i] "s?([^a-z0-9]|$)"
+        } else {
+          match_regex[i] = lower_terms[i]
+        }
+      }
       since = ENVIRON["KB_SINCE"]
       tag = ENVIRON["KB_TAG"]
       confidence = ENVIRON["KB_CONFIDENCE"]
@@ -242,7 +261,7 @@ extract_scored_blocks() {
         current = section_count
       }
       owner[NR] = current
-      if (tolower($0) ~ pattern) match_line[NR] = 1
+      if (line_matches(tolower($0))) match_line[NR] = 1
     }
 
     END {
@@ -296,8 +315,8 @@ extract_scored_blocks() {
         body_hits = 0
         matched_terms = ""
         for (i = 1; i <= term_count; i++) {
-          term_header = occurrences(header_line, lower_terms[i])
-          term_body = occurrences(body, lower_terms[i])
+          term_header = occurrences(header_line, match_regex[i])
+          term_body = occurrences(body, match_regex[i])
           header_hits += term_header
           body_hits += term_body
           # Which terms this entry actually holds, so a caller sweeping several paths at
@@ -348,17 +367,15 @@ file_mtime_for() {
 run_search() {
   local terms=("$@")
   # Escape regex metacharacters in each term so a literal `|` in user input is not
-  # interpreted as ERE alternation. `pattern` is the match alternation; `term_list`
-  # is the same escaped terms, \x1f separated, for the per-term scoring inside awk.
-  local pattern="" term_list=""
+  # interpreted as ERE alternation. `term_list` is the escaped terms, \x1f separated;
+  # awk builds the per-term match and scoring regexes from it.
+  local term_list=""
   local term escaped
   for term in "${terms[@]}"; do
     escaped=$(printf '%s' "$term" | sed 's/[][\\^$.*+?(){}|]/\\&/g')
-    if [ -z "$pattern" ]; then
-      pattern="$escaped"
+    if [ -z "$term_list" ]; then
       term_list="$escaped"
     else
-      pattern="$pattern|$escaped"
       term_list="$term_list"$'\x1f'"$escaped"
     fi
   done
@@ -387,7 +404,7 @@ run_search() {
       printf '%s\t%s\t%s\t%s\t%s\n' \
         "$score" "${fresh_date:-0000-00-00}" "$matched_terms" "$kb_file" "$entry_enc" \
         >> "$RESULTS_FILE"
-    done < <(extract_scored_blocks "$kb_file" "$pattern" "$term_list")
+    done < <(extract_scored_blocks "$kb_file" "$term_list")
   done < "$KB_FILES_TMP"
 }
 
@@ -402,10 +419,23 @@ fi
 # Fuzzy fallback if no results
 if [ ! -s "$RESULTS_FILE" ]; then
   # Split on space, hyphen, underscore
-  IFS=' -_' read -ra PARTS <<< "$QUERY"
+  IFS=' -_' read -ra RAW_PARTS <<< "$QUERY"
+  # Words under three characters ("ai", "of", "to") match everywhere and carry no
+  # signal. Drop them unless that would leave fewer than two words to search.
+  PARTS=()
+  for part in "${RAW_PARTS[@]}"; do
+    [ "${#part}" -ge 3 ] && PARTS+=("$part")
+  done
+  [ ${#PARTS[@]} -lt 2 ] && PARTS=("${RAW_PARTS[@]}")
   if [ ${#PARTS[@]} -ge 2 ]; then
     FUZZY=true
     run_search "${PARTS[@]}"
+    # Matching any one word returned hundreds of entries for a four-word query (one
+    # real session saw 241 to 1641 "partial matches", none usable). Keep an entry only
+    # when it holds at least two of the words, three once the query has four or more.
+    # Field 3 lists the matched term indices.
+    awk -F'\t' -v need="$(( ${#PARTS[@]} >= 4 ? 3 : 2 ))" '{ if (split($3, hit, ",") >= need) print }' \
+      "$RESULTS_FILE" > "$RESULTS_FILE.fuzzy" && mv "$RESULTS_FILE.fuzzy" "$RESULTS_FILE"
   fi
 fi
 
@@ -481,6 +511,11 @@ render_section() {
   shown_count=$(wc -l < "$TOP_RESULTS_FILE" | tr -d ' ')
   if [ "$result_count" -gt "$shown_count" ]; then
     echo "Showing the top ${shown_count} of ${result_count} by relevance; narrow the query or add a filter to see the rest."
+    # Where the hidden hits sit, so the filter to add is obvious: `in:<area>` takes
+    # exactly these names. Path is workspace/kb/<area>/<file>.
+    if [ -z "$DOMAIN_FILTER" ]; then
+      echo "Hits by area (narrow with in:<area>): $(cut -f4 "$section_file" | awk -F/ '{a = ($3 ~ /^(general|projects|ops|cross-project)$/) ? $3 : "other"; c[a]++} END {for (a in c) print c[a], a}' | sort -rn | awk '{printf "%s%s %s", (NR > 1 ? ", " : ""), $2, $1}')"
+    fi
     echo ""
   fi
 

@@ -24,7 +24,13 @@ from nase_git import resolve_root
 from nase_time import parse_ts
 
 ALLOWED_ACCESS = {"read", "resolve", "search-result"}
-ALLOWED_SOURCE = {"read-hook", "kb-domain-resolve", "kb-search"}
+ALLOWED_SOURCE = {
+    "read-hook",
+    "grep-hook",
+    "bash-hook",
+    "kb-domain-resolve",
+    "kb-search",
+}
 KB_EXTENSIONS = {".md", ".sql"}
 DEDUP_SECONDS = 60
 
@@ -227,7 +233,7 @@ def recent_duplicate(jsonl: pathlib.Path, event: dict[str, Any], now: datetime) 
             continue
         if not all(
             existing.get(k) == event.get(k)
-            for k in ("skill", "file", "access", "source", "session")
+            for k in ("skill", "file", "access", "source", "session", "chars")
         ):
             continue
         ts = parse_ts(str(existing.get("ts", "")))
@@ -244,8 +250,12 @@ def record(args: argparse.Namespace) -> int:
         return 0
 
     root = resolve_root(args.root)
-    normalized_file = normalize_kb_file(root, args.file)
-    if normalized_file is None:
+    normalized_files = []
+    for raw in args.file:
+        normalized = normalize_kb_file(root, raw)
+        if normalized is not None and normalized not in normalized_files:
+            normalized_files.append(normalized)
+    if not normalized_files:
         return 0
 
     now = utc_now()
@@ -256,22 +266,25 @@ def record(args: argparse.Namespace) -> int:
         if args.skill
         else active_skill(root, session, now, sessionless_caller=sessionless)
     )
-    event = {
-        "ts": format_ts(now),
-        "skill": skill,
-        "file": normalized_file,
-        "access": args.access,
-        "source": args.source,
-        "session": session,
-    }
     jsonl = root / "workspace" / "stats" / "kb-usage.jsonl"
 
     try:
         jsonl.parent.mkdir(parents=True, exist_ok=True)
-        if recent_duplicate(jsonl, event, now):
-            return 0
-        with jsonl.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+        for normalized_file in normalized_files:
+            event = {
+                "ts": format_ts(now),
+                "skill": skill,
+                "file": normalized_file,
+                "access": args.access,
+                "source": args.source,
+                "session": session,
+            }
+            if args.chars is not None and len(normalized_files) == 1:
+                event["chars"] = args.chars
+            if recent_duplicate(jsonl, event, now):
+                continue
+            with jsonl.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, separators=(",", ":")) + "\n")
     except Exception:
         return 0
     return 0
@@ -291,12 +304,17 @@ def build_parser() -> argparse.ArgumentParser:
     activate_parser.set_defaults(func=activate)
 
     record_parser = subparsers.add_parser("record", help="append one KB usage event")
-    record_parser.add_argument("--file", required=True)
+    record_parser.add_argument("--file", required=True, nargs="+")
     record_parser.add_argument(
         "--access", required=True, choices=sorted(ALLOWED_ACCESS)
     )
     record_parser.add_argument(
         "--source", required=True, choices=sorted(ALLOWED_SOURCE)
+    )
+    record_parser.add_argument(
+        "--chars",
+        type=int,
+        help="size of the tool result, only recorded for a single file",
     )
     record_parser.add_argument("--skill")
     record_parser.add_argument("--session")
