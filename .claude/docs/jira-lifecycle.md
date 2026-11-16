@@ -47,15 +47,14 @@ Limit to 10 results unless a broader sweep is needed.
 
 Do not hardcode transition IDs - they vary by project and workflow. Always look them up:
 
-```
-getTransitionsForJiraIssue(cloudId, issueIdOrKey)
-```
-
-Find the transition whose `name` matches the target status, then:
+List the transitions through `discover` and `executeRead` (the `transitionJiraIssue` schema points at `listJiraIssueTransitions`; confirm the operation name with `discover` before calling it).
+Find the transition whose `name` leads to the target status. A transition name is not the target status name, so match on what the listing says it leads to. Then:
 
 ```
-transitionJiraIssue(cloudId, issueIdOrKey, {transition: {id: "<id>"}})
+transitionJiraIssue(cloudId, issueIdOrKey, transitionId: "<id>")
 ```
+
+`transitionName` is accepted in place of `transitionId`, but it is the transition's own name, not the target status.
 
 ### Confirmation rules
 

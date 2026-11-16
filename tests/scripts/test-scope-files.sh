@@ -120,6 +120,61 @@ spaced_trailing_flag_out=$(cd "$REPO" && bash "$SCRIPT" '--scope="src/spaced fil
 assert_cmd "a quoted glob is not broken by a trailing flag" \
   test "$spaced_trailing_flag_out" = "src/spaced file.txt"
 
+# Deleted files and non-ASCII names. The oracle fixture above has neither, so these are
+# asserted directly against a second repo: every scope must print the existing non-ASCII
+# path unquoted and must never print a path that is gone from disk.
+UNI="$TMPROOT/unicode"
+UNI_REMOTE="$TMPROOT/unicode-origin.git"
+git init --quiet --bare "$UNI_REMOTE"
+git init --quiet -b main "$UNI"
+git -C "$UNI" config user.email test@example.com
+git -C "$UNI" config user.name test
+git -C "$UNI" config core.quotepath true
+git -C "$UNI" remote add origin "$UNI_REMOTE"
+for name in keep gone staged-gone unstaged-gone; do printf '%s\n' "$name" > "$UNI/$name.txt"; done
+git -C "$UNI" add -A
+git -C "$UNI" commit --quiet -m "base"
+git -C "$UNI" push --quiet -u origin main
+git -C "$UNI" remote set-head origin -a >/dev/null 2>&1
+printf 'nino\n' > "$UNI/niño.txt"
+git -C "$UNI" add -A
+git -C "$UNI" rm --quiet gone.txt
+git -C "$UNI" commit --quiet -m "add non-ascii, delete one"
+printf 'staged\n' > "$UNI/stg-é.txt"
+git -C "$UNI" add stg-é.txt
+git -C "$UNI" rm --quiet staged-gone.txt
+rm "$UNI/unstaged-gone.txt"
+printf 'more\n' >> "$UNI/niño.txt"
+printf 'new\n' > "$UNI/ünt.txt"
+
+has_line() { printf '%s\n' "$1" | grep -qxF -- "$2"; }
+assert_scope_paths() {
+  local desc="$1" args="$2" present="$3" absent="$4" out p
+  out=$(cd "$UNI" && bash "$SCRIPT" "$args")
+  for p in $present; do
+    assert_cmd "$desc: prints $p unquoted" has_line "$out" "$p"
+  done
+  for p in $absent; do
+    if has_line "$out" "$p"; then
+      failures=$((failures + 1))
+      printf 'FAIL  %s: must not print %s\n  output: %s\n' "$desc" "$p" "$out" >&2
+    else
+      printf 'PASS  %s: omits %s\n' "$desc" "$p"
+    fi
+  done
+  assert_cmd "$desc: prints no quoted path" bash -c '! grep -q "^\"" <<< "$1"' _ "$out"
+}
+assert_scope_paths "default scope" "" \
+  "niño.txt stg-é.txt ünt.txt" "gone.txt staged-gone.txt unstaged-gone.txt"
+assert_scope_paths "unstaged scope" "unstaged" \
+  "niño.txt ünt.txt" "unstaged-gone.txt gone.txt"
+assert_scope_paths "staged scope" "staged" \
+  "stg-é.txt" "staged-gone.txt"
+assert_scope_paths "last-commit scope" "last-commit" \
+  "niño.txt" "gone.txt"
+assert_scope_paths "glob scope" "--scope=*.txt" \
+  "niño.txt stg-é.txt ünt.txt keep.txt" "gone.txt staged-gone.txt unstaged-gone.txt"
+
 # The repo argument lets a caller scope a checkout other than the current directory.
 elsewhere_out=$(cd "$TMPROOT" && bash "$SCRIPT" "staged" "$REPO")
 assert_cmd "repo argument scopes another checkout" test "$elsewhere_out" = "src/staged.txt"

@@ -33,12 +33,44 @@ fi
 # Normalize: lowercase, collapse spaces/underscores to hyphens
 DOMAIN_KEY=$(echo "$INPUT" | tr '[:upper:]' '[:lower:]' | tr '_' '-' | tr ' ' '-')
 
-# Match lines like: - platform-monitoring → workspace/kb/projects/platform-monitoring.md
-# Also handles: - sre → workspace/kb/ops/sre.md
-KB_PATH=$(grep -E "^[[:space:]]*-[[:space:]]+${DOMAIN_KEY}[[:space:]]+→" "$DOMAIN_MAP" \
-  | sed -E 's/[^→]*→[[:space:]]*//' \
-  | awk '{print $1}' \
-  || true)
+# Match rows like: - platform-monitoring → workspace/kb/projects/platform-monitoring.md
+# Same row shape as ROW_RE in nase_domain_map.py. The key is compared as a literal
+# string (a regex built from the input would let "." or "|" match other rows), rows
+# inside <!-- ... --> blocks are ignored, and the first matching row wins. The key
+# travels in the environment because `awk -v` would expand backslash escapes in it.
+KB_PATH=$(KEY="$DOMAIN_KEY" awk '
+  BEGIN { key = ENVIRON["KEY"]; in_comment = 0 }
+  {
+    line = $0
+    sub(/\r$/, "", line)
+    out = ""
+    while (line != "") {
+      if (in_comment) {
+        i = index(line, "-->")
+        if (i == 0) { line = ""; break }
+        line = substr(line, i + 3)
+        in_comment = 0
+      } else {
+        i = index(line, "<!--")
+        if (i == 0) { out = out line; line = ""; break }
+        out = out substr(line, 1, i - 1)
+        line = substr(line, i + 4)
+        in_comment = 1
+      }
+    }
+    if (out !~ /^[ \t]*-[ \t]+/) next
+    sub(/^[ \t]*-[ \t]+/, "", out)
+    i = index(out, "→")
+    if (i == 0) next
+    k = substr(out, 1, i - 1)
+    sub(/[ \t]+$/, "", k)
+    rest = substr(out, i + length("→"))
+    if (rest !~ /^[ \t]+[^ \t[]/) next
+    sub(/^[ \t]+/, "", rest)
+    sub(/[ \t[].*$/, "", rest)
+    if (k == key) { print rest; exit }
+  }
+' "$DOMAIN_MAP" || true)
 
 if [ -z "$KB_PATH" ]; then
   echo "ERROR: No KB entry for domain '${DOMAIN_KEY}' in .domain-map.md" >&2

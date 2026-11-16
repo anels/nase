@@ -141,7 +141,7 @@ header: "Next Step"
 options:
   - label: "Start implementation"  , description: "Run /nase:fsd {slug} for the implementation workflow"
   - label: "Another review round"  , description: "Re-run review after more grill sessions or manual edits"
-  - label: "Park it"               , description: "Come back later — surfaces in /nase:today"
+  - label: "Park it"               , description: "Come back later - surfaces in /nase:today"
 ```
 
 ### Needs Revision
@@ -151,8 +151,8 @@ Any FAIL, 2+ WEAK, unresolved staleness, or freshness blocker. List specific iss
 ```markdown
 ## Issues found
 
-- **{criterion}**: {concrete gap — e.g., "Success criterion 2 says 'fast' with no metric"}
-- **Staleness**: {what changed — e.g., "KB added caching constraint in auth domain, not reflected in design"}
+- **{criterion}**: {concrete gap - e.g., "Success criterion 2 says 'fast' with no metric"}
+- **Staleness**: {what changed - e.g., "KB added caching constraint in auth domain, not reflected in design"}
 ```
 
 Update the effort doc's `## Open Questions` with the issues. Set `status: needs-revision` in frontmatter. Tell the user to address the issues and re-run `/nase:design --review {slug}`.

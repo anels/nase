@@ -124,7 +124,7 @@ Subagents spawned via `/team` or `Agent` do NOT inherit the calling session's co
 - Repo build/test commands → include verbatim in the prompt (do not assume KB pre-loading)
 - Conversation state → cannot inherit it; either send what's needed or restructure to keep the work in the caller
 
-**Fresh context is the default.** Every dispatch site must say so explicitly ("start with a fresh context window"). Never reuse an agent across phases, tickets, or review-fix rounds — a reused agent carries its previous brief and silently turns the subagent into a fork of the parent. The merger subagent is the only documented exception.
+**Fresh context is the default.** Every dispatch site must say so explicitly ("start with a fresh context window"). Never reuse an agent across phases, tickets, or review-fix rounds - a reused agent carries its previous brief and silently turns the subagent into a fork of the parent. The merger subagent is the only documented exception.
 
 After completion: read the artifact file back, then delete it (`workspace/tmp/` is not auto-cleaned).
 
@@ -132,7 +132,7 @@ After completion: read the artifact file back, then delete it (`workspace/tmp/` 
 
 ## 8. Anti-overlap rule ("Saying yes = saying no")
 
-CLAUDE.md §"Saying yes = saying no" applies at skill-creation time. Before authoring a new skill:
+`.claude/rules/workspace-maintenance.md` ("New skill proposals must answer...") applies at skill-creation time. Before authoring a new skill:
 
 1. Grep existing trigger keywords across `.claude/commands/nase/*.md` + `workspace/skills/*.md` for overlap
 2. Answer in your PR description: "what existing skill does this make redundant, and if none, why isn't this a flag on an existing one?"

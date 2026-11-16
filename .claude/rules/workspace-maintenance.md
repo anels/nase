@@ -26,7 +26,7 @@ Rules for changing this repo's own commands, hooks, docs, scripts, and tests. Th
 
 ## Hooks, Skills, And Scope
 
-- Hook registrations live in `.claude/settings.json`; hook behavior and file layout are summarized in `.claude/docs/reference.md`. Read those only when debugging or changing hooks.
+- Hook registrations live in `.claude/settings.json`; `docs/architecture.md` owns the hook documentation (the hook table must name every registered script, and the layout), while `.claude/docs/reference.md` holds per-hook implementation notes only. Read those only when debugging or changing hooks, and update the architecture table when you add, remove, or rematch a hook.
 - `session-start.sh` syncs `workspace/skills/*.md` to `.claude/commands/nase/workspace/`; each becomes `/nase:workspace:<name>`. It removes legacy generated native mirrors to avoid duplicate model invocation. Add a skill by creating `workspace/skills/<name>.md` and restarting.
 - Create hooks, commands, and skills under `.claude/`. Writing to `~/.claude/` requires explicit user approval.
 - New skill proposals must answer: "what existing skill does this make redundant, and if none, why isn't this a flag on an existing one?" Refuse overlapping trigger clones.

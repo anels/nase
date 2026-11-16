@@ -44,8 +44,15 @@ for f in "$EFFORTS_DIR"/*.md; do
   awk 'NR==1&&$0=="---"{fm=1;next} fm&&$0=="---"{exit} fm' "$f" \
     | grep -iE '^(status|resolution|repo|jira|parent_jira|superseded_by|tracking_only|owner):' || true
   # PR references (owner/repo#N and pull/N URLs) + Jira keys
-  { grep -oiE '(github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[0-9]+|#[0-9]{2,6}|[A-Z]{2,5}-[0-9]{3,6})' "$f" || true; } \
-    | sort -u | tr '\n' ' '
+  # Jira keys and #N are matched as whole tokens, case-sensitively, so words such as
+  # sha-256, ci-1234 or a 7-digit #id never yield a partial key. Spec-style prefixes
+  # (SHA-256, REQ-003, ...) are not Jira projects.
+  { grep -oiE 'github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[0-9]+' "$f" || true
+    tr -cs 'A-Za-z0-9_#-' '\n' <"$f" \
+      | grep -E '^([A-Za-z0-9._-]*#[0-9]{2,6}|[A-Z]{2,10}-[0-9]{3,6})$' \
+      | grep -vE '^(SHA|ISO|RFC|CVE|UTF|TLS|AES|RSA|FIPS|REQ|NET|ECMA)-' \
+      | sed -E 's/^[A-Za-z0-9._-]*#/#/' || true
+  } | sort -u | tr '\n' ' '
   echo; echo
 done
 

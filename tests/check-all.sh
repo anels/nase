@@ -11,9 +11,27 @@
 #   bash tests/check-all.sh --list
 #
 # NASE_TEST_TIMEOUT overrides the per-test cap in seconds (default 600).
+# NASE_TEST_JOBS overrides the test width. Every other NASE_* variable is unset and git's
+# global and system config are ignored, so a developer shell cannot change what a test sees.
 # Exit 0 = all gates pass, exit N = N failed gates.
 
 set -uo pipefail
+
+# Hermetic environment. Hooks and scripts read NASE_* switches (NASE_PROSE_LINT=0,
+# NASE_DAILY_LOG_GUARD=0, NASE_FACT_FORCE=0, ...) and a developer shell that exports one
+# turns the matching test red - or worse, green for the wrong reason. Drop every NASE_*
+# variable except the ones this file itself reads. `compgen -e` lists exported names and
+# works on bash 3.2; the process substitution keeps `unset` in this shell.
+while IFS= read -r _nase_var; do
+  case "$_nase_var" in
+    NASE_TEST_TIMEOUT|NASE_TEST_JOBS|NASE_CHECK_ALL_SOURCE_ONLY) ;;
+    *) unset "$_nase_var" ;;
+  esac
+done < <(compgen -e | grep '^NASE_' || true)
+unset _nase_var
+# A developer's global git config (hooksPath, commit.gpgsign, diff.noprefix, identity)
+# changes what every git-fixture test sees. CI has none, so match it.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT" || exit 1
@@ -79,13 +97,13 @@ TEST_JOBS=$((10#$TEST_JOBS))
 (( TEST_JOBS < 1 )) && TEST_JOBS=1
 
 SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || true)
-SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally; GitHub Actions still runs this gate.'
+SHELLCHECK_SKIP='SKIP: shellcheck is not installed locally (CI pins shellcheck-py==0.11.0.1); GitHub Actions still runs this gate.'
 ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || true)
 ACTIONLINT_SKIP='SKIP: actionlint is not installed locally; GitHub Actions still runs this gate.'
 RUFF_BIN=$(command -v ruff 2>/dev/null || true)
-RUFF_SKIP='SKIP: ruff is not installed locally (pip install ruff); GitHub Actions still runs this gate.'
+RUFF_SKIP='SKIP: ruff is not installed locally (pipx install ruff==0.17.5, the version CI pins); GitHub Actions still runs this gate.'
 VERMIN_BIN=$(command -v vermin 2>/dev/null || true)
-VERMIN_SKIP='SKIP: vermin is not installed locally (pip install vermin); GitHub Actions still runs this gate.'
+VERMIN_SKIP='SKIP: vermin is not installed locally (pipx install vermin==1.9.2, the version CI pins); GitHub Actions still runs this gate.'
 
 # Per-test wall-clock cap. A hung fixture used to block the whole batch forever
 # (CI only stops at GitHub's 6-hour job limit). `python3` is the timeout carrier
@@ -404,8 +422,12 @@ run_python_floor() {
   # CLAUDE.md documents python3 3.10+. ruff's `target-version` cannot see a stdlib API
   # that is missing on 3.10 (`hashlib.file_digest`, `datetime.UTC`), so a 3.11-only call
   # would pass every other gate here and fail on the first 3.10 machine.
+  # workspace/skills/scripts is skill surface like .claude/scripts (see run_ruff), so it
+  # is held to the same floor whenever the local-only directory exists.
+  local vermin_paths=(.claude/scripts tests/lib)
+  [[ -d workspace/skills/scripts ]] && vermin_paths+=(workspace/skills/scripts)
   run_gate "vermin --target=3.10- over shipped Python" \
-    "$VERMIN_BIN" --target=3.10- --violations --no-tips .claude/scripts tests/lib
+    "$VERMIN_BIN" --target=3.10- --violations --no-tips "${vermin_paths[@]}"
 }
 
 run_json() {
@@ -467,21 +489,34 @@ run_actionlint() {
   fi
 }
 
+# Arguments default to the live files; the routing test passes scratch copies to prove the
+# architecture-doc check can fail.
 check_hook_wiring() {
+  local settings="${1:-.claude/settings.json}" arch="${2:-docs/architecture.md}"
   local f name missing=0
   for f in .claude/hooks/*.sh; do
     name=$(basename "$f" .sh)
-    if ! grep -q "${name}.sh" .claude/settings.json; then
+    if ! grep -q "${name}.sh" "$settings"; then
       printf 'FAIL: %s.sh not wired in settings.json\n' "$name" >&2
       missing=1
     fi
   done
+  # The other direction: a hook that settings.json registers is behaviour a reader of
+  # docs/architecture.md must be able to find. hook-dispatch.sh is the shared launcher,
+  # not a hook.
+  while IFS= read -r name; do
+    [[ "$name" == "hook-dispatch.sh" ]] && continue
+    if ! grep -qF "$name" "$arch"; then
+      printf 'FAIL: %s is registered in settings.json but not named in %s\n' "$name" "$arch" >&2
+      missing=1
+    fi
+  done < <(grep -oE '[A-Za-z0-9_-]+\.sh' "$settings" | sort -u)
   [[ "$missing" -eq 0 ]]
 }
 
 run_hook_wiring() {
   section "hook wiring"
-  run_gate "hook scripts wired in settings.json" check_hook_wiring
+  run_gate "hook scripts wired in settings.json and documented" check_hook_wiring
 }
 
 run_command_catalog() {
@@ -601,6 +636,11 @@ run_skill_doctrine() {
   run_gate "check-skill-doctrine.sh" bash tests/check-skill-doctrine.sh
 }
 
+run_subagent_dispatch() {
+  section "subagent dispatch freshness"
+  run_gate "check-subagent-dispatch.sh" bash tests/check-subagent-dispatch.sh
+}
+
 run_skill_overlap() {
   section "skill trigger overlap"
   run_gate "check-skill-overlap.sh" bash tests/check-skill-overlap.sh
@@ -710,6 +750,9 @@ run_changed_extras() {
   if grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-(lifecycle|model|drift|transitions)\.md|\.claude/commands/nase/kb-review\.md)$' <<< "$changed"; then
     run_effort_pointer_integrity
   fi
+  if grep -qE '^(\.claude/commands/nase/[^/]+\.md|\.claude/docs/[^/]+\.md|tests/check-subagent-dispatch\.sh)$' <<< "$changed"; then
+    run_subagent_dispatch
+  fi
   if grep -qE '^(evals/(pr-review|core-workflows)/|\.claude/scripts/(pr-review-eval|skill-eval-run)\.py|tests/scripts/test-(pr-review-eval|skill-eval-run)\.sh)' <<< "$changed"; then
     run_evals
   fi
@@ -739,6 +782,7 @@ run_fast() {
   run_kb_domain_map_contract
   run_effort_pointer_integrity
   run_skill_doctrine
+  run_subagent_dispatch
   run_skill_overlap
   run_fast_script_tests
 }
@@ -766,6 +810,7 @@ run_full() {
   run_kb_domain_map_contract
   run_effort_pointer_integrity
   run_skill_doctrine
+  run_subagent_dispatch
   run_skill_overlap
   run_links
 }

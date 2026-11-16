@@ -84,6 +84,16 @@ RC=$?
 
 [ "$RC" -eq 0 ] && exit 0
 [ "$RC" -ne 1 ] && exit 0
+# An uncaught Python exception also exits 1, so exit 1 alone is not a finding. Only the
+# linter's own verdict line is; anything else is a crash and fails open like the other
+# infrastructure failures above.
+case "$REPORT" in
+  *"Result: FAIL"*) ;;
+  *)
+    printf '[prose-lint-guard] linter crashed; draft not linted\n' >&2
+    exit 0
+    ;;
+esac
 
 {
   echo "BLOCKED by prose-lint-guard: the draft body fails the plain-writing gate."

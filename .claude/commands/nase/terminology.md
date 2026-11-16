@@ -72,15 +72,15 @@ for file layout, index shape, conflict check, and retrieve/list rules.
 
    ### Scope: {label}
    {definition}
-   {Tags: ... — omit if none}
-   {See also: ... — omit if none}
+   {Tags: ... - omit if none}
+   {See also: ... - omit if none}
    Last updated: {date}
 
    ### Scope: {other label}
    ...
 
    ---
-   Related terms: {up to 5 other terms whose own `**See also:**` link points back to this file} — omit this whole block if none
+   Related terms: {up to 5 other terms whose own `**See also:**` link points back to this file} - omit this whole block if none
    ```
    A **fuzzy candidate** is an `_index.md` row whose slug contains the
    query as a substring, whose `Aliases` cell matches it exactly
@@ -101,7 +101,7 @@ for file layout, index shape, conflict check, and retrieve/list rules.
        delegate to `nase-context-kb-researcher`.
     2. Local repos on disk, via `.local-paths` - grep source, docs, and
        README for the term. Delegate to a **lookup** agent
-       (`model=haiku`, `effort=low`, `tools=[Read, Grep, Glob, Bash]`).
+       (role `lookup` per `.claude/roles.yaml`: `model=haiku`, `effort=low`).
     3. Confluence/Jira/Slack, if those MCPs are configured - search for
        the term. These stay in the main thread; they need live connector
        context.

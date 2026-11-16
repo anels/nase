@@ -24,6 +24,8 @@ def parse_ts(value: str) -> datetime | None:
     A value with no offset is read as UTC rather than local: everything this repo
     writes stamps UTC, so a missing offset is an omission, not a local reading.
     """
+    if not isinstance(value, str):
+        return None
     try:
         if value.endswith("Z"):
             value = value[:-1] + "+00:00"
@@ -31,7 +33,7 @@ def parse_ts(value: str) -> datetime | None:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
-    except Exception:
+    except (ValueError, OverflowError):
         return None
 
 

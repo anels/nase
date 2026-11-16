@@ -21,4 +21,14 @@ cd "$ROOT"
 # git repo, so a probe that must fail can actually be run.
 # The Python gate is a separate file: bash 3.2 (macOS) mis-scans a heredoc body
 # inside command substitution, so this script never wraps one.
-exec python3 "$SOURCE_ROOT/.claude/scripts/check-boundary-terms.py" "$@"
+#
+# The Python gate skips with exit 0 when the term list is absent. Count that skip here so a
+# gate that checked nothing says so at the end instead of reading as a pass. Absence is
+# never a failure: the term list is per-user, and CI and fresh clones never have one.
+# shellcheck source=lib/workspace-skip.sh
+source "$SOURCE_ROOT/tests/lib/workspace-skip.sh"
+[[ -f "${NASE_BOUNDARY_SCAN_ROOT:-$ROOT}/workspace/boundary-terms.txt" ]] || ws_count_skip
+rc=0
+python3 "$SOURCE_ROOT/.claude/scripts/check-boundary-terms.py" "$@" || rc=$?
+ws_skip_summary
+exit "$rc"

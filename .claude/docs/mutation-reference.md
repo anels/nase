@@ -18,8 +18,11 @@ file; this one holds the recipes a step reads only when it hits them.
 
 The helper stores a local manifest and a one-shot 300-second token. It hashes the argv
 and payload-file contents, rechecks both before execution, invokes the CLI without a
-shell, and consumes the token after success or failure. The Hook blocks raw mutations
-and fails closed for unrecognized guarded CLI invocations. This binds the approved
+shell, and consumes the token after success or failure. The Hook denies the raw
+mutation shapes it knows and any guarded CLI invocation it cannot parse. It bounds
+honest mistakes, not a determined caller, and known gaps remain: a script written to a
+file and then run, `xargs sh -c`, and names built dynamically inside interpreter code.
+This binds the approved
 action and prevents accidental payload drift; it does not prove a hostile model
 actually obtained user approval. The helper accepts no environment overrides - the
 CLI uses the current authenticated environment.
@@ -46,7 +49,7 @@ highest-risk rules even when a future skill forgets the prompt contract:
 
 | Hook | Blocks |
 |------|--------|
-| `slack-send-guard.sh` | direct `slack_send_message`, `slack_schedule_message`, `slack_create_canvas`, and `slack_update_canvas`; use `slack_send_message_draft` |
+| `slack-send-guard.sh` | all 11 Slack write tools - `slack_send_message`, `slack_schedule_message`, `slack_create_canvas`, `slack_update_canvas`, `slack_add_reaction`, `slack_create_conversation`, `slack_add_list_record`, `slack_update_list_record`, `slack_create_list`, `slack_update_list`, and `slack_complete_file_upload`; use `slack_send_message_draft` |
 | `jira-write-guard.sh` | Jira mutation tools without a fresh `workspace/.jira-write-token`; Jira body writes with missing `contentFormat`, or ADF bodies outside an approved batch token (see `.claude/docs/jira-write-pattern.md`) |
 | `confluence-size-guard.sh` | Confluence bodies over 70 KB; writes with an unset or unaccepted body format (see `.claude/docs/confluence-adf-pattern.md`) |
 | `atlassian-generic-write-guard.sh` | `executeWrite` and `executeDestructive`, whose opaque payload no named Atlassian gate can read; `createConfluenceComment` under `executeWrite` is the one allowed operation, and only when its body format, body size, and addressing fields all pass this hook's own checks |
@@ -170,17 +173,20 @@ the approval that showed the per-ticket plan:
   "max_ops": 6,
   "created_at": "2026-06-12T15:40:00Z",
   "payload_summary": "cancel approved incidents",
-  "tools": ["transitionJiraIssue", "addCommentToJiraIssue"],
+  "tools": ["transitionJiraIssue", "addCommentToJiraIssue", "addOrEditJiraIssueComment"],
   "ttl_seconds": 900
 }
 ```
 
 The hook authorizes any gated Jira mutation whose target issue is in
-`approved_issues`, up to `max_ops` calls, within the TTL (default **900s**;
-`ttl_seconds` overrides). It decrements `max_ops` on each allowed call and
+`approved_issues`, up to `max_ops` calls, within the TTL (**900s**;
+`ttl_seconds` may only shorten that window, never extend it). `max_ops` is capped at
+**100**. It decrements `max_ops` on each allowed call and
 deletes the token when the budget is exhausted or the TTL passes. `tools` is an
-optional allowlist (exact or suffix match, to tolerate MCP namespace prefixes);
-omit it to allow all gated Jira tools. A non-empty `approved_issues` array is
+optional allowlist. An entry matches a tool name exactly or as a suffix (to tolerate MCP
+namespace prefixes), so list both comment tool names when either server generation
+may be in play: `addCommentToJiraIssue` does not permit `addOrEditJiraIssueComment`.
+Omit `tools` to allow all gated Jira tools. A non-empty `approved_issues` array is
 what selects batch mode.
 
 Publish tokens with `python3 .claude/scripts/jira-write-token.py --root . --content-file <approved-token.json>`. Publication, validation, consumption,

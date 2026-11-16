@@ -189,6 +189,25 @@ for name, script, attr in (("er", "effort-rollup-evidence.py", "secret_kind"),
     assert getattr(module, attr)(b"plain") is None, script
 '
 
+# --- nase_json.parse_jsonl_objects / read_jsonl_objects -----------------------
+
+run_case "parse_jsonl_objects keeps objects and counts everything else as skipped" "$PRELUDE"'
+lines = ["{\"a\": 1}\n", "\n", "   \n", "[1]\n", "\"x\"\n", "5\n", "null\n", "not-json\n", "{\"b\": 2}"]
+objects, skipped = nase_json.parse_jsonl_objects(lines)
+assert objects == [{"a": 1}, {"b": 2}], objects
+assert skipped == 5, skipped
+'
+
+run_case "read_jsonl_objects tolerates invalid UTF-8 and non-object lines" "$PRELUDE"'
+import tempfile
+with tempfile.TemporaryDirectory() as tmp:
+    path = pathlib.Path(tmp) / "x.jsonl"
+    path.write_bytes(b"{\"a\": 1}\n[1]\n\xff\xfe\n{\"b\": \"caf\xc3\xa9\"}\n")
+    objects, skipped = nase_json.read_jsonl_objects(path)
+assert objects == [{"a": 1}, {"b": "caf\u00e9"}], objects
+assert skipped == 2, skipped
+'
+
 # --- no private copies come back ---------------------------------------------
 
 run_case "no script defines its own canonical_bytes, load_module or file_sha" "$PRELUDE"'

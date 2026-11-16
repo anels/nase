@@ -123,6 +123,16 @@ for hook in post-edit-shellcheck.sh post-edit-ruff.sh; do
 done
 if jq empty "$settings" 2>/dev/null; then pass_msg "settings.json is valid JSON"; else fail_msg "settings.json is valid JSON"; fi
 
+# A hook with no timeout runs until the harness default, so a hung guard or tracker stalls the session.
+untimed=$(jq -r '[.hooks | to_entries[] | .key as $ev | .value[] | .hooks[]
+  | select(((.timeout // null) | type) != "number" or .timeout <= 0)
+  | "\($ev): \(.command | split(" ") | last)"] | join(", ")' "$settings" 2>/dev/null)
+if [ -z "$untimed" ]; then
+  pass_msg "every registered hook has a positive numeric timeout"
+else
+  fail_msg "every registered hook has a positive numeric timeout (missing: $untimed)"
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

@@ -14,10 +14,26 @@ cat > "$FIXTURE/workspace/kb/.domain-map.md" <<'EOF'
 # Domain map
 
 - example-repo → workspace/kb/projects/example.md
+- platform-monitoring → workspace/kb/projects/platform-monitoring.md
+- sre-extra → workspace/kb/ops/sre-extra.md
 - sre → workspace/kb/ops/sre.md
+- c++ → workspace/kb/projects/cpp.md
+- dup → workspace/kb/projects/dup-first.md
+- dup → workspace/kb/projects/dup-second.md
+<!-- single-line comment, not a row: - hidden-inline → workspace/kb/projects/hidden-inline.md -->
+<!--
+Registered rows only. Example of the shape:
+- hidden → workspace/kb/projects/hidden.md
+-->
+- after-comment → workspace/kb/projects/after.md
 EOF
 printf '# example\n' > "$FIXTURE/workspace/kb/projects/example.md"
 printf '# sre\n' > "$FIXTURE/workspace/kb/ops/sre.md"
+printf '# sre-extra\n' > "$FIXTURE/workspace/kb/ops/sre-extra.md"
+printf '# monitoring\n' > "$FIXTURE/workspace/kb/projects/platform-monitoring.md"
+for f in cpp dup-first dup-second hidden hidden-inline after; do
+  printf '# %s\n' "$f" > "$FIXTURE/workspace/kb/projects/$f.md"
+done
 
 pass=0
 fail=0
@@ -87,6 +103,46 @@ if [ "$before" = "$after" ]; then
 else
   fail_msg "T2: failed resolve changed ledger count (before $before, after $after)"
 fi
+
+resolve() {
+  (cd "$FIXTURE" && NASE_ROOT="$FIXTURE" CLAUDE_CODE_SESSION_ID="domain-test" bash "$SCRIPT" "$1" 2>&1)
+}
+
+# The key is a literal string, not a regex.
+out=$(resolve "platform.monitoring"); rc=$?
+assert_exit "T3: a dot in the key does not match a hyphenated row" 1 "$rc"
+assert_contains "T3: dot key reports no entry" "$out" "No KB entry"
+
+out=$(resolve "sre|sre-extra"); rc=$?
+assert_exit "T4: an alternation in the key matches nothing" 1 "$rc"
+assert_contains "T4: alternation key reports no entry" "$out" "No KB entry"
+
+out=$(resolve ".*"); rc=$?
+assert_exit "T5: a wildcard key matches nothing" 1 "$rc"
+assert_contains "T5: wildcard key reports no entry" "$out" "No KB entry"
+
+out=$(resolve "sre"); rc=$?
+assert_exit "T6: sre resolves although sre-extra shares its prefix" 0 "$rc"
+assert_contains "T6: sre resolves to its own file" "$out" "workspace/kb/ops/sre.md"
+out=$(resolve "sre-extra"); rc=$?
+assert_exit "T6: sre-extra resolves" 0 "$rc"
+assert_contains "T6: sre-extra resolves to its own file" "$out" "workspace/kb/ops/sre-extra.md"
+
+out=$(resolve "c++"); rc=$?
+assert_exit "T7: a key with regex metacharacters resolves" 0 "$rc"
+assert_contains "T7: c++ resolves to its file" "$out" "workspace/kb/projects/cpp.md"
+
+out=$(resolve "hidden"); rc=$?
+assert_exit "T8: a row inside a comment block is ignored" 1 "$rc"
+out=$(resolve "hidden-inline"); rc=$?
+assert_exit "T8: a row inside a one-line comment is ignored" 1 "$rc"
+out=$(resolve "after-comment"); rc=$?
+assert_exit "T8: a row after a comment block still resolves" 0 "$rc"
+assert_contains "T8: row after comment resolves to its file" "$out" "workspace/kb/projects/after.md"
+
+out=$(resolve "dup"); rc=$?
+assert_exit "T9: duplicate keys resolve" 0 "$rc"
+assert_contains "T9: the first duplicate row wins" "$out" "workspace/kb/projects/dup-first.md"
 
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"

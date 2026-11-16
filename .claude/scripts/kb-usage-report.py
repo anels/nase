@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import pathlib
 import re
 import sys
@@ -16,6 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from nase_domain_map import strip_comments
 from nase_git import resolve_root
+from nase_json import read_jsonl_objects
 from nase_time import parse_ts
 
 KB_EXTENSIONS = {".md", ".sql"}
@@ -79,16 +79,8 @@ def load_events(
         cutoff = now - timedelta(days=int(window))
 
     events: list[dict[str, Any]] = []
-    malformed = 0
-    for line in jsonl.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            payload = json.loads(line)
-        except Exception:
-            malformed += 1
-            continue
-
+    payloads, malformed = read_jsonl_objects(jsonl)
+    for payload in payloads:
         ts = parse_ts(str(payload.get("ts", "")))
         file_path = normalize_kb_file(str(payload.get("file", "")))
         skill = str(payload.get("skill", "") or "unknown")

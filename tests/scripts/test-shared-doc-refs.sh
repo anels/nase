@@ -80,6 +80,56 @@ run_gate "$repo" colon
 assert_contains "colon path reported whole" "$TMPROOT/colon.out" \
   "MISSING  .claude/commands/nase/a:b.md -> .claude/docs/colon-gone.md"
 
+# --- 6. CLAUDE.md section citations must name a heading that exists ---
+# Citation text is built with printf %s so this file never contains a literal citation of
+# its own for the gate to read when it scans the real tree.
+SIGN='\xc2\xa7'
+ARROW='\xe2\x86\x92'
+new_cite_repo() {
+  local repo
+  repo=$(new_repo "$1")
+  mkdir -p "$repo/.claude/rules"
+  printf '# Manual\n\n## Real Heading\n\nBody.\n\n## Code Review\n' >"$repo/CLAUDE.md"
+  printf '# Rules\n\n## Moved Rule\n' >"$repo/.claude/rules/moved.md"
+  printf '%s\n' "$repo"
+}
+
+repo=$(new_cite_repo cite-ok)
+printf 'See CLAUDE.md %b"Real Heading" first.\n' "$SIGN" >"$repo/.claude/commands/nase/q.md"
+printf 'See CLAUDE.md %b Real Heading. Then go.\n' "$SIGN" >"$repo/.claude/commands/nase/b.md"
+printf 'See `CLAUDE.md %b Code Review` - and more words.\n' "$ARROW" >"$repo/.claude/commands/nase/arrow.md"
+printf 'Cited under CLAUDE.md %b"Moved Rule" after the move.\n' "$SIGN" >"$repo/.claude/commands/nase/moved.md"
+printf 'See CLAUDE.md %b Code Review and the verifier gate.\n' "$SIGN" >"$repo/.claude/commands/nase/trailing.md"
+printf '# inject a reminder per CLAUDE.md %b Real Heading.\n' "$SIGN" >"$repo/hook.sh"
+printf 'MISSING  README.md -> .claude/hooks/x.sh and CLAUDE.md -> .claude/hooks/y.sh\n' >"$repo/.claude/commands/nase/fmt.md"
+printf 'Other repo: the target CLAUDE.md is separate; CLAUDE.md alone cites nothing.\n' >"$repo/.claude/commands/nase/plain.md"
+run_gate "$repo" cite-ok
+[[ "$(rc_of cite-ok)" == 0 ]] && pass "citations that resolve (quoted, bare, arrow, .claude/rules, trailing words) pass" || fail "citations that resolve pass (rc=$(rc_of cite-ok)): $(cat "$TMPROOT/cite-ok.out")"
+
+repo=$(new_cite_repo cite-quoted)
+printf 'See CLAUDE.md %b"Gone Heading" first.\n' "$SIGN" >"$repo/.claude/commands/nase/bad.md"
+run_gate "$repo" cite-quoted
+[[ "$(rc_of cite-quoted)" == 1 ]] && pass "a quoted citation of a missing heading exits 1" || fail "a quoted citation of a missing heading exits 1 (rc=$(rc_of cite-quoted))"
+assert_contains "quoted dangling citation names file, line and heading" "$TMPROOT/cite-quoted.out" \
+  'DANGLING  .claude/commands/nase/bad.md:1 -> CLAUDE.md "Gone Heading"'
+
+repo=$(new_cite_repo cite-bare)
+printf 'Per CLAUDE.md %b Style Learning Loop.\n' "$SIGN" >"$repo/.claude/docs/bad.md"
+run_gate "$repo" cite-bare
+[[ "$(rc_of cite-bare)" == 1 ]] && pass "a bare citation of a missing heading exits 1" || fail "a bare citation of a missing heading exits 1 (rc=$(rc_of cite-bare))"
+assert_contains "bare dangling citation names file and heading" "$TMPROOT/cite-bare.out" \
+  "DANGLING  .claude/docs/bad.md:1 -> CLAUDE.md Style Learning Loop"
+
+repo=$(new_cite_repo cite-sh)
+printf '# inject a reminder per CLAUDE.md %b Style Learning Loop.\n' "$SIGN" >"$repo/hook.sh"
+run_gate "$repo" cite-sh
+[[ "$(rc_of cite-sh)" == 1 ]] && pass "a dangling citation in a shell comment exits 1" || fail "a dangling citation in a shell comment exits 1 (rc=$(rc_of cite-sh))"
+
+repo=$(new_cite_repo cite-arrow)
+printf 'See `CLAUDE.md %b Gone Section` for details.\n' "$ARROW" >"$repo/README.md"
+run_gate "$repo" cite-arrow
+[[ "$(rc_of cite-arrow)" == 1 ]] && pass "a dangling arrow citation exits 1" || fail "a dangling arrow citation exits 1 (rc=$(rc_of cite-arrow))"
+
 if [[ "$failures" -ne 0 ]]; then
   printf '\n%d failure(s)\n' "$failures" >&2
   exit 1

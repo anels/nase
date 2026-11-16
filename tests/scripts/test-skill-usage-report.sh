@@ -28,6 +28,10 @@ cat > "$TMPROOT/workspace/stats/skill-usage.jsonl" <<'JSONL'
 {"skill":"today","ts":"2026-07-10T10:00:10Z","source":"prompt-expansion","session_id":"legacy"}
 {"skill":"today","ts":"2026-07-10T10:00:20Z","source":"tool","session_id":"legacy"}
 {"skill":"workspace:test","ts":"2026-07-01T10:00:00Z","source":"tool","session_id":"legacy-2"}
+[1]
+"x"
+5
+null
 not-json
 JSONL
 
@@ -35,7 +39,7 @@ TZ=UTC python3 "$SCRIPT" --root "$TMPROOT" --date 2026-07-17 --output "$TMPROOT/
 
 # Select design by name rather than by rank: its total is the property under
 # test, and another fixture skill outranking it is not a failure.
-jq -e '.ok and .malformed == 1 and ([.top[] | select(.skill == "design")] == [{"skill":"design","total":2}])' "$TMPROOT/result.json" >/dev/null
+jq -e '.ok and .malformed == 5 and ([.top[] | select(.skill == "design")] == [{"skill":"design","total":2}])' "$TMPROOT/result.json" >/dev/null
 grep -q '| design | 2 |' "$TMPROOT/report.md"
 grep -q '| today | 1 |' "$TMPROOT/report.md"
 # skill-usage has only tool outcomes and no `activated`, which is what a

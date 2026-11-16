@@ -36,4 +36,31 @@ assert_cmd "multi-line summary is rejected" test "$?" = 2
 python3 "$SCRIPT" "Bad Tag" "x" --root "$FIXTURE" >/dev/null 2>&1
 assert_cmd "invalid tag is rejected" test "$?" = 2
 
+python3 "$SCRIPT" today $'a\x0bb' --root "$FIXTURE" >/dev/null 2>&1
+assert_cmd "vertical-tab summary is rejected" test "$?" = 2
+python3 "$SCRIPT" today $'a\tb' --root "$FIXTURE" --time 09:30 >/dev/null 2>&1
+assert_cmd "a tab in the summary is accepted" test "$?" = 0
+python3 "$SCRIPT" today $'a\xc2\x85b' --root "$FIXTURE" >/dev/null 2>&1
+assert_cmd "NEL summary is rejected" test "$?" = 2
+python3 "$SCRIPT" today $'a\xe2\x80\xa8b' --root "$FIXTURE" >/dev/null 2>&1
+assert_cmd "line-separator summary is rejected" test "$?" = 2
+
+printf '# Work Log\r\n\r\n## Sessions\r\n\r\n- 08:00 crlf legacy\r\n' > "$log"
+python3 "$SCRIPT" today "crlf entry" --root "$FIXTURE" --time 11:00 >/dev/null
+assert_cmd "CRLF log stays CRLF after an append" cmp -s "$log" <(printf '# Work Log\r\n\r\n## Sessions\r\n\r\n- 08:00 crlf legacy\r\n- 11:00 | today: crlf entry\r\n')
+assert_cmd "CRLF log has no bare LF" test "$(grep -c $'\r$' "$log")" = "$(wc -l < "$log" | tr -d ' ')"
+
+printf '# Work Log\n\n## Sessions\n\n- 08:00 form\x0cfeed legacy\n- 08:01 next\n' > "$log"
+python3 "$SCRIPT" today "ff entry" --root "$FIXTURE" --time 11:05 >/dev/null
+assert_cmd "legacy form-feed line is preserved byte for byte" cmp -s "$log" <(printf '# Work Log\n\n## Sessions\n\n- 08:00 form\x0cfeed legacy\n- 08:01 next\n- 11:05 | today: ff entry\n')
+
+rm -f "$log"
+for i in $(seq 1 30); do
+  python3 "$SCRIPT" today "parallel $i" --root "$FIXTURE" --time 12:00 >/dev/null &
+done
+wait
+landed=$(grep -c -- "| today: parallel " "$log")
+assert_cmd "30 parallel appends all land (got $landed)" test "$landed" = 30
+assert_cmd "no temporary files remain" test -z "$(find "$FIXTURE/workspace/logs" -name '.*.??????' -not -name '.daily-log.lock')"
+
 [ "$failures" -eq 0 ] && printf '\ndaily-log-append tests passed.\n'

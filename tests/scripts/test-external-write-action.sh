@@ -1246,5 +1246,356 @@ expect_rc "an attach plan with a malformed page entry is refused at prepare" 2 \
     python3 stub/confluence-publish.py attach --plan cplan/malformed.json --page-index 0 \
     --page-id 123 --account a@b.c
 
+# --- programs that carry a guarded CLI in their arguments -----------------------
+# A program that is not guarded, not a shell, and not known to treat its arguments as
+# data can run the guarded CLI it is handed, so the tail is judged as if it ran directly.
+expect_guard_rc "ssh carrying a mutation is blocked" 10 'ssh host gh pr merge 1'
+expect_guard_rc "script carrying a mutation is blocked" 10 'script -q /dev/null gh pr merge 1'
+expect_guard_rc "parallel carrying a mutation is blocked" 10 'parallel gh pr merge ::: 1 2'
+expect_guard_rc "npx carrying a mutation is blocked" 10 'npx gh pr merge 1'
+expect_guard_rc "busybox carrying a mutation is blocked" 10 'busybox gh pr merge 1'
+expect_guard_rc "tmux carrying a quoted mutation is blocked" 10 'tmux new "gh pr merge 1"'
+expect_guard_rc "docker run carrying a mutation is blocked" 10 'docker run --rm img gh pr merge 1'
+expect_guard_rc "a quoted script handed to ssh is re-scanned" 10 "ssh host 'cd x && gh pr merge 1'"
+expect_guard_rc "a carried az mutation is blocked" 10 'ssh host az group delete --name x'
+expect_guard_rc "python -c with subprocess is blocked" 10 \
+  "python3 -c 'import subprocess; subprocess.run([\"gh\", \"pr\", \"merge\", \"1\"])'"
+expect_guard_rc "python -c with os.system is blocked" 10 \
+  "python3 -c 'import os; os.system(\"gh pr merge 1\")'"
+expect_guard_rc "node -e with child_process is blocked" 10 \
+  "node -e 'require(\"child_process\").execSync(\"gh pr merge 1\")'"
+expect_guard_rc "osascript shell script is blocked" 10 \
+  "osascript -e 'do shell script \"gh pr merge 1\"'"
+expect_guard_rc "awk system() is blocked" 10 "awk 'BEGIN { system(\"gh pr merge 1\") }'"
+expect_guard_rc "a python heredoc with an exec primitive is blocked" 10 \
+  "$(printf 'python3 <<%sEOF%s\nimport os\nos.system("gh pr merge 1")\nEOF\n' "'" "'")"
+expect_guard_rc "a node heredoc with an exec primitive is blocked" 10 \
+  "$(printf 'node <<%sEOF%s\nrequire("child_process").execSync("gh pr merge 1")\nEOF\n' "'" "'")"
+expect_guard_rc "ssh carrying a read stays allowed" 0 'ssh host gh pr view 1'
+expect_guard_rc "ssh echoing a guarded name stays allowed" 0 'ssh host echo gh'
+expect_guard_rc "a commit message naming a mutation stays allowed" 0 'git commit -m "gh pr merge"'
+expect_guard_rc "grep for a guarded name stays allowed" 0 'grep gh file'
+expect_guard_rc "which gh stays allowed" 0 'which gh'
+expect_guard_rc "echoing a mutation stays allowed" 0 'echo gh pr merge 1'
+expect_guard_rc "python -c without an exec primitive stays allowed" 0 \
+  "python3 -c 'print(\"gh pr merge 1\")'"
+expect_guard_rc "a python script's arguments are data" 0 'python3 tool.py gh pr merge 1'
+expect_guard_rc "a python heredoc without an exec primitive stays allowed" 0 \
+  "$(printf 'python3 <<%sEOF%s\nprint("gh pr merge 1")\nEOF\n' "'" "'")"
+expect_guard_rc "the sanctioned prepare workflow stays allowed" 0 \
+  'python3 .claude/scripts/external-write-action.py prepare --system github --summary x -- gh pr create --title t'
+
+# --- inline prose, extra surfaces, and linter outages ---------------------------
+mkdir -p "$TMPDIR_TEST/.claude/scripts"
+cp "$ROOT/.claude/scripts/prose-lint.py" "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+inline_prepare() {
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "inline prose" -- "$@" \
+    | jq -r .manifest
+}
+dash_text=$(printf 'Fix the thing \342\200\224 now')
+manifest=$(inline_prepare gh issue create --title "$dash_text" --body "Clean body." -R owner/example)
+expect_rc "an inline --title with an em dash is held to the prose gate" 2 run_gh_execute "$manifest"
+if grep -q 'FMT-DASH' "$TMPDIR_TEST/err"; then
+  report 0 "the inline title finding names the rule"
+else
+  report 1 "the inline title finding names the rule" "$(cat "$TMPDIR_TEST/err")"
+fi
+manifest=$(inline_prepare gh issue create --title "Clean title" --body "Clean body." -R owner/example)
+expect_rc "a clean issue create passes the prose gate" 0 run_gh_execute "$manifest"
+manifest=$(inline_prepare gh issue edit 3 "--body=$dash_text" -R owner/example)
+expect_rc "an equals-form --body with an em dash is held to the prose gate" 2 run_gh_execute "$manifest"
+manifest=$(inline_prepare gh release create v1.0 --notes "$dash_text" -R owner/example)
+expect_rc "release create notes are held to the prose gate" 2 run_gh_execute "$manifest"
+manifest=$(inline_prepare gh pr merge 7 --squash --subject "$dash_text" -R owner/example)
+expect_rc "a pr merge subject is held to the prose gate" 2 run_gh_execute "$manifest"
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --github-owner owner \
+  --summary "api review body" -- \
+  gh api repos/owner/example/pulls/7/comments -f "body=$dash_text" -f path=a.txt | jq -r .manifest)
+expect_rc "a gh api pulls -f body is held to the prose gate" 2 run_gh_execute "$manifest"
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --github-owner owner \
+  --summary "api release" -- \
+  gh api repos/owner/example/releases -f tag_name=v1 -f "name=$dash_text" | jq -r .manifest)
+expect_rc "a gh api releases -f name is held to the prose gate" 2 run_gh_execute "$manifest"
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --github-owner owner \
+  --summary "api clean" -- \
+  gh api repos/owner/example/pulls/7/comments -f "body=Clean body." | jq -r .manifest)
+expect_rc "a clean gh api pulls -f body passes the prose gate" 0 run_gh_execute "$manifest"
+
+manifest=$(inline_prepare gh issue create --title "$dash_text" --body "Clean body." -R owner/example)
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" > /dev/null
+expect_rc "NASE_PROSE_LINT=0 lets the inline text through" 0 \
+  env NASE_PROSE_LINT=0 NASE_FAKE_OUTPUT="$TMPDIR_TEST/section-gh-args" PATH="$TMPDIR_TEST/bin:$PATH" \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest"
+if grep -q 'NASE_PROSE_LINT=0' "$TMPDIR_TEST/err"; then
+  report 0 "skipping the lint through NASE_PROSE_LINT=0 is announced"
+else
+  report 1 "skipping the lint through NASE_PROSE_LINT=0 is announced" "$(cat "$TMPDIR_TEST/err")"
+fi
+
+manifest=$(inline_prepare gh issue create --title "Clean title" --body "Clean body." -R owner/example)
+rm -f "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+expect_rc "a missing prose-lint.py does not block the write" 0 run_gh_execute "$manifest"
+if grep -q 'prose-lint.py is missing' "$TMPDIR_TEST/err"; then
+  report 0 "a missing prose-lint.py is warned about on stderr"
+else
+  report 1 "a missing prose-lint.py is warned about on stderr" "$(cat "$TMPDIR_TEST/err")"
+fi
+printf 'raise SystemExit(3)\n' > "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+manifest=$(inline_prepare gh issue create --title "Clean title" --body "Clean body." -R owner/example)
+expect_rc "a crashing prose-lint.py does not block the write" 0 run_gh_execute "$manifest"
+if grep -q 'prose-lint failed on' "$TMPDIR_TEST/err"; then
+  report 0 "a crashing prose-lint.py is warned about on stderr"
+else
+  report 1 "a crashing prose-lint.py is warned about on stderr" "$(cat "$TMPDIR_TEST/err")"
+fi
+rm -f "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+
+# --- abandoned claims and expired tokens do not wedge authorize ---------------
+TOKEN="$TMPDIR_TEST/workspace/.external-write-token"
+reset_token_state() {
+  rm -f "$TOKEN" "$TOKEN".executing-* "$TOKEN".lock
+}
+claim_name() {
+  printf '%s.executing-%s-%s-%032x' "$TOKEN" "$1" "$2" "$3"
+}
+authorize_manifest() {
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest"
+}
+now=$(date +%s)
+dead_pid=$(python3 -c 'import subprocess; p = subprocess.Popen(["true"]); p.wait(); print(p.pid)')
+
+reset_token_state
+manifest=$(prepare_action)
+claim=$(claim_name "$dead_pid" $((now + 600)) 1)
+printf '{}' > "$claim"
+expect_rc "a claim whose executor died is reclaimed by authorize" 0 authorize_manifest
+if [[ -f "$TOKEN" && ! -e "$claim" ]] && grep -q 'abandoned external-write claim' "$TMPDIR_TEST/err"; then
+  report 0 "the dead claim is removed, announced, and replaced by a fresh token"
+else
+  report 1 "the dead claim is removed, announced, and replaced by a fresh token" "$(cat "$TMPDIR_TEST/err")"
+fi
+
+reset_token_state
+claim=$(claim_name "$$" $((now + 600)) 2)
+printf '{}' > "$claim"
+expect_rc "a claim held by a live executor still blocks authorize" 2 authorize_manifest
+if [[ -e "$claim" && ! -e "$TOKEN" ]]; then
+  report 0 "a live claim is left in place"
+else
+  report 1 "a live claim is left in place"
+fi
+
+reset_token_state
+claim=$(claim_name "$$" $((now - 3600)) 3)
+printf '{}' > "$claim"
+expect_rc "a claim past its own deadline is reclaimed even with a live pid" 0 authorize_manifest
+if [[ -f "$TOKEN" && ! -e "$claim" ]]; then
+  report 0 "the overdue claim is replaced by a fresh token"
+else
+  report 1 "the overdue claim is replaced by a fresh token"
+fi
+
+reset_token_state
+claim="$TOKEN.executing-$(printf '%032x' 4)"
+printf '{}' > "$claim"
+expect_rc "a legacy claim with no owner info blocks while young" 2 authorize_manifest
+touch -t 200001010000 "$claim"
+expect_rc "a legacy claim with no owner info is reclaimed once old" 0 authorize_manifest
+
+reset_token_state
+expect_rc "a fresh authorize writes a token" 0 authorize_manifest
+expect_rc "an unexpired unclaimed token still blocks authorize" 2 authorize_manifest
+python3 - "$TOKEN" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+token = json.loads(path.read_text())
+token["created_at"] = "2000-01-01T00:00:00Z"
+path.write_text(json.dumps(token))
+PY
+expect_rc "an expired unclaimed token is replaced by authorize" 0 authorize_manifest
+if jq -e '.created_at > "2001"' "$TOKEN" >/dev/null && grep -q 'expired external-write token' "$TMPDIR_TEST/err"; then
+  report 0 "the expired token is announced and replaced by a fresh one"
+else
+  report 1 "the expired token is announced and replaced by a fresh one" "$(cat "$TMPDIR_TEST/err")"
+fi
+printf '{not valid json\n' > "$TOKEN"
+expect_rc "an unreadable unclaimed token is replaced by authorize" 0 authorize_manifest
+
+reset_token_state
+printf '{}' > "$(claim_name "$dead_pid" $((now + 600)) 5)"
+for i in 1 2 3 4 5 6; do
+  (
+    set +e
+    python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" > /dev/null 2>&1
+    echo $? > "$TMPDIR_TEST/parallel-$i"
+  ) &
+done
+wait
+wins=$(cat "$TMPDIR_TEST"/parallel-* | grep -c '^0$' || true)
+if [[ "$wins" -eq 1 ]]; then
+  report 0 "of parallel authorizes over a dead claim exactly one wins"
+else
+  report 1 "of parallel authorizes over a dead claim exactly one wins" "$wins won"
+fi
+rm -f "$TMPDIR_TEST"/parallel-*
+reset_token_state
+
+# --- structurally wrong JSON is a clean refusal, not a traceback ---------------
+mkdir -p "$TMPDIR_TEST/workspace/tmp/external-actions"
+printf '[]\n' > "$TMPDIR_TEST/workspace/tmp/external-actions/list.json"
+expect_rc "a manifest that is a JSON list is refused" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize \
+    --manifest "$TMPDIR_TEST/workspace/tmp/external-actions/list.json"
+if grep -q 'manifest schema is invalid' "$TMPDIR_TEST/err" && ! grep -q Traceback "$TMPDIR_TEST/err"; then
+  report 0 "a list manifest names the schema problem without a traceback"
+else
+  report 1 "a list manifest names the schema problem without a traceback" "$(cat "$TMPDIR_TEST/err")"
+fi
+manifest=$(prepare_action)
+printf '[]\n' > "$TOKEN"
+expect_rc "a token that is a JSON list is refused" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest"
+if ! grep -q Traceback "$TMPDIR_TEST/err" && [[ ! -e "$TOKEN" ]] \
+  && ! compgen -G "$TOKEN.executing-*" >/dev/null; then
+  report 0 "a list token is consumed and leaves no claim behind"
+else
+  report 1 "a list token is consumed and leaves no claim behind" "$(cat "$TMPDIR_TEST/err")"
+fi
+
+# A timestamp with no offset used to raise TypeError when subtracted from an aware now.
+manifest=$(prepare_action)
+authorize_manifest > /dev/null
+python3 - "$TOKEN" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+token = json.loads(path.read_text())
+token["created_at"] = "2000-01-01T00:00:00"
+path.write_text(json.dumps(token))
+PY
+expect_rc "a token timestamp with no offset is a clean refusal" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest"
+if ! grep -q Traceback "$TMPDIR_TEST/err"; then
+  report 0 "a naive token timestamp raises no traceback"
+else
+  report 1 "a naive token timestamp raises no traceback" "$(cat "$TMPDIR_TEST/err")"
+fi
+reset_token_state
+
+# --- a carrier's data arguments are not commands -------------------------------
+# These all name a mutation as text: a search pattern, a test filter, a message, a package.
+expect_guard_rc "find -exec grep with a mutation pattern is allowed" 0 \
+  "find . -name '*.md' -exec grep -l 'gh pr merge' {} +"
+expect_guard_rc "ssh grep with a mutation pattern is allowed" 0 \
+  "ssh host grep 'gh pr merge' /var/log/x"
+expect_guard_rc "docker exec grep with a mutation pattern is allowed" 0 \
+  "docker exec c grep 'kubectl delete' /log"
+expect_guard_rc "ack with a mutation pattern is allowed" 0 "ack 'gh pr merge' docs"
+expect_guard_rc "zgrep with a mutation pattern is allowed" 0 "zgrep 'gh pr merge' log.gz"
+expect_guard_rc "fd -x grep with a mutation pattern is allowed" 0 \
+  "fd -e md -x grep 'gh pr merge' {}"
+expect_guard_rc "parallel grep with a mutation pattern is allowed" 0 \
+  "parallel grep 'gh pr merge' ::: a.md b.md"
+expect_guard_rc "vim with a mutation search is allowed" 0 "vim '+/gh pr merge' notes.md"
+expect_guard_rc "uv run pytest with a mutation filter is allowed" 0 \
+  "uv run pytest tests -k 'gh pr merge'"
+expect_guard_rc "python -m pytest with a mutation filter is allowed" 0 \
+  "python3 -m pytest -k 'gh pr merge'"
+expect_guard_rc "npm test with a mutation filter is allowed" 0 "npm test -- -t 'gh pr merge'"
+expect_guard_rc "a chat CLI message naming a mutation is allowed" 0 "slack-cli msg 'gh pr merge'"
+expect_guard_rc "cargo run with a mutation note is allowed" 0 "cargo run -- 'gh pr merge note'"
+expect_guard_rc "npx markdownlint on a file named after a mutation is allowed" 0 \
+  "npx markdownlint 'docs/gh pr merge.md'"
+expect_guard_rc "npm install of a package named terraform is allowed" 0 "npm install -g terraform apply"
+expect_guard_rc "parallel running a mutation stays blocked" 10 'parallel gh pr merge ::: 1'
+expect_guard_rc "fd -x running a mutation stays blocked" 10 "fd -e md -x gh pr merge {}"
+expect_guard_rc "find -exec running a mutation stays blocked" 10 \
+  "find . -name '*.md' -exec gh pr merge 1 \\;"
+expect_guard_rc "npm exec running a mutation stays blocked" 10 "npm exec gh pr merge 1"
+expect_guard_rc "a container named test does not hide a mutation" 10 \
+  "docker run --name test img gh pr merge 1"
+
+# --- interpreter option handling -----------------------------------------------
+expect_guard_rc "python -W VALUE script.py arguments are data" 0 \
+  'python3 -W ignore script.py gh pr merge 1'
+expect_guard_rc "python -u -B script path arguments are data" 0 \
+  'python3 -u -B .claude/scripts/external-write-action.py prepare --system github --summary x gh pr merge 1'
+expect_guard_rc "python -W VALUE -c with an exec primitive is blocked" 10 \
+  "python3 -W ignore -c 'import os; os.system(\"gh pr merge 1\")'"
+expect_guard_rc "python -X VALUE -c with an exec primitive is blocked" 10 \
+  "python3 -X dev -c 'import subprocess; subprocess.run([\"gh\", \"pr\", \"merge\", \"1\"])'"
+
+# --- a big heredoc stays fast --------------------------------------------------
+# Every guarded name used to be judged against the whole rest of the heredoc, which is
+# quadratic: ~150 KB took seconds and ~500 KB hit the guard's timeout and blocked. Kept under
+# 128 KB because Linux caps a single argument there.
+big_heredoc=$(python3 - <<'PY'
+lines = ["import subprocess", "subprocess.run(['true'])"]
+lines += [f"# note {n}: run kubectl get pods, then gh pr view {n}, then terraform plan" for n in range(1550)]
+print("python3 <<'EOF'\n" + "\n".join(lines) + "\nEOF")
+PY
+)
+big_start=$(python3 -c 'import time; print(time.time())')
+expect_guard_rc "a 115 KB heredoc that only mentions the names is allowed" 0 "$big_heredoc"
+big_seconds=$(python3 -c 'import sys, time; print(time.time() - float(sys.argv[1]))' "$big_start")
+if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 1 else 1)' "$big_seconds"; then
+  report 0 "a 115 KB heredoc is scanned in under 1s (${big_seconds}s, ${#big_heredoc} bytes)"
+else
+  report 1 "a 115 KB heredoc is scanned in under 1s" "${big_seconds}s for ${#big_heredoc} bytes"
+fi
+
+# --- parallel authorizes with no prior token: exactly one wins ------------------
+# The "already active" check and the token write are one critical section only because of
+# the lock; without it, every racer that checks before another writes also writes. Racers
+# preload their imports and wake at one shared instant so the check-then-write window is
+# actually contended, instead of each Python start-up finishing before the next begins.
+race_authorize() {
+  python3 - "$SCRIPT" "$TMPDIR_TEST" "$manifest" "$1" <<'PY'
+import os
+import runpy
+import sys
+import time
+
+script, root, manifest, start = sys.argv[1:]
+sys.path.insert(0, os.path.dirname(script))
+import nase_fs, nase_git, nase_json, nase_time, shell_scan, workspace_lock  # noqa: F401,E401
+time.sleep(max(0.0, float(start) - time.time()))
+sys.argv = [script, "--root", root, "authorize", "--manifest", manifest]
+try:
+    runpy.run_path(script, run_name="__main__")
+except SystemExit as exc:
+    os._exit(exc.code if isinstance(exc.code, int) else 0)
+PY
+}
+race_ok=1
+race_detail=""
+for round in 1 2 3 4; do
+  reset_token_state
+  manifest=$(prepare_action)
+  race_start=$(python3 -c 'import time; print(time.time() + 1.0)')
+  for i in $(seq 1 16); do
+    (
+      set +e
+      race_authorize "$race_start" > /dev/null 2>&1
+      echo $? > "$TMPDIR_TEST/race-$i"
+    ) &
+  done
+  wait
+  race_wins=$(cat "$TMPDIR_TEST"/race-* | grep -c '^0$' || true)
+  [[ "$race_wins" -eq 1 ]] || { race_ok=0; race_detail="$race_detail round $round: $race_wins won;"; }
+  rm -f "$TMPDIR_TEST"/race-*
+done
+if [[ "$race_ok" -eq 1 ]]; then
+  report 0 "of 16 synchronized authorizes with no prior token exactly one wins, over 4 rounds"
+else
+  report 1 "of 16 synchronized authorizes with no prior token exactly one wins" "$race_detail"
+fi
+reset_token_state
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

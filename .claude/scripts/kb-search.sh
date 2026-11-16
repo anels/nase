@@ -16,11 +16,13 @@
 # per path, which is why a caller with ten changed paths pays one file walk instead of
 # ten. One path renders exactly as it did before.
 #
-# One difference in the multi-path form: the fuzzy fallback fires only when the whole
-# sweep found nothing, so a path that would have fuzzy-matched alone gets no fallback
-# when a sibling path had hits. Per-path fallback would cost an extra sweep for every
-# path with no mentions, which is the common case; and splitting a file path into its
-# segments and reporting whatever they hit is noise rather than a mention.
+# One difference in the multi-path form: there is no fuzzy fallback. A path that would
+# have fuzzy-matched alone gets none, whether or not a sibling path had hits. The
+# fallback splits the joined paths into words and attributes any two-word hit to no
+# particular path, so it would print entries under no `mentions:` header at all; and
+# per-path fallback would cost an extra sweep for every path with no mentions, which is
+# the common case. Splitting a file path into its segments and reporting whatever they
+# hit is noise rather than a mention.
 #
 # Examples:
 #   bash .claude/scripts/kb-search.sh "caching"
@@ -416,8 +418,10 @@ else
   run_search "$QUERY"
 fi
 
-# Fuzzy fallback if no results
-if [ ! -s "$RESULTS_FILE" ]; then
+# Fuzzy fallback if no results. Several mentions: paths never fuzzy-match (see header).
+MULTI_MENTIONS=0
+[ "$MENTIONS_AS_QUERY" -eq 1 ] && [ "${#MENTIONS_PATHS[@]}" -gt 1 ] && MULTI_MENTIONS=1
+if [ ! -s "$RESULTS_FILE" ] && [ "$MULTI_MENTIONS" -eq 0 ]; then
   # Split on space, hyphen, underscore
   IFS=' -_' read -ra RAW_PARTS <<< "$QUERY"
   # Words under three characters ("ai", "of", "to") match everywhere and carry no

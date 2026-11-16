@@ -29,7 +29,7 @@ Default question order:
 
 Treat "more elegant" as actionable only when the alternative is concretely simpler, safer, easier to test, or a better fit with existing patterns.
 
-Stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. That is the fan-out threshold. Prefer compact script output before spawning agents. When the threshold trips, route per `.claude/roles.yaml`: code traces to **worker** (`tools=[Read, Edit, Write, Grep, Glob, Bash]`), the doubt pass to **verifier** (`tools=[Read, Grep, Glob, Bash]`), PR metadata to the persisted `nase-pr-metadata-reader`. Step 5b's traces are the one exception: their role comes from `.claude/scripts/trace-role.py`, which returns `worker` unless a recorded A/B receipt allows `lookup`. That agent is `Read, Grep, Glob` with no Bash, so run every `gh` query in the main thread and hand it the output to read. An unrouted spawn inherits the session model.
+Stay main-thread unless the request spans multiple repos, more than 20 files, more than 1000 diff lines, or the user explicitly asks for deep/batch review. That is the fan-out threshold. Prefer compact script output before spawning agents. When the threshold trips, route per `.claude/roles.yaml`: code traces to **worker**, the doubt pass to **verifier**, PR metadata to the persisted `nase-pr-metadata-reader`. Step 5b's traces are the one exception: their role comes from `.claude/scripts/trace-role.py`, which returns `worker` unless a recorded A/B receipt allows `lookup`. That agent is `Read, Grep, Glob` with no Bash, so run every `gh` query in the main thread and hand it the output to read. An unrouted spawn inherits the session model.
 
 ## Standing invariants
 

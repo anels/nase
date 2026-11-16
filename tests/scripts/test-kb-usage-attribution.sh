@@ -152,6 +152,23 @@ assert_cmd "reaper never removes the shared fallback" \
 assert_cmd "reaper never removes the context this activation just wrote" \
   bash -c 'ls "$1"/workspace/tmp/kb-active-skill-[0-9a-f]*.json >/dev/null 2>&1' _ "$reap_fixture"
 
+# A non-object line in the ledger must not stop a new event from being recorded.
+obj_fixture="$TMPROOT/obj"
+mkdir -p "$obj_fixture/workspace/kb/projects" "$obj_fixture/workspace/stats" "$obj_fixture/workspace/tmp"
+printf '# notes\n' > "$obj_fixture/workspace/kb/projects/example.md"
+printf '[1]\n"x"\n5\nnull\nnot-json\n' > "$obj_fixture/workspace/stats/kb-usage.jsonl"
+printf '[1]\n' > "$obj_fixture/workspace/tmp/kb-active-skill-eeeeeeeeeeeeeeee.json"
+python3 "$LOGGER" record \
+  --root "$obj_fixture" --session "obj-session" \
+  --file "workspace/kb/projects/example.md" \
+  --access read --source read-hook >/dev/null 2>&1
+assert_cmd "an event is appended after non-object ledger lines" \
+  bash -c 'tail -n 1 "$1" | grep -q "workspace/kb/projects/example.md"' _ "$obj_fixture/workspace/stats/kb-usage.jsonl"
+CLAUDE_CODE_SESSION_ID="obj-session" python3 "$LOGGER" activate \
+  --root "$obj_fixture" --skill "/nase:fsd" --source prompt >/dev/null 2>&1
+assert_cmd "reaper removes a non-object context file" \
+  test ! -f "$obj_fixture/workspace/tmp/kb-active-skill-eeeeeeeeeeeeeeee.json"
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nkb-usage-attribution tests passed.\n'
   exit 0

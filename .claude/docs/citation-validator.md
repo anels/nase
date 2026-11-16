@@ -99,7 +99,7 @@ For a report being **promoted** to a durable path under `workspace/recaps/`
 gate already produced instead of letting it drop with the terminal output.
 Capture it when you run the gate, then, right after the artifact lands at its
 final promoted path, write that same payload next to it as
-`{promoted-artifact-path}.receipt.json` — e.g.
+`{promoted-artifact-path}.receipt.json`, for example
 `workspace/recaps/tech-debt-insights-2026-09-21.md.receipt.json`.
 
 Write it atomically so a crash mid-write never leaves a half-written receipt

@@ -317,7 +317,7 @@ def _quarantine_stale_at(
         owner = _read_owner_at(lock_fd)
         age = time.time() - os.fstat(lock_fd).st_mtime
         pid = owner.get("pid") if owner else None
-        if age <= STALE_AFTER_SECONDS or (isinstance(pid, int) and _pid_alive(pid)):
+        if age <= STALE_AFTER_SECONDS or pid_alive(pid):
             return False
         if (
             not _entry_matches(root_fd, LOCKS_NAME, locks_metadata)
@@ -355,13 +355,15 @@ def _quarantine_stale_at(
         os.close(guard_fd)
 
 
-def _pid_alive(pid: int) -> bool:
+def pid_alive(pid: object) -> bool:
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
     except PermissionError:
         return True
+    except (OSError, OverflowError, ValueError):
+        return False
     return True
 
 

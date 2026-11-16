@@ -12,11 +12,17 @@ part of a format already on disk, so both are parameters rather than a silent de
 
 Changing either for an existing caller changes its digests, so a verifier reading an
 older artifact would report a mismatch rather than an error.
+
+`parse_jsonl_objects` and `read_jsonl_objects` are the shared reader for JSON Lines
+ledgers. A valid line that is not an object (`[1]`, `"x"`, `5`, `null`) would crash
+a caller that goes on to call `.get`, so it is counted as skipped alongside bad JSON.
 """
 
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Iterable
 from typing import Any
 
 
@@ -30,3 +36,31 @@ def canonical_bytes(
     if trailing_newline:
         text += "\n"
     return text.encode("utf-8")
+
+
+def parse_jsonl_objects(lines: Iterable[str]) -> tuple[list[dict[str, Any]], int]:
+    """Return (objects, skipped) for JSON Lines text.
+
+    Blank lines are ignored. A line that is not JSON, or is JSON but not an object, is
+    counted as skipped, so callers can call `.get` on every returned row.
+    """
+    objects: list[dict[str, Any]] = []
+    skipped = 0
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except ValueError:
+            skipped += 1
+            continue
+        if isinstance(value, dict):
+            objects.append(value)
+        else:
+            skipped += 1
+    return objects, skipped
+
+
+def read_jsonl_objects(path: str | os.PathLike[str]) -> tuple[list[dict[str, Any]], int]:
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        return parse_jsonl_objects(handle)

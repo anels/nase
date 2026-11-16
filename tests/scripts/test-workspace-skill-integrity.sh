@@ -38,7 +38,20 @@ jq -e '.sources.alpha' "$TMPDIR_TEST/write.json" >/dev/null
 python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/check.json"
 jq -e '.ok == true and (.errors | length) == 0' "$TMPDIR_TEST/check.json" >/dev/null
 
-printf '\nChanged source.\n' >> "$TMPDIR_TEST/workspace/skills/alpha.md"
+printf 'victim\n' > "$TMPDIR_TEST/victim.txt"
+ln -s "$TMPDIR_TEST/victim.txt" "$TMPDIR_TEST/workspace/skills/.nase-manifest.tmp"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest > /dev/null
+if [[ "$(cat "$TMPDIR_TEST/victim.txt")" == "victim" ]] \
+  && [[ "$(stat -c '%a' "$TMPDIR_TEST/workspace/skills/.nase-manifest.json" 2>/dev/null || stat -f '%Lp' "$TMPDIR_TEST/workspace/skills/.nase-manifest.json")" == "600" ]] \
+  && [[ -z "$(find "$TMPDIR_TEST/workspace/skills" -name '.nase-manifest.json.*')" ]]; then
+  printf 'PASS  manifest write ignores a planted temp symlink and stays 0600\n'
+else
+  printf 'FAIL  manifest write ignores a planted temp symlink and stays 0600\n' >&2
+  exit 1
+fi
+rm -f "$TMPDIR_TEST/workspace/skills/.nase-manifest.tmp"
+
+printf '\nChanged source.\n' >>"$TMPDIR_TEST/workspace/skills/alpha.md"
 python3 "$SCRIPT" --root "$TMPDIR_TEST" changed > "$TMPDIR_TEST/changed.json"
 jq -e '.ok == true and .changed == ["alpha"]' "$TMPDIR_TEST/changed.json" >/dev/null
 set +e

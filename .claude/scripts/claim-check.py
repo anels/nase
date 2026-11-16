@@ -11,6 +11,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -27,14 +28,127 @@ CLAIM_PATTERNS = [
     r"lint\s*通过",
 ]
 
-VERIFY_CMD = re.compile(
-    r"(pytest|npm (run )?(test|lint|build)|pnpm (test|lint|build)|yarn (test|lint|build)"
+VERIFY_HEAD = re.compile(
+    r"^(pytest|npm (run )?(test|lint|build)|pnpm (run )?(test|lint|build)|yarn (run )?(test|lint|build)"
     r"|cargo (test|build|clippy)|go (test|build)|mvn (test|compile|verify)"
     r"|gradle (test|build)|dotnet (test|build)|make( (test|lint|check))?"
-    r"|tox|ruff (check|format)|eslint|tsc(\s|$)|mypy|pyright|shellcheck"
-    r"|npm run (check|typecheck|type-check))",
-    re.IGNORECASE,
+    r"|tox|ruff (check|format)|eslint|tsc|mypy|pyright|shellcheck"
+    r"|npm run (check|typecheck|type-check)"
+    r"|bash tests/check-all\.sh)(\s|:|$)",
 )
+WRAPPERS = {"time", "command", "exec", "nohup", "env", "sudo"}
+PREFIX_RUNNERS = [("uv", "run"), ("poetry", "run"), ("pnpm", "exec"), ("npx",), ("python", "-m"), ("python3", "-m")]
+OPERATORS = {"&&", "||", ";", "|", "&", "|&"}
+INPLACE_FLAG = re.compile(r"^-(?![MmIeE])[A-Za-z]*i")
+REDIRECTS = {">", ">>", ">|", "&>", "&>>"}
+SCRATCH_PREFIXES = ("/dev/", "/tmp/", "&")  # noqa: S108 - a prefix to ignore, not a file to open
+STASH_MUTATIONS = {"push", "save", "pop", "apply", "drop", "clear"}
+
+
+def _segments(cmd, posix=True):
+    lexer = shlex.shlex(cmd.replace("\n", " ; "), posix=posix, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    segs, cur = [], []
+    for tok in tokens:
+        if tok in OPERATORS:
+            segs.append((cur, tok))
+            cur = []
+        else:
+            cur.append(tok)
+    segs.append((cur, None))
+    return segs
+
+
+def _head_tokens(tokens):
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok) or tok in WRAPPERS:
+            i += 1
+            continue
+        for pre in PREFIX_RUNNERS:
+            if tuple(tokens[i:i + len(pre)]) == pre:
+                i += len(pre)
+                break
+        else:
+            break
+    return tokens[i:]
+
+
+def _head(tokens):
+    return " ".join(_head_tokens(tokens))
+
+
+def is_verify_run(cmd):
+    """True when a verification command's exit status is the whole command's exit status."""
+    segs = _segments(cmd or "")
+    if not segs:
+        return False
+    pipefail = "pipefail" in (cmd or "")
+    for idx, (tokens, _op) in enumerate(segs):
+        if not VERIFY_HEAD.match(_head(tokens) + " "):
+            continue
+        tail_ops = [op for _t, op in segs[idx:] if op]
+        if all(op == "&&" for op in tail_ops) or (pipefail and all(op in ("&&", "|") for op in tail_ops)):
+            return True
+    return False
+
+
+def _scratch(target):
+    return target.startswith(SCRATCH_PREFIXES)
+
+
+def _git_edit(words):
+    rest = words[1:]
+    i = 0
+    while i < len(rest) and rest[i].startswith("-"):
+        i += 2 if rest[i] in ("-C", "-c") else 1
+    if i >= len(rest):
+        return False
+    sub, args = rest[i], rest[i + 1 :]
+    if sub in ("apply", "am"):
+        return True
+    if sub == "checkout":
+        return "--" in args
+    if sub == "restore":
+        staged_only = ("--staged" in args or "-S" in args) and not ({"--worktree", "-W"} & set(args))
+        return not staged_only
+    if sub == "stash":
+        first = args[0] if args else None
+        return first is None or first.startswith("-") or first in STASH_MUTATIONS
+    return False
+
+
+def _segment_edits(tokens):
+    for i, tok in enumerate(tokens):
+        if tok in REDIRECTS and i + 1 < len(tokens) and not _scratch(tokens[i + 1]):
+            return True
+    words = _head_tokens(tokens)
+    if not words:
+        return False
+    name, args = words[0], words[1:]
+    if name in ("sed", "perl"):
+        return any(INPLACE_FLAG.match(a) or a.startswith("--in-place") for a in args)
+    if name == "patch":
+        return True
+    if name == "tee":
+        return any(not a.startswith("-") and not _scratch(a) for a in args)
+    if name == "git":
+        return _git_edit(words)
+    return False
+
+
+def is_bash_edit(cmd):
+    """True when a Bash command writes a file: an in-place edit, a patch, a mutating git verb or a redirect."""
+    segs = _segments(cmd or "", posix=False)
+    if segs is None:
+        return False
+    return any(_segment_edits(tokens) for tokens, _op in segs)
+
 
 EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
@@ -73,7 +187,7 @@ def main():
         return
 
     transcript_path = payload.get("transcript_path") or payload.get("agent_transcript_path")
-    session_id = payload.get("session_id") or "unknown"
+    session_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(payload.get("session_id") or "unknown"))[:64]
     if not transcript_path or not os.path.isfile(transcript_path):
         return
 
@@ -99,7 +213,10 @@ def main():
             if claim_re.search(joined):
                 last_claim_idx = turn
             for b in bks:
-                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") in EDIT_TOOLS:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and (
+                    b.get("name") in EDIT_TOOLS
+                    or (b.get("name") == "Bash" and is_bash_edit((b.get("input") or {}).get("command")))
+                ):
                     last_edit_idx = turn
 
     # Second pass: last successful verification run's issuing turn.
@@ -115,7 +232,7 @@ def main():
             for b in bks:
                 if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Bash":
                     cmd = (b.get("input") or {}).get("command", "")
-                    if VERIFY_CMD.search(cmd or ""):
+                    if is_verify_run(cmd):
                         verify_turn_of[b.get("id")] = turn
         elif role == "user":
             for b in bks:

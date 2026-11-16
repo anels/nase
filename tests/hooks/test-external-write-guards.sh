@@ -243,6 +243,29 @@ expect_rc "dynamic shell eval fails closed" .claude/hooks/external-cli-write-gua
 # rather than reported as an unreadable construct; the exit code is the same.
 expect_rc "shell function wrapping a mutation fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_function" 2 "raw external mutation"
 expect_rc "GitHub GraphQL query remains allowed" .claude/hooks/external-cli-write-guard.sh "$github_graphql_read" 0
+# A program that is not guarded and not known to treat its arguments as data can run the
+# guarded CLI it is handed, so the guard judges the carried tail as if it ran directly.
+for carried in \
+  'ssh host gh pr merge 1' \
+  'script -q /dev/null gh pr merge 1' \
+  'tmux new "gh pr merge 1"' \
+  'docker run --rm img gh pr merge 1' \
+  "python3 -c 'import os; os.system(\"gh pr merge 1\")'" \
+  "node -e 'require(\"child_process\").execSync(\"gh pr merge 1\")'" \
+  "awk 'BEGIN { system(\"gh pr merge 1\") }'"; do
+  carried_input=$(jq -cn --arg command "$carried" '{tool_name:"Bash",tool_input:{command:$command}}')
+  expect_rc "carrier blocked: $carried" .claude/hooks/external-cli-write-guard.sh "$carried_input" 2 "raw external mutation"
+done
+for carried in \
+  'ssh host gh pr view 1' \
+  'ssh host echo gh' \
+  'git commit -m "gh pr merge"' \
+  'grep gh file' \
+  'which gh' \
+  'echo gh pr merge 1'; do
+  carried_input=$(jq -cn --arg command "$carried" '{tool_name:"Bash",tool_input:{command:$command}}')
+  expect_rc "carrier-shaped read allowed: $carried" .claude/hooks/external-cli-write-guard.sh "$carried_input" 0
+done
 expect_rc "unrecognized Azure command fails closed" .claude/hooks/external-cli-write-guard.sh "$azure_unknown" 2 "unrecognized external CLI"
 expect_rc "known Azure read remains allowed" .claude/hooks/external-cli-write-guard.sh "$azure_read" 0
 expect_rc "authorized helper invocation allowed" .claude/hooks/external-cli-write-guard.sh "$wrapped_action" 0

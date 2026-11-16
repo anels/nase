@@ -108,7 +108,7 @@ Use this structure for `workspace/kb/projects/{domain}.md`:
 
 ### API Surface
 
-The two tables below feed cross-repo contract validation — every inbound endpoint and every outbound call site goes in one row each.
+The two tables below feed cross-repo contract validation - every inbound endpoint and every outbound call site goes in one row each.
 
 #### Inbound Endpoints
 <!-- Used by cross-repo contract validation (.claude/docs/cross-repo-validation.md §6c) -->
@@ -135,13 +135,13 @@ The two tables below feed cross-repo contract validation — every inbound endpo
 | {primary db} | {SQL/Cosmos/Postgres/warehouse} | {comma-separated names, link to schema file} | {partition key, key indexes} | {Flyway/EF/schemachange} |
 
 #### Schema Hot Spots
-{Tables touched by 3+ services, recent migrations (last 90d), columns with non-obvious semantics — same convention used in `workspace/kb/ops/oncall-alert-patterns.md → readDB-dbCount` entry}
+{Tables touched by 3+ services, recent migrations (last 90d), columns with non-obvious semantics - same convention used in `workspace/kb/ops/oncall-alert-patterns.md → readDB-dbCount` entry}
 
 #### Caching & Sync
 {Redis/in-mem cache layers, cache-aside vs write-through, invalidation triggers, eventual-consistency windows}
 
 ### Design Patterns
-{Prominent patterns — only if clearly used}
+{Prominent patterns - only if clearly used}
 
 ### Config Schema
 | Key | Type | Default | Where consumed | Secret? |
@@ -151,7 +151,7 @@ The two tables below feed cross-repo contract validation — every inbound endpo
 Group secrets at the top. For feature flags, link to the flag-management UI (LaunchDarkly, ConfigCat) or config file.
 
 ## Ownership Map
-<!-- Updated by /nase:onboard — based on git log analysis (last 6 months) -->
+<!-- Updated by /nase:onboard - based on git log analysis (last 6 months) -->
 | Area / Module | Primary Owner | Secondary Owner | Notes |
 |---------------|--------------|-----------------|-------|
 | `{dir/module}` | {name} (@{github_handle}) | {name or —} | {active/dormant/onboarding} |
@@ -190,10 +190,10 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 1. {constraint}
 
 ## Brittle Boundaries
-<!-- Top-3 high-risk integration / contract / data boundaries an AI agent should know about BEFORE touching code. Refreshed by /nase:onboard -> Single repo. Rationale: change-absorption capacity comes from explicit contracts at brittle boundaries (CATS framework — see workspace/kb/general/llm.md → AI Code Quality & Velocity). -->
+<!-- Top-3 high-risk integration / contract / data boundaries an AI agent should know about BEFORE touching code. Refreshed by /nase:onboard -> Single repo. Rationale: change-absorption capacity comes from explicit contracts at brittle boundaries (CATS framework - see workspace/kb/general/llm.md → AI Code Quality & Velocity). -->
 | Boundary | Why brittle | Last incident / drift | Touch protocol |
 |----------|------------|----------------------|----------------|
-| `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing — e.g. "run contract tests against platform-monitoring", "check the BI layer's partition before COALESCE", "validate Avro schema vs LogExport target"} |
+| `{path or interface}` | {auth shape change risk / cross-repo contract / schema lock-in / etc} | {date + ref} | {what to verify before editing - e.g. "run contract tests against platform-monitoring", "check the BI layer's partition before COALESCE", "validate Avro schema vs LogExport target"} |
 
 ## Change Playbook
 | Change type | Inspect first | Minimum verification | Cross-repo checks | Release concerns |
@@ -210,7 +210,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 {Dev/staging/prod, ring-based/blue-green/canary rollout, regions}
 
 ### Cloud Resources
-{Terraform, ARM, Bicep — provisioned infra}
+{Terraform, ARM, Bicep - provisioned infra}
 
 ### Local Dev Setup
 {How developers run the project locally}
@@ -237,7 +237,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 <!-- Refreshed by /nase:onboard -> Single repo. Captures every check a PR must clear so commit/fsd/prep-merge sessions don't push work that CI rejects. -->
 
 ### Branch-protection required checks
-<!-- Authoritative blocker list — derived from `required_status_checks.contexts[]` and `required_status_checks.checks[].context`. These exact context names block merge. -->
+<!-- Authoritative blocker list - derived from `required_status_checks.contexts[]` and `required_status_checks.checks[].context`. These exact context names block merge. -->
 | Protected branch | Required check (context name) | Source workflow / system |
 |------------------|------------------------------|--------------------------|
 | `{develop}` | `{exact context string}` | `{.github/workflows/foo.yml or external system}` |
@@ -255,7 +255,7 @@ Group secrets at the top. For feature flags, link to the flag-management UI (Lau
 - `{action@version}` — used by `{workflow file}` for `{purpose}`
 
 ### Companion config files
-<!-- Sidecar config the gates read. Paths only — do not inline. -->
+<!-- Sidecar config the gates read. Paths only - do not inline. -->
 - `{path/to/.commitlintrc.json}` — commitlint rules
 - `{.github/labels.json}` — super-labeler rules
 - `{.github/linters/}` — super-linter rule overrides

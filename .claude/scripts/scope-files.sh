@@ -31,7 +31,9 @@ ARGUMENTS="${1-}"
 REPO="${2-.}"
 LOWER=$(printf '%s' "$ARGUMENTS" | tr '[:upper:]' '[:lower:]')
 
-git() { command git -C "$REPO" "$@"; }
+# core.quotepath=false keeps non-ASCII names raw instead of "\303\261"-quoted, which no
+# later step could open as a file.
+git() { command git -C "$REPO" -c core.quotepath=false "$@"; }
 
 if [ "${NASE_SCOPE_FETCH:-0}" = "1" ]; then
   git fetch origin --quiet || true
@@ -60,19 +62,31 @@ case "$LOWER" in
                 git ls-files --others --exclude-standard -- "$GLOB"
               } | sort -u) ;;
   *unstaged*) FILES=$({
-                git diff --name-only
+                git diff --name-only --diff-filter=d
                 git ls-files --others --exclude-standard
               } | sort -u) ;;
-  *staged*)   FILES=$(git diff --name-only --cached | sort -u) ;;
+  *staged*)   FILES=$(git diff --name-only --diff-filter=d --cached | sort -u) ;;
   *"last-commit"*|*"last commit"*)
-              FILES=$(git diff --name-only HEAD~1 HEAD | sort -u) ;;
+              FILES=$(git diff --name-only --diff-filter=d HEAD~1 HEAD | sort -u) ;;
   *)          FILES=$({
-                git diff --name-only "$MERGE_BASE" HEAD
-                git diff --name-only
-                git diff --name-only --cached
+                git diff --name-only --diff-filter=d "$MERGE_BASE" HEAD
+                git diff --name-only --diff-filter=d
+                git diff --name-only --diff-filter=d --cached
                 git ls-files --others --exclude-standard
               } | sort -u) ;;
 esac
 
-[ -n "$FILES" ] && printf '%s\n' "$FILES"
+# Only print paths that exist on disk: --diff-filter=d drops deletions from diffs, and this
+# also covers ls-files, which lists a tracked file that was removed from the work tree.
+# Diff paths are relative to the repo root, ls-files paths to $REPO, so accept either.
+if [ -n "$FILES" ]; then
+  TOP=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO")
+  while IFS= read -r path; do
+    if [ -e "$TOP/$path" ] || [ -L "$TOP/$path" ] || [ -e "$REPO/$path" ] || [ -L "$REPO/$path" ]; then
+      printf '%s\n' "$path"
+    fi
+  done <<EOF_FILES
+$FILES
+EOF_FILES
+fi
 exit 0

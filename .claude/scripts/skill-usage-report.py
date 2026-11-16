@@ -8,10 +8,11 @@ import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from nase_time import local_today
+from nase_json import parse_jsonl_objects
+from nase_time import local_today, parse_ts
 
 USE_DEDUPE = timedelta(seconds=60)
 
@@ -46,39 +47,29 @@ def parse_args() -> argparse.Namespace:
 def parse_timestamp(raw: object) -> datetime | None:
     if not isinstance(raw, str) or not raw:
         return None
-    try:
-        value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone()
+    value = parse_ts(raw)
+    return value.astimezone() if value else None
 
 
 def read_events(path: Path) -> tuple[list[dict[str, object]], int]:
     events: list[dict[str, object]] = []
-    malformed = 0
     with path.open(encoding="utf-8", errors="replace") as handle:
-        for raw in handle:
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                malformed += 1
-                continue
-            skill = data.get("skill")
-            timestamp = parse_timestamp(data.get("ts"))
-            if not isinstance(skill, str) or not skill or timestamp is None:
-                malformed += 1
-                continue
-            events.append(
-                {
-                    "skill": skill.removeprefix("nase:"),
-                    "dt": timestamp,
-                    "event_type": data.get("event_type", ""),
-                    "source": data.get("source", ""),
-                    "session": data.get("session_id") or "legacy",
-                }
-            )
+        objects, malformed = parse_jsonl_objects(handle)
+    for data in objects:
+        skill = data.get("skill")
+        timestamp = parse_timestamp(data.get("ts"))
+        if not isinstance(skill, str) or not skill or timestamp is None:
+            malformed += 1
+            continue
+        events.append(
+            {
+                "skill": skill.removeprefix("nase:"),
+                "dt": timestamp,
+                "event_type": data.get("event_type", ""),
+                "source": data.get("source", ""),
+                "session": data.get("session_id") or "legacy",
+            }
+        )
     return sorted(events, key=lambda item: item["dt"]), malformed
 
 

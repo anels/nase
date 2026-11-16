@@ -62,7 +62,7 @@ Do **not** ground:
 ## Algorithm
 
 ```
-1. Collect candidates — walk the Step 3 self-study output. For each fact about a
+1. Collect candidates - walk the Step 3 self-study output. For each fact about a
    Microsoft technology, capture: (claim, source-file:line in repo, confidence).
    Cap candidates at 8 per onboard run.
 

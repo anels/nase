@@ -43,8 +43,8 @@ This gate is unconditional: replying to and resolving someone's review threads i
 an outward-facing, hard-to-undo action. The verifier is a local subagent, so there
 is no availability branch to skip through.
 
-Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`,
-tools: Read/Grep/Glob/Bash - no Edit/Write). Give it ONLY:
+Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`;
+read-only by its prompt prefix, not by an enforced whitelist). Give it ONLY:
 - the unresolved review threads from Phase 2 (full comment chains)
 - the final post-Phase-4 dossier/action map and drafted replies from Phase 6
 - the implementation diff:

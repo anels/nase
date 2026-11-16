@@ -6,8 +6,11 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT"
 fail=0
 
+# shellcheck source=../lib/workspace-skip.sh
+source "$ROOT/tests/lib/workspace-skip.sh"
+
 check_file_available() {
-  local name="$1" file="$2"
+  local name="$1" file="$2" status=0
 
   if [[ -f "$file" ]]; then
     return 0
@@ -15,7 +18,14 @@ check_file_available() {
 
   case "$file" in
     workspace/skills/*)
-      printf 'SKIP  %s (local workspace skill missing: %s)\n' "$name" "$file"
+      ws_file_status "$file" || status=$?
+      if [[ "$status" -eq 2 ]]; then
+        printf 'FAIL  %s (workspace/skills exists but the file is missing: %s)\n' "$name" "$file" >&2
+        fail=$((fail + 1))
+      else
+        ws_count_skip
+        printf 'SKIP  %s (local workspace skill missing: %s)\n' "$name" "$file"
+      fi
       ;;
     *)
       printf 'FAIL  %s (tracked file missing: %s)\n' "$name" "$file" >&2
@@ -112,5 +122,6 @@ check_absent "SRE signal routing does not swap slots" "$sre_signals" "az webapp 
 repro="workspace/skills/agentic-repro-bug.md"
 check_contains "browser repro requires a non-production test workspace" "$repro" "non-production test workspace"
 
+ws_skip_summary
 printf '\n--- safety boundary failures: %d ---\n' "$fail"
 [ "$fail" -eq 0 ]

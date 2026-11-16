@@ -361,6 +361,29 @@ test_case "fetch"                "g""it -C /tmp/repo fe""tch origin"            
 test_case "log"                  "g""it l""og --oneline -5"                     allow
 test_case "status"               "g""it sta""tus --short"                       allow
 test_case "checkout branch"      "g""it ch""eckout feat/foo"                    allow
+test_case "checkout -f"          "g""it ch""eckout -f main"                     block
+test_case "checkout --force"     "g""it ch""eckout --force main"                block
+test_case "checkout -b force-named" "g""it ch""eckout -b feat/force-x origin/main" allow
+test_case "switch -f"            "g""it sw""itch -f main"                       block
+test_case "switch --discard-changes" "g""it sw""itch --discard-changes main"    block
+test_case "switch dynamic flag"  "g""it sw""itch -\$F main"                     block
+test_case "switch -c"            "g""it sw""itch -c feat/x"                     allow
+test_case "switch branch"        "g""it sw""itch main"                          allow
+test_case "stash clear"          "g""it sta""sh clear"                          block
+test_case "stash drop"           "g""it sta""sh drop stash@{0}"                 allow
+test_case "stash pop"            "g""it sta""sh pop"                            allow
+test_case "update-ref -d branch" "g""it upda""te-ref -d refs/heads/feat/x"      block
+test_case "update-ref -d tag"    "g""it upda""te-ref -d refs/tags/v1"           block
+test_case "update-ref --delete remote" "g""it upda""te-ref --delete refs/remotes/origin/x" block
+test_case "update-ref -d nase ref" "g""it upda""te-ref -d refs/nase/worktree-cleanup/abc" allow
+test_case "update-ref -d stash"  "g""it upda""te-ref -d refs/stash"             block
+test_case "update-ref -d original" "g""it upda""te-ref -d refs/original/refs/heads/x" block
+test_case "update-ref -d after -m" "g""it upda""te-ref -m why -d refs/heads/x"  block
+test_case "update-ref --stdin"   "g""it upda""te-ref --stdin"                   block
+test_case "update-ref -d heads in -m text" "g""it upda""te-ref -m \"cleanup heads/foo\" -d refs/nase/x" allow
+test_case "update-ref -d nase ref plain" "g""it upda""te-ref -d refs/nase/x"    allow
+test_case "update-ref set"       "g""it upda""te-ref refs/nase/x HEAD"          allow
+test_case "worktree remove --force" "g""it wor""ktree remove --force /tmp/wt"   allow
 test_case "branch delete merged" "g""it br""anch --delete feat/done"            allow
 test_case "reset soft"           "g""it res""et HEAD~1"                         allow
 test_case "reset path named hard" "g""it res""et -- --hard"                     allow
