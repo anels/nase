@@ -8,6 +8,7 @@
 - Private payload directory
 - `execute` exit codes
 - What this policy is NOT
+- Guard limits
 - Application checklist for new skills
 - GitHub auth account guard
 - Deeper recipes
@@ -58,7 +59,7 @@ python3 .claude/scripts/autonomy-policy.py --class jira-transition-progress
 Rules that apply at every level:
 
 - `auto` removes the human stop, never the payload binding. The manifest, one-shot token, drift checks, hooks, and prose gates all still run, and the caller appends an audit entry to the daily log in the canonical shape `- {HH:MM} | autonomy: {class} {target} {manifest}`. Write it through `python3 .claude/scripts/daily-log-append.py autonomy "{class} {target} {manifest}"` - a hand-written line under `## Sessions` in any other shape fails the daily-log format check.
-- **Per-run consent.** `/nase:fsd` asks about the PR once, at intake. The answer "create without asking again" pre-authorizes, for that run only, creating one draft PR from the run's own branch and the one `gh pr edit --body-file` that appends its Verification section. It removes the human stop the same way `auto` does and never the manifest binding, the account guard, the prose gates or the audit entry. It never covers a label, a reviewer, another repo or `gh pr ready`. `/nase:fsd` marks its PR ready only in Phase 8.6, through the `pr-mark-ready` class above, when every ready condition holds.
+- **Per-run consent.** `/nase:fsd` asks about the PR once, at intake. The answer "create without asking" pre-authorizes, for that run only, creating one draft PR from the run's own branch and the one `gh pr edit --body-file` that appends its Verification section. It removes the human stop the same way `auto` does and never the manifest binding, the account guard, the prose gates or the audit entry. It never covers a label, a reviewer, another repo or `gh pr ready`. `/nase:fsd` marks its PR ready only in Phase 8.6, through the `pr-mark-ready` class above, when every ready condition holds.
 - A class the table does not name, or a `--class` the script rejects, is `ask`. Unknown never means auto.
 - The level is a floor for *asking*, not a grant of permission: a repo rule, a protected branch, an external mutation policy row, or an explicit user instruction that is stricter still wins.
 - When a mutation fails, the failure path is unchanged - report it, do not retry blind.
@@ -120,6 +121,12 @@ up - read that, not the number, when it matters.
 - Not a substitute for verifying side effects. After a mutation, confirm the change landed (e.g., re-fetch the Jira issue, re-check the Slack draft was created, parse `gh pr create` for the URL).
 - Not a substitute for the `slack_send_message_draft` rule - that is stricter and absolute. Slack never gets a direct send.
 - Not a reason to re-document the rules per skill. Update this doc when the policy evolves.
+
+## Guard limits
+
+- The CLI hook bounds honest mistakes, not a determined caller. Known gaps: a script written to a file and then run, `xargs sh -c`, and names built dynamically inside interpreter code.
+- `workspace/config.md → ## Autonomy → level:` may pre-authorize the low-risk classes in `Autonomy level` above (`python3 .claude/scripts/autonomy-policy.py --class {class}`). It removes the human stop, never the manifest binding, hook, drift check, or audit line.
+- `prose-lint.py` also checks Slack draft bodies and `gh` payload prose, and fails open when unavailable.
 
 ## Application checklist for new skills
 

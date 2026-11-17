@@ -127,7 +127,7 @@ def has_command(event, script, matcher_fragment=None):
 
 requirements = [
     ("SessionStart", "session-start.sh", None),
-    ("Stop", "stop-backup.sh", None),
+    ("SessionEnd", "stop-backup.sh", None),
     ("Stop", "stop-todos.sh", None),
     ("StopFailure", "track-session-failure.sh", None),
     ("PreCompact", "pre-compact-archive.sh", None),
