@@ -36,17 +36,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-backup.sh",
-            "timeout": 150
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-claim-check.sh",
+            "timeout": 10
           }
         ]
-      },
+      }
+    ],
+    "SessionEnd": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-claim-check.sh",
-            "timeout": 10
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/.claude/scripts/hook-dispatch.sh\" stop-backup.sh",
+            "timeout": 150
           }
         ]
       }

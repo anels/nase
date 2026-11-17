@@ -97,7 +97,7 @@ execution mode = Direct with Phase isolation (4 sequential steps).
 
 **Then ask the gaps** in one `AskUserQuestion` `questions` array. Four entries is the harness maximum, so: with any derivation the gaps fit in one call; with none derived, ask Q0-Q3 in the first call and Q4 in a second call immediately after - never a fifth entry in one array.
 
-Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 starts with "Yes - draft PR"), `pr_preauthorized` = (Q3 = "Yes - draft PR, create without asking again"), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
+Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR, create without asking"), `pr_preauthorized` = `open_pr` (Q3 offers no ask-before-creating option), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
 
 **Options for the entries you do ask:**
 
@@ -127,8 +127,7 @@ questions:
     header: "Pull Request"
     multiSelect: false
     options:
-      - label: "Yes - draft PR, create without asking again" , description: "Push the branch and open a draft PR when the work is verified, with no second question at the end. This also covers the one edit that appends the Verification section to that PR. Marking it ready follows your autonomy level and happens only when every ready condition holds. Labels and reviewers still ask. The PR title and body are shown in the final report."
-      - label: "Yes - draft PR, ask before creating" , description: "Push the branch, then show the exact PR title and body and ask once more before opening a draft PR. Marking it ready follows your autonomy level and happens only when every ready condition holds."
+      - label: "Yes - draft PR, create without asking" , description: "Push the branch and open a draft PR when the work is verified, with no second question at the end. This also covers the one edit that appends the Verification section to that PR. Marking it ready follows your autonomy level and happens only when every ready condition holds. Labels and reviewers still ask. The PR title and body are shown in the final report."
       - label: "No"             , description: "Just commit and push the branch"
   - question: "Enforce strict TDD? (RED→GREEN→Refactor hard gates per slice)"
     header: "Strict TDD"
