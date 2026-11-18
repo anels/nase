@@ -7,6 +7,7 @@
 - Gate contract
 - Private payload directory
 - `execute` exit codes
+- Outcome ledger and `audit`
 - What this policy is NOT
 - Guard limits
 - Application checklist for new skills
@@ -114,6 +115,23 @@ Read the exit code before reporting an outcome. Only `0` means the write landed.
 `11` is not a reserved range, so a CLI that natively exits `11` is indistinguishable by
 code alone. The helper prints a `TIMEOUT:` line to stderr when it is the one that gave
 up - read that, not the number, when it matters.
+
+### Outcome ledger and `audit`
+
+When the CLI has run, `execute` appends one JSON line to `workspace/logs/.external-writes.jsonl` (mode `0600`). The keys are `ts`, `manifest` (file name), `action_sha256`, `system`, `summary`, `exit` and `outcome`. `outcome` is `ok`, `failed`, or `unknown` for a timeout (`exit` is then `null`). The row never holds the argv, payload files or CLI output.
+
+A refusal before the CLI runs (exit `2`) writes no row. The write is fail-open. If the ledger cannot be written, `execute` prints one `WARNING` and keeps the CLI exit code, because the mutation already happened.
+
+`python3 .claude/scripts/external-write-action.py --root DIR audit` prints JSON counts and always exits `0`. It joins manifests in `workspace/tmp/external-actions` to ledger rows by manifest file name.
+
+- `prepared` - manifests.
+- `executed` - rows with `ok` or `failed`.
+- `unknown_outcome` - rows with `unknown`.
+- `prepared_not_executed` - manifests with no row (abandoned, or refused before the CLI ran).
+- `ledger_without_manifest` - rows whose manifest file is gone.
+- `malformed_ledger_lines` - lines that are not a valid row. They are skipped.
+
+The ledger sees only runs routed through a manifest. A raw write that the hook missed leaves no row, so the known gaps under Guard limits are not closed by this.
 
 ## What this policy is NOT
 

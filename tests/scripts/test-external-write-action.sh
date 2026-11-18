@@ -1597,5 +1597,139 @@ else
 fi
 reset_token_state
 
+LEDGER="$TMPDIR_TEST/workspace/logs/.external-writes.jsonl"
+reset_ledger_state() {
+  rm -rf "$LEDGER" "$LEDGER.lock" "$TMPDIR_TEST/workspace/tmp/external-actions"
+  reset_token_state
+}
+ledger_execute() {
+  local fake_exit="$1" wait="$2" timeout="$3"
+  manifest=$(prepare_action)
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+  set +e
+  NASE_FAKE_OUTPUT="$TMPDIR_TEST/gh-ledger-args" NASE_FAKE_EXIT="$fake_exit" NASE_FAKE_WAIT="$wait" \
+    PATH="$TMPDIR_TEST/bin:$PATH" \
+    python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest" \
+    --timeout-seconds "$timeout" > "$TMPDIR_TEST/ledger.out" 2> "$TMPDIR_TEST/ledger.err"
+  ledger_rc=$?
+  set -e
+}
+
+reset_ledger_state
+ledger_execute 0 "" 5
+if [[ "$ledger_rc" -eq 0 && "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]] \
+  && jq -e --arg m "$(basename "$manifest")" \
+    '.manifest == $m and .outcome == "ok" and .exit == 0 and .system == "github" and .summary == "create draft PR" and (.action_sha256 | length == 64) and (.ts | type == "string")' \
+    "$LEDGER" >/dev/null; then
+  report 0 "a successful execute writes one ok ledger row"
+else
+  report 1 "a successful execute writes one ok ledger row" "rc=$ledger_rc $(cat "$LEDGER" 2>/dev/null)"
+fi
+if [[ "$(stat -f '%Lp' "$LEDGER" 2>/dev/null || stat -c '%a' "$LEDGER")" == "600" ]]; then
+  report 0 "the ledger is created with mode 0600"
+else
+  report 1 "the ledger is created with mode 0600"
+fi
+if ! grep -q -e 'Example' -e '--draft' -e 'payload' -e 'pr create' "$LEDGER"; then
+  report 0 "a ledger row holds no argv element"
+else
+  report 1 "a ledger row holds no argv element" "$(cat "$LEDGER")"
+fi
+
+reset_ledger_state
+ledger_execute 3 "" 5
+if [[ "$ledger_rc" -eq 3 ]] \
+  && jq -e '.outcome == "failed" and .exit == 3' "$LEDGER" >/dev/null; then
+  report 0 "a failing CLI writes one failed ledger row and keeps its exit code"
+else
+  report 1 "a failing CLI writes one failed ledger row and keeps its exit code" "rc=$ledger_rc"
+fi
+
+reset_ledger_state
+ledger_execute 0 5 1
+if [[ "$ledger_rc" -eq 11 ]] \
+  && [[ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]] \
+  && jq -e '.outcome == "unknown" and .exit == null' "$LEDGER" >/dev/null \
+  && grep -q 'MAY already have been applied' "$TMPDIR_TEST/ledger.err"; then
+  report 0 "a timed-out execute writes one unknown row and still returns 11"
+else
+  report 1 "a timed-out execute writes one unknown row and still returns 11" "rc=$ledger_rc"
+fi
+
+reset_ledger_state
+PAYLOAD_FILE="$TMPDIR_TEST/ledger-body.md"
+printf 'approved body\n' > "$PAYLOAD_FILE"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+  --system github --summary "edit PR body" -- \
+  gh pr edit 7 --body-file "$PAYLOAD_FILE" -R owner/example > "$TMPDIR_TEST/ledger-prepared.json"
+manifest=$(jq -r '.manifest' "$TMPDIR_TEST/ledger-prepared.json")
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+printf 'changed after approval\n' > "$PAYLOAD_FILE"
+expect_rc "a drifted payload still fails before the CLI runs" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest"
+if [[ ! -e "$LEDGER" ]]; then
+  report 0 "an ActionError before the CLI runs writes no ledger row"
+else
+  report 1 "an ActionError before the CLI runs writes no ledger row" "$(cat "$LEDGER")"
+fi
+
+reset_ledger_state
+mkdir -p "$LEDGER"
+ledger_execute 3 "" 5
+if [[ "$ledger_rc" -eq 3 ]] \
+  && [[ "$(grep -c 'WARNING: could not record outcome ledger row' "$TMPDIR_TEST/ledger.err")" -eq 1 ]]; then
+  report 0 "an unwritable ledger warns once and keeps the CLI exit code"
+else
+  report 1 "an unwritable ledger warns once and keeps the CLI exit code" "rc=$ledger_rc $(cat "$TMPDIR_TEST/ledger.err")"
+fi
+
+reset_ledger_state
+expect_rc "audit with no ledger and no manifests exits 0" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" audit
+expect_jq "audit counts zero for a missing ledger" \
+  '.prepared == 0 and .executed == 0 and .unknown_outcome == 0 and .prepared_not_executed == 0 and .ledger_without_manifest == 0 and .malformed_ledger_lines == 0' \
+  "$TMPDIR_TEST/out"
+
+reset_ledger_state
+ledger_execute 0 "" 5
+ledger_execute 0 5 1
+prepare_action >/dev/null
+printf 'not json\n' >> "$LEDGER"
+python3 - "$LEDGER" <<'PY'
+import json, sys
+with open(sys.argv[1], "a") as fh:
+    fh.write(json.dumps({"manifest": "gone.json", "outcome": "ok"}) + "\n")
+PY
+expect_rc "audit exits 0" 0 python3 "$SCRIPT" --root "$TMPDIR_TEST" audit
+expect_jq "audit counts one executed, one timed out, one abandoned, one orphan row and one bad line" \
+  '.prepared == 3 and .executed == 2 and .unknown_outcome == 1 and .prepared_not_executed == 1 and .ledger_without_manifest == 1 and .malformed_ledger_lines == 1' \
+  "$TMPDIR_TEST/out"
+
+printf '{"manifest": ["x"], "outcome": "ok"}\n' >> "$LEDGER"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" audit > "$TMPDIR_TEST/out"
+expect_jq "audit counts a row with a non-string field as malformed" \
+  '.malformed_ledger_lines == 2 and .executed == 2' \
+  "$TMPDIR_TEST/out"
+
+reset_ledger_state
+if python3 - "$SCRIPT" "$TMPDIR_TEST" "$LEDGER" <<'PY'
+import importlib.util, json, sys
+from pathlib import Path
+script, root, ledger = sys.argv[1:4]
+sys.path.insert(0, str(Path(script).parent))
+spec = importlib.util.spec_from_file_location("external_write_action", script)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.record_outcome(Path(root), Path("m.json"), {"system": "github"}, 0, "ok")
+row = json.loads(Path(ledger).read_text(encoding="utf-8"))
+assert row["summary"] is None and row["system"] == "github", row
+PY
+then
+  report 0 "a manifest without a summary still records an outcome row"
+else
+  report 1 "a manifest without a summary still records an outcome row"
+fi
+reset_ledger_state
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
