@@ -8,12 +8,15 @@ until someone read the file by hand.
 
 Term list: `workspace/boundary-terms.txt` (git-ignored, so the terms never ship).
 Absent list -> skip with a notice, because a fresh clone has no `workspace/`.
+`NASE_BOUNDARY_TERMS_FILE` points at another list (CI writes one from a secret). A
+set but missing path is exit 2, because a misconfigured CI must not read as a skip.
 
 Findings print `path:line` plus a redacted term fingerprint. The matched text is
 never rendered: this gate runs in CI on a public repo, so printing the term would
 publish the thing the policy protects.
 
-Exit 0 = clean or skipped, 1 = at least one violation, 2 = malformed term list.
+Exit 0 = clean or skipped, 1 = at least one violation, 2 = malformed or missing
+override term list.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import nase_git
 
 TERMS_FILE = Path("workspace/boundary-terms.txt")
+TERMS_FILE_ENV = "NASE_BOUNDARY_TERMS_FILE"
 
 # The regression test points this at a throwaway git repo. Without it the gate
 # would only be exercisable against the real tree, which cannot host a probe
@@ -124,18 +128,26 @@ def tracked_files() -> list[str]:
 
 
 def main() -> int:
+    # Resolve before the chdir below: a relative override means relative to the caller.
+    override = os.environ.get(TERMS_FILE_ENV)
+    terms_file = Path(override).expanduser().resolve() if override else TERMS_FILE
+
     scan_root = os.environ.get(SCAN_ROOT_ENV)
     if scan_root:
         os.chdir(scan_root)
 
-    if not TERMS_FILE.exists():
+    if override and not terms_file.is_file():
+        print(f"FAIL: terms file not found: {terms_file}", file=sys.stderr)
+        return 2
+
+    if not terms_file.exists():
         print(
-            f"SKIP: {TERMS_FILE} is absent (workspace/ is git-ignored); "
+            f"SKIP: {terms_file} is absent (workspace/ is git-ignored); "
             "boundary terms not checked."
         )
         return 0
 
-    exempt, tiers = load_terms(TERMS_FILE)
+    exempt, tiers = load_terms(terms_file)
     exempt_pattern = build_pattern(exempt)
     term_pattern = build_pattern(list(tiers))
     assert term_pattern is not None  # load_terms rejects an empty term set

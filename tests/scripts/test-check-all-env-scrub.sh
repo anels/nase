@@ -27,6 +27,7 @@ probe() {
     printf "CUSTOM=%s\n" "${NASE_SOMETHING_NEW-unset}"
     printf "JOBS=%s\n" "${NASE_TEST_JOBS-unset}"
     printf "TIMEOUT=%s\n" "${NASE_TEST_TIMEOUT-unset}"
+    printf "TERMS=%s\n" "${NASE_BOUNDARY_TERMS_FILE-unset}"
     printf "SOURCE_ONLY=%s\n" "${NASE_CHECK_ALL_SOURCE_ONLY-unset}"
     printf "GIT_GLOBAL=%s\n" "${GIT_CONFIG_GLOBAL-unset}"
     printf "GIT_NOSYSTEM=%s\n" "${GIT_CONFIG_NOSYSTEM-unset}"
@@ -34,7 +35,7 @@ probe() {
 }
 
 out=$(probe NASE_PROSE_LINT=0 NASE_DAILY_LOG_GUARD=0 NASE_FACT_FORCE=0 NASE_SOMETHING_NEW=1 \
-  NASE_TEST_JOBS=3 NASE_TEST_TIMEOUT=77)
+  NASE_TEST_JOBS=3 NASE_TEST_TIMEOUT=77 NASE_BOUNDARY_TERMS_FILE=/probe/terms.txt)
 
 assert_has() {
   local name="$1" line="$2"
@@ -47,6 +48,7 @@ assert_has "NASE_FACT_FORCE is dropped" "FACT=unset"
 assert_has "an unlisted NASE_* variable is dropped, not just the known ones" "CUSTOM=unset"
 assert_has "NASE_TEST_JOBS survives" "JOBS=3"
 assert_has "NASE_TEST_TIMEOUT survives" "TIMEOUT=77"
+assert_has "NASE_BOUNDARY_TERMS_FILE survives" "TERMS=/probe/terms.txt"
 assert_has "NASE_CHECK_ALL_SOURCE_ONLY survives" "SOURCE_ONLY=1"
 assert_has "git global config is isolated" "GIT_GLOBAL=/dev/null"
 assert_has "git system config is isolated" "GIT_NOSYSTEM=1"

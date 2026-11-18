@@ -11,7 +11,8 @@
 #   bash tests/check-all.sh --list
 #
 # NASE_TEST_TIMEOUT overrides the per-test cap in seconds (default 600).
-# NASE_TEST_JOBS overrides the test width. Every other NASE_* variable is unset and git's
+# NASE_TEST_JOBS overrides the test width. NASE_BOUNDARY_TERMS_FILE points the boundary gate
+# at the CI term list. Every other NASE_* variable is unset and git's
 # global and system config are ignored, so a developer shell cannot change what a test sees.
 # Exit 0 = all gates pass, exit N = N failed gates.
 
@@ -20,11 +21,12 @@ set -uo pipefail
 # Hermetic environment. Hooks and scripts read NASE_* switches (NASE_PROSE_LINT=0,
 # NASE_DAILY_LOG_GUARD=0, NASE_FACT_FORCE=0, ...) and a developer shell that exports one
 # turns the matching test red - or worse, green for the wrong reason. Drop every NASE_*
-# variable except the ones this file itself reads. `compgen -e` lists exported names and
+# variable except the ones this file itself reads and NASE_BOUNDARY_TERMS_FILE, which CI sets
+# so the boundary gate sees the real term list. `compgen -e` lists exported names and
 # works on bash 3.2; the process substitution keeps `unset` in this shell.
 while IFS= read -r _nase_var; do
   case "$_nase_var" in
-    NASE_TEST_TIMEOUT|NASE_TEST_JOBS|NASE_CHECK_ALL_SOURCE_ONLY) ;;
+    NASE_TEST_TIMEOUT|NASE_TEST_JOBS|NASE_CHECK_ALL_SOURCE_ONLY|NASE_BOUNDARY_TERMS_FILE) ;;
     *) unset "$_nase_var" ;;
   esac
 done < <(compgen -e | grep '^NASE_' || true)
