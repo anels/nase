@@ -7,7 +7,7 @@ Used by `/nase:onboard` before reading or updating a project KB. The goal is to 
 - Classification
 - Safe Auto-Fix Scope
 - Historical Notes
-- Curation (four outcomes, never curated, budget and recovery, reorganization, do not write it back)
+- Curation (four outcomes, never curated, budget and recovery, write budget and size review, reorganization, do not write it back)
 - Required Preflight
 
 ## Classification
@@ -77,6 +77,8 @@ Every candidate resolves to exactly one, in this order:
 
 The scanner exempts sections whose heading path names an incident, postmortem, outage, sev level, decision, ADR, rationale, constraint, invariant, gotcha, footgun, ownership, alumni, security, credential, secret, runbook, or cross-validation topic, and any heading carrying a `verified YYYY-MM-DD` marker. The same exemption covers deletion and merge alike, so an incident record is never nominated as one half of a merge either. Treat that list as a floor, not a ceiling - if a section answers "why is it like this", keep it whatever the scanner says.
 
+The words `constraint`, `gotcha`, and `footgun` protect a dated section only when its body also has the shape of a decision or incident record, such as a rejected alternative, a consequence, a root cause, a timeline, or a mitigation. PR narratives borrow those words as tags, so the title alone proves nothing. The other keywords above protect unconditionally.
+
 An undated heading is also never nominated. A heading with no date is a topical current-state section, and both the age test and the merge grouping read a date as the marker of a log entry.
 
 ### Budget and recovery
@@ -87,6 +89,13 @@ An undated heading is also never nominated. A heading with no date is a topical 
 - Every run appends one daily-log line naming the file, the removed section titles, the merged groups, and the timestamp of the most recent backup, so a recovery is targeted rather than a whole-workspace restore.
 
 Deletion still goes through the staged full-file diff and `workspace-write-guard.py` like any other KB write. Never delete a file; curation edits sections.
+
+### Write budget and size review
+
+Two rules keep curation from being outrun by new writes.
+
+- **Budget gate on writes.** `/nase:kb-update` builds its proposed file first. When the target is already over the line budget (`oversized_kb`), the proposed file must be net-zero or net-negative in non-blank lines. Fold or archive older content in the same diff, or route the new fact to a smaller file. A write never raises `curation.dated_top_sections`.
+- **Size review.** `/nase:kb-review --kb-only` runs `python3 .claude/scripts/kb-size-snapshot.py` and opens the report with its output (net growth since the last run, files over the line budget, files over the byte budget). Each over-budget file is repaired through the four outcomes above, not left as a report line. The report body opens with a summary of at most 20 lines (over-budget files, net growth, finding counts by category), and one category in one file, such as `broken_ref`, collapses to a count plus five samples. A mapped file no consumer read is nominated for archive, never deleted, and only once `workspace/stats/kb-usage.jsonl` spans 60 days. When one PR number appears in three or more KB files, keep the entry in the file that owns the subsystem and link from the others.
 
 ### Reorganization
 

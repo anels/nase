@@ -12,7 +12,7 @@ Prepare one PR without merging it. Follow `.claude/docs/language-config.md` → 
 ## Gates
 
 1. Parse the PR and repository, verify `gh` identity/access, load the repo KB/CLAUDE.md, and fetch current PR/base/head state.
-2. Stop on a closed/merged PR, missing head, inaccessible repo, dirty target worktree, or unexpected branch ownership.
+2. Stop on a closed/merged PR, missing head, inaccessible repo, dirty target worktree, or unexpected branch ownership. Also stop when the linked effort doc's `### PR Plan` row for this PR lists a `Depends on` PR (`.claude/docs/pr-plan-readiness.md`) and `origin/{base}` does not show what that predecessor's own row says it adds. Grep for that path or symbol; the plan row is a claim, not evidence. Report which predecessor is missing.
 3. Fetch all three feedback surfaces and current-head CI in one call; the helper already centralizes that field set, so do not hand-roll the `gh` queries:
 
 ```bash
