@@ -1625,7 +1625,7 @@ if [[ "$ledger_rc" -eq 0 && "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]] \
 else
   report 1 "a successful execute writes one ok ledger row" "rc=$ledger_rc $(cat "$LEDGER" 2>/dev/null)"
 fi
-if [[ "$(stat -f '%Lp' "$LEDGER" 2>/dev/null || stat -c '%a' "$LEDGER")" == "600" ]]; then
+if [[ "$(stat -c '%a' "$LEDGER" 2>/dev/null || stat -f '%Lp' "$LEDGER")" == "600" ]]; then
   report 0 "the ledger is created with mode 0600"
 else
   report 1 "the ledger is created with mode 0600"
