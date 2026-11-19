@@ -2104,6 +2104,39 @@ def claim_token(root: Path, timeout_seconds: float) -> tuple[Path, dict[str, Any
     return claimed, token
 
 
+def ledger_path(root: Path) -> Path:
+    return root / "workspace" / "logs" / ".external-writes.jsonl"
+
+
+def record_outcome(
+    root: Path,
+    manifest_path: Path,
+    action: dict[str, Any],
+    exit_code: int | None,
+    outcome: str,
+) -> None:
+    """Append one outcome row; the mutation already ran, so a failure only warns."""
+    row = {
+        "ts": utc_now_iso(),
+        "manifest": manifest_path.name,
+        "action_sha256": sha256(action),
+        "system": action.get("system"),
+        "summary": action.get("summary"),
+        "exit": exit_code,
+        "outcome": outcome,
+    }
+    path = ledger_path(root)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path.with_name(f"{path.name}.lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as ledger:
+                ledger.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError as exc:
+        print(f"WARNING: could not record outcome ledger row: {exc}", file=sys.stderr)
+
+
 def verify_token(token: dict[str, Any], manifest: dict[str, Any]) -> None:
     if not isinstance(token, dict) or token.get("version") != MANIFEST_VERSION:
         raise ActionError("external-write token schema is invalid")
@@ -2124,7 +2157,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
     token_file: Path | None = None
     try:
         token_file, token = claim_token(args.root, args.timeout_seconds)
-        _, manifest = load_manifest(args.root, args.manifest)
+        manifest_path, manifest = load_manifest(args.root, args.manifest)
         verify_token(token, manifest)
         action = manifest["action"]
         verify_payload_files(args.root, action)
@@ -2170,11 +2203,55 @@ def cmd_execute(args: argparse.Namespace) -> int:
                 "  The one-shot token is spent, so a retry needs a new preview and approval.",
                 file=sys.stderr,
             )
+            record_outcome(args.root, manifest_path, action, None, "unknown")
             return EXECUTE_TIMEOUT_EXIT
+        record_outcome(
+            args.root,
+            manifest_path,
+            action,
+            completed.returncode,
+            "ok" if completed.returncode == 0 else "failed",
+        )
         return completed.returncode
     finally:
         if token_file is not None:
             token_file.unlink(missing_ok=True)
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    manifests = {path.name for path in external_action_dir(args.root).glob("*.json")}
+    ledger_names: set[str] = set()
+    outcomes: list[str] = []
+    malformed = 0
+    try:
+        lines = ledger_path(args.root).read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+            name, outcome = row["manifest"], row["outcome"]
+            if not isinstance(name, str) or not isinstance(outcome, str):
+                raise TypeError("ledger row fields must be strings")
+        except (json.JSONDecodeError, KeyError, TypeError):
+            malformed += 1
+            continue
+        ledger_names.add(name)
+        outcomes.append(outcome)
+    print(
+        json.dumps(
+            {
+                "prepared": len(manifests),
+                "executed": sum(1 for o in outcomes if o in ("ok", "failed")),
+                "unknown_outcome": outcomes.count("unknown"),
+                "prepared_not_executed": len(manifests - ledger_names),
+                "ledger_without_manifest": len(ledger_names - manifests),
+                "malformed_ledger_lines": malformed,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
 
 
 def cmd_guard(args: argparse.Namespace) -> int:
@@ -2263,6 +2340,11 @@ def build_parser() -> argparse.ArgumentParser:
     guard = subparsers.add_parser("guard", help="reject raw known mutation commands")
     guard.add_argument("--command", required=True)
     guard.set_defaults(func=cmd_guard)
+
+    audit = subparsers.add_parser(
+        "audit", help="count prepared manifests against the outcome ledger"
+    )
+    audit.set_defaults(func=cmd_audit)
     return parser
 
 

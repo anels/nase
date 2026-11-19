@@ -45,6 +45,18 @@ jobs:
           command -v google-chrome >/dev/null || command -v chromium >/dev/null \
             || { echo "::error::no headless Chrome (google-chrome or chromium) on PATH"; exit 1; }
 
+      - name: Boundary terms
+        env:
+          NASE_BOUNDARY_TERMS: ${{ secrets.NASE_BOUNDARY_TERMS }}
+        run: |
+          if [ -n "$NASE_BOUNDARY_TERMS" ]; then
+            umask 077
+            printf '%s\n' "$NASE_BOUNDARY_TERMS" > "$RUNNER_TEMP/boundary-terms.txt"
+            echo "NASE_BOUNDARY_TERMS_FILE=$RUNNER_TEMP/boundary-terms.txt" >> "$GITHUB_ENV"
+          else
+            echo "::warning::boundary-terms gate not enforced: secret NASE_BOUNDARY_TERMS is absent (fork PR or unset)"
+          fi
+
       - name: Full local validation gate
         run: bash tests/check-all.sh
 

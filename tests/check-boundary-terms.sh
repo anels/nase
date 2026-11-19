@@ -2,7 +2,8 @@
 # Enforce `workspace/context.md -> Workspace Boundary Policy` over tracked files.
 #
 # The term list lives in `workspace/boundary-terms.txt`, which is git-ignored so
-# the terms never ship. A fresh clone has no `workspace/`, so the gate skips with
+# the terms never ship. `NASE_BOUNDARY_TERMS_FILE` points at another list; CI sets it
+# from the NASE_BOUNDARY_TERMS secret. A fresh clone has no `workspace/`, so the gate skips with
 # a notice rather than failing.
 #
 # Findings print `path:line` with the matched term redacted, because this gate
@@ -27,7 +28,9 @@ cd "$ROOT"
 # never a failure: the term list is per-user, and CI and fresh clones never have one.
 # shellcheck source=lib/workspace-skip.sh
 source "$SOURCE_ROOT/tests/lib/workspace-skip.sh"
-[[ -f "${NASE_BOUNDARY_SCAN_ROOT:-$ROOT}/workspace/boundary-terms.txt" ]] || ws_count_skip
+# A set but missing override is the gate's exit 2, not a skip, so it is not counted here.
+terms_file="${NASE_BOUNDARY_TERMS_FILE:-${NASE_BOUNDARY_SCAN_ROOT:-$ROOT}/workspace/boundary-terms.txt}"
+[[ -f "$terms_file" || -n "${NASE_BOUNDARY_TERMS_FILE:-}" ]] || ws_count_skip
 rc=0
 python3 "$SOURCE_ROOT/.claude/scripts/check-boundary-terms.py" "$@" || rc=$?
 ws_skip_summary

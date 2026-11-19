@@ -9,6 +9,7 @@ import math
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -341,6 +342,8 @@ def invoke(
         parsed["error"] = "missing-terminal-result"
     elif not parsed.get("init_seen"):
         parsed["error"] = "missing-init"
+    elif parsed.get("result_is_error"):
+        parsed["error"] = "result-is-error"
     return parsed
 
 
@@ -410,6 +413,9 @@ def parse_stream(text: str) -> dict[str, Any]:
                 }
         if event.get("type") == "result":
             parsed["terminal_seen"] = True
+            parsed["result_is_error"] = event.get("is_error") is True or str(
+                event.get("subtype", "")
+            ).startswith("error")
             result = event.get("result", "")
             parsed["result"] = (
                 result
@@ -615,13 +621,25 @@ def run_routing(args: argparse.Namespace) -> int:
     return 0 if overall_ok else 1
 
 
+def strip_command(prompt: str, skill: str) -> str:
+    prefix = f"/{skill} "
+    if not prompt.startswith(prefix):
+        raise RunError("baseline-prompt-not-command")
+    return prompt[len(prefix) :]
+
+
+def baseline_prompt(case: dict[str, Any]) -> str:
+    return f"{strip_command(case['prompt'], case['skill'])}\n\n{BOUNDARY_INSTRUCTION}"
+
+
 def output_project(
-    project: Path, case: dict[str, Any], eval_path: Path
+    project: Path, case: dict[str, Any], eval_path: Path, with_skill: bool = True
 ) -> tuple[Path, bytes]:
     skill_path = EVAL.command_path(REPO_ROOT, case["skill"])
-    copy_file(skill_path, project / relative_repo_path(skill_path))
-    for source in sorted((REPO_ROOT / ".claude" / "docs").glob("*.md")):
-        copy_file(source, project / ".claude" / "docs" / source.name)
+    if with_skill:
+        copy_file(skill_path, project / relative_repo_path(skill_path))
+        for source in sorted((REPO_ROOT / ".claude" / "docs").glob("*.md")):
+            copy_file(source, project / ".claude" / "docs" / source.name)
     fixture = eval_path.parent / case["fixture_dir"]
     shutil.copytree(fixture, project / "fixture")
     settings = canonical_bytes(FILESYSTEM_POLICY, trailing_newline=True)
@@ -706,16 +724,23 @@ def run_output(args: argparse.Namespace) -> int:
         args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir"
     )
     output_dir = safe_directory(args.output_dir, DEFAULT_OUTPUT_DIR, "output-dir")
+    baseline = args.arm == "no-skill"
+    effective_prompt = (
+        baseline_prompt(case)
+        if baseline
+        else f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
+    )
     claude, auth, source = prepare_runtime()
     overall_ok = True
     batch_id = str(uuid.uuid4())
     for repetition_index in range(args.repetitions):
         run_id = str(uuid.uuid4())
-        effective_prompt = f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
         skill_path = EVAL.command_path(REPO_ROOT, case["skill"])
         receipt = base_receipt(
-            "output",
-            "permission-confined-fixture-backed-no-write-output-contract",
+            "output-baseline" if baseline else "output",
+            "permission-confined-fixture-backed-no-skill-baseline"
+            if baseline
+            else "permission-confined-fixture-backed-no-write-output-contract",
             run_id,
             eval_path,
             case,
@@ -732,7 +757,9 @@ def run_output(args: argparse.Namespace) -> int:
             project.mkdir()
             home.mkdir(mode=0o700)
             initialize_repo(project)
-            _, settings = output_project(project, case, eval_path)
+            _, settings = output_project(
+                project, case, eval_path, with_skill=not baseline
+            )
             forbidden_dir = base / "forbidden-read"
             forbidden_dir.mkdir()
             sentinel = forbidden_dir / "sentinel.txt"
@@ -762,7 +789,8 @@ def run_output(args: argparse.Namespace) -> int:
         error = parsed.get("error")
         if not error and parsed.get("resolved_model") != args.model:
             error = "model-mismatch"
-        if not error and parsed.get("available_skills") != [case["skill"]]:
+        expected_skills = [] if baseline else [case["skill"]]
+        if not error and parsed.get("available_skills") != expected_skills:
             error = "output-skill-isolation-mismatch"
         if not error:
             error = cost_error(parsed, args.max_budget_usd)
@@ -774,7 +802,10 @@ def run_output(args: argparse.Namespace) -> int:
             ),
             None,
         )
-        if not error and target_use is None:
+        if baseline:
+            if not error and parsed.get("skill_uses"):
+                error = "baseline-skill-leak"
+        elif not error and target_use is None:
             error = "explicit-command-expansion-missing"
         if secret_kind:
             error = "sensitive-output"
@@ -824,10 +855,12 @@ def run_output(args: argparse.Namespace) -> int:
             "auth": auth,
         }
         receipt["invocation_evidence"] = {
-            "kind": "explicit-command-expansion",
+            "kind": "none-baseline" if baseline else "explicit-command-expansion",
             "session_id": run_id,
             "tool_use_id": target_use.get("tool_use_id") if target_use else None,
         }
+        if baseline:
+            receipt["arm"] = "no-skill"
         receipt["process"] = {
             "batch_id": batch_id,
             "repetition_index": repetition_index + 1,
@@ -874,11 +907,12 @@ def run_output(args: argparse.Namespace) -> int:
 
 def current_binding(eval_path: Path, case: dict[str, Any], lane: str) -> dict[str, Any]:
     skill_path = EVAL.command_path(REPO_ROOT, case["skill"])
-    prompt = (
-        case["prompt"]
-        if lane == "routing"
-        else f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
-    )
+    if lane == "routing":
+        prompt = case["prompt"]
+    elif lane == "output-baseline":
+        prompt = baseline_prompt(case)
+    else:
+        prompt = f"{case['prompt']}\n\n{BOUNDARY_INSTRUCTION}"
     binding: dict[str, Any] = {
         "eval_sha": sha256_file(eval_path),
         "skill_sha": sha256_file(skill_path),
@@ -1159,6 +1193,108 @@ def coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def finite_median(values: list[Any]) -> float | int | None:
+    numbers = [
+        value
+        for value in values
+        if isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    ]
+    return statistics.median(numbers) if numbers else None
+
+
+def arm_counts(receipts: list[dict[str, Any]]) -> dict[str, Any]:
+    scored = [
+        receipt
+        for receipt in receipts
+        if receipt.get("result", {}).get("status") != "error"
+    ]
+    return {
+        "total": len(receipts),
+        "error": len(receipts) - len(scored),
+        "scored": len(scored),
+        "pass": sum(output_receipt_passes(receipt) for receipt in scored),
+        "median_cost_usd": finite_median(
+            [receipt.get("process", {}).get("total_cost_usd") for receipt in scored]
+        ),
+        "median_duration_ms": finite_median(
+            [receipt.get("process", {}).get("duration_ms") for receipt in scored]
+        ),
+    }
+
+
+def ablation_verdict(skill: dict[str, Any], baseline: dict[str, Any]) -> str:
+    if min(skill["scored"], baseline["scored"]) < REQUIRED_ROUTING_REPETITIONS:
+        return "insufficient"
+    left = skill["pass"] * baseline["scored"]
+    right = baseline["pass"] * skill["scored"]
+    if left > right:
+        return "skill-better"
+    return "skill-worse" if left < right else "no-difference"
+
+
+def ablate(args: argparse.Namespace) -> int:
+    manifest_dir = safe_directory(
+        args.manifest_dir, DEFAULT_MANIFEST_DIR, "manifest-dir"
+    )
+    receipts, _ = load_receipts(manifest_dir)
+    rows: list[dict[str, Any]] = []
+    for raw_eval in args.eval_set:
+        eval_path = Path(raw_eval).resolve()
+        eval_set = EVAL.load_eval_set(str(eval_path))
+        cases = eval_set.get("runtime_cases", [])
+        if args.runtime_case:
+            cases = [case for case in cases if case["id"] == args.runtime_case]
+        for case in cases:
+            arms: dict[str, list[dict[str, Any]]] = {}
+            notes: dict[str, str] = {}
+            for arm, lane in (("skill", "output"), ("no-skill", "output-baseline")):
+                try:
+                    binding = current_binding(eval_path, case, lane)
+                except RunError as exc:
+                    notes[arm] = str(exc)
+                    continue
+                arms[arm] = [
+                    receipt
+                    for receipt in receipts
+                    if receipt.get("lane") == lane
+                    and receipt.get("case", {}).get("id") == case["id"]
+                    and receipt_current(receipt, binding)
+                ]
+            models = sorted(
+                {
+                    str(receipt.get("runtime", {}).get("requested_model"))
+                    for group in arms.values()
+                    for receipt in group
+                }
+            )
+            for model in models:
+                counts = {}
+                for arm in ("skill", "no-skill"):
+                    group = [
+                        receipt
+                        for receipt in arms.get(arm, [])
+                        if str(receipt.get("runtime", {}).get("requested_model"))
+                        == model
+                    ]
+                    counts[arm] = arm_counts(group)
+                    if arm in notes:
+                        counts[arm]["note"] = notes[arm]
+                rows.append(
+                    {
+                        "case": case["id"],
+                        "model": model,
+                        **counts,
+                        "verdict": ablation_verdict(
+                            counts["skill"], counts["no-skill"]
+                        ),
+                    }
+                )
+    print(json.dumps({"schema_version": 1, "rows": rows}, indent=2, sort_keys=True))
+    return 0
+
+
 def review(args: argparse.Namespace) -> int:
     receipt_path = Path(args.receipt)
     if (
@@ -1228,11 +1364,19 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--manifest-dir")
         if name == "run-output":
             command.add_argument("--output-dir")
+            command.add_argument(
+                "--arm", choices=("skill", "no-skill"), default="skill"
+            )
         command.set_defaults(handler=handler)
     command = subparsers.add_parser("coverage")
     command.add_argument("--eval-set", action="append", required=True)
     command.add_argument("--manifest-dir", required=True)
     command.set_defaults(handler=coverage)
+    command = subparsers.add_parser("ablate")
+    command.add_argument("--eval-set", action="append", required=True)
+    command.add_argument("--manifest-dir", required=True)
+    command.add_argument("--runtime-case")
+    command.set_defaults(handler=ablate)
     command = subparsers.add_parser("review")
     command.add_argument("--receipt", required=True)
     command.add_argument("--status", choices=("accepted", "rejected"), required=True)

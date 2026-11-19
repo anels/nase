@@ -40,6 +40,7 @@ if any(os.environ.get(name) for name in ("TEST_SECRET_SHOULD_NOT_PASS", "AWS_SEC
 
 model = args[args.index("--model") + 1]
 prompt = args[-1]
+result_flags = {"is_error": True, "subtype": "error_during_execution"} if model == "fake-result-error" else {}
 if model == "fake-timeout":
     time.sleep(3)
 if model == "fake-error":
@@ -72,10 +73,12 @@ if "fixture/" not in prompt:
         target = "nase:design" if value % 2 else None
     if target:
         emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "skill-1", "name": "Skill", "input": {"skill": target}}]}})
-    emit({"type": "result", "model": model, "result": "routing complete", "duration_ms": 3, "total_cost_usd": 0.02 if model == "fake-over-budget" else 0})
+    emit({"type": "result", "model": model, "result": "routing complete", "duration_ms": 3, "total_cost_usd": 0.02 if model == "fake-over-budget" else 0, **result_flags})
     raise SystemExit(0)
 
-emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "skill-1", "name": "Skill", "input": {"skill": skills[0]}}]}})
+leaked = skills[0] if skills else ("nase:design" if model == "fake-baseline-leak" else None)
+if leaked:
+    emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "skill-1", "name": "Skill", "input": {"skill": leaked}}]}})
 emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "forbidden", "name": "Read", "input": {"file_path": "../forbidden-read/sentinel.txt"}}]}})
 emit({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "forbidden", "is_error": True, "content": "permission denied"}]}})
 
@@ -99,7 +102,7 @@ if model == "fake-secret":
     result += "\n" + "ghp_" + ("A" * 24)
 if model == "fake-bad-output":
     result = joined
-emit({"type": "result", "model": model, "result": result, "duration_ms": 4, "total_cost_usd": 0})
+emit({"type": "result", "model": model, "result": result, "duration_ms": 4, "total_cost_usd": 0, **result_flags})
 PY
 chmod +x "$TMPDIR_TEST/bin/claude"
 
@@ -236,6 +239,209 @@ assert all(not item["skill"].startswith("nase:workspace:") for item in data["row
 assert "percentage" not in data
 PY
 ' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$TMPDIR_TEST/runs" "$TMPDIR_TEST/coverage.json"
+
+RESULT_ERR_RUNS="$TMPDIR_TEST/result-error-runs"
+mkdir "$RESULT_ERR_RUNS"
+assert_cmd "output run with an is_error result is not a pass" expect_fail \
+  "$PYTHON_BIN" "$SCRIPT" run-output \
+  --eval-set "$CORE_EVAL" --runtime-case runtime-design-grounding --model fake-result-error \
+  --max-budget-usd 0.01 --timeout-seconds 2 \
+  --manifest-dir "$RESULT_ERR_RUNS" --output-dir "$TMPDIR_TEST/outputs"
+assert_cmd "output run with an is_error result is status error, reason result-is-error" \
+  "$PYTHON_BIN" - "$RESULT_ERR_RUNS" <<'PY'
+import json
+import pathlib
+import sys
+receipts = [json.loads(path.read_text()) for path in pathlib.Path(sys.argv[1]).glob("*.json")]
+assert len(receipts) == 1
+assert receipts[0]["result"] == {"status": "error", "reason": "result-is-error"}, receipts[0]["result"]
+PY
+assert_cmd "routing run with an is_error result is not a pass" expect_fail \
+  run_routing routing-design-positive fake-result-error 1 2 "$RESULT_ERR_RUNS"
+assert_cmd "routing run with an is_error result is status error, reason result-is-error" \
+  "$PYTHON_BIN" - "$RESULT_ERR_RUNS" <<'PY'
+import json
+import pathlib
+import sys
+receipts = [json.loads(path.read_text()) for path in pathlib.Path(sys.argv[1]).glob("*.json")]
+routing = [item for item in receipts if item["lane"] == "routing"]
+assert len(routing) == 1
+assert routing[0]["result"] == {"status": "error", "reason": "result-is-error"}, routing[0]["result"]
+PY
+
+run_baseline() {
+  "$PYTHON_BIN" "$SCRIPT" run-output \
+    --eval-set "$CORE_EVAL" --runtime-case runtime-design-grounding --arm no-skill \
+    --model "$1" --repetitions "${2:-1}" --max-budget-usd 0.01 --timeout-seconds 2 \
+    --manifest-dir "$3" --output-dir "$TMPDIR_TEST/outputs"
+}
+
+BASE_ONLY="$TMPDIR_TEST/baseline-only"
+mkdir "$BASE_ONLY"
+assert_cmd "baseline run without the skill passes" run_baseline fake-output 3 "$BASE_ONLY"
+assert_cmd "baseline receipt has lane output-baseline, arm no-skill and no skills available" \
+  "$PYTHON_BIN" - "$BASE_ONLY" <<'PY'
+import json
+import pathlib
+import sys
+receipts = [json.loads(path.read_text()) for path in pathlib.Path(sys.argv[1]).glob("*.json")]
+assert len(receipts) == 3
+for item in receipts:
+    assert item["lane"] == "output-baseline" and item["arm"] == "no-skill"
+    assert item["runtime"]["available_skills"] == []
+    assert item["invocation_evidence"]["kind"] == "none-baseline"
+    assert item["behavior_scope"] == "permission-confined-fixture-backed-no-skill-baseline"
+    assert item["result"]["status"] == "pass"
+PY
+assert_cmd "baseline receipt does not satisfy coverage" bash -c '
+  "$1" "$2" coverage --eval-set "$3" --manifest-dir "$4" > "$5"
+  "$1" - "$5" <<"PY"
+import json
+import sys
+row = next(item for item in json.load(open(sys.argv[1], encoding="utf-8"))["rows"] if item["skill"] == "nase:design")
+assert row["outcome"] == "missing", row
+PY
+' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$BASE_ONLY" "$TMPDIR_TEST/baseline-coverage.json"
+
+LEAK_RUNS="$TMPDIR_TEST/leak-runs"
+mkdir "$LEAK_RUNS"
+assert_cmd "baseline run whose model calls the Skill tool fails" expect_fail run_baseline fake-baseline-leak 1 "$LEAK_RUNS"
+assert_cmd "baseline run whose model calls the Skill tool is baseline-skill-leak" \
+  "$PYTHON_BIN" - "$LEAK_RUNS" <<'PY'
+import json
+import pathlib
+import sys
+receipts = [json.loads(path.read_text()) for path in pathlib.Path(sys.argv[1]).glob("*.json")]
+assert len(receipts) == 1
+assert receipts[0]["result"] == {"status": "error", "reason": "baseline-skill-leak"}, receipts[0]["result"]
+PY
+
+SKILL_ARM="$TMPDIR_TEST/skill-arm"
+mkdir "$SKILL_ARM"
+assert_cmd "skill arm of three passing runs for the ablation fixtures" "$PYTHON_BIN" "$SCRIPT" run-output \
+  --eval-set "$CORE_EVAL" --runtime-case runtime-design-grounding --model fake-output --repetitions 3 \
+  --max-budget-usd 0.01 --timeout-seconds 2 \
+  --manifest-dir "$SKILL_ARM" --output-dir "$TMPDIR_TEST/outputs"
+
+assert_cmd "baseline receipt is current under the output-baseline binding and strip_command rejects a bare prompt" \
+  "$PYTHON_BIN" - "$SCRIPT" "$BASE_ONLY" "$CORE_EVAL" <<'PY'
+import importlib.util
+import json
+import pathlib
+import sys
+
+spec = importlib.util.spec_from_file_location("skill_eval_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+eval_path = pathlib.Path(sys.argv[3]).resolve()
+eval_set = module.EVAL.load_eval_set(str(eval_path))
+case = module.EVAL.find_runtime_case(eval_set, "runtime-design-grounding")
+receipt = json.loads(next(pathlib.Path(sys.argv[2]).glob("*.json")).read_text())
+assert module.receipt_current(receipt, module.current_binding(eval_path, case, "output-baseline"))
+assert not module.receipt_current(receipt, module.current_binding(eval_path, case, "output"))
+try:
+    module.strip_command("no slash command here", "nase:design")
+except module.RunError as exc:
+    assert str(exc) == "baseline-prompt-not-command"
+else:
+    raise AssertionError("strip_command accepted a prompt without the command prefix")
+PY
+
+ABLATE_DIRS="$TMPDIR_TEST/ablate"
+"$PYTHON_BIN" - "$SKILL_ARM" "$BASE_ONLY" "$ABLATE_DIRS" <<'PY'
+import json
+import pathlib
+import shutil
+import sys
+import uuid
+
+skill_dir, base_dir, out = (pathlib.Path(arg) for arg in sys.argv[1:4])
+skill = [json.loads(path.read_text()) for path in sorted(skill_dir.glob("*.json"))]
+base = [json.loads(path.read_text()) for path in sorted(base_dir.glob("*.json"))]
+
+
+def write(name, receipts):
+    target = out / name
+    target.mkdir(parents=True)
+    for receipt in receipts:
+        receipt = json.loads(json.dumps(receipt))
+        receipt["run_id"] = str(uuid.uuid4())
+        (target / f"{receipt['run_id']}.json").write_text(json.dumps(receipt))
+
+
+def with_status(receipt, status):
+    receipt = json.loads(json.dumps(receipt))
+    receipt["result"]["status"] = status
+    return receipt
+
+
+write("one-error", skill + [base[0], base[1], with_status(base[2], "error")])
+write("tie", skill + base)
+extra = with_status(base[0], "fail")
+failed = with_status(base[2], "fail")
+write("better", skill + [base[0], base[1], failed, extra])
+write("skill-only", skill)
+stale = []
+for receipt in skill + base:
+    receipt = json.loads(json.dumps(receipt))
+    receipt["skill"]["sha256"] = "0" * 64
+    stale.append(receipt)
+write("stale", stale)
+PY
+assert_cmd "ablate counts an error arm run as unscored and the verdict is insufficient" bash -c '
+  "$1" "$2" ablate --eval-set "$3" --manifest-dir "$4" > "$5"
+  "$1" - "$5" <<"PY"
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+(row,) = data["rows"]
+assert row["case"] == "runtime-design-grounding"
+assert row["no-skill"] | {"median_cost_usd": None, "median_duration_ms": None} == {"total": 3, "error": 1, "scored": 2, "pass": 2, "median_cost_usd": None, "median_duration_ms": None}, row
+assert row["skill"]["total"] == 3 and row["skill"]["pass"] == 3
+assert row["verdict"] == "insufficient"
+text = json.dumps(data)
+assert "percentage" not in text and "rate" not in text
+PY
+' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$ABLATE_DIRS/one-error" "$TMPDIR_TEST/ablate-one-error.json"
+
+assert_cmd "ablate reports no-difference for 3 of 3 against 3 of 3" bash -c '
+  "$1" "$2" ablate --eval-set "$3" --manifest-dir "$4" | "$1" -c "
+import json
+import sys
+(row,) = json.load(sys.stdin)[\"rows\"]
+assert row[\"verdict\"] == \"no-difference\", row
+assert row[\"skill\"][\"median_duration_ms\"] == 4 and row[\"skill\"][\"median_cost_usd\"] == 0, row
+"
+' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$ABLATE_DIRS/tie"
+
+assert_cmd "ablate reports skill-better for 3 of 3 against 2 of 4" bash -c '
+  "$1" "$2" ablate --eval-set "$3" --manifest-dir "$4" | "$1" -c "
+import json
+import sys
+(row,) = json.load(sys.stdin)[\"rows\"]
+assert row[\"no-skill\"][\"scored\"] == 4 and row[\"no-skill\"][\"pass\"] == 2, row
+assert row[\"verdict\"] == \"skill-better\", row
+"
+' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$ABLATE_DIRS/better"
+
+assert_cmd "ablate renders an arm with no receipts as zeros and the verdict insufficient" bash -c '
+  "$1" "$2" ablate --eval-set "$3" --manifest-dir "$4" | "$1" -c "
+import json
+import sys
+(row,) = json.load(sys.stdin)[\"rows\"]
+assert row[\"no-skill\"] == {\"total\": 0, \"error\": 0, \"scored\": 0, \"pass\": 0, \"median_cost_usd\": None, \"median_duration_ms\": None}, row
+assert row[\"verdict\"] == \"insufficient\", row
+"
+' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$ABLATE_DIRS/skill-only"
+
+assert_cmd "a changed skill file makes both arms stale and ablate emits no row" bash -c '
+  "$1" "$2" ablate --eval-set "$3" --manifest-dir "$4" | "$1" -c "
+import json
+import sys
+rows = json.load(sys.stdin)[\"rows\"]
+assert rows == [], rows
+"
+' _ "$PYTHON_BIN" "$SCRIPT" "$CORE_EVAL" "$ABLATE_DIRS/stale"
 
 FLIP_RUNS="$TMPDIR_TEST/flip-runs"
 mkdir "$FLIP_RUNS"

@@ -14,6 +14,10 @@ GATE="$ROOT/tests/check-boundary-terms.sh"
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
+# CI exports the real list through this variable. Fixture cases must not see it.
+REAL_TERMS="${NASE_BOUNDARY_TERMS_FILE:-}"
+unset NASE_BOUNDARY_TERMS_FILE
+
 failures=0
 source "$ROOT/tests/lib/assert.sh"
 
@@ -161,7 +165,47 @@ run_gate "$repo" exempt-only
 assert_cmd "term list with no tier 1 or 2 terms exits 2" \
   test "$(cat "$TMPROOT/exempt-only.rc")" = "2"
 
-# --- 13. the real tree is clean right now ---
+# --- 13. NASE_BOUNDARY_TERMS_FILE replaces the default list ---
+repo=$(new_repo override)
+printf 'owned by %s today\n' "$PROBE_TIER1" >"$repo/doc.md"
+commit_all "$repo"
+mkdir -p "$TMPROOT/workspace"
+write_terms "$TMPROOT"
+mv "$TMPROOT/workspace/boundary-terms.txt" "$TMPROOT/override-terms.txt"
+set +e
+NASE_BOUNDARY_TERMS_FILE="$TMPROOT/override-terms.txt" NASE_BOUNDARY_SCAN_ROOT="$repo" \
+  bash "$GATE" >"$TMPROOT/override.out" 2>"$TMPROOT/override.err"
+printf '%s\n' "$?" >"$TMPROOT/override.rc"
+set -e
+assert_cmd "override list is used when the default list is absent" \
+  test "$(cat "$TMPROOT/override.rc")" = "1"
+assert_cmd "override finding names the path and line" grep -q 'doc.md:1' "$TMPROOT/override.err"
+assert_cmd "override finding does not render the term" \
+  bash -c "! grep -q '$PROBE_TIER1' '$TMPROOT/override.err'"
+
+# --- 14. a relative override resolves against the caller's cwd, not the scan root ---
+set +e
+(cd "$TMPROOT" && NASE_BOUNDARY_TERMS_FILE="override-terms.txt" NASE_BOUNDARY_SCAN_ROOT="$repo" \
+  bash "$GATE" >"$TMPROOT/override-rel.out" 2>"$TMPROOT/override-rel.err")
+printf '%s\n' "$?" >"$TMPROOT/override-rel.rc"
+set -e
+assert_cmd "relative override resolves against the caller's cwd" \
+  test "$(cat "$TMPROOT/override-rel.rc")" = "1"
+
+# --- 15. a set but missing override is a hard error, not a skip ---
+set +e
+NASE_BOUNDARY_TERMS_FILE="$TMPROOT/no-such-terms.txt" NASE_BOUNDARY_SCAN_ROOT="$repo" \
+  bash "$GATE" >"$TMPROOT/override-missing.out" 2>"$TMPROOT/override-missing.err"
+printf '%s\n' "$?" >"$TMPROOT/override-missing.rc"
+set -e
+assert_cmd "missing override path exits 2" test "$(cat "$TMPROOT/override-missing.rc")" = "2"
+assert_cmd "missing override names the path" \
+  grep -q 'terms file not found: .*no-such-terms.txt' "$TMPROOT/override-missing.err"
+assert_cmd "missing override is not announced as a skip" \
+  bash -c "! grep -q SKIP '$TMPROOT/override-missing.out'"
+
+# --- 16. the real tree is clean right now ---
+if [[ -n "$REAL_TERMS" ]]; then export NASE_BOUNDARY_TERMS_FILE="$REAL_TERMS"; fi
 set +e
 bash "$GATE" >"$TMPROOT/real.out" 2>"$TMPROOT/real.err"
 real_rc=$?
