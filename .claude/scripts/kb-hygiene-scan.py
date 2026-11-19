@@ -136,8 +136,16 @@ WORKSPACE_REF_PREFIXES = (
 
 CURATION_PROTECTED_RE = re.compile(
     r"\b(incidents?|postmortems?|post-mortems?|outages?|sev[0-9]|decisions?|adr|rationales?"
-    r"|constraints?|invariants?|gotchas?|footguns?|ownership|alumni|security|credentials?"
+    r"|invariants?|ownership|alumni|security|credentials?"
     r"|secrets?|runbooks?|cross-validation)\b",
+    re.I,
+)
+# Tags that PR narratives borrow ("gotcha", "constraint"). They protect a dated section only
+# when the body also has the shape of a decision or incident record.
+CURATION_WEAK_PROTECTED_RE = re.compile(r"\b(constraints?|gotchas?|footguns?)\b", re.I)
+PROTECTED_SHAPE_RE = re.compile(
+    r"\b(rejected|alternatives? considered|consequences?|root[- ]cause|timeline|post-?mortem"
+    r"|mitigation|trade-?offs?|why not)\b",
     re.I,
 )
 CURATION_DATE_RE = re.compile(r"(20[0-9]{2})-([0-9]{2})(?:-([0-9]{2}))?")
@@ -524,17 +532,27 @@ def build_sections(lines: list[str], fenced: set[int]) -> list[dict[str, Any]]:
     return sections
 
 
-def is_protected(section: dict[str, Any]) -> bool:
+def is_protected(section: dict[str, Any], lines: list[str] | None = None) -> bool:
     """Sections curation never nominates.
 
     A section that records why something is the way it is answers a question no
     `git log` replays, so age says nothing about its value. The same test guards
     every curation category, deletion and merge alike.
+
+    With `lines`, a weak keyword in the heading ("gotcha", "constraint", "footgun")
+    only counts when the body has the shape of a decision or incident record (a
+    rejected alternative, a consequence, a root cause). A title that merely says
+    "gotcha" does not make a dated PR narrative immortal.
     """
-    return bool(
-        CURATION_PROTECTED_RE.search(" > ".join(section["path"]))
-        or VERIFIED_RE.search(section["title"])
-    )
+    path = " > ".join(section["path"])
+    if VERIFIED_RE.search(section["title"]) or CURATION_PROTECTED_RE.search(path):
+        return True
+    if not CURATION_WEAK_PROTECTED_RE.search(path):
+        return False
+    if lines is None:
+        return True
+    body = lines[section["start"] : section["end"]]
+    return any(PROTECTED_SHAPE_RE.search(line) for line in body)
 
 
 def section_ref_health(
@@ -584,7 +602,7 @@ def topic_key(title: str) -> frozenset[str]:
     return frozenset(words)
 
 
-def merge_candidates(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def merge_candidates(sections: list[dict[str, Any]], lines: list[str] | None = None) -> list[dict[str, Any]]:
     """Sections that cover one topic across several dated entries.
 
     Splitting one subject over five dated blocks forces a reader to replay
@@ -599,7 +617,7 @@ def merge_candidates(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for section in sections:
         if section["level"] < 2 or heading_date(section["title"]) is None:
             continue
-        if is_protected(section):
+        if is_protected(section, lines):
             continue
         key = topic_key(section["title"])
         if len(key) >= 2:
@@ -678,7 +696,7 @@ def curation_scan(
         # A dated heading is what marks an entry as a log rather than a topic, so
         # `## API Surface` stays whatever dates its body happens to cite.
         own = heading_date(section["title"])
-        if own is None or is_protected(section):
+        if own is None or is_protected(section, lines):
             continue
 
         # Age from the newest date anywhere inside, so an old container still
@@ -720,7 +738,7 @@ def curation_scan(
             )
         )
 
-    issues.extend(merge_candidates(sections))
+    issues.extend(merge_candidates(sections, lines))
 
     top_sections = [item for item in sections if item["level"] == 2]
     dated_top = [item for item in top_sections if heading_date(item["title"])]

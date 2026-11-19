@@ -46,7 +46,7 @@ KB_FILE=$(bash .claude/scripts/kb-domain-resolve.sh "<repo-name-or-domain>")
 ```
 
 The script normalises the name to a domain key (lowercase, hyphens), looks up `workspace/kb/.domain-map.md`, and returns the file path.
-- Exit 0 + path on stdout: read that KB file; focus on the sections relevant to the task. Use KB claims as durable context and navigation. Verify actionable commands, IDs, owners, configuration, and current behavior against the repo or external source of truth before mutation.
+- Exit 0 + path on stdout: do not read a large KB file whole. Run `python3 .claude/scripts/kb-section.py outline "$KB_FILE" --depth 2`, which prints each heading with its line range and token estimate, then its `get` subcommand for only the sections the task needs. A file under 300 lines may be read whole. Use KB claims as durable context and navigation. Verify actionable commands, IDs, owners, configuration, and current behavior against the repo or external source of truth before mutation.
 - Exit 1 + error on stderr: script not found OR domain not in map → warn and proceed without KB context.
 
 For a task scoped to concrete source/config paths, also run:

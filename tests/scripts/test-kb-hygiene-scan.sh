@@ -354,6 +354,97 @@ else
   printf 'FAIL  Latin-1 source and non-ASCII path resolve without false findings\n%s\n' "$enc_json" >&2
 fi
 
+cat > "$FIXTURE/workspace/kb/projects/weak.md" <<'EOF'
+# Weak
+
+## Overview
+- Current state.
+
+## 2026-01-05 - Cache gotcha (PR #3001)
+- PR narrative: touched A and B.
+
+## 2026-01-04 - Queue gotcha (PR #3002)
+- Rejected alternative: polling. Root cause: lost wakeups.
+EOF
+
+weak_json=$(python3 "$SCRIPT" \
+  --repo-root "$FIXTURE/repo" \
+  --kb-file "$FIXTURE/workspace/kb/projects/weak.md" \
+  --today 2026-05-29 \
+  --json 2>&1)
+if printf '%s' "$weak_json" | python3 -c '
+import json, sys
+titles = " ".join(i["section"] for i in json.load(sys.stdin)["issues"] if i["action"] == "curate")
+assert "Cache gotcha" in titles, titles
+assert "Queue gotcha" not in titles, titles
+'; then
+  pass=$((pass + 1))
+  printf 'PASS  a gotcha-titled PR narrative is a curation candidate, a decision-shaped one is protected\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  weak protected keyword needs decision shape\n%s\n' "$weak_json" >&2
+fi
+
+cat > "$FIXTURE/workspace/kb/projects/weakmerge.md" <<'EOF'
+# Weak merge
+
+## Overview
+- Current state.
+
+## 2026-01-05 - Cache invalidation gotcha (PR #4001)
+- PR narrative: touched A and B.
+
+## 2026-01-04 - Cache invalidation gotcha (PR #4002)
+- Rejected alternative: polling. Root cause: lost wakeups.
+EOF
+
+weakmerge_json=$(python3 "$SCRIPT" \
+  --repo-root "$FIXTURE/repo" \
+  --kb-file "$FIXTURE/workspace/kb/projects/weakmerge.md" \
+  --today 2026-05-29 \
+  --json 2>&1)
+if printf '%s' "$weakmerge_json" | python3 -c '
+import json, sys
+merges = [i for i in json.load(sys.stdin)["issues"] if i["category"] == "merge_candidate"]
+assert len(merges) == 0, merges
+'; then
+  pass=$((pass + 1))
+  printf 'PASS  a decision-shaped gotcha is not merged into a narrative gotcha\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  weak merge protection\n%s\n' "$weakmerge_json" >&2
+fi
+
+cat > "$FIXTURE/workspace/kb/projects/weakmerge2.md" <<'EOF'
+# Weak merge two
+
+## Overview
+- Current state.
+
+## 2026-01-05 - Cache invalidation gotcha (PR #4003)
+- PR narrative: touched A and B.
+
+## 2026-01-04 - Cache invalidation gotcha (PR #4004)
+- PR narrative: touched C and D.
+EOF
+
+weakmerge2_json=$(python3 "$SCRIPT" \
+  --repo-root "$FIXTURE/repo" \
+  --kb-file "$FIXTURE/workspace/kb/projects/weakmerge2.md" \
+  --today 2026-05-29 \
+  --json 2>&1)
+if printf '%s' "$weakmerge2_json" | python3 -c '
+import json, sys
+merges = [i for i in json.load(sys.stdin)["issues"] if i["category"] == "merge_candidate"]
+assert len(merges) == 1, merges
+'; then
+  pass=$((pass + 1))
+  printf 'PASS  two narrative gotchas with no decision shape are merge candidates\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  weak merge candidate\n%s\n' "$weakmerge2_json" >&2
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 
