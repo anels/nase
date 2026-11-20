@@ -76,6 +76,8 @@ gh pr checks {number} --repo {owner}/{repo} --required --json name,bucket,state,
 
 Follow `.claude/docs/pr-review-verification.md`, `.claude/docs/pr-review-fix-verification.md`, and `.claude/docs/ai-code-verification-debt.md` before classifying any thread. Every unresolved thread gets a bounded dossier; high-risk comments get deeper evidence, but low-risk comments still need a short evidence chain.
 
+**Step 3-0 - Load past lessons.** The threads now name the files they touch. Run `python3 .claude/scripts/lessons-lookup.py --skill address-comments --repo {repo} --path <p>` with one `--path` per thread path (cap 10). Read the printed entries before building dossiers, and let them steer where you look. No output means no match, so continue.
+
 **Step 3a - Build one dossier per unresolved thread before classification:**
 
 Use `threads[]` from `$TMPDIR/pr-comment-dossiers-{owner}-{repo}-{number}.json` as the baseline dossier: comment chain, `id`/`databaseId`, path/line, head/base excerpts, diff availability, and KB mentions are already bounded there. Before trusting a re-read of this file, re-check its `guards` object against the target `{owner}/{repo}`; if any field flipped, stop - the file was clobbered by a concurrent session. The helper uses the same `mentions:<path>` lookup shape as the older manual pass.
