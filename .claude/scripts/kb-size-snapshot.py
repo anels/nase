@@ -15,6 +15,8 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
+from nase_json import read_jsonl_objects
+
 DEFAULT_BUDGET = 800
 # Line count misses files with very long paragraphs, so size in bytes is checked too (~15k tokens).
 DEFAULT_BYTE_BUDGET = 60000
@@ -40,11 +42,16 @@ def last_snapshot(ledger: pathlib.Path) -> dict | None:
     if not ledger.is_file():
         return None
     last = None
-    for raw in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
-        try:
-            last = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
+    entries, _ = read_jsonl_objects(ledger)
+    for entry in entries:
+        # A line like `{}` parses but is not a snapshot. Skip it, so the last
+        # real snapshot stays the baseline instead of crashing the delta report.
+        if (
+            isinstance(entry.get("total"), int)
+            and isinstance(entry.get("files"), dict)
+            and isinstance(entry.get("ts"), str)
+        ):
+            last = entry
     return last
 
 

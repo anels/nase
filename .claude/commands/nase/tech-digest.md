@@ -1,7 +1,7 @@
 ---
 name: nase:tech-digest
 description: "Fetch a sourced tech-news digest filtered to workspace topics. Use for tech news, what's new, or morning digest."
-argument-hint: "[--refresh]"
+argument-hint: "[--refresh] [--dry-run] [--since DATE] [--section NAME] [--sources IDS]"
 category: Knowledge base
 model: sonnet
 effort: medium
@@ -15,7 +15,7 @@ Support `--force`/`--refresh` (synonyms), `--dry-run`, `--since <date>`, `--sect
 
 ## Workflow
 
-1. Load configured topics from `workspace/context.md` and source preferences from `workspace/config.md`; absent either, fall back to the topics the previous `workspace/recaps/tech-digest-*.md` filtered on and say so. Never embed credentials or private feed tokens in the report.
+1. Load sources (`## Sources`), filter topics (`## Filter Topics`), and output sections (`## Output Sections`) from `workspace/tech-digest-config.md`; if the file is missing, fall back to the topics the previous `workspace/recaps/tech-digest-*.md` filtered on, say so, and suggest `/nase:init` to create the stub. Never embed credentials or private feed tokens in the report.
 2. Fetch current primary/official sources first, then reputable secondary sources where they add context. Record publication date and canonical URL.
 3. De-duplicate by canonical URL/content hash and skip cached items unless forced. A failed source reduces coverage; it does not reuse stale text as current news.
 4. Filter by direct workspace relevance into exactly one of these labels:

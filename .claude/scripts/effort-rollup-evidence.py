@@ -880,7 +880,7 @@ def classify(
         countable = (
             role == "delivery"
             and merged_in_month
-            and bool(set(linked) & countable_efforts)
+            and bool(roles.get("delivery", set()) & countable_efforts)
         )
         if base:
             record = dict(base)
@@ -950,13 +950,16 @@ def inventory_capture(root: Path, month: str, bundle: Path) -> dict[str, Any]:
         if not directory.is_dir():
             continue
         command = ["bash", str(script), month, str(directory)]
-        completed = subprocess.run(
-            command,
-            cwd=root,
-            capture_output=True,
-            timeout=30,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=root,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise EvidenceError("month-efforts.sh timed out after 30s") from exc
         if completed.returncode != 0:
             raise EvidenceError("month-efforts.sh failed")
         commands.append(

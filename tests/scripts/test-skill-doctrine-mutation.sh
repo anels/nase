@@ -121,10 +121,6 @@ fresh d17
 replace_first .claude/commands/nase/learn.md 'description: "' 'description: "中文触发 '
 expect_rule_fails "CJK text in a command description" D17
 
-fresh d19
-append_line .claude/docs/plain-writing-guard.md 'The allowed-tools list is a security boundary for this skill.'
-expect_rule_fails "allowed-tools described as a security boundary" D19
-
 fresh d24
 append_line .claude/commands/nase/fsd.md 'Continue at Phase 99 when the build is green.'
 expect_rule_fails "cross-reference to a phase with no heading" D24

@@ -31,15 +31,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
 
+# Every file name commitlint's cosmiconfig search reads, plus the package.json key.
 CONFIG_FILES = (
+    ".commitlintrc",
     ".commitlintrc.json",
-    ".commitlintrc.js",
+    ".commitlintrc.yaml",
     ".commitlintrc.yml",
+    ".commitlintrc.js",
+    ".commitlintrc.cjs",
+    ".commitlintrc.mjs",
+    ".commitlintrc.ts",
+    ".commitlintrc.cts",
     "commitlint.config.js",
     "commitlint.config.mjs",
     "commitlint.config.cjs",
     "commitlint.config.ts",
+    "commitlint.config.cts",
 )
+PACKAGE_JSON = "package.json"
 
 RULE_KEYS = ("header-max-length", "type-enum", "subject-case", "subject-full-stop")
 PROTECTED_BRANCHES = ("main", "master", "develop", "release")
@@ -154,6 +163,19 @@ def branch_state(repo: Path) -> dict[str, Any]:
     return {"branch": name, "is_protected": protected}
 
 
+def extract_rules(entry: dict[str, Any], config: Any) -> None:
+    # Valid JSON that is not an object, or carries no rules object, reports as
+    # parsed with nothing extracted rather than failing the whole run.
+    if not isinstance(config, dict):
+        config = {}
+    rules = config.get("rules")
+    if not isinstance(rules, dict):
+        rules = {}
+    entry["parsed"] = True
+    entry["extends"] = config.get("extends")
+    entry["rules"] = {key: rules[key] for key in RULE_KEYS if key in rules}
+
+
 def commitlint(repo: Path) -> dict[str, Any]:
     candidates: list[dict[str, Any]] = []
     for name in CONFIG_FILES:
@@ -166,25 +188,39 @@ def commitlint(repo: Path) -> dict[str, Any]:
             "rules": None,
             "note": None,
         }
-        if name.endswith(".json"):
+        # `.commitlintrc` has no extension and may hold JSON or YAML; try JSON and
+        # fall through to the read-it-directly note for the YAML form.
+        if name.endswith(".json") or name == ".commitlintrc":
             try:
                 config = json.loads(path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError) as exc:
+            except json.JSONDecodeError as exc:
+                entry["note"] = (
+                    "non-JSON config: read it directly if CI loads this file"
+                    if name == ".commitlintrc"
+                    else f"parse error: {exc}"
+                )
+            except OSError as exc:
                 entry["note"] = f"parse error: {exc}"
             else:
-                # Valid JSON that is not an object, or carries no rules object, reports as
-                # parsed with nothing extracted rather than failing the whole run.
-                if not isinstance(config, dict):
-                    config = {}
-                rules = config.get("rules")
-                if not isinstance(rules, dict):
-                    rules = {}
-                entry["parsed"] = True
-                entry["extends"] = config.get("extends")
-                entry["rules"] = {key: rules[key] for key in RULE_KEYS if key in rules}
+                extract_rules(entry, config)
         else:
             entry["note"] = "non-JSON config: read it directly if CI loads this file"
         candidates.append(entry)
+    package = repo / PACKAGE_JSON
+    if package.is_file():
+        try:
+            manifest = json.loads(package.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            manifest = None
+        if isinstance(manifest, dict) and "commitlint" in manifest:
+            entry = {
+                "file": f"{PACKAGE_JSON}#commitlint",
+                "parsed": False,
+                "rules": None,
+                "note": None,
+            }
+            extract_rules(entry, manifest["commitlint"])
+            candidates.append(entry)
     return {"candidates": candidates, "found": bool(candidates)}
 
 

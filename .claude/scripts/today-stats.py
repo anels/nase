@@ -32,10 +32,10 @@ import sys
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
+from nase_skill_usage import dedupe_uses, normalize_skill
 from nase_time import local_today, parse_ts
 
 NASE_ROOT = Path(__file__).resolve().parents[2]
-PROMPT_TOOL_DEDUPE_WINDOW = timedelta(seconds=60)
 
 
 def collect_skill_usage(root: Path, first_day: date, last_day: date) -> dict:
@@ -79,62 +79,23 @@ def collect_skill_usage(root: Path, first_day: date, last_day: date) -> dict:
             if window_start <= dt < window_end:
                 window_seen = True
                 skill = d.get("skill")
-                if skill:
+                if isinstance(skill, str) and skill:
                     records.append(
                         {
-                            "skill": skill,
+                            "skill": normalize_skill(skill),
                             "source": d.get("source", ""),
                             "event_type": d.get("event_type", ""),
-                            "session_id": d.get("session_id", ""),
+                            "session": d.get("session_id") or "legacy",
                             "dt": dt,
                         }
                     )
             elif window_seen and dt >= window_end:
                 break
     counts: dict[str, int] = {}
-    for event in dedupe_prompt_tool_events(records):
+    for event in dedupe_uses(records):
         skill = event["skill"]
         counts[skill] = counts.get(skill, 0) + 1
     return counts
-
-
-def dedupe_prompt_tool_events(records: list[dict]) -> list[dict]:
-    # A string sort over mixed `Z` and `+HH:MM` stamps compares wall clocks and can put a
-    # tool outcome ahead of the prompt it belongs to, which inverts the dedupe window.
-    prompt_times: dict[tuple[str, str], list[datetime]] = {}
-    kept: list[dict] = []
-    for event in sorted(records, key=lambda e: e["dt"]):
-        skill = event["skill"]
-        dt = event["dt"]
-        event_type = event["event_type"]
-        session = event["session_id"] or "legacy"
-        if event_type == "requested" or event_type == "tool_failed":
-            continue
-        if event_type == "activated":
-            kept.append(event)
-            prompt_times.setdefault((skill, session), []).append(dt)
-            continue
-        if event_type == "tool_succeeded":
-            if near_prompt(dt, prompt_times.get((skill, session), [])):
-                continue
-            kept.append(event)
-            continue
-        if event["source"] in {"prompt", "prompt-expansion"}:
-            kept.append(event)
-            prompt_times.setdefault((skill, session), []).append(dt)
-            continue
-        if near_prompt(dt, prompt_times.get((skill, session), [])):
-            continue
-        kept.append(event)
-    return kept
-
-
-def near_prompt(dt: datetime, prompt_times: list[datetime]) -> bool:
-    """Whether a tool outcome is the same invocation as a prompt already counted."""
-    return any(
-        timedelta(0) <= (dt - prompt_dt) <= PROMPT_TOOL_DEDUPE_WINDOW
-        for prompt_dt in prompt_times
-    )
 
 
 def main() -> int:

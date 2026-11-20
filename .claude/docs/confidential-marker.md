@@ -44,6 +44,8 @@ fi
   `[CONFIDENTIAL]`; ask for a sanitized restatement.
 - `/nase:kb-teamshare`: exclude marked lines and fail the export if selected
   files still contain the marker after sanitization.
+- `/nase:kb-gap-detect`: `kb-gap-scan.sh` drops any scanned line containing
+  `[CONFIDENTIAL` in `emit_hits`, so a marked line never reaches a KB draft.
 - `/nase:tech-debt-audit`: do not turn people-sensitive daily-log context into
   named blockers or ownership claims.
 

@@ -40,7 +40,7 @@ as separate passes` / `Never self-approve in the same active context`.
 
 Default pattern: one subagent per delegation.
 
-- Route it through the `verifier` role in `.claude/roles.yaml`. The role is read-only by its prompt prefix, which is advisory. A persisted agent in `.claude/agents/*.md` with a `tools:` frontmatter is the only enforced whitelist, so the parent gate's report should say which of the two applied.
+- Spawn the persisted `nase-verifier` agent (`.claude/agents/nase-verifier.md`, `tools: Read, Grep, Glob`). Its `tools:` frontmatter is the only enforced read-only whitelist. The `verifier` role in `.claude/roles.yaml` is the same reviewer by prompt prefix only, which is advisory, so the parent gate's report should say which of the two applied.
 - Pass the mode's template as the subagent's instructions verbatim, and the per-call payload as its prompt.
 - Give it the artifact and the contract, and nothing else. Withholding your classification, severity, and expected verdict is the whole mechanism: a reviewer told the answer cannot independently reach it.
 - Pass absolute paths. A subagent resolves relative paths against its own cwd, which is not necessarily the worktree under review.

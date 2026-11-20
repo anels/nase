@@ -1174,7 +1174,12 @@ def limited_diff(
     if secret_kind(data):
         return "(diff omitted because it contains credential-like bytes)", True
     try:
-        text = data.decode("utf-8", "strict")
+        if truncated:
+            # The cut can land inside a multibyte character; hold back the
+            # incomplete tail instead of treating the whole diff as non-UTF-8.
+            text = codecs.getincrementaldecoder("utf-8")("strict").decode(data, final=False)
+        else:
+            text = data.decode("utf-8", "strict")
     except UnicodeDecodeError:
         return "(non-UTF-8 diff omitted)", False
     return text + ("\n... diff truncated at 64 KiB ...\n" if truncated else ""), False
@@ -1186,6 +1191,13 @@ def fenced(label: str, content: str, language: str = "") -> str:
 
 def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     repo = Path(args.repo).resolve()
+    # From a subdirectory `ls-tree` paths are cwd-relative while `diff --name-only` paths are
+    # root-relative, so no changed file resolves and the secret preflight passes vacuously.
+    toplevel = Path(git_text(repo, "rev-parse", "--show-toplevel").strip()).resolve()
+    if toplevel != repo:
+        raise SystemExit(
+            f"--repo must be the repository root {toplevel}, not the subdirectory {repo}"
+        )
     current_base_oid = git_text(repo, "rev-parse", f"{args.base}^{{commit}}").strip()
     head_oid, current_tree_oid = candidate_tree(repo)
     inventory = load_json(args.inventory_file, [])

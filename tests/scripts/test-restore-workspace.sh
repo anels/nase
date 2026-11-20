@@ -671,6 +671,56 @@ assert_cmd "name error states the required pattern" \
 resolve_backup "$backup_target" "$backup_target" >/dev/null
 assert_cmd "the target directory itself is not a valid selection" test "$?" = 2
 
+# 7z byte and member ceilings are enforced before and during extraction.
+case_dir="$TMPROOT/sevenzip-ceiling"
+mkdir -p "$case_dir/root" "$case_dir/source/workspace" "$case_dir/out"
+head -c 200000 /dev/zero > "$case_dir/source/workspace/big.bin"
+printf 'x\n' > "$case_dir/source/workspace/small.md"
+(cd "$case_dir/source" && "$SEVEN_ZIP" a -t7z "$case_dir/archive.7z" workspace >/dev/null)
+cat > "$case_dir/probe.py" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("rw", sys.argv[1])
+rw = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(rw)
+archive, out, mode = Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]
+if mode == "bytes":
+    rw.MAX_RESTORE_UNCOMPRESSED_BYTES = 1000
+elif mode == "members":
+    rw.MAX_RESTORE_MEMBERS = 1
+try:
+    rw.extract_seven_zip(archive, out)
+except rw.RestoreError as exc:
+    print(f"RestoreError: {exc}")
+    sys.exit(2)
+print("extracted")
+PY
+python3 -I "$case_dir/probe.py" "$SCRIPT" "$case_dir/archive.7z" "$case_dir/out" ok > "$case_dir/ok.out" 2>&1
+assert_cmd "7z extraction within the ceilings succeeds" grep -q '^extracted$' "$case_dir/ok.out"
+assert_cmd "7z extraction within the ceilings writes the payload" test -f "$case_dir/out/workspace/big.bin"
+rm -rf "$case_dir/out" && mkdir "$case_dir/out"
+python3 -I "$case_dir/probe.py" "$SCRIPT" "$case_dir/archive.7z" "$case_dir/out" bytes > "$case_dir/bytes.out" 2>&1
+assert_cmd "7z extraction past the byte ceiling fails closed" test "$?" = 2
+assert_cmd "7z byte-ceiling failure is explicit" grep -q 'uncompressed byte ceiling' "$case_dir/bytes.out"
+rm -rf "$case_dir/out" && mkdir "$case_dir/out"
+python3 -I "$case_dir/probe.py" "$SCRIPT" "$case_dir/archive.7z" "$case_dir/out" members > "$case_dir/members.out" 2>&1
+assert_cmd "7z member-ceiling failure is explicit" grep -q 'member ceiling' "$case_dir/members.out"
+python3 -I - "$SCRIPT" "$case_dir/archive.7z" "$case_dir/m.json" "$case_dir/root" > "$case_dir/list.out" 2>&1 <<'PY'
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("rw", sys.argv[1])
+rw = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(rw)
+rw.MAX_RESTORE_UNCOMPRESSED_BYTES = 1000
+try:
+    rw.inspect_archive(Path(sys.argv[4]), Path(sys.argv[2]), Path(sys.argv[3]))
+except rw.RestoreError as exc:
+    print(f"RestoreError: {exc}")
+    sys.exit(2)
+PY
+assert_cmd "7z listing over the declared byte ceiling is rejected before extraction" grep -q 'above the' "$case_dir/list.out"
+assert_cmd "7z listing rejection writes no manifest" test ! -e "$case_dir/m.json"
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nrestore workspace tests passed.\n'
   exit 0

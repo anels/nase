@@ -139,6 +139,7 @@ if args[:2] == ["pr", "view"]:
         6: "2026-08-06T00:00:00Z",
         7: "2026-08-03T00:00:00Z",
         8: "2026-08-07T00:00:00Z",
+        9: "2026-08-10T00:00:00Z",
     }[number]
     title = "ghp_" + "A" * 24 if mode == "secret-title" else f"PR {number}"
     slug = "Example/Service" if number == 8 else "example/service"
@@ -593,6 +594,32 @@ assert effort["dependency_prs"] == [
 ]
 PY
 rm "$FIXTURE/workspace/efforts/done/effort-bare.md"
+
+write_effort effort-wontfix-nine '---
+status: wontfix
+repo: service
+pr: https://github.com/example/service/pull/9
+---'
+write_effort effort-cites-nine '---
+status: completed
+repo: service
+pr: https://github.com/example/service/pull/1
+---
+See also https://github.com/example/service/pull/9'
+CITED="$TMPDIR_TEST/cited-context"
+assert_cmd "a PR cited as context by a countable effort still collects" collect_bundle "$CITED"
+assert_cmd "a PR counts only through an effort that holds it as delivery" "$PYTHON_BIN" - "$CITED/evidence.json" <<'PY'
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+efforts = {item["slug"]: item for item in data["efforts"]}
+assert efforts["effort-cites-nine"]["countable"] is True
+assert efforts["effort-wontfix-nine"]["countable"] is False
+prs = {item["number"]: item for item in data["prs"]}
+assert prs[9]["role"] == "delivery" and prs[9]["countable"] is False, prs[9]
+assert prs[1]["countable"] is True
+PY
+rm "$FIXTURE/workspace/efforts/done/effort-wontfix-nine.md" "$FIXTURE/workspace/efforts/done/effort-cites-nine.md"
 
 write_effort effort-malformed-pr '---
 status: completed

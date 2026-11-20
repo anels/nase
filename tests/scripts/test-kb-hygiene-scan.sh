@@ -445,6 +445,21 @@ else
   printf 'FAIL  weak merge candidate\n%s\n' "$weakmerge2_json" >&2
 fi
 
+printf '# Bad date\n\n## Overview\n<!-- Last updated: 2026-13-45 -->\n- note\n' > "$FIXTURE/workspace/kb/general/baddate.md"
+baddate_out=$(python3 "$SCRIPT" \
+  --repo-root "$FIXTURE/repo" \
+  --kb-file "$FIXTURE/workspace/kb/general/baddate.md" \
+  --today 2026-05-29 2>&1)
+baddate_rc=$?
+if [ "$baddate_rc" = 0 ]; then
+  pass=$((pass + 1))
+  printf 'PASS  impossible Last updated date does not crash the scan\n'
+else
+  fail=$((fail + 1))
+  printf 'FAIL  impossible Last updated date crashed (rc=%s)\n%s\n' "$baddate_rc" "$baddate_out" >&2
+fi
+assert_contains "impossible Last updated date is reported" "$baddate_out" "not a calendar date"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

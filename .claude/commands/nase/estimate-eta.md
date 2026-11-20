@@ -26,11 +26,11 @@ Apply the principles and confidence-range format in `.claude/docs/eta-estimation
    - Relevant existing files and components that would be touched
    - Current complexity and test coverage
    - Any dependencies or integrations involved
-3. Read `workspace/tasks/lessons.md` if it exists - look for similar past tasks and how long they took
+3. Slice `workspace/tasks/lessons.md` if it exists; it is large, so never read it whole. List the calibration entries with `grep -n '^## calibration' workspace/tasks/lessons.md`, then `grep -n -i -E '<2-3 task keywords>' workspace/tasks/lessons.md` for similar past tasks. Read only the matching entries (each runs from its `## ` header to the next) with an offset and limit. Look for how long similar tasks took.
    - Also check the resolved project KB for verified complexity constraints and prior gotchas. Use lessons or completed effort evidence for historical duration; do not infer team velocity from an active project KB unless it contains an explicit measured series with provenance.
 4. Read `workspace/tasks/todo.md` to understand current workload and what's in flight
 5. Break the task into concrete subtasks. Tag each with its **dominant lane** (🤖 AI / 🔌 Env / 🧠 Human / ✅ Verify) per `.claude/docs/eta-estimation.md` → Lane Classification - ask "what is this step blocked on?" That section owns the `estimate-eta.lane` jev call and its fallback; do not restate them here.
-6. Size each subtask with the rough bucket scale (S / M / L / XL / XXL). Try jev first via `.claude/scripts/jev-judge.py` (point `estimate-eta.size`, `--type Choice` over those five buckets; state = subtask description + its lane); confidence < 0.9 or unavailable → size it yourself against `.claude/docs/eta-estimation.md` → Size Scale. Apply AI-leverage compression only to 🤖 lane subtasks; 🔌 / 🧠 / ✅ do not speed up because codegen got faster
+6. Size each subtask with the rough bucket scale (S / M / L / XL / XXL). Try jev first via `.claude/scripts/jev-judge.py` (point `estimate-eta.size`, `--type Choice` over those five buckets; state = the subtask description with ticket IDs, repo and customer names stripped, + its lane); confidence < 0.9 or unavailable → size it yourself against `.claude/docs/eta-estimation.md` → Size Scale. Apply AI-leverage compression only to 🤖 lane subtasks; 🔌 / 🧠 / ✅ do not speed up because codegen got faster
 
 7. Persist the estimate - append under `## Sessions` in `workspace/logs/{YYYY-MM-DD}.md`, in the shape `.claude/docs/daily-log-format.md` mandates, using this skill's canonical tag `estimate`:
    ```

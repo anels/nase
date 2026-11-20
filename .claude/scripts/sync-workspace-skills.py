@@ -34,6 +34,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from nase_fs import atomic_write
+from nase_skill_meta import IMPORTED_MARKER_KEY, PRIVILEGED_KEYS
 
 # A stub name has to be a safe command name: lowercase, digits and dashes.
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -209,10 +210,15 @@ def sync(root: pathlib.Path) -> tuple[int, int, int, list[str]]:
             continue
         front, body = split_frontmatter(lines)
         description = yaml_escape(compact_description(description_source(front, body)))
+        # An imported skill never gets its tool pre-approvals or run context copied into
+        # a model-invocable wrapper. The user can still read them in the source file.
+        imported = bool(frontmatter_block(front, IMPORTED_MARKER_KEY))
         blocks = [
             block
             for block in (
-                frontmatter_block(front, key) for key in FORWARDED_KEYS
+                frontmatter_block(front, key)
+                for key in FORWARDED_KEYS
+                if not (imported and key in PRIVILEGED_KEYS)
             )
             if block
         ]

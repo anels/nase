@@ -389,7 +389,9 @@ def heading_anchors(source: str) -> dict[str, str]:
     return anchors
 
 
-NOTE_RUN = re.compile(r"(?:<blockquote>.*?</blockquote>\s*){2,}", re.DOTALL)
+NOTE_RUN = re.compile(
+    r"(?:<blockquote>(?:(?!</blockquote>).)*</blockquote>\s*){2,}", re.DOTALL
+)
 
 
 def group_note_runs(html: str, minimum: int = 2) -> str:

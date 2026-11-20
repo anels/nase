@@ -19,7 +19,7 @@ For a no-worktree flow, delete `workspace/tmp/fsd-phases-{branch_slug}.md` and
 
 Derive `closure_state`:
 - `done` - every required criterion is `proven`; the review returned `PROCEED` for the final candidate and bundle; the staged and committed trees equal `approved_candidate_tree_oid`; and final command evidence is newer than the last modification.
-  - `review_outcome = not-run` fails this by definition, since there is no `PROCEED` and no `approved_candidate_tree_oid`. Such a run is at best `conditional`.
+  - `review_outcome = not-run` fails this by definition, since there is no `PROCEED` and no `approved_candidate_tree_oid`. The review gate is never skipped, so such a run stopped at Phase 6.4 and reports `not-closed`; it never reaches a waiver.
 - `conditional` - every required criterion is `proven` or `waived`, with waiver reasons named.
 - `not-closed` - any required criterion is `blocked` or unproven.
 
@@ -27,7 +27,7 @@ Never print `done ✓` when a criterion or final QA condition is unproven. If `s
 
 **When the decision carried `disclose_unreviewed_repair`,** the tree that shipped is not the tree that was reviewed. Say so in the report and name the files the repair touched, so whoever reads the PR can weigh it. A repair applied after the only review is defensible; one that goes unmentioned is not.
 
-**When `review_outcome = not-run`,** nothing was reviewed at all, which is the wider version of the same problem. The report says so, names the provider and what came back, and states which deterministic gates did pass - the build, the suite against its baseline, the lint and format gates, the flake evidence - because those are the whole basis for shipping in that case and the reader deserves to see the actual basis rather than infer it. Point at the retained candidate artifacts too. `disclose_unreviewed_repair` and `not-run` can both be set; report both rather than letting the larger one absorb the smaller. In the summary below, `Candidate` carries `tested_candidate_tree_oid`, `Reviewed` reads `not reviewed`, and `Review` names the provider and what came back rather than an action the reducer never returned.
+**When `review_outcome = not-run`,** the run stopped at Phase 6.4 because the reviewer could not return a usable result, and nothing was committed or pushed. The report says so as an error, names the reviewer (`nase-verifier`), the attempt count, and what came back, and points at the retained candidate artifacts so the review can be re-run. It may list which deterministic gates passed, as context only, never as a substitute for the review. In the summary below, `Candidate` carries `tested_candidate_tree_oid`, `Reviewed` reads `not reviewed`, and `Review` names what came back rather than an action the reducer never returned. `disclose_unreviewed_repair` and `not-run` cannot both be set, because `not-run` ends the run before any repair reaches Phase 7.
 
 Print a concise summary:
 

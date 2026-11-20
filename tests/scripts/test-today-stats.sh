@@ -35,8 +35,11 @@ assert_line() {
   fi
 }
 
-assert_line "total_invocations=5"
-assert_line "unique_skills=4"
+# A failed Skill call is still a use. skill-usage-report.py counts it the same way,
+# because both read nase_skill_usage.dedupe_uses.
+assert_line "total_invocations=6"
+assert_line "unique_skills=5"
+assert_line "skill failed 1"
 assert_line "skill help 1"
 assert_line "skill new 1"
 assert_line "skill reflect 2"

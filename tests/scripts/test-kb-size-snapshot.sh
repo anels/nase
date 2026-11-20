@@ -34,6 +34,13 @@ out=$(python3 "$SCRIPT" --root "$FIXTURE" --no-write)
 case "$out" in *"net +2 lines"*"grew +2"*"one.md"*) check "second run reports growth by file" 1 ;; *) check "second run reports growth by file" 0 "$out" ;; esac
 check "--no-write leaves the ledger at one line" "$([ "$(wc -l < "$FIXTURE/workspace/stats/kb-size.jsonl")" -eq 1 ] && echo 1 || echo 0)"
 
+# A ledger whose last line parses but is not a snapshot must not crash the report.
+printf '{}\n[1]\n"x"\n' >> "$FIXTURE/workspace/stats/kb-size.jsonl"
+out=$(python3 "$SCRIPT" --root "$FIXTURE" --no-write 2>&1)
+rc=$?
+check "non-snapshot ledger lines are skipped (exit 0)" "$([ "$rc" -eq 0 ] && echo 1 || echo 0)" "$out"
+case "$out" in *"net +2 lines"*) check "last real snapshot stays the baseline" 1 ;; *) check "last real snapshot stays the baseline" 0 "$out" ;; esac
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 [ "$fail" -eq 0 ]

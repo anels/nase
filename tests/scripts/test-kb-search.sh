@@ -376,6 +376,93 @@ out=$(bash "$SCRIPT" "dropbox storage hash zzmiss" 2>&1)
 rc=$?
 assert_exit "T16: four words drop entries that hold only two" 2 "$rc"
 
+cat > "$FIXTURE/workspace/kb/general/fenced.md" <<'EOF'
+# Fenced fixture
+
+### 2026-09-01 Fenced install steps
+**Tags:** fencegotcha
+**Confidence:** high
+Run the installer.
+
+```bash
+# install step
+make fencedtoken
+```
+
+~~~
+## tilde fenced comment
+~~~
+
+Tail line fencedtail.
+EOF
+
+out=$(bash "$SCRIPT" "fencedtoken" "tag:fencegotcha" 2>&1)
+rc=$?
+assert_exit "T17: shell comment in a fence does not hide the tag" 0 "$rc"
+assert_contains "T17: entry keeps its real heading" "$out" "Fenced install steps"
+out=$(bash "$SCRIPT" "fencedtail" "tag:fencegotcha" 2>&1)
+rc=$?
+assert_exit "T17: text after a tilde fence stays in the real section" 0 "$rc"
+assert_contains "T17: entry after tilde fence keeps its heading" "$out" "Fenced install steps"
+out=$(bash "$SCRIPT" "fencedtoken" "since:2026-09-01" 2>&1)
+rc=$?
+assert_exit "T17: since filter still sees the real date" 0 "$rc"
+
+# CRLF file: the closing fence is "```\r" and must still close, or every later heading is swallowed.
+printf '# CRLF fixture\r\n\r\n### 2026-09-02 First crlf entry\r\n**Tags:** crlfone\r\n**Confidence:** high\r\n\r\n```bash\r\n# crlf comment\r\nmake crlftoken\r\n```\r\n\r\n### 2026-09-03 Second crlf entry\r\n**Tags:** crlftwo\r\n**Confidence:** high\r\nBody crlfsecond.\r\n' \
+  > "$FIXTURE/workspace/kb/general/crlf-fenced.md"
+out=$(bash "$SCRIPT" "crlfsecond" "tag:crlftwo" 2>&1)
+rc=$?
+assert_exit "T17: CRLF closing fence keeps the next entry separate" 0 "$rc"
+assert_contains "T17: entry after a CRLF fence keeps its own heading" "$out" "Second crlf entry"
+
+# ── T19: since: reads every dated heading shape, undated entries stay ────────
+cat > "$FIXTURE/workspace/kb/general/dated-shapes.md" <<'EOF'
+# Dated shapes fixture
+
+### 2026-03-04 Old level-three entry
+shapetoken old three.
+
+### 2026-10-04 New level-three entry
+shapetoken new three.
+
+## 2026-03-01 Old level-two entry
+shapetoken old two.
+
+## 2026-10-01 New level-two entry
+shapetoken new two.
+
+## Old trailing paren (2026-03-02)
+shapetoken old paren.
+
+## New trailing paren (2026-10-02)
+shapetoken new paren.
+
+## Ad hoc - 2026-03-03
+shapetoken old adhoc.
+
+## Ad hoc - 2026-10-03
+shapetoken new adhoc.
+
+## Undated current-state section
+shapetoken undated.
+
+## Delta since 2026-01-01
+shapetoken since heading is not an entry date.
+EOF
+
+out=$(bash "$SCRIPT" "shapetoken" "since:2026-09-01" 2>&1)
+assert_contains "T19: a new level-two dated entry survives since" "$out" "New level-two entry"
+assert_contains "T19: a new trailing-paren date survives since" "$out" "New trailing paren"
+assert_contains "T19: a new dash-dated heading survives since" "$out" "new adhoc"
+assert_contains "T19: a new level-three entry survives since" "$out" "New level-three entry"
+assert_not_contains "T19: an old level-two entry is filtered" "$out" "Old level-two entry"
+assert_not_contains "T19: an old trailing-paren entry is filtered" "$out" "Old trailing paren"
+assert_not_contains "T19: an old dash-dated entry is filtered" "$out" "old adhoc"
+assert_not_contains "T19: an old level-three entry is filtered" "$out" "Old level-three entry"
+assert_contains "T19: an undated section is kept as before" "$out" "Undated current-state section"
+assert_contains "T19: a since heading is not read as an entry date" "$out" "since heading is not an entry date"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

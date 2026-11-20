@@ -84,7 +84,7 @@ assert_not_contains "sync docs does not depend on empty HEAD diff" "$SYNC" 'git 
 
 IMPROVE_COMMIT=.claude/commands/nase/improve-commit-message.md
 COMMIT_CONTEXT=.claude/scripts/git-commit-context.py
-KB_USAGE=.claude/commands/nase/kb-usage.md
+KB_USAGE=.claude/commands/nase/stats.md
 
 assert_contains "pushed amend requires immediate approval even with auto-accept" \
   "$IMPROVE_COMMIT" 'When `is_pushed: true`, `--auto-accept` does not authorize the amend.'
@@ -132,11 +132,11 @@ assert_not_contains "skill audit has no scanner-only verdict contradiction" \
   "$SKILL_AUDIT" 'invent those findings when the scanner emitted no lead'
 
 assert_contains "KB usage frontmatter documents every supported flag" \
-  "$KB_USAGE" 'argument-hint: "[--window N|all] [--top N] [--verbose]"'
+  "$KB_USAGE" 'kb-usage [--window N|all] [--top N] [--verbose]'
 assert_contains "KB usage delegates validation to the Python helper" \
-  "$KB_USAGE" 'Let `kb-usage-report.py` parse and validate those arguments.'
+  .claude/docs/kb-usage-report.md 'let `kb-usage-report.py` parse and validate them.'
 assert_not_contains "KB usage does not reparse raw arguments in shell" \
-  "$KB_USAGE" 'set -- $ARGUMENTS'
+  .claude/docs/kb-usage-report.md 'set -- $ARGUMENTS'
 
 APP_INSIGHTS=workspace/skills/appinsights-deep-triage.md
 assert_contains "App Insights zero-signal branch has one owner" \

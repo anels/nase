@@ -37,8 +37,12 @@ def parse_sections(lines: list[str]) -> list[dict]:
         if m:
             marker = m.group(1)
             if not fence:
-                fence = marker[0] * 3
-            elif marker.startswith(fence):
+                fence = marker
+            elif (
+                marker[0] == fence[0]
+                and len(marker) >= len(fence)
+                and line.strip() == marker
+            ):
                 fence = ""
             continue
         if fence:
@@ -70,12 +74,31 @@ def find_section(sections: list[dict], query: str) -> dict:
     return pool[0]
 
 
-def read_lines(path: str) -> list[str]:
+def split_lines(raw: str) -> tuple[list[str], bool]:
+    """Split on "\\n" only, so CRLF endings and stray form feeds survive a round trip.
+
+    Returns the lines (a CRLF file keeps its trailing "\\r") and whether the text ended
+    with a newline.
+    """
+    if not raw:
+        return [], False
+    lines = raw.split("\n")
+    trailing = raw.endswith("\n")
+    if trailing:
+        lines.pop()
+    return lines, trailing
+
+
+def read_raw(path: str) -> str:
     try:
-        return pathlib.Path(path).read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+        return pathlib.Path(path).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         print(f"kb-section: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
+
+
+def read_lines(path: str) -> list[str]:
+    return split_lines(read_raw(path))[0]
 
 
 def cmd_outline(args: argparse.Namespace) -> int:
@@ -103,10 +126,24 @@ def pick(args: argparse.Namespace, lines: list[str]) -> dict:
 def write_out(out: str, lines: list[str], had_trailing_newline: bool) -> None:
     text = "\n".join(lines) + ("\n" if had_trailing_newline else "")
     try:
-        pathlib.Path(out).write_text(text, encoding="utf-8")
+        pathlib.Path(out).write_bytes(text.encode("utf-8"))
     except OSError as exc:
         print(f"kb-section: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
+
+
+def match_eol(new: list[str], crlf: bool) -> list[str]:
+    """Give inserted lines the line ending the target file already uses."""
+    bare = [x[:-1] if x.endswith("\r") else x for x in new]
+    return [x + "\r" for x in bare] if crlf else bare
+
+
+def content_end(lines: list[str], s: dict) -> int:
+    """1-based last line of a section that holds text, before its trailing blank lines."""
+    end = s["end"]
+    while end > s["start"] and not lines[end - 1].strip():
+        end -= 1
+    return end
 
 
 def cmd_edit(args: argparse.Namespace) -> int:
@@ -114,22 +151,22 @@ def cmd_edit(args: argparse.Namespace) -> int:
     if not source.is_file():
         print(f"kb-section: not a file: {args.file}", file=sys.stderr)
         return 1
-    try:
-        raw = source.read_text(encoding="utf-8")
-    except OSError as exc:
-        print(f"kb-section: {exc}", file=sys.stderr)
-        return 1
+    raw = read_raw(args.file)
     if pathlib.Path(args.out).resolve() == source.resolve():
         print("kb-section: --out must not be the same file as <file>", file=sys.stderr)
         return 1
-    lines = raw.splitlines()
+    lines, trailing = split_lines(raw)
     s = pick(args, lines)
-    new = read_lines(args.content_file)
+    new = match_eol(read_lines(args.content_file), "\r\n" in raw)
+    keep = content_end(lines, s)
+    gap = lines[keep : s["end"]]
     if args.cmd == "replace":
-        out_lines = lines[: s["start"] - 1] + new + lines[s["end"] :]
+        if new and not new[-1].strip():
+            gap = []
+        out_lines = lines[: s["start"] - 1] + new + gap + lines[s["end"] :]
     else:
-        out_lines = lines[: s["end"]] + new + lines[s["end"] :]
-    write_out(args.out, out_lines, raw.endswith("\n"))
+        out_lines = lines[:keep] + new + gap + lines[s["end"] :]
+    write_out(args.out, out_lines, trailing)
     return 0
 
 

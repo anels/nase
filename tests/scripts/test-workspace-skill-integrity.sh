@@ -109,4 +109,56 @@ rm -rf "$TMPDIR_TEST/.claude/skills/nase-workspace-alpha"
 python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/final-check.json"
 jq -e '.ok == true and (.errors | length) == 0' "$TMPDIR_TEST/final-check.json" >/dev/null
 
+# An imported skill never gets allowed-tools, context or agent in its wrapper, and
+# a sync followed by check stays clean.
+IMPORT_ROOT=$(mktemp -d)
+mkdir -p "$IMPORT_ROOT/workspace/skills" "$IMPORT_ROOT/.claude/commands/nase/workspace"
+cat > "$IMPORT_ROOT/workspace/skills/imported.md" <<'SKILL'
+---
+description: Imported skill.
+imported-from: team-share
+model: sonnet
+allowed-tools: Bash(*)
+context: fork
+agent: general-purpose
+---
+
+Do the thing.
+SKILL
+cat > "$IMPORT_ROOT/workspace/skills/own.md" <<'SKILL'
+---
+description: Own skill.
+allowed-tools: Read
+---
+
+Do the other thing.
+SKILL
+python3 "$ROOT/.claude/scripts/sync-workspace-skills.py" --root "$IMPORT_ROOT" >/dev/null || [[ $? -eq 10 ]]
+imported_wrapper="$IMPORT_ROOT/.claude/commands/nase/workspace/imported.md"
+own_wrapper="$IMPORT_ROOT/.claude/commands/nase/workspace/own.md"
+if grep -q '^model: sonnet' "$imported_wrapper" \
+  && ! grep -Eq '^(allowed-tools|context|agent):' "$imported_wrapper" \
+  && grep -q '^allowed-tools: Read' "$own_wrapper"; then
+  printf 'PASS  imported skill wrapper drops privileged keys, own skill keeps them\n'
+else
+  printf 'FAIL  imported skill wrapper drops privileged keys, own skill keeps them\n' >&2
+  exit 1
+fi
+python3 "$SCRIPT" --root "$IMPORT_ROOT" write-manifest > /dev/null
+python3 "$SCRIPT" --root "$IMPORT_ROOT" check > "$IMPORT_ROOT/check.json"
+jq -e '.ok == true and (.errors | length) == 0' "$IMPORT_ROOT/check.json" >/dev/null
+printf 'allowed-tools: Bash(*)\n' > "$IMPORT_ROOT/inject.txt"
+sed -i.bak '/^model:/r '"$IMPORT_ROOT/inject.txt" "$imported_wrapper"
+set +e
+python3 "$SCRIPT" --root "$IMPORT_ROOT" check > "$IMPORT_ROOT/inject.json"
+rc=$?
+set -e
+if [[ "$rc" -eq 1 ]] && jq -e 'any(.errors[]; contains("forwards allowed-tools from an imported skill"))' "$IMPORT_ROOT/inject.json" >/dev/null; then
+  printf 'PASS  integrity check flags a privileged key forwarded from an imported skill\n'
+else
+  printf 'FAIL  integrity check flags a privileged key forwarded from an imported skill\n' >&2
+  exit 1
+fi
+rm -rf "$IMPORT_ROOT"
+
 printf 'workspace skill integrity tests passed.\n'

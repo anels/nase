@@ -27,7 +27,7 @@ Canonical rule for skills that change state in systems outside the local workspa
 | **Slack** | NEVER call `slack_send_message` or `slack_schedule_message` directly. ALWAYS use `slack_send_message_draft` so the user reviews + sends. No exceptions. A canvas is a write too: `slack_create_canvas` and `slack_update_canvas` publish with no draft path, so `slack-send-guard.sh` blocks both. Put the canvas body in `workspace/tmp/{name}.md`, get explicit approval, and have the user create it. |
 | **Jira** | Comments, issue creation, and status transitions are mutations - they notify watchers and may auto-assign. Gate each one, except a transition whose class the autonomy level pre-authorizes (below). |
 | **Confluence** | Page create / update: draft to `workspace/tmp/{name}.md` first, get explicit approval, only then call the tool. Never publish silently. Tool names differ by MCP generation; the current and older names are listed in `.claude/docs/mutation-reference.md → Confluence tool names`. Attachment upload has no MCP tool: `confluence-publish.py attach` posts PNG bytes to any page with the stored Atlassian token, so it runs only through `external-write-action.py --system confluence` (see Gate contract). |
-| **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, gated on its own payload by that hook. The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead. `discover` and `executeRead` are read-only and fine. |
+| **Atlassian generic runner** | NEVER call `executeWrite` or `executeDestructive`. They run any `discover` operation under an opaque `{name, cloudId, inputs}` payload, so no payload-bound gate can read them; `atlassian-generic-write-guard.sh` blocks both. One exception: `executeWrite` with `name: "createConfluenceComment"`, gated by that hook on its own payload, `prose-lint.py --surface confluence-doc`, and a single-shot `jira-write-token` bound to the exact payload (the hook pipes the call into `jira-write-guard.sh`). The draft-first rule still applies: write the comment under `workspace/tmp/` and get the user's go-ahead. `discover` and `executeRead` are read-only and fine. |
 | **GitHub PR** | Opening a PR, merging, editing a description, adding labels, requesting reviewers, posting review comments - gate each, unless the autonomy level pre-authorizes the class or the user gave per-run consent (below). Default to **draft PR** when creating. Inline review comments stay AI-clean (no `Co-Authored-By` lines). |
 | **ADO pipeline** | Triggering a build is action-taking: gate it with the computed `templateParameters` shown. Use `az` CLI (`az pipelines`, `az rest` - never `curl` with `$ADO_PAT`). |
 | **Cloud resources** | `az`, `kubectl`, `terraform apply`, `snow` - any infrastructure mutation requires explicit confirmation at every autonomy level. Read-only queries (`get`, `list`, `show`, `describe`) are fine. |
@@ -96,7 +96,9 @@ in a shared `/tmp` is not. Callers differ only in the prefix and the file name:
 # The X's must come LAST. BSD/macOS does not expand a template with a suffix after
 # them, so "foo.XXXXXXXX.md" yields that literal - and shared - name.
 PAYLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/{prefix}-XXXXXXXX")
-trap 'rm -rf "$PAYLOAD_DIR"' EXIT
+# Do not `trap ... EXIT`. Prepare, execute, and read-back run in separate shells, so an
+# EXIT trap deletes the payload before `execute` re-hashes it. Clean up the payload file
+# after execute returns.
 ```
 
 Skills reference this block; they do not restate the `mktemp` rule.
@@ -143,8 +145,10 @@ The ledger sees only runs routed through a manifest. A raw write that the hook m
 ## Guard limits
 
 - The CLI hook bounds honest mistakes, not a determined caller. Known gaps: a script written to a file and then run, `xargs sh -c`, and names built dynamically inside interpreter code.
+- Tokens bind a payload and a TTL. They do not prove that a human approved. `workspace/.jira-write-token` and `workspace/.external-write-token` are plain files the model can write, and `external-write-action.py authorize` has no human step, so the model can run `prepare`, `authorize` and `execute` back to back. The approval gate is the `AskUserQuestion` the skill must show before it writes the token, and nothing in code enforces that order.
+- Every guard runs through `.claude/scripts/hook-dispatch.sh`. If that file is missing, `bash` exits 127, Claude Code treats that as non-blocking, and the guards are skipped. This is intentional fail-open on infrastructure failure, so a broken checkout does not lock the session. It is only reachable when `CLAUDE_PROJECT_DIR` is unset and `git rev-parse` fails.
 - `workspace/config.md → ## Autonomy → level:` may pre-authorize the low-risk classes in `Autonomy level` above (`python3 .claude/scripts/autonomy-policy.py --class {class}`). It removes the human stop, never the manifest binding, hook, drift check, or audit line.
-- `prose-lint.py` also checks Slack draft bodies and `gh` payload prose, and fails open when unavailable.
+- `prose-lint.py` also checks Slack draft bodies, `gh` payload prose, and `createConfluenceComment` bodies, and fails open when unavailable.
 
 ## Application checklist for new skills
 

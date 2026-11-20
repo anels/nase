@@ -111,7 +111,7 @@ Apply these gates in order:
 | **reply-only** | Question, discussion point, or acknowledgment needed - no code involved | Write a reply |
 | **ask-user** | Business intent, product tradeoff, or hidden repo context is required to decide safely | Ask the exact missing question before Phase 4 |
 
-Try jev first via `.claude/scripts/jev-judge.py` (`.claude/docs/jev-judgment-points.md` point `address-comments.classify`, `--type Choice` over exactly `accept` / `decline` / `reply-only` / `ask-user`; state = one line holding the reviewer's premise, the single most decisive dossier fact, and whether the referenced line matches the reviewer's prose - never the dossier itself, because `jev-judge.py` truncates state at 200 chars without telling the caller); `usable: false` (unavailable, low confidence, or missing confidence) → classify it yourself against the four definitions above. A jev answer is a first pass: it never waives the completeness gate, the premise checks, or the Step 3d second opinion.
+Classify it yourself against the four definitions above. Review comment text and the dossier stay local. Your first pass never waives the completeness gate, the premise checks, or the Step 3d second opinion.
 
 Accept only when the change measurably improves correctness/clarity. If current code is equally valid, decline with concrete evidence from the dossier. Declines must prove the reviewer premise is false, already addressed, out of PR scope, or lower-value than the risk it introduces.
 

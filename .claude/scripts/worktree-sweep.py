@@ -11,9 +11,10 @@ GitHub, and removes only those.
 
 - `removable`       - clean, and the HEAD commit is part of a merged PR.
 - `keep-open-pr`    - HEAD belongs to an open PR, so address-comments may still need it.
-- `keep-dirty`      - uncommitted, untracked, or in-progress git state.
+- `keep-dirty`      - uncommitted, untracked, ignored, submodule, or in-progress git state.
 - `keep-unpushed`   - GitHub does not have the HEAD commit, so removal would lose it.
-- `keep-no-pr`      - GitHub has the commit but no merged or open PR contains it.
+- `keep-no-pr`      - GitHub has the commit but no merged or open PR contains it, or HEAD sits
+                      at the default branch tip (a fresh worktree, not spent work).
 - `keep-locked`     - locked by something other than this workflow's own quarantine.
 - `keep-in-use`     - the current directory is inside it.
 - `keep-unreadable` - git or GitHub could not answer; unknown is never removable.
@@ -118,6 +119,27 @@ def inside(child: Path, parent: Path) -> bool:
     return True
 
 
+def default_tips(repo: Path) -> set[str]:
+    """Commits at the tip of the remote default branch, as far as local refs know."""
+    result = git(
+        repo,
+        "for-each-ref",
+        "--format=%(objectname)",
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/master",
+    )
+    if result.returncode != 0:
+        return set()
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def dirty_reason(worktree: Path) -> str | None:
+    """Shared with worktree-cleanup: tracked, untracked, ignored, submodule, index flags."""
+    items = cleanup.index_flag_items(worktree) + cleanup.dirty_items(worktree)
+    return f"{len(items)} changed paths" if items else None
+
+
 def pr_evidence(slug: str, head: str) -> tuple[str, str, int | None]:
     """Return (category, reason, pr number) from the PRs GitHub ties to `head`."""
     result = gh_run(["gh", "api", "-X", "GET", f"repos/{slug}/commits/{head}/pulls"])
@@ -160,21 +182,27 @@ def classify(worktree: Path) -> dict[str, Any]:
     if (admin / "locked").exists() and not is_quarantine(worktree.name):
         return done("keep-locked", "locked outside this workflow")
     try:
-        status = git(worktree, "status", "--porcelain")
+        dirty = dirty_reason(worktree)
         head = git(worktree, "rev-parse", "HEAD")
         origin = git(repo, "remote", "get-url", "origin")
-    except RuntimeError as exc:
+        tips = default_tips(repo)
+    except (RuntimeError, cleanup.GitError) as exc:
         return done("keep-unreadable", str(exc))
-    if status.returncode != 0 or head.returncode != 0 or origin.returncode != 0:
+    if head.returncode != 0 or origin.returncode != 0:
         return done("keep-unreadable", "git could not read the worktree")
     item["head"] = head.stdout.strip()
-    if status.stdout.strip():
-        return done("keep-dirty", f"{len(status.stdout.splitlines())} changed paths")
+    if dirty:
+        return done("keep-dirty", dirty)
     if any((admin / marker).exists() for marker in cleanup.IN_PROGRESS):
         return done("keep-dirty", "git operation in progress")
     match = SLUG_RE.search(origin.stdout.strip())
     if not match:
         return done("keep-unreadable", "origin is not a GitHub remote")
+    if item["head"] in tips:
+        return done(
+            "keep-no-pr",
+            "HEAD is the default branch tip, so the merged PR is not this worktree's work",
+        )
     category, reason, number = pr_evidence("/".join(match.groups()), item["head"])
     return done(category, reason, pr=number)
 
@@ -206,9 +234,7 @@ def scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def remove_one(
-    root: Path, item: dict[str, Any]
-) -> tuple[bool, str, int, str]:
+def remove_one(root: Path, item: dict[str, Any]) -> tuple[bool, str, int, str]:
     raw_path = item.get("path")
     if not isinstance(raw_path, str):
         return False, "item has no path", 0, ""
@@ -226,11 +252,11 @@ def remove_one(
     if repo is None or admin is None:
         return False, "not a linked worktree", 0, ""
     try:
-        status = git(path, "status", "--porcelain")
+        dirty = dirty_reason(path)
         head = git(path, "rev-parse", "HEAD")
-    except RuntimeError as exc:
+    except (RuntimeError, cleanup.GitError) as exc:
         return False, str(exc), 0, ""
-    if status.returncode != 0 or status.stdout.strip():
+    if dirty:
         return False, "changed since scan", 0, ""
     if head.returncode != 0:
         return False, "git could not read the worktree", 0, ""

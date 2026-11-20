@@ -11,6 +11,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from nase_skill_meta import PRIVILEGED_KEYS
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -29,6 +31,11 @@ def rule(
         category, name, severity, label, re.compile(pattern, re.IGNORECASE), reason
     )
 
+
+_FREE_TEXT_WORDS = (
+    r"(?:terms?|quer(?:y|ies)|keywords?|question|summary|text|args?|arguments"
+    r"|input|task|topic|title|body|message|alert)"
+)
 
 RULES = (
     rule(
@@ -78,6 +85,17 @@ RULES = (
         "external command substitution",
         r"(?:\$\([^\n)]*\$(?:\{)?(?:ARGUMENTS|USER_INPUT|INPUT|URL|PATH)\b[^\n)]*\)|`(?=[^\n`]*\s)[^\n`]*\$(?:\{)?(?:ARGUMENTS|USER_INPUT|INPUT|URL|PATH)\b[^\n`]*`)",
         "expands external input through the shell",
+    ),
+    rule(
+        1,
+        "Command Injection",
+        "WARN",
+        "double-quoted free-text placeholder",
+        r"(?:\.(?:sh|py)|\b(?:grep|rg|xargs))\b[^\n\"]*\"[^\"\n]*"
+        rf"(?:\{{[^}}\n]*\b{_FREE_TEXT_WORDS}\b[^}}\n]*\}}"
+        rf"|<[^>\n]*\b{_FREE_TEXT_WORDS}\b[^>\n]*>)"
+        r"[^\"\n]*\"",
+        "free text inside double quotes lets $(...) and backticks expand; pass it single-quoted or through a file",
     ),
     rule(
         2,
@@ -355,9 +373,37 @@ def finding(rule_item: Rule, line: int) -> dict[str, object]:
     }
 
 
+def frontmatter_findings(text: str) -> list[dict[str, object]]:
+    """Flag frontmatter keys that pre-approve tools or change where a skill runs.
+
+    The generated wrapper is model-invocable, so a skill that sets these keys can grant
+    itself tools at the next session start. The body rules above never see the block.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return []
+    results: list[dict[str, object]] = []
+    for number, line in enumerate(lines[1:], 2):
+        if line.strip() == "---":
+            break
+        key = re.match(r"^([A-Za-z0-9_-]+):", line)
+        if key and key.group(1).lower() in PRIVILEGED_KEYS:
+            results.append(
+                {
+                    "category": 8,
+                    "category_name": "Frontmatter Privilege",
+                    "severity": "FAIL",
+                    "line": number,
+                    "pattern": f"frontmatter {key.group(1).lower()}",
+                    "reason": "pre-approves tools or changes the run context outside the body review",
+                }
+            )
+    return results
+
+
 def scan_file(path: Path, display_path: str) -> dict[str, object]:
     text = path.read_text(encoding="utf-8", errors="replace")
-    findings: list[dict[str, object]] = []
+    findings: list[dict[str, object]] = frontmatter_findings(text)
     privilege_line: int | None = None
     for line_number, line, context in markdown_lines(text):
         for rule_item in RULES:

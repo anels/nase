@@ -104,5 +104,16 @@ else
   ok "a missing daily.csv exits non-zero instead of printing an empty chart"
 fi
 
+# --- two axis marks that round to one row: the larger one is labelled -------
+# 95 and 100 both land on the top row. The axis must show the maximum, not 95.
+
+printf '2026-03-02,100,0,0\n2026-03-03,95,0,0\n2026-03-04,10,0,0\n' > "$TMP/collide.csv"
+out=$(python3 "$SCRIPT" --daily-csv "$TMP/collide.csv" --start 2026-03-02 --end 2026-03-04 2>&1)
+if grep -qE -- '(^|[^0-9])100 ┤' <<< "$out" && ! grep -qE -- '(^|[^0-9 ]) *95 ┤' <<< "$out"; then
+  ok "a row collision labels the larger axis value"
+else
+  bad "a row collision labels the larger axis value" "$out"
+fi
+
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

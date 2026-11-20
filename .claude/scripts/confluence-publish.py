@@ -1043,6 +1043,26 @@ def cmd_ledger_append(args) -> int:
     return 0
 
 
+def same_target(record: dict, args) -> bool:
+    """True unless the record names a different site or space than the lookup.
+
+    The same source can be published to two spaces or sites. A record that
+    stores a non-empty cloud_id or space_key different from the one asked for
+    belongs to the other target, so its page_id must not come back as an
+    update. A record with an empty field (appended before the skill passed
+    them) or a lookup without the flag stays a match, so old ledgers keep
+    resolving.
+    """
+    for field, wanted in (
+        ("cloud_id", getattr(args, "cloud_id", "")),
+        ("space_key", getattr(args, "space_key", "")),
+    ):
+        stored = record.get(field) or ""
+        if wanted and stored and stored != wanted:
+            return False
+    return True
+
+
 def cmd_ledger_lookup(args) -> int:
     """Resolve what a re-publish should do per page.
 
@@ -1059,7 +1079,9 @@ def cmd_ledger_lookup(args) -> int:
     family: list[dict] = []
     for record in read_ledger(args.ledger):
         if record.get("source_path") == source:
-            latest[record.get("page_index", 0)] = record
+            # Same source published elsewhere is neither an update target nor family.
+            if same_target(record, args):
+                latest[record.get("page_index", 0)] = record
         else:
             other = os.path.splitext(os.path.basename(record.get("source_path", "")))[0]
             if stem and re.sub(r"[-_]?\d{4}-\d{2}(-\d{2})?$", "", other) == stem:
@@ -1172,6 +1194,8 @@ def main() -> int:
     lookup_parser.add_argument("--ledger", default=LEDGER)
     lookup_parser.add_argument("--source", required=True)
     lookup_parser.add_argument("--pages", type=int, required=True)
+    lookup_parser.add_argument("--cloud-id", default="")
+    lookup_parser.add_argument("--space-key", default="")
     lookup_parser.set_defaults(func=cmd_ledger_lookup)
 
     args = parser.parse_args()

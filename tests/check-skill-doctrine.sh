@@ -4,8 +4,6 @@
 # FAILS on:
 #   D1. curl-with-PAT for ADO endpoints (must use az CLI per feedback_ado-az-cli-only.md)
 #   D2. mkdir line in init.md missing any workspace/kb/* subdir whose stub-write step follows
-#   D3. files claiming "at HEAD" in a verifier role but greping the working tree without
-#       `git show HEAD:` (regression guard for doc-pr-head-ground-scan.md)
 #   D4. skill files missing a language preflight / language-config reference
 #   D5. verification-gate callers that still frame the gate as conditional on an
 #       external provider, which would make a mandatory gate optional again
@@ -18,12 +16,9 @@
 #   D11. auto-write modes allowed to skip drift checks
 #   D12. /nase:today treats tech-digest as a proactive action instead of optional
 #   D13. workspace/tmp artifact paths embed raw branch names that may contain slashes
-#   D14. generated workspace wrapper descriptions exceed the session-start metadata cap
 #   D15. critical KB-consuming workflows contain an explicit KB lookup marker
-#   D16. workspace skill source descriptions exceed the wrapper metadata cap
 #   D17. command frontmatter descriptions contain CJK trigger terms
 #   D18. core command frontmatter misses bounded Claude-native metadata
-#   D19. allowed-tools is described as a security boundary
 #   D20. review skills lose diff-first investigation or trace-shape checks
 #   D21. discuss-pr loses outgoing-comment quality or review-state gates
 #   D22. KB writers regress to append-only refreshes, heartbeat facts, or placeholders
@@ -35,6 +30,11 @@
 # WARNS (does not fail) on:
 #   W1. mutation-keyword skills (Slack/Jira/Confluence/ADO/GitHub PR writes) missing reference
 #       to .claude/docs/external-mutation-policy.md
+#
+# The 240-char description cap lives in tests/scripts/test-command-skill-size-budget.sh only.
+# D3, D14, D16 and D19 were retired: D3 guarded one untracked skill with no recorded use, D14 and
+# D16 duplicated that budget, and D19 guarded a frontmatter key no skill sets (D18 plus
+# skill-audit Category 8 reject it).
 #
 # Exit codes: 0 = no failures (warnings OK), N = N failure types tripped.
 #
@@ -136,30 +136,6 @@ else
   else
     green "PASS"; printf ': all kb stub subdirs covered\n'
   fi
-fi
-
-# ---------- D3: "at HEAD" claims but greps working tree --------------------
-section "D3: HEAD-claim skills actually grep HEAD"
-d3_hits=""
-# Skip auto-generated wrappers under .claude/commands/nase/workspace/ — they only
-# reference the source file under workspace/skills/, which is what we actually check.
-for f in $(grep -rlE 'at HEAD|verify.*HEAD|grep.*HEAD' "${SKILL_DIRS[@]}" 2>/dev/null \
-  | grep -v 'check-skill-doctrine.sh' \
-  | grep -v '\.claude/commands/nase/workspace/' || true); do
-  # Only files that make a HEAD verification claim
-  grep -qE 'at HEAD|verify.*HEAD' "$f" 2>/dev/null || continue
-  # Files using `git show HEAD:` / `git grep ... HEAD` are compliant
-  grep -qE 'git show HEAD:|git -C [^ ]* grep [^|]* HEAD|git grep [^|]* HEAD' "$f" 2>/dev/null && continue
-  # Opt-out: skill declares a clean-tree precondition
-  grep -qE 'PR branch must be checked out|working tree.*clean|assume.*checked out clean' "$f" 2>/dev/null && continue
-  d3_hits+="  $f"$'\n'
-done
-if [[ -n "$d3_hits" ]]; then
-  red "FAIL"; printf ': files claim "at HEAD" but neither use git show HEAD: nor declare a clean-tree precondition:\n'
-  printf '%s' "$d3_hits"
-  failed=$((failed+1))
-else
-  green "PASS"; printf ': HEAD-claim skills consistent\n'
 fi
 
 # ---------- W1: mutation skills reference policy doc -----------------------
@@ -518,33 +494,6 @@ else
   green "PASS"; printf ': branch-derived workspace/tmp artifacts use path-safe slugs\n'
 fi
 
-# ---------- D14: generated wrappers stay within metadata cap ---------------
-section "D14: generated workspace wrapper descriptions are capped"
-d14_hits=$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-hits = []
-for path in sorted(Path(".claude/commands/nase/workspace").glob("*.md")):
-    text = path.read_text(encoding="utf-8")
-    match = re.search(r'^description: "(.*)"$', text, re.M)
-    if not match:
-        continue
-    desc_len = len(match.group(1))
-    if desc_len > 240:
-        hits.append(f"  {path}: description length {desc_len} > 240")
-
-print("\n".join(hits))
-PY
-)
-if [[ -n "$d14_hits" ]]; then
-  red "FAIL"; printf ': generated wrappers should match session-start compact description cap:\n'
-  printf '%s\n' "$d14_hits"
-  failed=$((failed+1))
-else
-  green "PASS"; printf ': generated wrapper descriptions are capped\n'
-fi
-
 # ---------- D15: critical workflows preserve KB lookup markers -------------
 section "D15: critical KB workflows preserve lookup markers"
 d15_hits=$(python3 - <<'PY'
@@ -592,33 +541,6 @@ if [[ -n "$d15_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': critical KB workflows keep explicit lookup markers\n'
-fi
-
-# ---------- D16: workspace skill source descriptions fit wrapper cap -------
-section "D16: workspace skill source descriptions fit wrapper cap"
-d16_hits=$(python3 - <<'PY'
-from pathlib import Path
-import sys
-
-sys.path.insert(0, "tests/lib")
-from frontmatter import description_from_frontmatter
-
-
-hits = []
-for path in sorted(Path("workspace/skills").glob("*.md")):
-    desc = description_from_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
-    if len(desc) > 240:
-        hits.append(f"  {path}: description length {len(desc)} > 240")
-
-print("\n".join(hits))
-PY
-)
-if [[ -n "$d16_hits" ]]; then
-  red "FAIL"; printf ': workspace skill source descriptions should fit the generated wrapper cap:\n'
-  printf '%s\n' "$d16_hits"
-  failed=$((failed+1))
-else
-  green "PASS"; printf ': workspace skill source descriptions fit wrapper cap\n'
 fi
 
 # ---------- D17: command descriptions stay ASCII for routing ---------------
@@ -716,36 +638,6 @@ if [[ -n "$d18_hits" ]]; then
   failed=$((failed+1))
 else
   green "PASS"; printf ': command frontmatter Claude-native metadata is bounded\n'
-fi
-
-# ---------- D19: allowed-tools is not documented as a blocker --------------
-section "D19: allowed-tools is not treated as a security boundary"
-d19_hits=$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-bad = re.compile(r"allowed-tools.{0,120}\b(restrict|block|prevent|deny|security boundary|only allow|sandbox)\b", re.I)
-safe = re.compile(r"not (?:a )?restriction|not .*security boundary|pre-approves|does not block", re.I)
-hits = []
-for root in (Path(".claude/commands/nase"), Path(".claude/docs"), Path("docs"), Path("workspace/skills")):
-    if not root.exists():
-        continue
-    for path in sorted(root.rglob("*.md")):
-        for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if "allowed-tools" not in line:
-                continue
-            if bad.search(line) and not safe.search(line):
-                hits.append(f"  {path}:{lineno}: {line.strip()}")
-
-print("\n".join(hits))
-PY
-)
-if [[ -n "$d19_hits" ]]; then
-  red "FAIL"; printf ': allowed-tools pre-approves tools; do not describe it as a blocking boundary:\n'
-  printf '%s\n' "$d19_hits"
-  failed=$((failed+1))
-else
-  green "PASS"; printf ': allowed-tools wording does not claim blocking security\n'
 fi
 
 # ---------- D20: review skills wire the diff-first directive + trace-shape self-check ----------

@@ -57,6 +57,7 @@ _NETWORK_RE = _tokens(
     "timeout",
 )
 _NOT_FOUND_RE = _tokens("not found", "could not resolve to")
+_GRAPHQL_NOT_FOUND_RE = _tokens("could not resolve to")
 
 _HTTP_STATUS_RE = re.compile(r"\bhttp[\s:]+(\d{3})\b")
 # Nine digits, not four: GitHub's secondary-limit backoff regularly runs to five, and
@@ -78,11 +79,26 @@ def failure_category(stderr: str) -> tuple[str, int | None]:
 
     if 429 in statuses or _RATE_LIMIT_RE.search(lowered):
         return "rate-limited", wait
-    if statuses & {401, 403} or _AUTH_RE.search(lowered):
+    if statuses:
+        # A parsed status is the server's own word. Phrase tokens would also match the
+        # request URL gh echoes (`.../auth-service/`, `.../network-tools/`), turning a
+        # permanent 404 into an auth failure or a retried "transient" one.
+        if statuses & {401, 403}:
+            return "auth-failed", None
+        if any(code >= 500 or code == 408 for code in statuses):
+            return "transient-network", None
+        if statuses & {404, 410}:
+            return "not-found", None
+        return "command-failed", None
+    # GraphQL answers HTTP 200 with an error body, so there is no status to read.
+    # `Could not resolve to a User with the login of 'x'` names a login but is a miss.
+    if _GRAPHQL_NOT_FOUND_RE.search(lowered):
+        return "not-found", None
+    if _AUTH_RE.search(lowered):
         return "auth-failed", None
-    if any(code >= 500 for code in statuses) or _NETWORK_RE.search(lowered):
+    if _NETWORK_RE.search(lowered):
         return "transient-network", None
-    if statuses & {404, 410} or _NOT_FOUND_RE.search(lowered):
+    if _NOT_FOUND_RE.search(lowered):
         return "not-found", None
     return "command-failed", None
 

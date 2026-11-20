@@ -15,7 +15,7 @@ Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR te
 
 Then apply `.claude/docs/pr-gates-consumption.md` §3 with the Phase 1 `gate_profile`: ensure a required ticket key sits in the documented PR-title position, every required PR-body section exists at its minimum length, and - if the diff crossed a `gate_profile.size` threshold that mandates it - `## How to Review` is filled. Never invent a ticket key; keep the placeholder and flag it if unknown.
 
-If `review_outcome = not-run`, the PR body states it in whichever section carries verification for this repo's template, alongside the deterministic gates that did pass. The reviewer on the PR is the person who most needs to know that nothing independent has looked at it yet, and they are the one reader who cannot find that out from the Phase 10 report.
+`review_outcome = not-run` never reaches this phase, because the review gate is never skipped and an unavailable reviewer stops the run at Phase 6.4. If a resumed run arrives here with that value, stop with the same error instead of drafting a PR.
 
 Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command. The helper enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`), so there is no separate snippet to run and no `gh auth` call to make - those are blocked.
 
@@ -38,7 +38,6 @@ If approved, run the auth guard, write the already-shown body to a private file,
 # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 PR_BODY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fsd-pr-body-XXXXXXXX")
 PR_BODY_FILE="$PR_BODY_DIR/body.md"
-trap 'rm -rf "$PR_BODY_DIR"' EXIT
 cat > "$PR_BODY_FILE" <<'EOF'
 {pr_body_from_template}
 EOF
@@ -50,6 +49,7 @@ jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+rm -rf "$PR_BODY_DIR"   # after execute returns; an EXIT trap would delete the body before execute re-hashes it
 ```
 
 Report the PR URL.
@@ -105,7 +105,6 @@ Skill-specific outputs:
    # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
    PR_BODY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fsd-pr-body-XXXXXXXX")
    PR_BODY_FILE="$PR_BODY_DIR/body.md"
-   trap 'rm -rf "$PR_BODY_DIR"' EXIT
    gh pr view {pr_number} -R {owner}/{repo} --json body --jq .body > "$PR_BODY_FILE"
    # Append the Verification section to the file, then:
    MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
@@ -114,6 +113,7 @@ Skill-specific outputs:
    jq . "$MANIFEST"
    python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
    python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+   rm -rf "$PR_BODY_DIR"   # after execute returns; an EXIT trap would delete the body before execute re-hashes it
    ```
    Append only; never overwrite. Skip when matrix has no rows. Record `verification_in_body`: `true` once appended, `false` when the edit was skipped or declined, `n/a` when the matrix has no rows.
 
@@ -138,7 +138,7 @@ Runs only when `open_pr = true` and Phase 8 returned a `pr_url`. "Ready for revi
 | Unblocked | The PR's `design_pr_plan` row has `Depends on = none` and `External blockers = none`. A run with no plan row is met. |
 | CI green | Every check on the PR head passed, required or not, per the CI check below. |
 
-**CI check.** First confirm the PR carries the pushed commit. `gh pr view {pr_number} -R {repo_owner}/{repo_name} --json headRefOid --jq .headRefOid` must equal `git -C {work_root} rev-parse HEAD`; a mismatch is unmet (`head moved`). `git -C {work_root} status --porcelain` must print nothing, because `done` binds the committed tree; otherwise unmet (`worktree changed after review`). Then run `python3 .claude/scripts/content-identity.py same-tree --repo {work_root} --expect {approved_candidate_tree_oid} --actual HEAD`, binding `tested_candidate_tree_oid` when `review_outcome = not-run`; any non-zero exit is unmet (`content changed after review`). Phase 7 asserts the tree only before the push, and a commit added afterwards moves the PR head and local `HEAD` together, so the `head moved` check alone cannot see it. Then wait for the checks, as its own Bash call with `timeout: 600000`, no `$(...)`, and no loop. Ignore its exit code, because the read below decides:
+**CI check.** First confirm the PR carries the pushed commit. `gh pr view {pr_number} -R {repo_owner}/{repo_name} --json headRefOid --jq .headRefOid` must equal `git -C {work_root} rev-parse HEAD`; a mismatch is unmet (`head moved`). `git -C {work_root} status --porcelain` must print nothing, because `done` binds the committed tree; otherwise unmet (`worktree changed after review`). Then run `python3 .claude/scripts/content-identity.py same-tree --repo {work_root} --expect {approved_candidate_tree_oid} --actual HEAD`; any non-zero exit is unmet (`content changed after review`). Phase 7 asserts the tree only before the push, and a commit added afterwards moves the PR head and local `HEAD` together, so the `head moved` check alone cannot see it. Then wait for the checks, as its own Bash call with `timeout: 600000`, no `$(...)`, and no loop. Ignore its exit code, because the read below decides:
 
 ```bash
 gh pr checks {pr_number} -R {repo_owner}/{repo_name} --watch --fail-fast

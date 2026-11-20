@@ -10,11 +10,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import cast
 
 from nase_json import parse_jsonl_objects
+from nase_skill_usage import dedupe_uses, normalize_skill
 from nase_time import local_today, parse_ts
-
-USE_DEDUPE = timedelta(seconds=60)
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ def read_events(path: Path) -> tuple[list[dict[str, object]], int]:
             continue
         events.append(
             {
-                "skill": skill.removeprefix("nase:"),
+                "skill": normalize_skill(skill),
                 "dt": timestamp,
                 "event_type": data.get("event_type", ""),
                 "source": data.get("source", ""),
@@ -76,66 +76,24 @@ def read_events(path: Path) -> tuple[list[dict[str, object]], int]:
 def aggregate(
     events: list[dict[str, object]], report_date: date
 ) -> dict[str, dict[str, object]]:
-    uses: defaultdict[str, list[datetime]] = defaultdict(list)
     outcomes: defaultdict[str, dict[str, int]] = defaultdict(
         lambda: {"success": 0, "failure": 0}
     )
-    prompt_times: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
-    legacy_times: defaultdict[tuple[str, str], list[datetime]] = defaultdict(list)
     end = datetime.combine(report_date, time.max).astimezone()
+    in_window = [event for event in events if cast(datetime, event["dt"]) <= end]
 
-    # A skill reached through the Skill tool - model-triggered, or nested inside
-    # another skill's flow - only ever emits tool_succeeded/tool_failed, because
-    # `activated` comes from UserPromptExpansion and so requires a user-typed
-    # /nase:x. Counting `activated` alone reports such a skill as never used.
-    for event in events:
-        skill = str(event["skill"])
-        event_type = str(event["event_type"])
-        source = str(event["source"])
-        session = str(event["session"])
-        timestamp = event["dt"]
-        assert isinstance(timestamp, datetime)
-        if timestamp > end:
-            continue
-
-        key = (skill, session)
-
-        if event_type == "activated":
-            # The two hooks are mutually exclusive per invocation, so an
-            # `activated` is never the duplicate of anything - only the anchor a
-            # tool outcome may be the duplicate of.
-            prompt_times[key].append(timestamp)
-            uses[skill].append(timestamp)
-            continue
-
+    for event in in_window:
+        event_type = event["event_type"]
         if event_type in ("tool_succeeded", "tool_failed"):
-            outcomes[skill][
+            outcomes[str(event["skill"])][
                 "success" if event_type == "tool_succeeded" else "failure"
             ] += 1
-            if any(
-                timedelta(0) <= timestamp - prior <= USE_DEDUPE
-                for prior in prompt_times[key]
-            ):
-                continue
-            uses[skill].append(timestamp)
-            continue
 
-        if event_type:
-            # `requested` pairs with `activated` on the same typed command, and an
-            # unrecognized type is not evidence of a run.
-            continue
-
-        # Legacy records carry no event_type, and one invocation could emit up to
-        # three of them, so they still dedupe against each other.
-        if any(
-            timedelta(0) <= timestamp - prior <= USE_DEDUPE
-            for prior in legacy_times[key]
-        ):
-            continue
-        legacy_times[key].append(timestamp)
-        if source in ("prompt", "prompt-expansion"):
-            prompt_times[key].append(timestamp)
-        uses[skill].append(timestamp)
+    # The counting rule lives in nase_skill_usage so /nase:wrap-up and /nase:stats
+    # (today-stats.py) report the same number as this report.
+    uses: defaultdict[str, list[datetime]] = defaultdict(list)
+    for event in dedupe_uses(in_window):
+        uses[str(event["skill"])].append(event["dt"])
 
     result: dict[str, dict[str, object]] = {}
     for skill in sorted(set(uses) | set(outcomes)):
@@ -200,8 +158,10 @@ def merged_rows(
     usage: dict[str, dict[str, object]], entries: dict[str, CatalogEntry], window: int
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for name in sorted(set(usage) | set(entries)):
-        entry = entries.get(name)
+    # Telemetry for a skill that is no longer on disk is history, not a skill: listing
+    # it inflates "used" and reads as a deprecation candidate for something already gone.
+    for name in sorted(entries):
+        entry = entries[name]
         row = dict(
             usage.get(
                 name,
@@ -220,10 +180,10 @@ def merged_rows(
         row.update(
             {
                 "skill": name,
-                "source": entry.source if entry else "telemetry-only",
-                "bytes": entry.bytes if entry else 0,
-                "lines": entry.lines if entry else 0,
-                "estimated_tokens": entry.estimated_tokens if entry else 0,
+                "source": entry.source,
+                "bytes": entry.bytes,
+                "lines": entry.lines,
+                "estimated_tokens": entry.estimated_tokens,
             }
         )
         row["weighted_tokens"] = int(row["total"]) * int(row["estimated_tokens"])

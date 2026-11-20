@@ -361,8 +361,24 @@ SNAPSHOT_WORKSPACE="$SNAPSHOT_DIR/workspace"
 SOURCE_MANIFEST="$SNAPSHOT_DIR/source-manifest.json"
 POST_ARCHIVE_MANIFEST="$SNAPSHOT_DIR/post-archive-manifest.json"
 mkdir "$SNAPSHOT_WORKSPACE"
-if ! cp -a "$SRC/." "$SNAPSHOT_WORKSPACE/"; then
+# Top-level `tmp/` never enters the archive, the manifest, or the scans, so it is not
+# copied either. Only a real directory is skipped, matching what the scans skip.
+copy_failed=0
+entries_seen=0
+# `$SRC/.` makes find descend when `workspace` is itself a symlink, as `cp -a "$SRC/."` did.
+while IFS= read -r -d '' entry; do
+  if [ "${entry##*/}" = "tmp" ] && [ -d "$entry" ] && [ ! -L "$entry" ]; then
+    continue
+  fi
+  entries_seen=$((entries_seen + 1))
+  cp -a "$entry" "$SNAPSHOT_WORKSPACE/" || copy_failed=1
+done < <(find "$SRC/." -mindepth 1 -maxdepth 1 -print0)
+if [ "$copy_failed" -ne 0 ]; then
   log_status "ERROR" "workspace could not be copied into the private snapshot"
+  exit 1
+fi
+if [ "$entries_seen" -eq 0 ]; then
+  log_status "ERROR" "workspace snapshot is empty; refusing to publish an empty archive"
   exit 1
 fi
 if ! SCAN_OUTPUT=$(NASE_SENSITIVE_SCAN_ROOT="$SNAPSHOT_DIR" bash "$SENSITIVE_SCAN" --workspace --advisory 2>&1); then

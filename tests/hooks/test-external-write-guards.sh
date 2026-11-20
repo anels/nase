@@ -125,9 +125,49 @@ comment_no_target=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__execute
 comment_bad_type=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{contentId:"1",commentType:"page",body:{format:"markdown",value:"note"}}}}')
 comment_no_cloud=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",inputs:{parentCommentId:"9",body:{format:"markdown",value:"reply"}}}}')
 comment_destructive=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeDestructive",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"markdown",value:"reply"}}}}')
-expect_rc "atlassian comment reply allowed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_reply" 0
+comment_tool="mcp__plugin_atlassian_atlassian__executeWrite"
+comment_token() {
+  local input="$1" created
+  created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq -n --arg tool "$comment_tool" --arg created "$created" --arg sha "$(payload_sha "$input")" \
+    '{tool_name:$tool,created_at:$created,payload_summary:"confluence comment",payload_sha256:$sha}' \
+    > "$TMP_ROOT/comment-token.json"
+  python3 .claude/scripts/jira-write-token.py --root "$TMP_ROOT" --content-file "$TMP_ROOT/comment-token.json"
+}
+rm -f "$TMP_ROOT/workspace/.jira-write-token"
+expect_rc "atlassian comment without approval token blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_reply" 2 "no jira-write-token"
+comment_token "$comment_reply"
+expect_rc "atlassian comment reply allowed with token" .claude/hooks/atlassian-generic-write-guard.sh "$comment_reply" 0
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 0 "atlassian comment token consumed" "token still exists"
+else
+  report 1 "atlassian comment token consumed"
+fi
+expect_rc "atlassian comment token cannot be replayed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_reply" 2 "no jira-write-token"
+comment_token "$comment_reply"
+expect_rc "atlassian comment token bound to payload" .claude/hooks/atlassian-generic-write-guard.sh "$comment_footer" 2 "token payload mismatch"
+comment_token "$comment_footer"
 expect_rc "atlassian comment footer allowed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_footer" 0
+comment_token "$comment_inline"
 expect_rc "atlassian comment inline allowed" .claude/hooks/atlassian-generic-write-guard.sh "$comment_inline" 0
+
+# Prose lint runs before the token is spent: a gate finding blocks and keeps the token.
+em_dash=$(printf '\xe2\x80\x94')
+comment_em_dash=$(jq -cn --arg v "Thanks ${em_dash} done" '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"createConfluenceComment",cloudId:"c",inputs:{parentCommentId:"9",body:{format:"markdown",value:$v}}}}')
+comment_token "$comment_em_dash"
+expect_rc "atlassian comment failing prose-lint blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_em_dash" 2 "plain-writing gate"
+if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+  report 1 "atlassian comment lint failure keeps the token"
+else
+  report 0 "atlassian comment lint failure keeps the token" "token was consumed"
+fi
+rm -f "$TMP_ROOT/workspace/.jira-write-token"
+
+# A token for a different generic-runner operation must not carry a comment through.
+comment_other=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__executeWrite",tool_input:{name:"deleteConfluencePage",cloudId:"c",inputs:{id:"1"}}}')
+comment_token "$comment_other"
+expect_rc "atlassian token does not authorize other operations" .claude/hooks/atlassian-generic-write-guard.sh "$comment_other" 2 "outside every payload-bound"
+rm -f "$TMP_ROOT/workspace/.jira-write-token"
 expect_rc "atlassian comment inline without selection blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_inline_no_selection" 2 "inlineSelection.selectedText"
 expect_rc "atlassian comment bad format blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_bad_format" 2 "expected \"markdown\" or \"html\""
 expect_rc "atlassian comment string body blocked" .claude/hooks/atlassian-generic-write-guard.sh "$comment_string_body" 2 "needs inputs.body as an object"

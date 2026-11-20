@@ -276,7 +276,6 @@
       "skill": "nase:onboard",
       "prompt": "Search the existing knowledge base for the deployment owner of this repository.",
       "expect": "not_invoke",
-      "adjacent_skill": "nase:kb-search",
       "risk": "medium"
     },
     {

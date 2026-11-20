@@ -2,6 +2,13 @@
 
 Shared pattern for skipping reprocessing of unchanged content across skill invocations.
 
+## Contents
+
+- Cache File
+- What is hashed
+- Usage in Skills
+- Skills Using This Pattern
+
 ## Cache File
 
 Location: `workspace/tmp/.content-hashes`
@@ -11,13 +18,47 @@ Format (one entry per line):
 <key>|<sha256>|<YYYY-MM-DD>
 ```
 
-- **key**: URL or `repo:<repo-name>` identifier
-- **sha256**: hex digest of the fetched/read content
+- **key**: one of three shapes, never anything else.
+  - a fetched URL, verbatim
+  - `source:<slug>` for a named feed or site that `/nase:tech-digest` fetches
+  - `repo:<owner>/<repo>` for a repo that `/nase:onboard` scans
+- **sha256**: 64-character lowercase hex digest. The bytes that go into it depend on
+  the key shape, and *What is hashed* below is the one definition. A row that holds
+  the literal `fetched-not-hashed` has no digest and never matches, so it always
+  re-analyzes.
 - **date**: when the content was last fully analyzed or accepted by the caller
+
+## What is hashed
+
+| Key shape | Bytes fed to `sha256` |
+|---|---|
+| URL, `source:<slug>` | the fetched response body, exactly as read, before any summarizing |
+| `repo:<owner>/<repo>` | the output of `git -C {repo} rev-parse HEAD` plus its newline, followed by the working-tree `CLAUDE.md` bytes (nothing when the file is absent) |
+
+The repo digest changes on a new commit and on an uncommitted `CLAUDE.md` edit. It does
+not see other uncommitted files, so `--force` stays the way to rescan those.
+
+Derive the repo key from the `origin` remote, keeping the last two path segments and
+dropping `.git`, so `git@github.com:acme/widgets.git` and
+`https://github.com/acme/widgets` are both `repo:acme/widgets`. A repo with no
+`origin` uses `repo:<directory name>`. Never use the bare directory name when a remote
+exists, because two owners can share a repo name. Rows written under an older shape
+(`repo:widgets`, or a 40-character value that is a bare commit OID) never match a new
+key, so the first run after the change is a full scan that writes the new row.
+
+```bash
+HEAD_OID=$(git -C "$REPO" rev-parse HEAD) || { echo "no HEAD; not caching" >&2; exit 1; }
+HASH=$({ printf '%s\n' "$HEAD_OID"; cat "$REPO/CLAUDE.md" 2>/dev/null; } | shasum -a 256 | awk '{print $1}')
+REMOTE=$(git -C "$REPO" remote get-url origin 2>/dev/null) \
+  && KEY="repo:$(printf '%s' "${REMOTE%.git}" | sed -E 's#^.*[:/]([^/:]+/[^/:]+)$#\1#')" \
+  || KEY="repo:$(basename "$REPO")"
+```
+
+Store rows in `workspace/tmp/.content-hashes`. `tmp-prune.py` never deletes it.
 
 ## Usage in Skills
 
-A key is a URL or `repo:<name>`, so it carries `.`, `?`, `+` and `/`. Every lookup
+A key is a URL, `source:<slug>` or `repo:<owner>/<repo>`, so it carries `.`, `?`, `+` and `/`. Every lookup
 below therefore compares the first `|`-separated field **literally** with `awk`.
 Never match a key with `grep "^${KEY}|"`: `grep` reads the key as a regular
 expression, where `.` matches any character, so one key can select another key's
@@ -94,4 +135,4 @@ Only read the full cache file when debugging cache corruption.
 ## Skills Using This Pattern
 
 - `/nase:tech-digest` - fetches enough source content to hash, skips deep analysis for unchanged non-stale sources, and refreshes stale cache entries
-- `/nase:onboard` - caches repo CLAUDE.md + key file hashes to skip full re-scan when unchanged
+- `/nase:onboard` - hashes the repo's `HEAD` OID plus `CLAUDE.md` (see *What is hashed*) to skip the full re-scan when unchanged

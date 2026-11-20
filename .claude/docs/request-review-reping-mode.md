@@ -23,7 +23,7 @@ Load each of these directly, because the step that normally loads it does not ru
   handle mappings both need it)
 - `.claude/docs/slack-draft-style.md` and `.claude/docs/voice-profile-routing.md` with
   `surface=slack-dm` (Step 6)
-- Step 4's second name source, `gh api users/{login} --jq .name`
+- Step 4's name lookup (KB handle mapping first, then the handle itself). When neither gives a real name, fall back to `gh api users/{login} --jq .name` before the Slack search
 
 Handle-guessing is the last resort.
 

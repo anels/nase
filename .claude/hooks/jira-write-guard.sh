@@ -87,6 +87,13 @@ case "$TOOL" in
   *__createIssueLink|\
   *__addGraphContext)
     ;;
+  *__executeWrite)
+    # Not registered for this hook in settings.json. atlassian-generic-write-guard.sh
+    # pipes a createConfluenceComment call here so it gets the same single-shot token
+    # gate. Any other generic-runner operation is that guard's to block, not ours.
+    [ "$(printf '%s' "$INPUT" | jq -r '.tool_input.name // ""' 2>/dev/null)" = "createConfluenceComment" ] \
+      || exit 0
+    ;;
   *)
     exit 0
     ;;
@@ -322,7 +329,13 @@ if [ "$IS_BATCH" = "1" ]; then
   [ -z "$APPROVED_CSV" ] && block "batch token missing approved_issues"
 
   if [ -z "$CURRENT_ISSUES" ]; then
-    block "batch token cannot authorize a call with no issue key (use a single-shot token for createJiraIssue)"
+    # A Confluence comment has no issue key by design. Refusing it must not spend the
+    # user's approved Jira batch.
+    case "$TOOL" in
+      *__executeWrite) NO_KEY_CONSUME=0 ;;
+      *) NO_KEY_CONSUME=1 ;;
+    esac
+    block "batch token cannot authorize a call with no issue key (use a single-shot token for createJiraIssue)" "$NO_KEY_CONSUME"
   fi
 
   while IFS= read -r current_issue; do
@@ -396,7 +409,7 @@ EXPECTED_ISSUES=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
 [ "$EXPECTED_TOOL" = "$TOOL" ] || block "token tool mismatch: expected $EXPECTED_TOOL" 0
 [ -z "$CREATED_AT" ] && block "token missing created_at"
 [ -z "$EXPECTED_PAYLOAD_SHA" ] && block "token missing payload_sha256"
-if [ -z "$EXPECTED_ISSUES" ] && [[ "$TOOL" != *__createJiraIssue ]]; then
+if [ -z "$EXPECTED_ISSUES" ] && [[ "$TOOL" != *__createJiraIssue && "$TOOL" != *__executeWrite ]]; then
   block "token missing issue_key"
 fi
 

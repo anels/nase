@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
-# Verify the FSD candidate-review gate's optionality contract stays coherent.
+# Verify the FSD candidate-review gate's never-skipped contract stays coherent.
 #
-# Phase 6.4 yields on one terminal state and only one: a reviewer that cannot
-# return a usable result sets `review_outcome = not-run` and the run continues.
-# `blocked-evidence` and `NEEDS_HUMAN` still stop. Two couplings make that safe,
+# Phase 6.4 is never skipped. A reviewer that cannot return a usable result sets
+# `review_outcome = not-run` and the run STOPS with an error before Phase 7.
+# `blocked-evidence` and `NEEDS_HUMAN` stop too. Two couplings make that safe,
 # and both are easy to break from a distance:
 #
-#   1. The gate routes the reviewer through `roles.yaml -> verifier` and relies
-#      on that role's tool whitelist for its read-only guarantee. Adding Edit or
-#      Write to `verifier` would silently turn a whitelisted read-only reviewer
+#   1. The gate routes the reviewer through the persisted `nase-verifier` agent
+#      and relies on its `tools:` frontmatter for the read-only guarantee. Adding
+#      a write or shell tool would silently turn an enforced read-only reviewer
 #      into one that is read-only by instruction alone.
-#   2. Skipping the gate is only acceptable while it stays loud. If a disclosure
-#      point loses its `review_outcome` instruction, or `closure_state: done`
-#      stops excluding a skipped review, the skip becomes invisible and
-#      "reviewed" quietly degrades into "assumed fine" across a series of PRs.
+#   2. Stopping has to stay loud and final. If Phase 7 regains a fallback tree
+#      binding, or `closure_state: done` stops excluding a not-run review, the
+#      skip comes back as "reviewed" quietly degrading into "assumed fine".
 #
 # Assertions anchor on identifiers and the section they must appear in, not on
 # the doc's prose, so rewording a paragraph does not fail this gate.
@@ -102,24 +101,29 @@ else
   pass "fsd entrypoint no longer treats infrastructure states as interrupts"
 fi
 
-# --- 3. Phase 7 has something to bind when no review approved a tree ---------
+# --- 3. The gate is never skipped, so Phase 7 has no fallback binding --------
 
-assert_contains "Phase 7 names the fallback tree binding" \
-  "$FSD" 'tested_candidate_tree_oid'
+assert_section_contains "gates doc states the review gate is never skipped" \
+  "$GATES" '## Phase 6.4: Candidate Review' 'The review gate is never skipped'
 
-assert_section_contains "gates doc names the Phase 7 fallback binding" \
-  "$GATES" '### When the review did not run' 'tested_candidate_tree_oid'
+# A fallback binding is what lets a not-run review reach Phase 7. If it returns,
+# the run can ship a tree no independent reviewer saw.
+if grep -Fq 'bind `tested_candidate_tree_oid`' "$FSD"; then
+  fail "fsd entrypoint binds a fallback tree when the review did not run"
+else
+  pass "fsd entrypoint has no fallback tree binding for a not-run review"
+fi
 
-# --- 4. A skipped review cannot be reported as done --------------------------
+# --- 4. A not-run review cannot be reported as done --------------------------
 
 assert_section_contains "closure_state derivation excludes a skipped review" \
   "$CLOSEOUT" '## Phase 10: Report' 'review_outcome = not-run'
 
-# --- 5. The skip is disclosed on both surfaces a reader arrives from ---------
-# The PR body is the only one its reviewer can see; the Phase 10 report is the
-# only one the operator sees. Losing either makes the skip invisible to someone.
+# --- 5. A not-run review never reaches the PR --------------------------------
+# Phase 8 must still name the state and stop, so a resumed run cannot draft a PR
+# for a candidate nobody independent has reviewed.
 
-assert_section_contains "Phase 8 discloses a skipped review in the PR body" \
+assert_section_contains "Phase 8 stops on a not-run review instead of drafting a PR" \
   "$PR_DELIVERY" '## Phase 8: Pull Request (if PR = Yes)' 'review_outcome = not-run'
 
 # --- 6. The reviewer role is named, and is still read-only -------------------
@@ -158,6 +162,40 @@ then
   pass "verifier role is read-only by tool whitelist"
 else
   fail "verifier role no longer guarantees read-only review"
+fi
+
+# The role's tools list is advisory: only a persisted agent's `tools:` frontmatter is an
+# enforced whitelist. The persisted verifier must exist, list read-only tools, and name
+# no write or shell tool, so the gate can truthfully report an enforced read-only review.
+VERIFIER_AGENT=.claude/agents/nase-verifier.md
+if [ ! -f "$VERIFIER_AGENT" ]; then
+  fail "persisted verifier agent $VERIFIER_AGENT is missing"
+elif python3 - "$VERIFIER_AGENT" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+front = re.match(r"---\n(.*?)\n---\n", text, re.S)
+if not front:
+    print("verifier agent has no frontmatter", file=sys.stderr)
+    sys.exit(1)
+fields = dict(re.findall(r"^(\w+):\s*(.*)$", front.group(1), re.M))
+if fields.get("name") != "nase-verifier":
+    print("verifier agent name is not nase-verifier", file=sys.stderr)
+    sys.exit(1)
+declared = {t.strip() for t in fields.get("tools", "").split(",") if t.strip()}
+if not declared:
+    print("verifier agent declares no tools frontmatter", file=sys.stderr)
+    sys.exit(1)
+forbidden = declared - {"Read", "Grep", "Glob"}
+if forbidden:
+    print("verifier agent grants non-read tools %s" % sorted(forbidden), file=sys.stderr)
+    sys.exit(1)
+PY
+then
+  pass "persisted verifier agent is read-only by its tools frontmatter"
+else
+  fail "persisted verifier agent no longer enforces read-only review"
 fi
 
 # --- 7. The empty-turn cause is documented -----------------------------------

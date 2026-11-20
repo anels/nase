@@ -94,8 +94,11 @@ check_contains "GitHub mutation verifies the token actor" .claude/scripts/extern
 check_contains "opaque GitHub mutations require an explicit owner" .claude/docs/github-queries.md '--github-owner "{owner}"'
 check_contains "FSD uses candidate review gate guard" .claude/commands/nase/fsd.md "fsd-candidate-review.md"
 check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-pr-delivery.md "external-write-action.py"
-check_contains "FSD delivery gates clean private PR body files" .claude/docs/fsd-pr-delivery.md "trap 'rm -rf \"\$PR_BODY_DIR\"' EXIT"
-check_contains "address-comments cleans private PR body files" .claude/docs/address-comments-delivery.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
+# An EXIT trap deletes the payload before `execute` re-hashes it, so cleanup is an explicit delete after execute returns.
+check_contains "FSD delivery gates clean private PR body files after execute" .claude/docs/fsd-pr-delivery.md "rm -rf \"\$PR_BODY_DIR\"   # after execute returns"
+check_absent "FSD delivery gates do not trap-delete the PR body before execute" .claude/docs/fsd-pr-delivery.md "trap 'rm -rf \"\$PR_BODY_DIR\"' EXIT"
+check_contains "address-comments cleans private PR body files after execute" .claude/docs/address-comments-delivery.md "Remove the file after \`execute\` returns"
+check_absent "address-comments does not trap-delete the PR body before execute" .claude/docs/address-comments-delivery.md "trap 'rm -f \"\$PR_BODY_FILE\"' EXIT"
 # prep-merge's body file must outlive the Bash call that writes it: Gate 9 waits for the
 # user, Gate 10 binds it into the manifest as --body-file, Gate 11 reads it back. So its
 # cleanup is Gate 12's explicit delete, not a trap, and the file is created under umask 077.
@@ -110,7 +113,8 @@ check_contains "discuss PR routes writes through the manifest gate" "$discuss" "
 check_contains "discuss PR keeps analysis investigation-only" "$discuss" "investigation-only"
 check_contains "discuss PR output offers the gated submit flow" "$discuss_out" "Submit review"
 check_contains "discuss PR submit doc submits the review via manifest" "$discuss_submit" "pulls/{number}/reviews"
-check_contains "discuss PR submit doc cleans the private review file" "$discuss_submit" "trap 'rm -rf \"\$REVIEW_DIR\"' EXIT"
+check_contains "discuss PR submit doc cleans the private review file after execute" "$discuss_submit" "rm -rf \"\$REVIEW_DIR\"   # after execute returns"
+check_absent "discuss PR submit doc does not trap-delete the review file before execute" "$discuss_submit" "trap 'rm -rf \"\$REVIEW_DIR\"' EXIT"
 
 sre="workspace/skills/docs/sre-alert-flow.md"
 sre_signals="workspace/skills/docs/sre-alert-flow-signals.md"

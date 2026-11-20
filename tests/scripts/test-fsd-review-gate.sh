@@ -785,6 +785,34 @@ class ReviewGateTests(unittest.TestCase):
         self.assertEqual(decision["action"], "STALE")
         self.assertIn("current_candidate_tree_oid", decision["reason"])
 
+    def test_git_probe_failure_records_nothing_and_can_be_retried(self) -> None:
+        # A bad --repo is the caller's fault, not a verdict on the candidate. Writing it
+        # as STALE (terminal) or INVALID (spends the retry) would punish the review.
+        result_path = self.artifacts / "probe-result.json"
+        self.write_json(result_path, self.combined())
+        state_path = self.artifacts / "probe-state.json"
+
+        def reduce_with(repo: Path) -> subprocess.CompletedProcess[str]:
+            return run(
+                "python3", str(GATE), "reduce", "--kind", "combined", "--round", "1",
+                "--repo", str(repo), "--inventory", str(self.inventory),
+                "--bundle", str(self.bundle),
+                "--expected-bundle-sha256", self.bundle_sha,
+                "--expected-base-oid", self.base_oid,
+                "--result", str(result_path), "--state", str(state_path),
+                check=False,
+            )
+
+        broken = reduce_with(self.artifacts / "no-such-repo")
+        self.assertEqual(broken.returncode, 2, broken.stderr)
+        self.assertIn("nothing was recorded", broken.stderr)
+        self.assertNotIn("Traceback", broken.stderr)
+        self.assertFalse(state_path.exists(), "an infra failure must not write state")
+
+        retried = reduce_with(self.repo)
+        self.assertEqual(retried.returncode, 0, retried.stderr)
+        self.assertEqual(json.loads(retried.stdout)["action"], "PROCEED")
+
     def test_repair_signature_ignores_reviewer_wording_and_ref(self) -> None:
         # The signature is what a follow-up run compares against, so it must survive
         # the reviewer rewording the same defect or renumbering its ref.

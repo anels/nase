@@ -14,11 +14,11 @@ Run this after simplification, formatters, focused tests, canonical tests, flake
 
 Because the pass happens once, an `AUTOFIX` repair applied after it is never reviewed: the deterministic gates re-run and catch a build or test regression, but nothing re-examines design, naming, or test quality in the repaired lines. That is why `AUTOFIX` sets `disclose_unreviewed_repair` and Phase 10 must name the repaired files. Silently shipping an unreviewed repair is the one outcome this design must not produce.
 
-An `INVALID` result or a `CONTEXT` request does not consume the pass, because neither says anything about the candidate - one is a reviewer format slip, the other a blob the bundle should have carried. Each is allowed once. Past that it is not a quality signal but an exhaustion the Actions table names: a second `INVALID` spends the malformed-result retry and yields, a second `CONTEXT` is `blocked-evidence` - the only `terminal_status` the reducer emits.
+An `INVALID` result or a `CONTEXT` request does not consume the pass, because neither says anything about the candidate - one is a reviewer format slip, the other a blob the bundle should have carried. Each is allowed once. Past that it is not a quality signal but an exhaustion the Actions table names: a second `INVALID` spends the malformed-result retry and stops the run with `review_outcome = not-run`, a second `CONTEXT` is `blocked-evidence` - the only `terminal_status` the reducer emits.
 
-**The review is a gate on quality, not a gate on delivery.** A reviewer that cannot produce a usable result says nothing about the candidate, so an exhausted malformed-result retry does not stop the run: set `review_outcome = not-run` and continue to Phase 7. This is the one exhaustion that yields, because it is the only one whose cause lies entirely outside the candidate. `blocked-evidence` still stops, because a bundle that failed to carry what the reviewer asked for is a defect in our own payload and proceeding past it means never fixing it. `NEEDS_HUMAN` still stops, because its taxonomy covers product decisions, secret uncertainty and irreversible actions - things that are unsafe to decide by default.
+**The review gate is never skipped.** A reviewer that cannot produce a usable result says nothing about the candidate, but it also means nobody independent has looked at it. So an exhausted malformed-result retry, an exhausted precheck cap, or a reviewer that returns nothing stops the run: set `review_outcome = not-run` and stop with a clear error before Phase 7. Nothing is committed, pushed, or opened as a PR. `blocked-evidence` still stops, because a bundle that failed to carry what the reviewer asked for is a defect in our own payload. `NEEDS_HUMAN` still stops, because its taxonomy covers product decisions, secret uncertainty and irreversible actions - things that are unsafe to decide by default.
 
-Treat that yield as a real cost, not a formality. In practice a flaky reviewer means the gate is skipped most of the time, so a silent skip would quietly convert "reviewed" into "assumed fine" across a whole series of PRs. That is why `review_outcome = not-run` is stated in both places a reader arrives from: the PR body at Phase 8 and the Phase 10 report. Someone reading the PR months later should not have to reconstruct whether anyone looked at it.
+A stopped run is a loud failure, not a quiet downgrade. Do not offer to continue without the review, and do not mark a PR ready on the strength of the deterministic gates alone. The way forward is to fix the reviewer, then re-run the gate against the retained candidate (see *When the review did not run*).
 
 ### Generate the contract
 
@@ -39,18 +39,15 @@ python3 .claude/scripts/fsd-review-gate.py precheck --round "{qa_round}" \
 
 It runs the reducer's own inventory-shape, result-shape, and bundle-binding validators and prints `{"status": "ok"}` or the list of problems - but writes no state. That is the whole point: `reduce` records an `InvalidResultError` in its history and spends the round's single INVALID retry, so a malformed reviewer reply must never reach it. Do not re-derive these checks by hand.
 
-A failing precheck is fixed and re-requested from the provider without calling `reduce`. Cap those pre-reducer retries at 3, then set `review_outcome = not-run` and continue.
+A failing precheck is fixed and re-requested from the provider without calling `reduce`. Cap those pre-reducer retries at 3, then set `review_outcome = not-run` and stop with the error described in *When the review did not run*.
 
 A reviewer that returns nothing at all - an empty turn, an idle signal, no JSON - never reaches `reduce`, so it is this cap that catches it rather than the reducer. Re-request once with the missing-output problem named explicitly, because an empty turn is often a reviewer declining the task shape rather than failing at it, and a second attempt with the four input paths restated frequently succeeds. Do not record an empty turn as a passing review; there is no verdict to record.
 
 ### Run the reviewer
 
-Spawn one fresh-context read-only reviewer. The reviewer is a local subagent, so
-there is no availability branch here: the gate always runs, and the only ways it
-yields are the result-shape failures described above. Its instructions are
-`Mode: verify` in `.claude/docs/review-mode-verify.md`, handed over verbatim.
+Spawn one fresh-context read-only reviewer as the persisted agent `nase-verifier` (`.claude/agents/nase-verifier.md`), the enforced form of the `verifier` role in `.claude/roles.yaml`. Its frontmatter allows only `Read`, `Grep`, and `Glob`, so read-only is a tool whitelist and not an instruction. The reviewer is a local subagent, so there is no availability branch here: the gate always runs, and the only ways it stops are the result-shape failures described above. Its instructions are `Mode: verify` in `.claude/docs/review-mode-verify.md`, handed over verbatim.
 
-**Route it through the `verifier` role in `.claude/roles.yaml`**, which already encodes what this reviewer needs: a `prompt_prefix` that asks for read-only work and faithful reporting rather than a soft pass. The role's `tools:` list is advisory, because the spawn call has no `tools` parameter. Naming the role matters because the tool shape alone does not identify a usable agent. A search-oriented agent whose own definition says it locates code and does not review or audit it will accept the spawn and then return an empty turn - which reads exactly like an infrastructure failure and consumes the retry budget for a reason that is really agent selection. If a project-level or plugin reviewer agent is available and is review-capable, it is a fine substitute, but check its `tools:` frontmatter: an agent with Edit/Write is read-only only by instruction, which is weaker than an agent whose frontmatter excludes them, and the Phase 10 report should say which of the two guarantees applied.
+If `nase-verifier` is not registered in the session, stop with that error. Do not fall back to a search-oriented agent: one whose own definition says it locates code and does not review or audit it accepts the spawn and then returns an empty turn, which reads exactly like an infrastructure failure and consumes the retry budget for a reason that is really agent selection. Do not substitute a project-level or plugin reviewer that holds Edit or Write, because that is read-only by instruction alone.
 
 Give the reviewer exactly four things:
 
@@ -106,17 +103,18 @@ The reducer rejects unknown keys, invalid enum values, contradictory axis/findin
 | `AUTOFIX` | Apply every bounded finding, missing requirement, and scope repair. Do not ask the user and do not report them as blockers. Re-run the Phase 6.1 deterministic gates over the repaired tree, refreeze the candidate, then continue to Phase 7 - there is no second review. Carry `disclose_unreviewed_repair` into Phase 10. |
 | `CONTEXT` | Rebuild the bundle with `--context-request-file "{decision_json}"`, increment the round, and re-run the reviewer once. A second `CONTEXT` is `blocked-evidence`. |
 | `NEEDS_HUMAN` | Stop for the allowed blocker the reducer named. |
-| `INVALID` or `STALE` | Re-request a fresh result from the provider at the same round, once. A second one sets `review_outcome = not-run` and continues to Phase 7. |
+| `INVALID` | Re-request a fresh result from the provider at the same round, once. A second one sets `review_outcome = not-run` and stops the run. |
+| `STALE` | The candidate genuinely moved after the bundle was built. The reducer records terminal `STALE`, so rebuild the bundle for the current candidate and review again. A git probe failure (`GitProbeError`) is not `STALE`: `fsd-review-gate.py` exits 2, writes no state, and the same call can be retried. |
 
 Ordinary quality or spec failure is never an `AskUserQuestion`. Existing external mutation gates, the >1500-line scope decision, and secret uncertainty remain explicit human checkpoints.
 
 ### When the review did not run
 
-`review_outcome = not-run` means no verdict exists for this candidate. Three things follow, and they are what keep the skipped gate from becoming invisible:
+`review_outcome = not-run` means no verdict exists for this candidate, and the run stops here. Three things follow.
 
-- **Phase 7 binds `tested_candidate_tree_oid`** rather than `approved_candidate_tree_oid`, which no action set. The tree assertions still run and still have to match exactly; what is missing is a review of that tree, not the guarantee that the tree which shipped is the tree the gates ran against.
-- **`closure_state` cannot be `done`.** Its definition requires a `PROCEED` verdict for the final candidate, so the best available outcome is `conditional`, with "candidate review did not run" as the named waiver reason. A run whose review never happened has not met the bar `done` describes, and printing `done` for it would make the ledger unreadable as a signal.
-- **The candidate artifacts are retained and named.** The bundle, requirement inventory, evidence and reviewer identity are already bound to the candidate tree by hash, so the review can still be run later against exactly this candidate without redoing the work. Say where they are, so that is a real option rather than a theoretical one.
+- **Phase 7 never starts.** No `approved_candidate_tree_oid` exists, and `tested_candidate_tree_oid` is never promoted into its place. Nothing is committed, pushed, or opened.
+- **`closure_state` is not `done`.** The Phase 10 report says the run stopped at the review gate, so the ledger stays readable as a signal.
+- **The candidate artifacts are retained and named.** The bundle, requirement inventory, evidence and reviewer identity are already bound to the candidate tree by hash, so the review can be re-run against exactly this candidate once the reviewer works, without redoing the work. Say where they are, so that is a real option rather than a theoretical one.
 
 Report what actually failed, in one line: which provider was tried, how many attempts, and what came back. "Two attempts returned an idle signal with no output" tells the next reader something; "review unavailable" does not, and it hides the agent-selection cause described above.
 

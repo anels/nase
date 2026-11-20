@@ -30,7 +30,11 @@ MARKER_PREFIX = "<!-- nase-archive:"
 JOURNAL_VERSION = 1
 LESSONS_PATTERN = re.compile(r"(?m)^## [a-z]+ -- (\d{4}-\d{2}-\d{2})")
 SECTION_PATTERN = re.compile(r"(?m)^## ")
-TECH_TRENDS_PATTERN = re.compile(r"(?m)^## Tech Digest \u2014 (\d{4}-\d{2}-\d{2})")
+# `## Ad hoc` is what /nase:learn writes into tech-trends.md today. `## Tech Digest` is the
+# legacy shape, and the year archives still hold it, so both must keep rotating.
+TECH_TRENDS_PATTERN = re.compile(
+    r"(?m)^## (?:Ad hoc|Tech Digest) \u2014 (\d{4}-\d{2}-\d{2})"
+)
 MARKER_PATTERN = re.compile(
     r"<!-- nase-archive:([0-9a-f]{64}) source=([0-9a-f]{64}) "
     r"offset=(\d+) occurrence=(\d+) content-occurrence=(\d+) "
@@ -308,12 +312,19 @@ def parse_sections(text: str, pattern: re.Pattern[str]) -> tuple[str, list[Secti
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         section_text = text[match.start() : end]
         dated = pattern.match(text, match.start())
+        date = None
+        if dated is not None:
+            try:
+                date = calendar_day(dated.group(1))
+            except ValueError:
+                # `2026-13-45` passes the header regex but is not a day. Treat the
+                # section as undated so one typo cannot stop every rotation.
+                dated = None
         if dated is None:
             date = None
             occurrence = -1
             content_occurrence = -1
         else:
-            date = calendar_day(dated.group(1))
             section_sha = sha256_bytes(section_text.encode("utf-8"))
             occurrence = canonical_occurrence
             content_occurrence = content_counts.get(section_sha, 0)
@@ -474,13 +485,11 @@ def load_journal(root: Path, kind: str, source: Path) -> dict[str, object] | Non
                 and entry["header"]
                 == f"# Tech Trends Archive \u2014 {match.group(1)}\n"
             )
-            section_year = re.match(
-                r"^## Tech Digest \u2014 (\d{4})-\d{2}-\d{2}", entry["text"]
-            )
+            section_head = TECH_TRENDS_PATTERN.match(entry["text"])
             valid_destination = bool(
                 valid_destination
-                and section_year
-                and section_year.group(1) == match.group(1)
+                and section_head
+                and section_head.group(1)[:4] == match.group(1)
             )
         if not valid_destination or not valid_header:
             raise ArchiveError(f"archive journal target is invalid: {path}")

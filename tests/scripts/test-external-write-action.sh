@@ -1174,6 +1174,22 @@ expect_guard_rc "gh auth status with a substituted argument stays blocked" 10 \
 expect_guard_rc "a gh read inside a substitution stays blocked" 10 'echo "n: $(gh pr list)"'
 expect_guard_rc "a substituted GH_HOST before a gh read stays blocked" 10 'GH_HOST=$(echo evil.example) gh pr view 5'
 
+# gh command table: read and local-only verbs pass, every mutating verb stays gated.
+expect_guard_rc "gh --version is allowed" 0 "gh --version"
+expect_guard_rc "gh --help is allowed" 0 "gh --help"
+expect_guard_rc "gh help pr is allowed" 0 "gh help pr"
+expect_guard_rc "gh repo clone is allowed" 0 "gh repo clone owner/example"
+expect_guard_rc "gh pr checkout is allowed" 0 "gh pr checkout 7"
+expect_guard_rc "gh pr checkout with a substituted argument is allowed" 0 \
+  'gh pr checkout $(git branch --show-current)'
+expect_guard_rc "gh --version with trailing words stays blocked" 10 "gh --version create"
+expect_guard_rc "gh repo create stays blocked" 10 "gh repo create example"
+expect_guard_rc "gh repo delete stays blocked" 10 "gh repo delete owner/example --yes"
+expect_guard_rc "gh pr merge stays blocked" 10 "gh pr merge 7"
+expect_guard_rc "gh repo fork is not a known read or local verb" 10 "gh repo fork owner/example"
+expect_guard_rc "gh pr checkout chained with a write stays blocked" 10 \
+  "gh pr checkout 7 && gh pr merge 7"
+
 # --- Confluence attachment upload is a payload-bound write ---------------------
 # `attach` posts bytes to any page with the stored Atlassian token.
 mkdir -p "$TMPDIR_TEST/stub" "$TMPDIR_TEST/cplan/assets"

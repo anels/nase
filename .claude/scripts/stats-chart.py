@@ -95,7 +95,7 @@ def render_chart(labels: list[str], counts: list[int]) -> str:
     # When two marks round to the same row, the larger wins (mids are sorted desc).
     label_by_row: dict[int, str] = {}
     if max_val > 0:
-        for v in sorted(y_marks):
+        for v in sorted(y_marks, reverse=True):
             if v == 0:
                 continue
             label_by_row.setdefault(math.ceil(v / max_val * MAX_ROWS), str(v))

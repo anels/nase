@@ -41,7 +41,13 @@ ALIAS_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 GITHUB_PR_RE = re.compile(
     r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)"
 )
-JIRA_RE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]*)(?![A-Z0-9-])")
+# Standards and encodings that read as `ABC-123` (UTF-8, SHA-256, ISO-8601) are not
+# Jira projects, and each false key would be sent to acli and block the draft as BROKEN.
+# Same list as month-efforts.sh, plus HTTP for `HTTP-2`.
+JIRA_RE = re.compile(
+    r"(?<![A-Z0-9])(?!(?:SHA|ISO|RFC|CVE|UTF|TLS|AES|RSA|FIPS|REQ|NET|ECMA|HTTP)-)"
+    r"([A-Z][A-Z0-9]{1,9}-[1-9][0-9]*)(?![A-Z0-9-])"
+)
 CONFLUENCE_RE = re.compile(
     r"https://[A-Za-z0-9.-]+\.atlassian\.net/wiki/[A-Za-z0-9_?&=./%#+:-]+"
 )
@@ -444,10 +450,13 @@ def validate_path(base: str, line: int, roots: dict[str, Path]) -> dict[str, Any
 
 def extract(text: str, roots: dict[str, Path], timeout: int) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
+    # Deduplicate before validating: each call is a network round trip, and a key
+    # repeated through a draft would be fetched once per mention.
     found.extend(
-        validate_github(match.group(0), timeout) for match in GITHUB_PR_RE.finditer(text)
+        validate_github(url, timeout)
+        for url in dict.fromkeys(match.group(0) for match in GITHUB_PR_RE.finditer(text))
     )
-    found.extend(validate_jira(key, timeout) for key in JIRA_RE.findall(text))
+    found.extend(validate_jira(key, timeout) for key in dict.fromkeys(JIRA_RE.findall(text)))
     found.extend(
         result("confluence", match.group(0).rstrip(".,;)"), "UNKNOWN", "mcp-required")
         for match in CONFLUENCE_RE.finditer(text)

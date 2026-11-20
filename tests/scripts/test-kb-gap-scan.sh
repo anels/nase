@@ -33,6 +33,14 @@ cat > "$FIXTURE/logs/2026-05-02.md" <<'EOF'
 - 14:00 | turns out the issue was StrictMode double-invoking effects (root cause: dev-only behavior)
 EOF
 
+# A [CONFIDENTIAL] line carrying a gap signal must never be emitted
+cat > "$FIXTURE/logs/2026-05-04.md" <<'EOF'
+# Work Log — 2026-05-04
+
+- 10:00 | people: [CONFIDENTIAL] 不确定 whether the secretpeople reorg lands
+- 11:00 | debug: 不确定 the visible uncertainty line stays
+EOF
+
 # Out-of-range — must be excluded
 cat > "$FIXTURE/logs/2026-04-01.md" <<'EOF'
 # Work Log — 2026-04-01
@@ -106,6 +114,14 @@ assert_contains "T1: lookup hit on day 2"       "$out" $'lookup\t'"$FIXTURE/logs
 assert_contains "T1: first_time hit on day 2"   "$out" $'first_time\t'"$FIXTURE/logs/2026-05-02.md"
 assert_contains "T1: post_error hit on day 2"   "$out" $'post_error\t'"$FIXTURE/logs/2026-05-02.md"
 assert_not_contains "T1: out-of-range file excluded" "$out" "2026-04-01.md"
+
+# ── Test 1b: [CONFIDENTIAL] lines are dropped, siblings stay ────────────────
+out=$(bash "$SCRIPT" --logs-dir "$FIXTURE/logs" --no-lessons \
+  --since 2026-05-04 --until 2026-05-04 2>&1)
+rc=$?
+assert_exit "T1b: exit 0 when an unmarked hit remains" 0 "$rc"
+assert_contains "T1b: unmarked line kept" "$out" "visible uncertainty line"
+assert_not_contains "T1b: marked line dropped" "$out" "secretpeople"
 
 # ── Test 2: empty range produces exit 2 ──────────────────────────────────────
 out=$(bash "$SCRIPT" --logs-dir "$FIXTURE/logs" --no-lessons \

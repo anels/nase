@@ -245,6 +245,63 @@ GUARDED_MENTION_RE = re.compile(
 )
 
 
+# `gh` command table. Every command lands in one of three classes, and anything the table
+# does not name is unknown, which the guard fails closed on.
+#   read   - fetches or prints, never changes GitHub or the checkout.
+#   local  - changes only the local checkout or prints local help, never GitHub.
+#   mutate - changes GitHub state. The object set and the verb set are separate
+#            contracts: a new `gh` noun and a new mutating verb arrive independently.
+GH_READ_VERBS = frozenset({"checks", "diff", "list", "status", "view", "watch"})
+GH_LOCAL_COMMANDS = frozenset(
+    {("pr", "checkout"), ("repo", "clone"), ("gist", "clone")}
+)
+GH_LOCAL_FLAGS = frozenset({"--version", "--help", "-h"})
+GH_MUTATING_OBJECTS = frozenset(
+    {
+        "pr",
+        "issue",
+        "release",
+        "repo",
+        "gist",
+        "label",
+        "variable",
+        "secret",
+        "cache",
+    }
+)
+GH_MUTATING_VERBS = frozenset(
+    {
+        "create",
+        "edit",
+        "close",
+        "reopen",
+        "ready",
+        "review",
+        "merge",
+        "delete",
+        "comment",
+        "set",
+    }
+)
+
+
+def gh_command_class(words: list[str]) -> str | None:
+    """Classify lowercase `gh` words (without the executable) as read, local, or mutate."""
+    if not words:
+        return None
+    if words[0] == "help" or (len(words) == 1 and words[0] in GH_LOCAL_FLAGS):
+        return "local"
+    if len(words) < 2:
+        return None
+    if words[0] in GH_MUTATING_OBJECTS and words[1] in GH_MUTATING_VERBS:
+        return "mutate"
+    if tuple(words[:2]) in GH_LOCAL_COMMANDS:
+        return "local"
+    if words[1] in GH_READ_VERBS:
+        return "read"
+    return None
+
+
 class ActionError(Exception):
     """A caller supplied an unsafe or invalid action."""
 
@@ -443,33 +500,8 @@ def mutation_system(argv: list[str]) -> str | None:
                 not methods and has_payload
             ):
                 return "github"
-        if len(words) >= 2 and words[0] in {  # noqa: SIM102
-            "pr",
-            "issue",
-            "release",
-            "repo",
-            "gist",
-            "label",
-            "variable",
-            "secret",
-            "cache",
-        }:
-            # The object set and the verb set are separate contracts: a new `gh`
-            # noun and a new mutating verb arrive independently. Keep them nested
-            # so a reader sees which list a missing entry belongs to.
-            if words[1] in {
-                "create",
-                "edit",
-                "close",
-                "reopen",
-                "ready",
-                "review",
-                "merge",
-                "delete",
-                "comment",
-                "set",
-            }:
-                return "github"
+        if gh_command_class(words) == "mutate":
+            return "github"
         if words[:2] == ["workflow", "run"]:
             return "github"
         return None
@@ -604,11 +636,6 @@ def option_values(argv: list[str], *names: str) -> list[str]:
             elif len(name) == 2 and value.startswith(name) and len(value) > len(name):
                 values.append(value[len(name) :].removeprefix("="))
     return values
-
-
-def option_value(argv: list[str], *names: str) -> str | None:
-    values = option_values(argv, *names)
-    return values[-1] if values else None
 
 
 def graphql_read_query(argv: list[str]) -> bool:
@@ -914,8 +941,9 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
             path = resolve_payload_path(root, value)
             is_file = path.is_file()
         except (OSError, ValueError):
+            path = None
             is_file = False
-        if not is_file:
+        if path is None or not is_file:
             if required:
                 raise ActionError(f"payload file does not exist: {value}")
             return
@@ -1864,14 +1892,7 @@ def known_safe_external_command(argv: list[str]) -> bool:
                 "prs",
                 "repos",
             }
-        return len(words) >= 2 and words[1] in {
-            "checks",
-            "diff",
-            "list",
-            "status",
-            "view",
-            "watch",
-        }
+        return gh_command_class(words) in {"read", "local"}
     if executable == "az":
         command_path = azure_command_path(words)
         if not words:

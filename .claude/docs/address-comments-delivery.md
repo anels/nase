@@ -255,7 +255,7 @@ options:
 
 If skipped, continue to Phase 9. Do not reuse earlier "Full auto" or push confirmation; show concrete body immediately before edit.
 
-Write the approved body to a mode-600 `PR_BODY_FILE`; install `trap 'rm -f "$PR_BODY_FILE"' EXIT`. Use `external-write-action.py` to prepare the exact `gh pr edit {pr_number} --repo {owner}/{repo} --body-file "$PR_BODY_FILE"` action, show its manifest, then authorize and execute that manifest. Do not reuse any earlier approval.
+Write the approved body to a mode-600 `PR_BODY_FILE`; do not install an EXIT trap, because it deletes the file before `execute` re-hashes it. Remove the file after `execute` returns. Use `external-write-action.py` to prepare the exact `gh pr edit {pr_number} --repo {owner}/{repo} --body-file "$PR_BODY_FILE"` action, show its manifest, then authorize and execute that manifest. Do not reuse any earlier approval.
 
 If the description already follows the template, skip this phase.
 

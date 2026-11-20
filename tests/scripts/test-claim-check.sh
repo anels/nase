@@ -35,6 +35,9 @@ run_case "e-malformed.jsonl" "warn"
 run_case "f-bash-edit-after.jsonl" "warn"
 run_case "g-ls-makefile.jsonl" "warn"
 run_case "h-pipe-tail.jsonl" "warn"
+run_case "i-make-deploy.jsonl" "warn"
+run_case "j-test-script.jsonl" "silent"
+run_case "k-verified-prose.jsonl" "silent"
 
 # hostile session id must not escape workspace/tmp
 nroot=$(mktemp -d)
@@ -67,6 +70,21 @@ VERIFY = {
     "bash tests/check-all.sh": True,
     "set -o pipefail; pytest -q | tail -3": True,
     "set -o pipefail && pytest -q | tail -3": True,
+    "make deploy": False,
+    "make -j4 deploy": False,
+    "make -j4": True,
+    "make test ARGS=x": True,
+    "make typecheck": True,
+    "ruff format .": False,
+    "ruff format --check .": True,
+    "ruff check .": True,
+    "bash tests/scripts/test-claim-check.sh": True,
+    "bash tests/hooks/test-session-start.sh": True,
+    "bash tests/check-boundary-terms.sh": True,
+    "bash /abs/repo/tests/scripts/test-kb-search.sh": True,
+    "bash tests/check-all.sh --links": True,
+    "bash tests/fixtures/helper.sh": False,
+    "bash tests/scripts/run-other.sh": False,
     "ls Makefile": False,
     "cat mypy.ini": False,
     "grep tox x": False,

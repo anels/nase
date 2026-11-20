@@ -3,8 +3,8 @@ name: nase:efforts
 description: "Reconcile active efforts with live PR and Jira state. Use for effort status, sync efforts, stalled work, or what am I working on."
 argument-hint: "[--by-scope|--by-repo] [--verbose] [--closed]"
 category: Reporting
-model: haiku
-effort: low
+model: sonnet
+effort: medium
 ---
 
 ## Purpose
@@ -19,7 +19,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspa
 
 ## Mode routing
 
-`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip Steps 1-4 below. It still owes Step 5's report - same `workspace/stats/effort-status-{YYYY-MM-DD}.md` path, sections replaced by that document's finding buckets - and Step 6's log line, with `closed audit` in place of the active counts. Nothing else re-reads those docs, so a wrong record there survives indefinitely - and because `/nase:effort-rollup` drops `status: wontfix` from the delivery record, an effort whose code shipped but whose verdict was dropped takes its merged PRs out of the impact report with it. Run it on the `/nase:kb-review` cadence rather than every session; the default run stays active-only and fast.
+`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip Steps 1-4 below. That document owns the report (`workspace/stats/closed-effort-audit-{YYYY-MM-DD}.md`), the chat reply, and the daily-log line in its Step 4; do not also write Step 5's `effort-status` report or Step 6's log line. Nothing else re-reads those docs, so a wrong record there survives indefinitely - and because `/nase:effort-rollup` drops `status: wontfix` from the delivery record, an effort whose code shipped but whose verdict was dropped takes its merged PRs out of the impact report with it. Run it on the `/nase:kb-review` cadence rather than every session; the default run stays active-only and fast.
 
 Every other flag runs the workflow below.
 

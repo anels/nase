@@ -96,6 +96,19 @@ g -C "$REPO" worktree lock "$WT/.quar.nase-cleanup-abc"
 sha=$(add_wt moved br-moved);         printf '%s' "$merged_json" > "$GH_STATE/$sha.json"
 mkdir "$WT/not-a-worktree"
 
+# An ignored file (.env) is local-only content: `git status --porcelain` hides it, and
+# `git worktree remove` without --force would delete it.
+printf '.env\n' > "$REPO/.git/info/exclude"
+sha=$(add_wt ignored br-ignored);     printf '%s' "$merged_json" > "$GH_STATE/$sha.json"
+echo SECRET=1 > "$WT/ignored/.env"
+
+# A fresh worktree sits at the default branch tip, where commits/{sha}/pulls returns the
+# merged PR that produced that tip. That PR is not this worktree's work.
+g -C "$REPO" worktree add -q -b br-fresh "$WT/fresh" main
+fresh_sha=$(g -C "$WT/fresh" rev-parse HEAD)
+printf '%s' "$merged_json" > "$GH_STATE/$fresh_sha.json"
+g -C "$REPO" update-ref refs/remotes/origin/main "$fresh_sha"
+
 OUT="$TMPDIR_TEST/report.json"
 python3 -I "$SCRIPT" scan --root "$WT" --out "$OUT" > "$TMPDIR_TEST/scan.txt"
 
@@ -107,6 +120,8 @@ assert_jq "commit GitHub never saw is unpushed" "$OUT" '.items[] | select(.name=
 assert_jq "closed unmerged PR is not removable" "$OUT" '.items[] | select(.name=="nopr") | .category=="keep-no-pr"'
 assert_jq "foreign lock is kept" "$OUT" '.items[] | select(.name=="locked") | .category=="keep-locked"'
 assert_jq "plain directory is unreadable, never removable" "$OUT" '.items[] | select(.name=="not-a-worktree") | .category=="keep-unreadable"'
+assert_jq "ignored .env keeps a merged worktree" "$OUT" '.items[] | select(.name=="ignored") | .category=="keep-dirty"'
+assert_jq "fresh worktree at the default tip is not removable" "$OUT" '.items[] | select(.name=="fresh") | .category=="keep-no-pr"'
 assert_jq "only the two merged worktrees plus moved are removable" "$OUT" '[.items[] | select(.category=="removable") | .name] | sort == [".quar.nase-cleanup-abc","merged","moved"]'
 
 # A session commits into a removable worktree between scan and apply.
@@ -117,6 +132,8 @@ python3 -I "$SCRIPT" apply --root "$WT" --report "$OUT" > "$TMPDIR_TEST/apply.tx
 assert_absent "apply removes the merged worktree" "$WT/merged"
 assert_absent "apply unlocks and removes the quarantine" "$WT/.quar.nase-cleanup-abc"
 assert_exists "apply keeps a worktree whose HEAD moved after scan" "$WT/moved"
+assert_exists "apply keeps the ignored .env" "$WT/ignored/.env"
+assert_exists "apply keeps the fresh worktree" "$WT/fresh"
 assert_exists "apply keeps the open-PR worktree" "$WT/open"
 assert_exists "apply keeps the dirty worktree and its file" "$WT/dirty/scratch.txt"
 assert_exists "apply keeps the unpushed worktree" "$WT/unpushed"
