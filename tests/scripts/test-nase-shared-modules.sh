@@ -399,6 +399,18 @@ for stderr, expected in {
     assert (category, wait) == ("rate-limited", expected), (stderr, category, wait)
 '
 
+run_case "a parsed HTTP status beats phrase tokens echoed from the request URL" "$PRELUDE"'
+for stderr, expected in {
+    "gh: Not Found (HTTP 404) https://api.github.com/repos/acme/auth-service/pulls/1": "not-found",
+    "gh: Not Found (HTTP 404) https://api.github.com/repos/acme/network-tools/pulls/1": "not-found",
+    "HTTP 403: Forbidden (https://api.github.com/repos/acme/timeout-lib)": "auth-failed",
+    "HTTP 502: Bad Gateway https://api.github.com/repos/acme/login-app": "transient-network",
+    "GraphQL: Could not resolve to a User with the login of 'x'": "not-found",
+}.items():
+    actual, _ = nase_gh.failure_category(stderr)
+    assert actual == expected, (stderr, actual, expected)
+'
+
 run_case "a word merely starting with auth is not an auth failure" "$PRELUDE"'
 # "author", which gh prints routinely, must not classify as auth-failed:
 # citation-validator maps auth-failed to UNKNOWN and lets the artifact through

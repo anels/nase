@@ -87,6 +87,14 @@ else
   bad "an explicit NASE_ROOT is the root the script receives"
 fi
 
+# --- 3b. a non-verification command does not prove a claim; a repo test script does ---
+repo=$(make_repo make-deploy)
+run_hook "$repo" "$PATH" "{\"transcript_path\":\"$FIX/i-make-deploy.jsonl\",\"session_id\":\"s-deploy\"}"
+if [ "$RC" -eq 0 ] && grep -q 'claim-check' <<<"$OUT"; then ok "a claim after make deploy still warns"; else bad "a claim after make deploy still warns" "rc=$RC out=$OUT"; fi
+repo=$(make_repo test-script)
+run_hook "$repo" "$PATH" "{\"transcript_path\":\"$FIX/j-test-script.jsonl\",\"session_id\":\"s-script\"}"
+if [ "$RC" -eq 0 ] && [ -z "$OUT" ]; then ok "a claim after a passing bash tests/**/test-*.sh run is silent"; else bad "a claim after a passing bash tests/**/test-*.sh run is silent" "rc=$RC out=$OUT"; fi
+
 # --- 4. malformed payloads never fail the Stop event ---
 repo=$(make_repo malformed)
 run_hook "$repo" "$PATH" "{not json"

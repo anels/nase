@@ -48,6 +48,9 @@ Do not include this lesson.
 
 ## debugging -- 2026-06-05 -- In range
 Include this lesson.
+
+## typo -- 2026-13-45 -- Impossible date
+An impossible calendar date must be skipped, not abort the payload.
 MD
 
 cat > "$fixture/workspace/journals/2026-06-05.md" <<'MD'

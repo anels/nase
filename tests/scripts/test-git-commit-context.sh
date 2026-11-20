@@ -167,6 +167,31 @@ out=$(context "$REPO" --no-fetch)
 assert_cmd "unparseable JSON config is reported, not fatal" \
   test "$(field "$out" '.commitlint.candidates[] | select(.file == ".commitlintrc.json") | .parsed')" = false
 
+# The other names commitlint searches: extensionless rc, YAML, ESM/CJS/TS, package.json key.
+rm -f "$REPO/.commitlintrc.json" "$REPO/commitlint.config.js"
+printf '%s\n' '{"rules":{"header-max-length":[2,"always",72]}}' > "$REPO/.commitlintrc"
+printf 'rules: {}\n' > "$REPO/.commitlintrc.yaml"
+printf 'export default {};\n' > "$REPO/.commitlintrc.mjs"
+printf 'export default {};\n' > "$REPO/commitlint.config.cts"
+printf '%s\n' '{"name":"x","commitlint":{"extends":["@commitlint/config-conventional"],"rules":{"type-enum":[2,"always",["feat"]]}}}' > "$REPO/package.json"
+out=$(context "$REPO" --no-fetch)
+for name in .commitlintrc .commitlintrc.yaml .commitlintrc.mjs commitlint.config.cts "package.json#commitlint"; do
+  assert_cmd "commitlint config $name is discovered" \
+    test "$(field "$out" ".commitlint.candidates[] | select(.file == \"$name\") | .file")" = "$name"
+done
+assert_cmd "extensionless .commitlintrc JSON is parsed" \
+  test "$(field "$out" '.commitlint.candidates[] | select(.file == ".commitlintrc") | .rules["header-max-length"][2]')" = 72
+assert_cmd "package.json commitlint key is parsed" \
+  test "$(field "$out" '.commitlint.candidates[] | select(.file == "package.json#commitlint") | .rules["type-enum"][2][0]')" = feat
+assert_cmd "YAML candidate is listed unparsed" \
+  test "$(field "$out" '.commitlint.candidates[] | select(.file == ".commitlintrc.yaml") | .parsed')" = false
+printf '%s\n' '{"name":"x"}' > "$REPO/package.json"
+rm -f "$REPO/.commitlintrc" "$REPO/.commitlintrc.yaml" "$REPO/.commitlintrc.mjs" "$REPO/commitlint.config.cts"
+out=$(context "$REPO" --no-fetch)
+assert_cmd "package.json without a commitlint key is not a candidate" \
+  test "$(field "$out" .commitlint.found)" = false
+rm -f "$REPO/package.json"
+
 # --- protected-branch detection ----------------------------------------------
 # `--auto-accept` used to hang off push_state alone, so an unpushed commit on
 # main was amended with no prompt. These cover the branch axis separately.

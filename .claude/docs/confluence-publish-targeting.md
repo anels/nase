@@ -15,7 +15,7 @@ create-or-update verdict and rung 2 for the cloudId, and present that space as t
 
 Otherwise work this ladder to completion - an early hit does not stop it, because the confirm ranks every candidate and shows the runner-up - then ask once:
 
-1. **Ledger** - `python3 .claude/scripts/confluence-publish.py ledger-lookup --source "{source}" --pages {N}`. Per-page `create`/`update`, `orphans`, and the prior month's page family.
+1. **Ledger** - `python3 .claude/scripts/confluence-publish.py ledger-lookup --source "{source}" --pages {N} --cloud-id "{cloudId}" --space-key "{KEY}"` (pass both once the cloudId and space are known; a lookup without them matches any target). Per-page `create`/`update`, `orphans`, and the prior month's page family.
 2. **cloudId** - `workspace/config.md` `## Jira → cloudId` (same site), confirmed with `getAccessibleAtlassianResources`.
 3. **KB** - resolve a Confluence-map file through `workspace/kb/.domain-map.md` for a topical parent. Skip silently if the domain map has no such entry; this rung is an optimisation, not a requirement.
 4. **CQL by title** - `title ~ "{stem}" AND type = page`. Also pre-empts the title conflict in Step 6.

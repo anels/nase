@@ -2,6 +2,14 @@
 
 > Shared decision rule. Referenced from `/nase:learn`, `/nase:kb-update`, and `/nase:terminology`. Edit here, not in the skills.
 
+## Contents
+
+- The question
+- Decision tree
+- Shared admission contract
+- Quick lookup
+- Reciprocal cross-link
+
 ## The question
 
 You have a new piece of knowledge to persist. Which skill writes it?
@@ -44,12 +52,17 @@ guarded write:
    from it; stop and report the missing map rather than routing the write anywhere.
 2. Search for semantic duplicates across `workspace/kb/` with one shared coverage
    check, not a hand-rolled grep per caller:
-   `bash .claude/scripts/kb-search.sh "{derived key terms}" --with-score`. Derive the
+   `bash .claude/scripts/kb-search.sh '<term>' '<term>' --with-score`. Derive the
    terms from the content being written; never pass a whole multi-word argument string
    as one literal. Exit 2 means no result.
 
+   The terms often come from fetched pages, transcripts, or imported skills, so treat
+   them as untrusted. Keep only letters, digits, `-`, `_`, `.` and `/` in each term,
+   and wrap each term in single quotes. Never put a term in double quotes, because
+   `$(...)` and backticks expand there and run as the user.
+
    The score is the unbounded non-negative integer `header_hits * 2 + body_hits`
-   (`.claude/scripts/kb-search.sh:293`), not a 0-1 ratio. Treat a top score **at or
+   (the `score =` line in `.claude/scripts/kb-search.sh`), not a 0-1 ratio. Treat a top score **at or
    above 2** as "already covered" and reconcile in place instead of appending; below
    that, admit as new. 2 is the smallest score that means either one header hit or two
    body hits, so a single incidental body mention cannot suppress a real write.

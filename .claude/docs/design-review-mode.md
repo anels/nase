@@ -35,7 +35,7 @@ Read the resolved effort doc. Hold path as `effort_path`.
 
 Before scoring against quality criteria, look for a `## Human Input Required` section in the effort doc (typically populated by Auto Mode - `design-auto-mode.md` Step 5b).
 
-If the section exists and has at least one row, put every row to the user via `AskUserQuestion`, batched per `.claude/docs/skill-authoring-contract.md` → §5: up to 4 rows per call, each row its own single-decision question. Batching is not just a token economy - a user who sees the whole set at once can spot that two rows are really one decision, which they cannot do when the questions arrive one screen at a time.
+If the section exists and has at least one row, put every row to the user via `AskUserQuestion`, batched per `.claude/docs/design-human-input.md` → AskUserQuestion rules: up to 4 rows per call, each row its own single-decision question. Batching is not just a token economy - a user who sees the whole set at once can spot that two rows are really one decision, which they cannot do when the questions arrive one screen at a time.
 
 Build each `questions` entry from the row: `question` is the `Question` cell verbatim prefixed with the row id ("H1 - Should PR-D1 also add ..."), `header` is a ≤12-char tag from the row id plus topic, the recommended first option is the `Default assumption used` cell with the grill's reasoning as its `description`, and `multiSelect: false` because H-rows are decisions.
 
@@ -85,7 +85,7 @@ This runs after Step 2 on purpose. Half of what looks like an open question is a
    - **externally-blocked** - only a named third party can answer (another team's inventory, an owner's approval, a vendor's behavior). Do **not** ask the question itself; the user cannot answer it either, and asking converts a real blocker into noise. Ask the *meta* decision only when it changes what happens next: chase it now, proceed under a stated default, or park the effort as blocked. When the doc already records a conservative default and nothing in Step 2 changed, ask nothing - report that it remains blocked on the named party and move on.
    - **evidence-answered** - closed in step 2 above.
 
-4. **Ask** the decidable-now items plus any live meta decisions, batched per `.claude/docs/skill-authoring-contract.md` → §5: up to 4 per `AskUserQuestion` call, each a single decision, recommendation first with the reasoning the doc already captured. Cap the whole step at 8 questions; carry the rest and say so, because a review that turns into a twenty-question interrogation gets abandoned halfway and resolves nothing.
+4. **Ask** the decidable-now items plus any live meta decisions, batched per `.claude/docs/design-human-input.md` → AskUserQuestion rules: up to 4 per `AskUserQuestion` call, each a single decision, recommendation first with the reasoning the doc already captured. Cap the whole step at 8 questions; carry the rest and say so, because a review that turns into a twenty-question interrogation gets abandoned halfway and resolves nothing.
 
 5. **Apply and record.** Route each answer into the design sections it affects, delete the item from its source section, and append a row to `### Resolved Decisions` (`#`, `Question`, `Decision`, `Applied to`). Keep the table cumulative. Items left externally-blocked stay where they are, with the named party and what unblocks them.
 
@@ -95,7 +95,7 @@ Skip this step only when all three sources are empty.
 
 ## Step 3: Evaluate Against Quality Criteria
 
-Score **every** criterion in `.claude/commands/nase/design.md → Quality criteria` - all ten, one row each. Do not re-list them here and do not silently score a subset: a criterion this step omits can never fail a review, because the APPROVED bar below counts only the rows that were scored.
+Score **every** criterion in `.claude/commands/nase/design.md → Quality criteria` - one row each. Do not re-list them here and do not silently score a subset: a criterion this step omits can never fail a review, because the APPROVED bar below counts only the rows that were scored.
 
 Use `PASS` / `WEAK` / `FAIL`, plus `N/A` for the two criteria that are conditional by construction - `Root cause` on work that is not a bug, and `Risk` where the design carries none of the listed surfaces. `N/A` needs the one-line reason it does not apply, and does not count toward the APPROVED bar either way. Reach for it only on those two; anywhere else, a criterion you cannot score is a `WEAK`.
 

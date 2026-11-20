@@ -92,6 +92,30 @@ assert data["claudeRunSkills"]["recipes"] == [
 ]
 PY
 
+assert_cmd "a probe timeout is a clean exit 2, not a traceback" python3 - "$SCRIPT" "$repo" <<'PY'
+import contextlib
+import importlib.util
+import io
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("fsd_preflight", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+def boom(*args, **kwargs):
+    raise subprocess.TimeoutExpired(cmd="tool-availability", timeout=1)
+
+
+mod.tool_availability = boom
+err = io.StringIO()
+with contextlib.redirect_stderr(err):
+    rc = mod.main(["--repo", sys.argv[2], "--task", "x"])
+assert rc == 2, rc
+assert err.getvalue().startswith("ERROR:"), err.getvalue()
+PY
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

@@ -83,7 +83,6 @@ Replying to an existing review comment is a REST write against the integer `data
 # One dir per reply matters here: address-comments posts replies in a loop, so a shared
 # predictable name would let iteration N+1 clobber the payload manifest N was bound to.
 REPLY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-XXXXXXXX")
-trap 'rm -rf "$REPLY_DIR"' EXIT
 REPLY_FILE="$REPLY_DIR/reply.md"
 PAYLOAD_FILE="$REPLY_DIR/payload.json"
 # write the drafted reply text into "$REPLY_FILE" first, then:
@@ -97,6 +96,7 @@ jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 NEW_ID=$(python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST" | jq -r .id)
+# No EXIT trap: execute re-hashes the payload. Remove "$REPLY_DIR" after the read-back below passes.
 ```
 
 ### Read-back verification (mandatory)
@@ -106,7 +106,6 @@ The reply body only exists correctly if GitHub stored what you wrote, so confirm
 ```bash
 # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 POSTED_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-posted-XXXXXXXX")
-trap 'rm -rf "$POSTED_DIR"' EXIT
 POSTED_FILE="$POSTED_DIR/posted.md"
 gh api "repos/{owner}/{repo}/pulls/comments/$NEW_ID" --jq .body | tr -d '\r' > "$POSTED_FILE"
 if [[ "$(cat "$POSTED_FILE")" == "$(tr -d '\r' < "$REPLY_FILE")" ]]; then
@@ -115,6 +114,8 @@ else
   diff "$REPLY_FILE" "$POSTED_FILE" || true
   printf 'POSTED BODY MISMATCH for comment %s - inspect before resolving\n' "$NEW_ID"
 fi
+# Clean up only now, after execute and the comparison have both returned.
+rm -rf "$REPLY_DIR" "$POSTED_DIR"
 ```
 
 `$(cat …)` strips trailing newlines on both sides and `tr -d '\r'` absorbs line-ending normalization, so this compares content only and does not fire on cosmetic differences. On mismatch, report the comment ID and the diff, do not resolve the thread, and fix the body with a gated `--method PATCH` on `repos/{owner}/{repo}/pulls/comments/$NEW_ID` using the same `--input` payload shape.
@@ -128,7 +129,7 @@ fi
 Notes:
 - `databaseId` is the integer from `reviewThreads.nodes[].comments.nodes[0].databaseId` - **not** the GraphQL opaque `id`, which is only for `resolveReviewThread`.
 - The same `--input` payload shape applies to any `gh api` write whose body is prose: PR review submissions, issue comments, comment edits.
-- Do not `trap ... EXIT` on these files. Prepare, execute, and read-back run in separate shells, so an EXIT trap deletes the payload before `execute` re-hashes it and the action fails on payload drift. `rm -f "$REPLY_FILE" "$PAYLOAD_FILE" "$POSTED_FILE"` explicitly after the read-back passes.
+- Do not `trap ... EXIT` on these files. Prepare, execute, and read-back run in separate shells, so an EXIT trap deletes the payload before `execute` re-hashes it and the action fails on payload drift. Clean up the payload files after `execute` and the read-back return, with `rm -rf "$REPLY_DIR" "$POSTED_DIR"`.
 
 ---
 
@@ -143,7 +144,6 @@ Use when each `resolveReviewThread` follows a per-thread reply, so calls must be
 ```bash
 # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 QUERY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/resolve-review-thread-XXXXXXXX")
-trap 'rm -rf "$QUERY_DIR"' EXIT
 QUERY_FILE="$QUERY_DIR/query.json"
 jq -n --arg thread "{thread_graphql_id}" '{query:"mutation($thread:ID!) { resolveReviewThread(input:{threadId:$thread}) { thread { isResolved } } }", variables:{thread:$thread}}' > "$QUERY_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
@@ -154,6 +154,7 @@ jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+rm -rf "$QUERY_DIR"   # after execute returns; never in an EXIT trap, which deletes the payload before execute re-hashes it
 ```
 
 Notes:
@@ -167,7 +168,6 @@ Use when you have N threads to resolve with no per-thread reply (e.g. auto-resol
 ```bash
 # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 BATCH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/resolve-review-batch-XXXXXXXX")
-trap 'rm -rf "$BATCH_DIR"' EXIT
 BATCH_FILE="$BATCH_DIR/batch.json"
 # Build the aliases and IDs from the reviewed batch, then write one JSON request.
 printf '%s\n' '{"query":"mutation { r0: resolveReviewThread(input:{threadId:\"<id0>\"}){thread{id}} ... }"}' > "$BATCH_FILE"
@@ -179,6 +179,7 @@ jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+rm -rf "$BATCH_DIR"   # after execute returns, not in an EXIT trap
 ```
 
 ### Shared throttle rule (applies to both shapes)

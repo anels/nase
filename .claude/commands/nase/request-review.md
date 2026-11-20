@@ -101,7 +101,7 @@ For each GitHub handle:
 
 **Complex PR** (ask for *review*): multiple source files with logic changes, large diffs, architectural impact, or unclear scope.
 
-When in doubt, lean towards "review." Try jev first via `.claude/scripts/jev-judge.py` (`jev-judgment-points.md` point `request-review.complexity`, `--type Choice` over `simple` / `complex`; state = file count, diff line count, "clearly mechanical" note); confidence < 0.9 or unavailable → fall back to the rule above.
+When in doubt, lean towards "review."
 
 ## Step 6 - Detect cherry-pick groups
 
@@ -109,8 +109,6 @@ Cherry-picks share the same intent across different base branches. Group PRs as 
 - Titles are identical or differ only by branch suffix/prefix (e.g. "fix X -> release/v1", "fix X -> release/v2")
 - Or commits share the same `Cherry-picked from commit {sha}` trailer in the commit body (more reliable than title matching)
 - Or the user explicitly called them cherry-picks
-
-Try jev first via `.claude/scripts/jev-judge.py` (`jev-judgment-points.md` point `request-review.cherry-pick-group`, `--type Noul --instructions 'Are these two PRs the same cherry-pick group?'`; state = two PR titles + commit trailers); confidence < 0.9 or unavailable → fall back to the rules above.
 
 Cherry-pick group → **one combined DM** per person listing all PR links.
 Unrelated PRs → **separate DMs** per PR per person.

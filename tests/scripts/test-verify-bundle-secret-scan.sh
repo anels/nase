@@ -740,5 +740,60 @@ class DiffOmissionGapTest(unittest.TestCase):
         )
 
 
+class RepoShapeTest(unittest.TestCase):
+    def make_repo(self) -> Path:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        repo = Path(directory) / "repo"
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        for key, value in (("user.email", "test@example.com"), ("user.name", "Test")):
+            subprocess.run(["git", "-C", str(repo), "config", key, value], check=True)
+        (repo / "sub").mkdir()
+        (repo / "sub" / "a.txt").write_text("one\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "init"], check=True)
+        return repo
+
+    def test_subdirectory_repo_is_refused(self):
+        repo = self.make_repo()
+        (repo / "sub" / "a.txt").write_text("two\n", encoding="utf-8")
+        completed = subprocess.run(
+            [sys.executable, str(BUNDLE), "--repo", str(repo / "sub"), "--base", "HEAD",
+             "--candidate-tree-only"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("repository root", completed.stderr)
+
+    def test_repo_root_is_accepted(self):
+        repo = self.make_repo()
+        completed = subprocess.run(
+            [sys.executable, str(BUNDLE), "--repo", str(repo), "--base", "HEAD",
+             "--candidate-tree-only"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_diff_cut_inside_a_multibyte_char_keeps_the_diff(self):
+        repo = self.make_repo()
+        git_base = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+        # Two bodies of 2-byte characters; one of them puts the 64 KiB cut mid-character.
+        seen_cut = False
+        for prefix in ("", "x"):
+            (repo / "sub" / "a.txt").write_text(prefix + "é" * 40000, encoding="utf-8")
+            _, tree_oid = module.candidate_tree(repo)
+            text, omitted = module.limited_diff(repo, git_base, tree_oid, "sub/a.txt", "sub/a.txt")
+            self.assertFalse(omitted)
+            self.assertNotIn("non-UTF-8", text)
+            self.assertIn("diff truncated at 64 KiB", text)
+            self.assertIn("é", text)
+            seen_cut = True
+        self.assertTrue(seen_cut)
+
+
 unittest.main(verbosity=1)
 PY

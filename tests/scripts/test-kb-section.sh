@@ -72,6 +72,32 @@ printf 'appended line\n' > "$FIXTURE/add.md"
 python3 "$SCRIPT" append-under "$KB" "Alpha" --content-file "$FIXTURE/add.md" --out "$FIXTURE/out2.md"
 check "append-under lands after the section end" "$(awk '/child body/{c=NR} /appended line/{a=NR} /^## Beta/{b=NR} END{print (c<a && a<b)?1:0}' "$FIXTURE/out2.md")"
 
+printf 'new child\n' > "$FIXTURE/child.md"
+python3 "$SCRIPT" replace "$KB" "Alpha child" --content-file "$FIXTURE/child.md" --out "$FIXTURE/out3.md"
+check "replace keeps the blank line before the next heading" "$(grep -B1 '^## Beta' "$FIXTURE/out3.md" | head -1 | grep -qx '' && echo 1 || echo 0)" "$(cat "$FIXTURE/out3.md")"
+
+python3 "$SCRIPT" append-under "$KB" "Alpha" --content-file "$FIXTURE/add.md" --out "$FIXTURE/out2.md"
+check "append-under keeps the blank line before the next heading" "$(grep -B1 '^## Beta' "$FIXTURE/out2.md" | head -1 | grep -qx '' && echo 1 || echo 0)"
+
+CRLF="$FIXTURE/crlf.md"
+printf '# T\r\n\r\n## A\r\nkeep\fmid\r\n\r\n## B\r\nb body\r\n' > "$CRLF"
+printf 'new a\n' > "$FIXTURE/crlf-new.md"
+python3 "$SCRIPT" replace "$CRLF" "A" --content-file "$FIXTURE/crlf-new.md" --out "$FIXTURE/crlf-out.md"
+expected=$(printf '# T\r\n\r\nnew a\r\n\r\n## B\r\nb body\r\n')
+check "replace preserves CRLF and the blank line" "$([ "$(cat "$FIXTURE/crlf-out.md")" = "$expected" ] && echo 1 || echo 0)" "$(od -c "$FIXTURE/crlf-out.md" | head -5)"
+python3 "$SCRIPT" append-under "$CRLF" "B" --content-file "$FIXTURE/crlf-new.md" --out "$FIXTURE/crlf-out2.md"
+check "append-under keeps other bytes (form feed, CRLF) intact" "$([ "$(grep -c $'\f' "$FIXTURE/crlf-out2.md")" = 1 ] && [ "$(grep -c $'\r$' "$FIXTURE/crlf-out2.md")" = 8 ] && echo 1 || echo 0)" "$(od -c "$FIXTURE/crlf-out2.md" | head -8)"
+
+FORM="$FIXTURE/form.md"
+printf '# T\n\n## A\none\ftwo\n' > "$FORM"
+out=$(python3 "$SCRIPT" outline "$FORM")
+check "form feed does not split a line" "$(grep -q 'L3-4' <<< "$out" && echo 1 || echo 0)" "$out"
+
+FENCE4="$FIXTURE/fence4.md"
+printf '# T\n\n## A\n````\n```\n## not a heading\n```\n````\n\n## B\nb\n' > "$FENCE4"
+out=$(python3 "$SCRIPT" outline "$FENCE4")
+check "a 3-backtick line does not close a 4-backtick fence" "$(grep -q 'not a heading' <<< "$out" && echo 0 || echo 1)" "$out"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 [ "$fail" -eq 0 ]

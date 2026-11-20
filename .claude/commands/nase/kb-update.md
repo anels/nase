@@ -31,7 +31,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - Project-specific → `workspace/kb/projects/{repo}.md`
    - Cross-project (spans multiple repos) → `workspace/kb/cross-project/{topic}.md`
 
-   Try jev first via `.claude/scripts/jev-judge.py` for that four-way pick (`jev-judgment-points.md` point `kb-update.route-domain`, `--type Choice`, options `ops` / `general` / `projects` / `cross-project`; state = the topic name and the repos it touches); confidence < 0.9 or unavailable → pick it yourself from the four rules above. Create the file with a minimal header, add to `.domain-map.md`, then proceed.
+   Pick it yourself from the four rules above. Create the file with a minimal header, add to `.domain-map.md`, then proceed.
 
 2. Read the target KB file's outline (`python3 .claude/scripts/kb-section.py outline {target} --depth 2`) to understand current state; step 4 pulls only the sections you change.
 
@@ -51,7 +51,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
    - **Durable dated event:** append only an ADR, incident, or migration (`.claude/docs/kb-lifecycle-layers.md → Four layers`). A gotcha goes into its topical section as a present-tense line, with date and PR inline as evidence, never as a new dated heading.
    - **No-op/status fact:** for unchanged HEAD, commit counts, scan status, or routine hygiene, write nothing.
    - **Unknown or follow-up:** omit it from the KB or route actionable work to `workspace/tasks/` or `workspace/efforts/`. Never write placeholders such as `FILL_IN`, `TBD`, or `TO_BE_FILLED`.
-   - Try jev first via `.claude/scripts/jev-judge.py` (`jev-judgment-points.md` point `kb-update.classify`, `--type Choice`, options `current-state` / `dated-event` / `no-op` / `follow-up`; state = a one-sentence summary of the knowledge plus whether the target section already covers it - not the entry body, which `jev-judge.py` truncates at 200 characters and would classify from a fragment); confidence < 0.9 or unavailable → fall back to the four labels above.
+   - Classify it yourself against the four labels above. KB content about a repo stays local.
    - Apply `.claude/docs/kb-template.md -> Verification triad`. V2 and V3 are admission gates. If either fails, keep the evidence in the originating log, recap, report, or effort instead of the active KB.
 
 4. Read only the sections you change: `kb-section.py get {target} "<heading>"`. Write the new section text under `workspace/tmp/`, then build the complete proposed file with `kb-section.py replace|append-under {target} "<heading>" --content-file {section} --out {proposed}`. These never touch `{target}`; step 9 still stages and diffs the full file. A file under 300 lines may be read whole.

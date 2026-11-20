@@ -527,6 +527,68 @@ def copy_verified_archive(
         raise
 
 
+def extraction_usage(path: Path) -> tuple[int, int]:
+    """Bytes and entries written under path, without following links."""
+    total = entries = 0
+    for current, dirs, files in os.walk(path, topdown=True, followlinks=False):
+        for name in [*dirs, *files]:
+            entries += 1
+            with contextlib.suppress(OSError):
+                info = (Path(current) / name).lstat()
+                if stat.S_ISREG(info.st_mode):
+                    total += info.st_size
+    return total, entries
+
+
+def extraction_ceiling_error(written: int, entries: int) -> str | None:
+    """Message for the first extraction ceiling that `written` or `entries` passes."""
+    if written > MAX_RESTORE_UNCOMPRESSED_BYTES:
+        return "archive exceeded the uncompressed byte ceiling while extracting"
+    if entries > MAX_RESTORE_MEMBERS + 1:
+        return "archive exceeded the member ceiling while extracting"
+    return None
+
+
+def extract_seven_zip(archive: Path, extraction: Path) -> None:
+    """Run 7z and kill it once the output passes the listing ceilings.
+
+    The member table is checked before this runs, but a header can understate what
+    the data streams hold, so the ceilings are enforced again on what lands on disk.
+    """
+    min_poll_seconds = 0.1
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        process = subprocess.Popen(
+            [seven_zip_binary(), "x", "-y", f"-o{extraction}", str(archive)],
+            stdout=out,
+            stderr=err,
+        )
+        deadline = time.monotonic() + SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS
+        try:
+            while process.poll() is None:
+                walk_started = time.monotonic()
+                exceeded = extraction_ceiling_error(*extraction_usage(extraction))
+                if exceeded is None and time.monotonic() > deadline:
+                    exceeded = (
+                        f"7z extraction timed out after {SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS}s; "
+                        "the live workspace was not touched"
+                    )
+                if exceeded:
+                    raise RestoreError(exceeded)
+                # The walk stats every entry, so wait at least twice as long as it took.
+                time.sleep(max(min_poll_seconds, 2 * (time.monotonic() - walk_started)))
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        exceeded = extraction_ceiling_error(*extraction_usage(extraction))
+        if exceeded:
+            raise RestoreError(exceeded)
+        if process.returncode:
+            err.seek(0)
+            detail = err.read().decode("utf-8", "replace").strip()
+            raise RestoreError(f"7z extraction failed: {detail}")
+
+
 def extract_candidate(
     root: Path, archive: Path, manifest: dict[str, Any], transaction_id: str
 ) -> tuple[Path, dict[str, Any]]:
@@ -543,24 +605,7 @@ def extract_candidate(
         else:
             extraction = parent / f".{root.name}-restore-extract-{transaction_id}"
             extraction.mkdir(mode=0o700)
-            try:
-                result = subprocess.run(
-                    [seven_zip_binary(), "x", "-y", f"-o{extraction}", str(archive)],
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                    timeout=SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS,
-                )
-            except subprocess.TimeoutExpired as exc:
-                # The candidate directory is still under the caller's cleanup path, and
-                # nothing has been promoted yet, so an abort here leaves the live
-                # workspace untouched.
-                raise RestoreError(
-                    f"7z extraction timed out after {SEVEN_ZIP_EXTRACT_TIMEOUT_SECONDS}s; the live "
-                    "workspace was not touched"
-                ) from exc
-            if result.returncode:
-                raise RestoreError(f"7z extraction failed: {result.stderr.strip()}")
+            extract_seven_zip(archive, extraction)
             source = (
                 extraction / "workspace"
                 if manifest["payload_shape"] == "wrapped"

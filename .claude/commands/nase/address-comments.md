@@ -30,7 +30,7 @@ Follow `.claude/docs/pr-input-guard.md`. On empty input, ask for one PR URL with
 - Preserve KB lookup via `mentions:<path>` for review-thread files.
 - GraphQL thread `id` is for resolve; integer `databaseId` is for REST reply. Never interchange them.
 - The final post-Phase-4 dossier/action map is the only category source for delivery.
-- Every `accept` thread must produce the planned code diff plus the test evidence `.claude/docs/fsd-implementation-loop.md → Engineering Excellence Bar` requires for the changed paths. A no-diff accept blocks delivery.
+- Every `accept` thread must produce the planned code diff plus the test evidence `.claude/docs/fsd-implementation-loop.md → Engineering Excellence Bar` requires for the changed paths. Read only that section (`python3 .claude/scripts/kb-section.py get .claude/docs/fsd-implementation-loop.md "Engineering Excellence Bar"`); the rest of the file belongs to `/nase:fsd`. A no-diff accept blocks delivery.
 - `decline` threads receive a reply but stay unresolved. `accept` and `reply-only` threads reply first, then resolve.
 - A merge conflict with the base branch and a failing **Required** check are in scope. Resolve the conflict in Phase 5.5 and fix the Required failure in Phase 6.5, even when no thread asks for it. Merge `origin/{baseRefName}` into the PR branch to resolve a conflict. Never rebase, because that needs a force-push.
 - Do not poll or wait for CI after the push, and do not claim post-push gates are green. A failing check that is not Required is a finding, not work: report it and leave it. A post-push CI failure otherwise surfaces on the PR like any other; the user runs another round or fixes it directly.

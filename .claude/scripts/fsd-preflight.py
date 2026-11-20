@@ -208,7 +208,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--max-inventory-items", type=int, default=15)
     parser.add_argument("--max-kb-lines", type=int, default=10)
     args = parser.parse_args(argv)
-    print(json.dumps(build_payload(args), indent=2, sort_keys=True))
+    try:
+        payload = build_payload(args)
+    except (subprocess.SubprocessError, OSError) as exc:
+        # TimeoutExpired and nase_git.GitTimeout both land here: a clean failure of this run.
+        print(f"ERROR: preflight probe failed: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 
 

@@ -17,8 +17,9 @@
 # this branch there is no approved path to reply on a page review thread at all.
 # The exception is payload-bound the same way the named gates are - this guard
 # reads the actual body and addressing fields and rejects anything it cannot
-# account for, so the operation name alone never grants passage. Everything
-# else, and every `executeDestructive`, stays blocked.
+# account for, so the operation name alone never grants passage. It also needs the
+# same user-approved single-shot token a Jira comment needs, and a body that passes
+# prose-lint. Everything else, and every `executeDestructive`, stays blocked.
 set -euo pipefail
 
 # Load the shared lib before the EXIT trap below. A syntax error in a sourced file
@@ -50,7 +51,8 @@ block() {
     echo ""
     echo "Confluence comments are the one operation with no named tool:"
     echo "  executeWrite name=\"createConfluenceComment\" is allowed when its"
-    echo "  payload passes this guard's own checks."
+    echo "  payload passes this guard's own checks, its body passes prose-lint, and"
+    echo "  a user-approved single-shot token (jira-write-token.py) binds it."
     echo ""
     echo "If the operation has no named tool and no gate here, show the user the"
     echo "exact operation name and inputs and ask them to run it, or save the"
@@ -137,10 +139,52 @@ if [ "$RUNNER" = "write" ] && [ "$OPERATION" = "createConfluenceComment" ]; then
   ' 2>/dev/null); then
     block_comment "payload could not be parsed"
   fi
-  if [ "$VERDICT" = "ok" ]; then
-    exit 0
+  if [ "$VERDICT" != "ok" ]; then
+    block_comment "$VERDICT"
   fi
-  block_comment "$VERDICT"
+
+  # Shape alone is not approval. A comment is outbound prose, so it gets the two gates a
+  # Jira comment gets: the plain-writing lint, then the single-shot approval token
+  # (workspace/.jira-write-token, bound to this tool name and exact payload) checked and
+  # consumed by jira-write-guard.sh. Lint runs first so a failing draft does not spend
+  # the token. The lint fails open on infrastructure problems, like prose-lint-guard.sh.
+  if [ "${NASE_PROSE_LINT:-1}" != "0" ]; then
+    LINT="$HOOK_DIR/../scripts/prose-lint.py"
+    if [ -r "$LINT" ] && command -v python3 >/dev/null 2>&1; then
+      COMMENT_FILE=$(mktemp) || COMMENT_FILE=""
+      if [ -n "$COMMENT_FILE" ]; then
+        printf '%s' "$INPUT" | jq -r '
+          .tool_input.inputs.body as $b
+          | if $b.format == "html" then ($b.value | gsub("<[^>]*>"; " ")) else $b.value end
+        ' > "$COMMENT_FILE" 2>/dev/null || : > "$COMMENT_FILE"
+        set +e
+        LINT_REPORT=$(python3 "$LINT" --surface confluence-doc --file "$COMMENT_FILE" 2>/dev/null)
+        LINT_RC=$?
+        set -e
+        rm -f "$COMMENT_FILE"
+        if [ "$LINT_RC" -eq 1 ] && [[ "$LINT_REPORT" == *"Result: FAIL"* ]]; then
+          {
+            echo "BLOCKED by atlassian-generic-write-guard: the createConfluenceComment body fails the plain-writing gate."
+            echo ""
+            echo "$LINT_REPORT"
+            echo ""
+            echo "Fix the findings, then retry. See .claude/docs/plain-writing-guard.md."
+            echo "Set NASE_PROSE_LINT=0 only when the flagged text quotes someone else."
+          } >&2
+          exit 2
+        fi
+      fi
+    fi
+  fi
+
+  GATE="$HOOK_DIR/jira-write-guard.sh"
+  [ -r "$GATE" ] || block_comment "cannot read the approval-token gate $GATE; failing closed"
+  set +e
+  printf '%s' "$INPUT" | bash "$GATE"
+  GATE_RC=$?
+  set -e
+  [ "$GATE_RC" -eq 0 ] || exit 2
+  exit 0
 fi
 
 block "$TOOL would run \"${OPERATION:-<unnamed>}\" outside every payload-bound Atlassian gate"

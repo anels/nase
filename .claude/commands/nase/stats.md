@@ -1,19 +1,21 @@
 ---
 name: nase:stats
-description: "Display workspace activity counts and charts. Use for show stats, how active am I, or 7/30/all-time activity."
-argument-hint: "[7|30|week|month|all]"
+description: "Display workspace activity counts and charts, or KB usage. Use for show stats, how active am I, 7/30/all-time activity, or KB usage."
+argument-hint: "[7|30|week|month|all | kb-usage [--window N|all] [--top N] [--verbose]]"
 category: Reporting
 model: haiku
 effort: low
 ---
 
-**Input:** $ARGUMENTS - optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`
+**Input:** $ARGUMENTS - optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`. A first word of `kb-usage` selects the KB usage report instead.
 
 ## Steps
 
 ### 0. Language preflight (MUST run first, non-negotiable)
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
+
+If the first word of `$ARGUMENTS` is `kb-usage`, run `### KB usage mode` below and skip Steps 1-6.
 
 ### 1. Determine time range
 
@@ -159,6 +161,10 @@ Tip: run `/usage` for Claude Code's current-window breakdown (skills · subagent
 `/nase:stats` covers activity over time; `/usage` covers current limits and cost.
 
 For a narrative summary instead of metrics, suggest `/nase:recap`.
+
+### KB usage mode
+
+Follow `.claude/docs/kb-usage-report.md`. It owns the flags, the argument handling, the helper call, and which counts to relay (the consumer-unread count, not the plain unread and unobserved lines).
 
 ## Notes
 

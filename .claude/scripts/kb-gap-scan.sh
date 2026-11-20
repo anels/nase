@@ -169,6 +169,8 @@ emit_hits() {
       local ln content snippet
       ln=$(printf '%s' "$raw" | cut -d: -f1)
       content=$(printf '%s' "$raw" | cut -d: -f2-)
+      # .claude/docs/confidential-marker.md: a marked line never reaches a KB draft.
+      case "$content" in *'[CONFIDENTIAL'*) continue ;; esac
       if [ "$USE_LESSONS" -eq 1 ] && [ "$f" = "$LESSONS_FILE" ]; then
         lesson_line_in_scope "$f" "$ln" || continue
       fi

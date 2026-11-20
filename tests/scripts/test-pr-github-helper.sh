@@ -954,6 +954,79 @@ assert "command timed out" in message, message
 assert "gh pr view" in message, message
 PY
 
+mkdir -p "$TMPDIR_TEST/failbin"
+cat > "$TMPDIR_TEST/failbin/gh" <<'SH'
+#!/usr/bin/env bash
+echo "gh: Not Found (HTTP 404) token ghp_""abcdefghijklmnopqrstuvwxyz0123" >&2
+exit 1
+SH
+chmod +x "$TMPDIR_TEST/failbin/gh"
+
+assert_cmd "a failing gh read prints redacted stderr and keeps gh's exit code" \
+  env "PATH=$TMPDIR_TEST/failbin:$PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import io
+import sys
+from contextlib import redirect_stderr
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+captured = io.StringIO()
+with redirect_stderr(captured):
+    rc = module.main(["metadata", "acme/widgets#42"])
+message = captured.getvalue()
+assert rc == 1, rc
+assert "HTTP 404" in message, message
+assert "ghp_" not in message and "<redacted>" in message, message
+PY
+
+assert_cmd "a bad --candidates file is a usage error, not a traceback" \
+  env "PATH=$TMPDIR_TEST/failbin:$PATH" "$PYTHON_BIN" - "$SCRIPT" "$TMPDIR_TEST" <<'PY'
+import importlib.util
+import io
+import sys
+from contextlib import redirect_stderr
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+bad = sys.argv[2] + "/bad-candidates.json"
+open(bad, "w", encoding="utf-8").write("{not json")
+for path in (bad, sys.argv[2] + "/missing-candidates.json"):
+    captured = io.StringIO()
+    with redirect_stderr(captured):
+        rc = module.main(
+            ["finding-scope", "acme/widgets#42", "--local-repo", sys.argv[2], "--candidates", path]
+        )
+    assert rc == 2, (path, rc, captured.getvalue())
+    assert "--candidates" in captured.getvalue(), captured.getvalue()
+PY
+
+assert_cmd "bad JSON from gh maps to its own exit code, not gh's exit 1" \
+  env "PATH=$TMPDIR_TEST/failbin:$PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import io
+import sys
+from contextlib import redirect_stderr
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+def broken(pr):
+    raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+module.fetch_review_threads = broken
+captured = io.StringIO()
+with redirect_stderr(captured):
+    rc = module.main(["review-threads", "acme/widgets#42"])
+assert rc == module.READ_FAILED_EXIT == 3, rc
+assert "read failed" in captured.getvalue(), captured.getvalue()
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\npr-github-helper tests passed.\n'
   exit 0

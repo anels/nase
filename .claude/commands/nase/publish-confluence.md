@@ -39,7 +39,7 @@ python3 .claude/scripts/confluence-publish.py plan \
   --source "{source}" --out-dir "workspace/tmp/confluence-{slug}"
 ```
 
-**Scope what becomes an image.** With no flags, `plan` rasterizes every class the source lays out with `display: grid`, which cannot tell a bar chart from a grid-laid-out incident card - and an imaged card loses full-text search, copy-paste, and its inline links. Read the source's `<style>` and decide per grid class whether it is a chart container. Try jev first via `.claude/scripts/jev-judge.py` for that call (`jev-judgment-points.md` point `publish-confluence.is-chart-container`, `--type Noul --instructions 'Is this class a chart container to rasterize?'`, `true` = rasterize this class / `false` = convert it as HTML; state = the class name, its CSS rule, and the first 200 characters of one matching element's text content); confidence < 0.9 or unavailable → judge it yourself, where text content means prose and an `<svg>` or canvas means a chart. Pass `--rasterize-only <class>` (repeatable) naming just the chart containers so everything else converts to ordinary HTML. Report in the confirm how many visuals each choice produces.
+**Scope what becomes an image.** With no flags, `plan` rasterizes every class the source lays out with `display: grid`, which cannot tell a bar chart from a grid-laid-out incident card - and an imaged card loses full-text search, copy-paste, and its inline links. Read the source's `<style>` and decide per grid class whether it is a chart container. Prose text converts as HTML. An `<svg>` or canvas is a chart, so rasterize it. Pass `--rasterize-only <class>` (repeatable) naming just the chart containers so everything else converts to ordinary HTML. Report in the confirm how many visuals each choice produces.
 
 Exit 3 = a single block exceeds the cap; exit 4 = a nesting construct Confluence rejects. Both name the cause - relay it and stop; do not restructure the user's document.
 
@@ -75,7 +75,10 @@ python3 .claude/scripts/confluence-publish.py render --plan "workspace/tmp/confl
 
 Then per page, parent (index 0) before children, because a child needs its parent's ID:
 
-1. Create or update the page with its `page-{i}.body.html`, `contentFormat: "html"` for an HTML source and `"markdown"` for a Markdown one - never `storage`.
+1. Create or update the page with its `page-{i}.body.html`, per the current-MCP table in `.claude/docs/confluence-adf-pattern.md`. Before the first write, call `getContentFormatGuide` and `getConfluenceSpace` once.
+   - Create: `createConfluenceContent` with `cloudId`, `contentType: "page"`, `title`, `parent`, `body: {format, value}`.
+   - Update: `getConfluenceContent`, then `updateConfluenceContent` with `contentId`, `snapshotToken`, `body`. On `snapshot_stale`, re-read and retry.
+   - `format`: `html` for an HTML source, `markdown` for a Markdown one, never `storage`.
 2. If that page has visuals, upload them and rewrite the body in place. An attachment needs a content ID, so this only works after the page exists:
    `attach` is a gated write (`.claude/docs/external-mutation-policy.md`); the Step 5 confirm is the approval:
    ```bash
@@ -91,9 +94,10 @@ Then per page, parent (index 0) before children, because a child needs its paren
    ```bash
    python3 .claude/scripts/confluence-publish.py ledger-append \
      --source "{source}" --page-index {i} --page-id {id} --page-url "{url}" \
-     --published-at "{ISO-8601}" --published-body-sha256 "{sha}" --format html
+     --published-at "{ISO-8601}" --published-body-sha256 "{sha}" --format html \
+     --cloud-id "{cloudId}" --space-key "{KEY}"
    ```
-   `--source` must be the **durable** artifact, even when you planned from a derived copy (a redaction-scrubbed sidecar, a hand-split file). Re-publishes key on that exact path, so a scratch key stops matching once tmp is cleaned and the next run re-creates the whole family beside the old one. `ledger-append` refuses a `workspace/tmp/` source for that reason; pass `--allow-transient-source` only for a throwaway probe page.
+   Pass the same `--cloud-id` and `--space-key` to `ledger-lookup` on a re-publish, so the same source sent to another space or site is not read as an update. `--source` must be the **durable** artifact, even when you planned from a derived copy (a redaction-scrubbed sidecar, a hand-split file). Re-publishes key on that exact path, so a scratch key stops matching once tmp is cleaned and the next run re-creates the family beside the old one. `ledger-append` refuses a `workspace/tmp/` source for that reason; pass `--allow-transient-source` only for a throwaway probe page.
 
 **Credential.** `attach` reads an Atlassian API token from the macOS keychain, falling back to `$CONFLUENCE_API_TOKEN` off macOS. Absent, it prints both setup commands; relay them and let the user store the token. Never ask for the token in chat, never echo it, and never put it on a command line.
 
@@ -105,23 +109,20 @@ Then per page, parent (index 0) before children, because a child needs its paren
 
 ## Step 7 - Report and clean up
 
-Per `.claude/docs/skill-contract.md`: pointer plus ≤ 5 lines. Include the page URLs, and group any PNGs **by the page they attach to**. Then delete `workspace/tmp/confluence-{slug}/` so emitted bodies of a sensitive report do not reach the next backup.
+Per `.claude/docs/skill-contract.md`: pointer plus ≤ 5 lines. Include the page URLs, with PNGs grouped **by the page they attach to**. Then delete `workspace/tmp/confluence-{slug}/` so a sensitive report's bodies do not reach the next backup.
 
 Append a daily-log line per `.claude/docs/daily-log-format.md`.
 
 ## Notes
 
 - Report any visual whose `status` is not `attached`; its placeholder panel is still on the page naming the PNG, so the reader is not left with a silent gap.
-- A rasterized subtree leaves no text duplicate on the page; the image carries its own labels. That is why the Step 3 scope matters - whatever gets imaged stops being searchable.
-- `updateConfluenceContent` replaces the whole body; this skill does not merge sections, and the confirm says so.
+- A rasterized subtree leaves no text duplicate, so whatever gets imaged stops being searchable. That is why the Step 3 scope matters.
+- `updateConfluenceContent` replaces the whole body; the confirm says so.
 - Markdown passthrough cannot express panels, expands, or inline cards, and is never rasterized. Use an HTML source when charts or those constructs matter.
 
 ## Portability
 
-Nothing here is pinned to one person or one organisation, so the skill can be shared as-is:
-
-- The Atlassian host comes from `workspace/config.md`, never a hard-coded tenant.
-- The targeting ladder's KB rung resolves through `.domain-map.md` and is skipped when absent.
-- The credential is read from the keychain or the environment; none is stored in the repo.
-- `tests/scripts/test-confluence-publish.sh` is fixture-driven and needs no credentials, no network, and no `workspace/`.
+- The Atlassian host comes from `workspace/config.md`, never a hard-coded tenant. The credential comes from the keychain or the environment, never the repo.
+- The targeting ladder's KB rung is skipped when `.domain-map.md` is absent.
+- `tests/scripts/test-confluence-publish.sh` needs no credentials, network, or `workspace/`.
 - Chrome and `gitleaks` are optional: without Chrome a visual reports `skipped:no-renderer` and keeps its placeholder; without `gitleaks` say so in the confirm rather than claiming the source was scanned.

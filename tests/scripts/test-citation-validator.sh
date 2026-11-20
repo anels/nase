@@ -200,6 +200,20 @@ if [[ "$missing_rc" -eq 2 ]] && grep -Fq 'missing-cli' "$TMPDIR_TEST/missing-acl
 
 assert_status "Confluence requires MCP authority" 2 'https://example.atlassian.net/wiki/spaces/ENG/pages/123/Test' UNKNOWN mcp-required
 
+# Encodings and standards that read as ABC-123 are not Jira keys and must not reach acli.
+write_artifact "$TMPDIR_TEST/one/artifact.md" 'Use UTF-8 and SHA-256 per ISO-8601 over HTTP-2, see TEST-1 and TEST-1 again.'
+set +e
+run_validator "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/standards.json" --timeout-seconds 10
+standards_rc=$?
+set -e
+if [[ "$standards_rc" -eq 0 ]] && "$PYTHON_BIN" - "$TMPDIR_TEST/standards.json" <<'PY'
+import json
+import sys
+refs = [item["ref"] for item in json.load(open(sys.argv[1], encoding="utf-8"))["results"]]
+assert refs == ["TEST-1"], refs
+PY
+then pass "standards are not Jira keys and a repeated key is one result"; else fail "standards are not Jira keys and a repeated key is one result"; fi
+
 write_artifact "$TMPDIR_TEST/one/artifact.md" '`one:missing.py:1` and TEST-500'
 set +e
 run_validator "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/mixed.json" --timeout-seconds 10

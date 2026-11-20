@@ -12,7 +12,7 @@ Content rules: kb-lifecycle-layers.md. This file owns scope, scanning, repair au
 ## Scope and mode
 
 1. Default to the full `workspace/` health review. A path argument narrows the content review, but full-scope trust checks still cover credentials, task and effort indexes, backup metadata, and the writers that can corrupt durable state. Reject paths outside the repository.
-   - `--kb-only` is the fast path. Restrict content, structure, relationship, searchability, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Run `python3 .claude/scripts/kb-usage-report.py` and cite its unread and unobserved counts. Follow `.claude/docs/kb-hygiene.md → Write budget and size review` and its report summary. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited.
+   - `--kb-only` is the fast path. Restrict content, structure, relationship, searchability, and writer-contract checks to `workspace/kb/` plus the scripts/docs/skills that read or write it. Run `python3 .claude/scripts/kb-usage-report.py` and cite its consumer-unread count (`Mapped KB files never read by a consumer`), not the plain unread and unobserved lines, which count maintenance reads as use and read 0. Follow `.claude/docs/kb-hygiene.md → Write budget and size review` and its report summary. Skip unrelated task, effort, backup, restore, and journal lifecycle checks. The full ignored-workspace credential scan remains mandatory because credential safety is not scope-limited.
 2. Run in one of three modes.
 
    | Invocation | Behavior |
@@ -52,7 +52,7 @@ depends on.
 
 ## Repair classes
 
-Try jev first via `.claude/scripts/jev-judge.py` for the class (`jev-judgment-points.md` point `kb-review.repair-class`, `--type Choice`, options `decided` / `judgment-bearing` / `separately-gated` / `never-automatic`; state = the finding, its path, and whether a credential or out-of-`workspace/` path is involved); confidence < 0.9 or unavailable → classify it yourself by the four definitions below.
+Classify the class yourself by the four definitions below. A credential or an out-of-`workspace/` path is never sent to an external classifier.
 
 ### Decided - apply without asking
 

@@ -1,22 +1,9 @@
-# Subagent Role Catalog - nase workspace
-# Skills reference role names (e.g., "role: lookup") instead of hardcoding models.
-# To change model routing, edit this file - all skills pick up the change.
+# Subagent role catalog. Skills name a role (for example "lookup"); the dispatcher maps it to a
+# model, an effort tier, and a prompt_prefix from this file. Edit here to change routing.
 #
-# Usage in skills:
-#   "Spawn a **lookup** agent to scan the repo structure."
-#   → AI reads this file, maps lookup → haiku, includes prompt_prefix
-#
-# Usage in main conversation:
-#   Agent(model="haiku", prompt="This is a simple lookup - keep reasoning minimal. ...")
-#
-# Each role also declares an `effort:` tier (low|medium|high) - the reasoning
-# budget to pass with the model. Apply the Effort scaling rule below to size
-# effort to the actual task, not just the role.
-#
-# NOTE: `model`, `effort`, `prompt_prefix`, and `tools` are advisory metadata here. A
-# spawn site must pass `model=` and `effort=` to `Agent(...)` and put the
-# `prompt_prefix` in the prompt for them to take effect; a role name alone carries
-# none of them. Spawn sites in the routing table below name the role and the values.
+# `model`, `effort`, `prompt_prefix`, and `tools` are advisory. A spawn site must pass `model=`
+# and `effort=` to `Agent(...)` and put the `prompt_prefix` in the prompt for them to take
+# effect. A role name alone carries none of them.
 
 roles:
   lookup:
@@ -44,6 +31,7 @@ roles:
       - Skill execution requiring multi-step judgment
 
   verifier:
+    # nase-verifier (.claude/agents/nase-verifier.md, tools Read, Grep, Glob) is the enforced read-only agent; Bash here is not.
     model: sonnet
     effort: medium
     tools: [Read, Grep, Glob, Bash]
@@ -115,78 +103,49 @@ roles:
 # happens in the main loop with no skill named at all. The routing rule in CLAUDE.md
 # covers that case; this table only records where the named phases dispatch.
 #
-# architect is the exception, not a tier to reach for: it is the only opus role, and
-# no skill currently routes to it. Reaching for it needs a reason a verifier pass
-# cannot cover - an unfamiliar codebase, a security threat model, a cross-repo
-# architecture call. "This feels important" is not one.
+# architect is the only opus role. design.md names it for one case, a cross-repo or
+# security-shaped architecture call with no local precedent, and no run has used it. Reaching
+# for it needs a reason a verifier pass cannot cover. "This feels important" is not one.
 #
 # Routing rules:
 #   default: worker
-#   Never use architect for something lookup can answer.
 #   For lookup dispatches: always include prompt_prefix in the agent prompt.
 #   When a workflow needs read-only judgment, prefer verifier over worker.
 #   checker is for one named spawn site only. Every gate that must not be skipped stays
 #   on verifier, and a new checker site needs its own eval first.
-#   When uncertain between lookup and worker: prefer worker (reasoning > speed).
-#   When uncertain between worker and architect: prefer worker unless the task
-#     involves security, architecture decisions, or an unfamiliar codebase.
+#   When uncertain between lookup and worker: prefer worker. Between worker and
+#   architect: prefer worker unless the task is security, architecture, or an unfamiliar codebase.
 #
 # Effort scaling (size reasoning to the task, not just the role):
 #   Start from the role's `effort:`, then adjust by one tier on the low|medium|high
-#   ladder before spawning. Do NOT change the model - effort and model move
-#   independently (a haiku lookup can stay low; an opus design can drop to medium
-#   for a mechanical sub-step).
-#     - trivial / mechanical / answer-is-in-the-output  → drop one tier (floor: low)
+#   ladder before spawning. Do NOT change the model - effort and model move independently.
+#     - trivial / mechanical / answer-is-in-the-output  -> drop one tier (floor: low)
 #     - complex / ambiguous / multi-constraint / first attempt at a hard problem
-#                                                       → raise one tier (cap: high)
+#                                                       -> raise one tier (cap: high)
 #     - re-running a check that just failed (verifier, checker, or a worker retry)
-#                                                       → raise one tier for the re-run
-#                                                         (cap: high), and stop at the first
-#                                                         tier that settles it
+#                                                       -> raise one tier for the re-run
+#                                                          (cap: high), and stop at the first
+#                                                          tier that settles it
 #   The failure re-run is upward only, so it needs no eval gate: it spends more tokens
 #   and cannot make a result worse. Do not use it to justify a lower first attempt.
-#   Source: stepwise effort escalation in dair-ai/Prompt-Engineering-Guide,
-#   pages/guides/reasoning-llms.en.mdx.
-#   Manual-only: this is a judgment the dispatcher applies per spawn. Never wire
-#   an automated effort/model downgrade without a quality eval gate proving the
-#   routing is correct (a cheaper misroute is silently wrong).
+#   Manual-only: never wire an automated effort/model downgrade without a quality eval gate
+#   proving the routing is correct (a cheaper misroute is silently wrong).
 #
 # Tool whitelist enforcement:
 #   The only enforced whitelist is a persisted agent's `tools:` frontmatter in
-#   `.claude/agents/*.md`. The `tools:` lists on the roles above are advisory, because
-#   this Claude Code build's Agent tool has no `tools` parameter (it has `model` and
-#   `effort`). A spawn site names the role and does not claim a whitelist was passed.
-#   lookup, verifier, and checker are read-only by their prompt_prefix and by the
-#   spawn site's own instruction, not by enforcement. A step that needs enforced
-#   read-only runs through a persisted agent instead.
-#   A spawn that names a persisted agent from `.claude/agents/` gets that agent's
-#   whitelist from its frontmatter. All five are `Read, Grep, Glob` with
-#   no Bash, which `tests/scripts/test-workspace-skill-p1-fixes.sh` asserts, so they are
-#   NARROWER than `lookup`. A spawn site that needs `gh`, `git log`, or any shell probe
-#   runs it in the main thread and pastes the result into the agent's prompt. Never widen
-#   an agent to close that gap.
-#   Borrowed from affaan-m/ECC agent frontmatter pattern: explicit tools array
-#   prevents role drift (lookup agent silently doing Write work).
+#   `.claude/agents/*.md`. The `tools:` lists above are advisory, because this Claude Code
+#   build's Agent tool has no `tools` parameter. lookup, verifier, and checker are read-only
+#   by their prompt_prefix, not by enforcement. A step that needs enforced read-only runs
+#   through a persisted agent. Those are `Read, Grep, Glob` with no Bash
+#   (`tests/scripts/test-workspace-skill-p1-fixes.sh` asserts it), so a spawn site that needs
+#   `gh`, `git log`, or any shell probe runs it in the main thread and pastes the result into
+#   the agent's prompt. Never widen an agent to close that gap.
 #
-# Default-model note (Claude Code 2.1.197, 2026-06-30):
-#   Claude Sonnet 5 is now the Claude Code *default* model (native 1M-token context).
-#   The roles above pin models explicitly, so lookup/worker/verifier/architect routing
-#   is unaffected - but any UNPINNED path (a bare Agent() with no model=, plugin skills,
-#   the native Explore agent) now resolves to Sonnet 5 instead of the previous default.
-#   Do NOT silently promote Sonnet 5 to architect/verifier here on the strength of it
-#   being the new default: run a quality eval first (see the Manual-only note above and
-#   feedback_no-auto-model-downgrade-without-eval). The 1M-native window does not relax
-#   the context-slicing stance - keep slicing before broad reads.
-#
-# Haiku note (Claude Code 2.1.304, 2026-10-21):
-#   The `haiku` alias resolves to Haiku 5.5 on the Anthropic API. On Bedrock, Vertex, and
-#   Foundry it still resolves to Haiku 4.5, so pin `claude-haiku-5-5` or set
-#   ANTHROPIC_DEFAULT_HAIKU_MODEL there. Thinking cannot be turned off in Claude Code,
-#   so lower `effort:` to spend fewer thinking tokens.
-#   checker rests on one A/B. Sonnet 5.5 and Haiku 5.5 gave the same state on 29 of 29
-#   claims from one PR. Six extra claims had known answers, four false and two true. Haiku
-#   never answered CONFIRMED on a false claim and confirmed both true ones. On two of the
-#   false claims it answered FIXED where Sonnet answered WRONG. That is harmless here
-#   because neither state is re-reported as a new finding. Spend was not measured, the A/B
-#   effort level was not recorded, and the sample is one PR. Do not extend checker to a
-#   gate on this evidence.
+# Model pins:
+#   Sonnet 5 is the Claude Code default, but the roles pin models explicitly. Do not promote
+#   Sonnet 5 to architect/verifier without a quality eval.
+#   The `haiku` alias resolves to Haiku 5.5 on the Anthropic API and to Haiku 4.5 on Bedrock,
+#   Vertex, and Foundry, so pin `claude-haiku-5-5` or set ANTHROPIC_DEFAULT_HAIKU_MODEL there.
+#   checker rests on one A/B. Sonnet 5.5 and Haiku 5.5 gave the same state on 29 of 29 claims
+#   from one PR. Haiku never answered CONFIRMED on a false claim. Spend was not measured and
+#   the sample is one PR. Do not extend checker to a gate on this evidence.

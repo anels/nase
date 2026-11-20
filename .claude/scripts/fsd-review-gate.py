@@ -105,6 +105,15 @@ class InvalidResultError(ValueError):
     pass
 
 
+class GitProbeError(InvalidResultError):
+    """A git call failed or timed out while probing the repo.
+
+    This says nothing about the reviewed candidate, so it must not become a recorded
+    decision: STALE is terminal and INVALID spends the round's one retry. `main` reports
+    it and leaves the state file alone, so the same call can simply be run again.
+    """
+
+
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -393,9 +402,9 @@ def git(
     try:
         result = nase_git.run(*args, repo=repo, env=env)
     except nase_git.GitTimeout as exc:
-        raise InvalidResultError(str(exc)) from exc
+        raise GitProbeError(str(exc)) from exc
     if check and result.returncode != 0:
-        raise InvalidResultError(
+        raise GitProbeError(
             result.stderr.decode("utf-8", "replace").strip() or "git command failed"
         )
     return result.stdout
@@ -1377,16 +1386,15 @@ def reduce(args: argparse.Namespace) -> dict[str, Any]:
             stale_reasons.append("changed_path_count")
         if digest(canonical_bytes(changed_paths)) != metadata["changed_paths_sha256"]:
             stale_reasons.append("changed_paths_sha256")
+    except GitProbeError:
+        raise
     except (InvalidResultError, UnicodeDecodeError) as exc:
         stale_reasons.append(f"changed_paths_error:{exc}")
-    try:
-        if (
-            current_candidate_tree(Path(args.repo).resolve())
-            != metadata["candidate_tree_oid"]
-        ):
-            stale_reasons.append("current_candidate_tree_oid")
-    except InvalidResultError as exc:
-        stale_reasons.append(f"candidate_tree_error:{exc}")
+    if (
+        current_candidate_tree(Path(args.repo).resolve())
+        != metadata["candidate_tree_oid"]
+    ):
+        stale_reasons.append("current_candidate_tree_oid")
     if stale_reasons:
         decision = {
             "action": "STALE",
@@ -1537,7 +1545,12 @@ def main() -> int:
         result = precheck(args)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0 if result["status"] == "ok" else 1
-    print(json.dumps(reduce(args), ensure_ascii=False, sort_keys=True))
+    try:
+        decision = reduce(args)
+    except GitProbeError as exc:
+        print(f"ERROR: git probe failed, nothing was recorded: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(decision, ensure_ascii=False, sort_keys=True))
     return 0
 
 

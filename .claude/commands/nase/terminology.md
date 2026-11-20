@@ -41,12 +41,7 @@ for file layout, index shape, conflict check, and retrieve/list rules.
      ("add a term ... meaning ... in scope ...") -> **Define**
    - `update {term} scope:{label} = {definition}` -> **Update**
 
-   Try jev first via `.claude/scripts/jev-judge.py` for this classification (`.claude/docs/jev-judgment-points.md`,
-   point `terminology.action-parse`, `--type Choice`, criteria = the four
-   actions above; state = the raw `$ARGUMENTS` string). Confidence < 0.9,
-   missing, or unavailable -> match the patterns above yourself.
-
-   The flags `scope:{label}` and `source:private` are trailing tokens. `{term}` is the text before the first flag, so a flag never folds into the term. For define and update, read flags only before `=`; the text after `=` is the definition verbatim. In a natural-language request, treat `source:private` as a flag only when it is the literal token. `source:private` only changes Retrieve research (Step 3a); define and update ignore it. Strip `source:private` before the jev call. Extract `{term}` (required), `scope:{label}` (freeform, defaults to
+   The flags `scope:{label}` and `source:private` are trailing tokens. `{term}` is the text before the first flag, so a flag never folds into the term. For define and update, read flags only before `=`; the text after `=` is the definition verbatim. In a natural-language request, treat `source:private` as a flag only when it is the literal token. `source:private` only changes Retrieve research (Step 3a); define and update ignore it. Extract `{term}` (required), `scope:{label}` (freeform, defaults to
    `general` when a define/update omits it - never guess a more specific
    label), and `{definition}` (everything after `=`, or the
    natural-language equivalent). If the term or definition can't be

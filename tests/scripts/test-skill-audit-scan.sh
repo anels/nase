@@ -368,6 +368,83 @@ check "report includes category, severity, and source line" \
   grep -Eq '\[FAIL\].*Category 1.*line 4' "$report"
 check "report never echoes credential material" sh -c '! grep -Fq -- "$1" "$2"' sh "$TOKEN" "$report"
 
+FM_DIR="$FIXTURE-frontmatter"
+mkdir -p "$FM_DIR"
+cat > "$FM_DIR/grants.md" <<'EOF'
+---
+description: Looks harmless.
+allowed-tools: Bash(*)
+context: fork
+agent: general-purpose
+---
+
+Read the file and summarize it.
+EOF
+cat > "$FM_DIR/plain.md" <<'EOF'
+---
+description: Looks harmless.
+model: haiku
+---
+
+Read the file and summarize it.
+EOF
+python3 "$SCRIPT" --format json "$FM_DIR/grants.md" > "$FM_DIR/grants.json"
+grants_rc=$?
+python3 "$SCRIPT" --format json "$FM_DIR/plain.md" > "$FM_DIR/plain.json"
+plain_rc=$?
+check "frontmatter privilege keys fail the audit" test "$grants_rc" -eq 1
+check "frontmatter findings name each key and line" python3 - "$FM_DIR/grants.json" <<'PY'
+import json
+import sys
+findings = json.load(open(sys.argv[1]))["results"][0]["findings"]
+got = {(f["category"], f["pattern"], f["line"]) for f in findings}
+assert got == {
+    (8, "frontmatter allowed-tools", 3),
+    (8, "frontmatter context", 4),
+    (8, "frontmatter agent", 5),
+}, got
+PY
+check "frontmatter without privilege keys stays clean" test "$plain_rc" -eq 0
+rm -rf "$FM_DIR"
+
+QUOTE_DIR="$FIXTURE-quoted-placeholder"
+mkdir -p "$QUOTE_DIR"
+cat > "$QUOTE_DIR/double.md" <<'EOF'
+# Double-quoted free text
+
+Run `bash .claude/scripts/kb-search.sh "{derived key terms}" --with-score` before writing.
+
+```bash
+python3 .claude/scripts/lookup.py "<search query>"
+```
+EOF
+cat > "$QUOTE_DIR/single.md" <<'EOF'
+# Single-quoted free text
+
+Run `bash .claude/scripts/kb-search.sh '<term>' '<term>' --with-score` before writing.
+
+```bash
+python3 .claude/scripts/lookup.py --file "{resolved target}" --out "{repo}"
+```
+EOF
+python3 "$SCRIPT" --format json "$QUOTE_DIR/double.md" > "$QUOTE_DIR/double.json"
+python3 "$SCRIPT" --format json "$QUOTE_DIR/single.md" > "$QUOTE_DIR/single.json"
+check "double-quoted free-text placeholders warn in prose and fences" python3 - "$QUOTE_DIR/double.json" <<'PY'
+import json
+import sys
+result = json.load(open(sys.argv[1]))["results"][0]
+lines = sorted(f["line"] for f in result["findings"] if f["pattern"] == "double-quoted free-text placeholder")
+assert lines == [3, 6], lines
+assert result["verdict"] == "WARN", result["verdict"]
+PY
+check "single-quoted and path placeholders stay clean" python3 - "$QUOTE_DIR/single.json" <<'PY'
+import json
+import sys
+result = json.load(open(sys.argv[1]))["results"][0]
+assert result["verdict"] == "PASS", result["findings"]
+PY
+rm -rf "$QUOTE_DIR"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 test "$fail" -eq 0

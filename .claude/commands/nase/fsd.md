@@ -11,11 +11,11 @@ Confirm execution options upfront, then continue through implementation until do
 
 **Input:** $ARGUMENTS - the task description or implementation plan
 
-Follow:
+Load shared docs when needed, before the gate each owns:
 
-- `.claude/docs/external-mutation-policy.md` for every external write.
-- `.claude/docs/workspace-write-guard.md` for effort, topology, lifecycle, and KB writes.
-- `.claude/docs/repo-task-flow.md` for repo resolution, branch/worktree setup, build/test, push, GitHub gates, cleanup, and logging.
+- `.claude/docs/repo-task-flow.md` (repo, branch, build, push): Phase 1.
+- `.claude/docs/workspace-write-guard.md` (effort, topology, KB writes): before the first, Phase 3.7 or 8b.
+- `.claude/docs/external-mutation-policy.md` (external writes): before the first, by Phase 7.
 
 **Language preflight (run first):** Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for commits, PRs, and GitHub text.
 
@@ -60,7 +60,7 @@ Before Phase 3.5, confirm that the applicable state above is populated. If phase
 
 At Phase 3.5, read `.claude/docs/fsd-implementation-loop.md` once. Execute its research, preflight, Direct/Team/TDD implementation, initial build/test loop, simplification, post-edit deterministic gates, final size guard, and candidate bundle rules in order.
 
-At Phase 6.4, read `.claude/docs/fsd-candidate-review.md`. It owns the single fresh independent review covering both code quality and spec conformance, the operator preflight that must pass before the reducer call, the deterministic reducer, and the retry budget. Only reducer-approved human blockers and `blocked-evidence` interrupt the user. A reviewer that cannot return a usable result sets `review_outcome = not-run` and the run continues - see that document's *When the review did not run* section for what Phase 7 binds instead, why `closure_state` cannot be `done`, and where the skip has to be disclosed.
+At Phase 6.4, read `.claude/docs/fsd-candidate-review.md`. It owns the single fresh independent review covering both code quality and spec conformance, the operator preflight that must pass before the reducer call, the deterministic reducer, and the retry budget. Only reducer-approved human blockers and `blocked-evidence` interrupt the user. A reviewer that cannot return a usable result sets `review_outcome = not-run` and stops the run with an error before Phase 7 - see that document's *When the review did not run* section.
 
 ## Phase 7: Commit & Push
 
@@ -68,7 +68,7 @@ Follow the commit & push sequence in `.claude/docs/commit-push-pattern.md`. Devi
 
 At its Step 4, conform the commit subject per `.claude/docs/fsd-commit-message-conformance.md`.
 
-Both assertions below bind `approved_candidate_tree_oid`. When `review_outcome = not-run` no action set it, so bind `tested_candidate_tree_oid` from Phase 6.1 instead and read "reviewed tree" as "gated tree" throughout - the assertions are unchanged and still have to match exactly, because what the skipped review costs is a judgment on the tree, not the guarantee that the tree which ships is the tree the gates ran against.
+Both assertions below bind `approved_candidate_tree_oid`. The review gate never skips, so `review_outcome = not-run` never reaches Phase 7.
 
 Substitute the literal 40-character OID into both commands below. Shell variables do not survive between Bash calls, so `$approved_candidate_tree_oid` would compare the tree against an empty string - a gate that fails for the wrong reason, or passes off a stale export. `{work_root}` is the Phase 1-3.7 state name for the checkout being committed.
 

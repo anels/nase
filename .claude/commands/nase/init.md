@@ -24,7 +24,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 mkdir -p workspace/kb/projects workspace/kb/general workspace/kb/cross-project workspace/kb/ops workspace/tasks workspace/efforts/done workspace/efforts/archive workspace/logs workspace/journals workspace/recaps workspace/stats workspace/tmp workspace/skills
 ```
 
-7. Write only missing stubs and preserve existing content. Create `workspace/config.md`, `workspace/context.md`, `workspace/kb/.domain-map.md`, task/log directories, and `.local-paths` entries needed on this machine.
+7. Write only missing stubs and preserve existing content. Create `workspace/config.md`, `workspace/context.md`, `workspace/kb/.domain-map.md`, task/log directories, and `.local-paths` entries needed on this machine. Also create a `workspace/tech-digest-config.md` stub with empty `## Sources`, `## Filter Topics`, and `## Output Sections` headings, which `/nase:tech-digest` reads.
 8. Follow `.claude/docs/workspace-runtime-config.md` for key names and language-key placement. Machine-specific paths stay in `.local-paths`, never tracked docs.
 9. Run `/nase:doctor`. Treat failed required checks as incomplete initialization.
 10. Offer the optional repository star only after setup succeeds. It is a GitHub mutation, so it goes through `.claude/docs/external-mutation-policy.md` and a payload-bound `external-write-action.py` manifest like any other; a raw `gh` star fails closed at the CLI guard. Skip it silently when the user declines.

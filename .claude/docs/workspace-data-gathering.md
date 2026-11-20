@@ -11,14 +11,14 @@ Shared algorithm for loading workspace activity data within a date range. Used b
 
 ### 1. Load compact workspace state
 
-Run the deterministic scanner first:
+The main thread runs the deterministic scanner first, and always before any subagent. `nase-workspace-state-scanner` has `Read, Grep, Glob` only, so it cannot run this command. Write the output under `workspace/tmp/`, not `$TMPDIR` or `/tmp`: each Bash call is a fresh shell, so a variable set here is gone by the next call, and the scanner agent reads only paths inside the workspace.
 
 ```bash
-SCAN_OUT=$(mktemp "${TMPDIR:-/tmp}/workspace-data.XXXXXX")
-python3 .claude/scripts/workspace-data-scan.py "$START_DATE" "$END_DATE" --scope "$SCOPE" > "$SCAN_OUT"
+mkdir -p workspace/tmp
+python3 .claude/scripts/workspace-data-scan.py "$START_DATE" "$END_DATE" --scope "$SCOPE" > workspace/tmp/workspace-data-scan.out
 ```
 
-Read `$SCAN_OUT` before reading raw workspace files. It contains:
+The path is `workspace/tmp/workspace-data-scan.out`. Pass that literal path in any subagent prompt, and read it before reading raw workspace files. Each run overwrites it. It contains:
 1. Compact `workspace/tasks/todo.md` plus broad workspace state (`workspace/context.md`, `workspace/kb/.domain-map.md`) only for `SCOPE="range"`.
 2. Only `workspace/tasks/lessons.md` sections dated within the requested range.
 3. One activity payload per day, preferring `workspace/journals/YYYY-MM-DD.md` over `workspace/logs/YYYY-MM-DD.md`.
@@ -30,7 +30,7 @@ Do NOT load KB domain files upfront - only read a specific one if needed to clar
 
 ### 2. Resolve missing detail on demand
 
-For each day from `$SCAN_OUT`:
+For each day in `workspace/tmp/workspace-data-scan.out`:
 1. Use `source = journal` when present; it is the synthesized daily summary.
 2. Use `source = log` only when no journal exists.
 3. Treat `source = none` as no-activity.

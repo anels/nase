@@ -625,6 +625,37 @@ check_contains "tight: subscript does not split the word" "$body" "H2O,"
 check_contains "tight: abbr and time keep their punctuation" "$body" "HTML, today."
 check_contains "tight: sibling spans still get a separator" "$body" "Label Value</p>"
 
+# --- notes: a paragraph between blockquotes must never be folded away ------
+# The old lazy `.*?` run swallowed `<p>KEEP ME</p>` into the first note.
+notes=$(python3 - "$(dirname "$SCRIPT")" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import confluence_markup as cm
+html = ("<blockquote>A</blockquote><p>KEEP ME</p>"
+        "<blockquote>B</blockquote><blockquote>C</blockquote>")
+out = cm.group_note_runs(html)
+print("keep=%s lead=%s fold=%s" % (
+    "<p>KEEP ME</p>" in out,
+    out.startswith("<blockquote>A</blockquote><p>KEEP ME</p>"),
+    "<li><p>B</p></li><li><p>C</p></li>" in out,
+))
+PY
+)
+check "notes: paragraph between blockquotes survives the fold" "$notes" "keep=True lead=True fold=True"
+
+# --- ledger: a different site or space is a different target ----------------
+LEDGER2="$WORK/pubs-targets.jsonl"
+python3 "$SCRIPT" ledger-append --ledger "$LEDGER2" --source "$SRC" --cloud-id c1 --space-key AAA \
+  --page-index 0 --page-id 111 --page-url "https://wiki/a" \
+  --published-at "2026-08-19T00:00:00Z" --published-body-sha256 shaA >/dev/null
+res=$(python3 "$SCRIPT" ledger-lookup --ledger "$LEDGER2" --source "$SRC" --pages 1 --cloud-id c1 --space-key AAA)
+check_contains "ledger: same site and space updates" "$res" '"page_id": "111"'
+res=$(python3 "$SCRIPT" ledger-lookup --ledger "$LEDGER2" --source "$SRC" --pages 1 --cloud-id c1 --space-key BBB)
+check_contains "ledger: other space creates" "$res" '"action": "create"'
+check_absent   "ledger: other space never reuses the page id" "$res" '"page_id": "111"'
+res=$(python3 "$SCRIPT" ledger-lookup --ledger "$LEDGER2" --source "$SRC" --pages 1)
+check_contains "ledger: lookup without target flags still matches" "$res" '"page_id": "111"'
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   printf 'OK: confluence-publish plan/render contract holds\n'

@@ -203,7 +203,10 @@ def lessons_payload(path: Path, root: Path, start: date, end: date, max_chars: i
         match = LESSON_HEADER_RE.match(header)
         if not match:
             continue
-        section_date = parse_iso(match.group(1))
+        try:
+            section_date = date.fromisoformat(match.group(1))
+        except ValueError:
+            continue
         if start <= section_date <= end:
             compacted = compact_text(section, max_chars)
             compacted["header"] = header

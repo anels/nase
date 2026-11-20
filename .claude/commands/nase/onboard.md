@@ -49,7 +49,7 @@ python3 .claude/scripts/kb-hygiene-scan.py --kb-file "{target-kb}" --repo-root "
 ```
 
    Then classify each finding with `.claude/docs/kb-hygiene.md`. That doc owns which facts this command may auto-fix from repo `HEAD`, which must be reported instead of rewritten, and which stale, duplicated, or low-value sections to refresh, merge, or remove; a scanner finding is not by itself permission to edit.
-5. Compute the content hash per `.claude/docs/content-hash-cache.md`; skip unchanged repos unless forced. When the repository yields no durable knowledge change, keep every KB target file byte-identical even under `--force`. Curation is driven by the state of the KB file, not by repo movement, so a repo that skips the knowledge refresh still gets its curation pass; with no candidates that pass is byte-identical too.
+5. Compute the content hash per `.claude/docs/content-hash-cache.md → What is hashed` (key `repo:<owner>/<repo>` from the `origin` remote; digest of the `HEAD` OID plus `CLAUDE.md`); skip unchanged repos unless forced. When the repository yields no durable knowledge change, keep every KB target file byte-identical even under `--force`. Curation is driven by the state of the KB file, not by repo movement, so a repo that skips the knowledge refresh still gets its curation pass; with no candidates that pass is byte-identical too.
 
 ## Single repo
 

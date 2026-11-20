@@ -17,7 +17,12 @@
 # Output: one block per matching effort - slug, mtime, frontmatter (status/repo/jira),
 # and every PR URL/number + Jira key referenced in the body. Feed this to the
 # extraction subagent so it reads only the in-scope docs.
+#
+# Clock: months are bucketed in UTC, never local time. effort-rollup-evidence.py
+# buckets mtime and PR mergedAt in UTC, so a doc touched at 23:30 local on the last
+# day of a month must land in the same month here or the two disagree.
 set -euo pipefail
+export TZ=UTC
 
 MONTH="${1:?usage: month-efforts.sh <YYYY-MM> [efforts-dir]}"
 EFFORTS_DIR="${2:-workspace/efforts/done}"

@@ -693,6 +693,29 @@ for year in ("2020", "2021"):
     assert content.count(module.MARKER_PREFIX) == 1
 print("PASS  multi-year failure preserves source and retry is idempotent")
 
+# The header /nase:learn writes today (`## Ad hoc`) rotates, the legacy `## Tech Digest` still does,
+# and other headers and recent entries stay.
+fixture = make_root()
+source = fixture / "workspace/kb/general/tech-trends.md"
+recent = datetime.now().strftime("%Y-%m-%d")
+source.write_text(
+    "# Trends\n\n"
+    "## Ad hoc — 2020-03-01 (/nase:learn)\n\n### topic\n\nadhoc old body\n\n"
+    "## Tech Digest — 2021-03-01\n\nlegacy old body\n\n"
+    f"## Ad hoc — {recent} (/nase:learn)\n\nadhoc recent body\n\n"
+    "## Other heading\n\nother body\n\n",
+    encoding="utf-8",
+)
+module.rotate_tech_trends(fixture)
+live = source.read_text(encoding="utf-8")
+assert "adhoc old body" not in live and "legacy old body" not in live, live
+assert "adhoc recent body" in live and "other body" in live, live
+archive_2020 = (fixture / "workspace/kb/general/tech-trends-archive-2020.md").read_text(encoding="utf-8")
+archive_2021 = (fixture / "workspace/kb/general/tech-trends-archive-2021.md").read_text(encoding="utf-8")
+assert "adhoc old body" in archive_2020 and "### topic" in archive_2020
+assert "legacy old body" in archive_2021
+print("PASS  Ad hoc and legacy Tech Digest headers both rotate")
+
 # Concurrent rotations serialize through the shared lock.
 fixture = make_root()
 source = fixture / "workspace/tasks/lessons.md"
@@ -742,6 +765,26 @@ assert "WARNING" in result.stderr and "archive skipped" in result.stderr, result
 assert time.monotonic() - started < 2
 assert source.read_bytes() == original
 print("PASS  live lock warns and skips without touching source")
+
+# One impossible calendar date in a header must not block every rotation.
+fixture = make_root()
+source = fixture / "workspace/tasks/lessons.md"
+source.write_text(
+    "# Lessons\n\n" + lesson() + "## fix -- 2026-13-45 -- typo\n\nbody\n\n",
+    encoding="utf-8",
+)
+result = subprocess.run(
+    [sys.executable, str(script), "lessons", "--root", str(fixture)],
+    capture_output=True,
+    text=True,
+    timeout=10,
+)
+assert result.returncode == 0, result
+assert "WARNING" not in result.stderr, result.stderr
+remaining = source.read_text(encoding="utf-8")
+assert "2026-13-45" in remaining, remaining
+assert "title" not in remaining, remaining
+print("PASS  impossible header date is treated as undated and rotation proceeds")
 PY
 
 printf '\nworkspace archive tests passed.\n'

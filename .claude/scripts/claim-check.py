@@ -21,7 +21,7 @@ CLAIM_PATTERNS = [
     r"\bbuild (is )?(clean|green|pass(?:ed)?)\b",
     r"\blint (is )?(clean|pass(?:ing|ed)?)\b",
     r"\bverification (pass(?:ed)?)\b",
-    r"\bverified\b",
+    r"\bverified (?:that )?(?:all )?(?:the )?(?:tests?|build|lint|typecheck)\b",
     r"测试(?:全部)?通过",
     r"验证通过",
     r"构建通过",
@@ -31,10 +31,11 @@ CLAIM_PATTERNS = [
 VERIFY_HEAD = re.compile(
     r"^(pytest|npm (run )?(test|lint|build)|pnpm (run )?(test|lint|build)|yarn (run )?(test|lint|build)"
     r"|cargo (test|build|clippy)|go (test|build)|mvn (test|compile|verify)"
-    r"|gradle (test|build)|dotnet (test|build)|make( (test|lint|check))?"
-    r"|tox|ruff (check|format)|eslint|tsc|mypy|pyright|shellcheck"
+    r"|gradle (test|build)|dotnet (test|build)"
+    r"|make(?: -\S+(?: \d+)?)*(?:\s*$|\s+(?:(?:test|tests|lint|check|typecheck|verify)(?:-[\w-]+)?|build|ci))"
+    r"|tox|ruff (check|format --check)|eslint|tsc|mypy|pyright|shellcheck"
     r"|npm run (check|typecheck|type-check)"
-    r"|bash tests/check-all\.sh)(\s|:|$)",
+    r"|bash (?:\S*/)?tests/(?:check-[^\s/]+\.sh|(?:[^\s/]+/)*test-[^\s/]+\.sh))(\s|:|$)",
 )
 WRAPPERS = {"time", "command", "exec", "nohup", "env", "sudo"}
 PREFIX_RUNNERS = [("uv", "run"), ("poetry", "run"), ("pnpm", "exec"), ("npx",), ("python", "-m"), ("python3", "-m")]

@@ -19,14 +19,14 @@ Source pattern: [addyosmani/agent-skills](https://github.com/addyosmani/agent-sk
 | "My KB note says the system does this, so it does." | A KB note is a claim recorded earlier, whoever wrote it; it locates evidence but is not live evidence of current state. |
 | "That count was off, I'll correct it." | Count with a command over the exact symbol and classify each hit by shape. If you cannot, state no number. Once a count in a draft has been revised, do not publish another unverified count. |
 
-## `/nase:fsd` - Phase 6.5 Pre-Push Verification Gate
+## `/nase:fsd` - Phase 6.4 Candidate Review
 
 | Excuse | Rebuttal |
 |---|---|
 | "The verifier is just Claude too, so it adds nothing." | It adds a read that never saw your reasoning, which is the only thing the gate was ever buying. Run it. |
 | "I wrote it and it looks right, self-approve." | Do not self-approve in the same active context. Spawn the `verifier` with CONTRACT + ARTIFACT only - not your reasoning (strip-the-CLAIM). |
 
-## `/nase:address-comments` - Phase 6 Execute / Phase 3 Verify-First
+## `/nase:address-comments` - Phase 3 Build Dossiers / Phase 6 Execute Changes
 
 | Excuse | Rebuttal |
 |---|---|
@@ -34,7 +34,7 @@ Source pattern: [addyosmani/agent-skills](https://github.com/addyosmani/agent-sk
 | "The reviewer is probably right, just apply it." | Verify the premise first (file-vs-description, conditional premise). A wrong premise = `decline` with the missed evidence, not a silent accept-then-revert. |
 | "Every named malformed case is handled, close it." | If any reviewer-named value lands in `silent`, the fix is not done. Check each case reaches its intended branch. |
 
-## `/nase:prep-merge` - Phase 2b Block / Phase 4 Branch State
+## `/nase:prep-merge` - Gate 3 Feedback Surfaces / Gate 10 Push
 
 | Excuse | Rebuttal |
 |---|---|

@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from nase_fs import atomic_write
+from nase_skill_meta import IMPORTED_MARKER_KEY, PRIVILEGED_KEYS
 
 MANIFEST_VERSION = 1
 MARKER = "<!-- NASE-GENERATED-WORKSPACE-SKILL"
@@ -72,7 +73,14 @@ def mirror_errors(root: Path, sources: dict[str, Path]) -> list[str]:
             wrapper_text = wrapper.read_text(encoding="utf-8")
             if f"Read `workspace/skills/{name}.md`" not in wrapper_text:
                 errors.append(f"{name}: wrapper points at the wrong source")
+            imported = frontmatter_block(source, IMPORTED_MARKER_KEY) is not None
             for key in RUNTIME_METADATA:
+                if imported and key in PRIVILEGED_KEYS:
+                    if frontmatter_block(wrapper_text, key) is not None:
+                        errors.append(
+                            f"{name}: wrapper forwards {key} from an imported skill"
+                        )
+                    continue
                 block = frontmatter_block(source, key)
                 if block and block not in wrapper_text:
                     errors.append(f"{name}: wrapper {key} metadata differs")

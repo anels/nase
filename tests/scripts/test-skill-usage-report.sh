@@ -10,6 +10,7 @@ mkdir -p "$TMPROOT/.claude/commands/nase" "$TMPROOT/workspace/skills" "$TMPROOT/
 printf '%04000d\n' 0 > "$TMPROOT/.claude/commands/nase/design.md"
 printf 'small\n' > "$TMPROOT/.claude/commands/nase/today.md"
 printf 'report\n' > "$TMPROOT/.claude/commands/nase/skill-usage.md"
+printf 'native test\n' > "$TMPROOT/.claude/commands/nase/test.md"
 printf 'test\n' > "$TMPROOT/workspace/skills/test.md"
 printf 'unused\n' > "$TMPROOT/workspace/skills/unused.md"
 
@@ -28,6 +29,7 @@ cat > "$TMPROOT/workspace/stats/skill-usage.jsonl" <<'JSONL'
 {"skill":"today","ts":"2026-07-10T10:00:10Z","source":"prompt-expansion","session_id":"legacy"}
 {"skill":"today","ts":"2026-07-10T10:00:20Z","source":"tool","session_id":"legacy"}
 {"skill":"workspace:test","ts":"2026-07-01T10:00:00Z","source":"tool","session_id":"legacy-2"}
+{"skill":"update-changelog","ts":"2026-07-16T10:00:00Z","event_type":"activated","session_id":"gone"}
 [1]
 "x"
 5
@@ -57,9 +59,20 @@ fi
 # of the tool outcomes it was written for.
 grep -q '| test | 2 | 2 | 2 | 2026-07-16 | n/a |' "$TMPROOT/report.md"
 grep -q '| workspace:test | 1 |' "$TMPROOT/report.md"
-grep -q 'Total skills on disk: 5 (native: 3, workspace: 2)' "$TMPROOT/report.md"
+grep -q 'Total skills on disk: 6 (native: 4, workspace: 2)' "$TMPROOT/report.md"
 grep -q '^## Context Hotspots$' "$TMPROOT/report.md"
 grep -q '| design | 2 | 4001 |' "$TMPROOT/report.md"
 grep -q 'workspace:unused - unused' "$TMPROOT/report.md"
+
+# A skill deleted from disk is history. It must not inflate "used" or appear in any table.
+if grep -q 'update-changelog' "$TMPROOT/report.md"; then
+  printf 'FAIL: skill with no file on disk listed in the report\n' >&2
+  exit 1
+fi
+grep -q 'Skills with at least one use: 5$' "$TMPROOT/report.md"
+
+# today-stats.py and this report read one counting rule, so the same day must agree.
+TZ=UTC python3 "$ROOT/.claude/scripts/today-stats.py" --root "$TMPROOT" --since 2026-07-16 --date 2026-07-17 > "$TMPROOT/today.txt"
+grep -qx 'skill design 2' "$TMPROOT/today.txt"
 
 printf 'skill-usage-report regression tests passed.\n'

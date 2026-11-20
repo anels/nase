@@ -10,7 +10,6 @@ One `external-write-action.py` manifest covers the whole review: a GitHub review
 # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 REVIEW_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-review-{number}-XXXXXXXX")
 REVIEW_FILE="$REVIEW_DIR/review.json"
-trap 'rm -rf "$REVIEW_DIR"' EXIT
 # Build with jq from the confirmed state, body, and drafted inline comments:
 #   {"event":"APPROVE|COMMENT|REQUEST_CHANGES","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}
 jq -n --arg event "$STATE" --arg body "$REVIEW_BODY" --argjson comments "$INLINE_COMMENTS_JSON" \
@@ -23,6 +22,7 @@ jq . "$MANIFEST"
 # --- question. After the answer approves this manifest:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
 python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST"
+rm -rf "$REVIEW_DIR"   # after execute returns; an EXIT trap would delete the payload before execute re-hashes it
 ```
 
 On a deviation from the recommended state, rebuild with that `event`, show the new manifest and body, and take one fresh confirmation - never execute a manifest the user did not see. On "Keep in chat" or "Discard", do not authorize; the prepared manifest is abandoned unspent.

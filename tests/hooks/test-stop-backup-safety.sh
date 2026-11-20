@@ -970,5 +970,71 @@ else
   pass=$((pass + 1))
 fi
 
+# Top-level workspace/tmp is excluded when the snapshot is copied, not only when it is
+# zipped, so a large scratch tree is never duplicated on every run. Nested tmp dirs and
+# dotfiles still reach the archive.
+cpbin="$fixture/cpbin"
+mkdir -p "$cpbin"
+cat > "$cpbin/zip" <<SH
+#!/usr/bin/env bash
+ls -A "\$PWD" > "\$SNAPSHOT_LS"
+exec "$fakebin/zip" "\$@"
+SH
+chmod +x "$cpbin/zip"
+install_7z_shim "$cpbin"
+repo="$fixture/tmp-copy-repo"
+target="$fixture/tmp-copy-backups"
+make_repo "$repo"
+mkdir -p "$repo/workspace/tmp" "$repo/workspace/logs/tmp"
+printf 'scratch\n' > "$repo/workspace/tmp/big-scratch.bin"
+printf 'nested\n' > "$repo/workspace/logs/tmp/keep.txt"
+printf 'hidden\n' > "$repo/workspace/.hidden-note"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+export SNAPSHOT_LS="$fixture/snapshot-ls.txt"
+out=$(cd "$repo" && PATH="$cpbin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "backup with a workspace/tmp tree succeeds" 0 "$rc" "$out"
+if [ ! -s "$SNAPSHOT_LS" ]; then
+  printf 'FAIL  snapshot listing was not captured\n' >&2
+  fail=$((fail + 1))
+elif grep -qx 'tmp' "$SNAPSHOT_LS"; then
+  printf 'FAIL  top-level tmp was copied into the snapshot\n' >&2
+  fail=$((fail + 1))
+else
+  printf 'PASS  top-level tmp is not copied into the snapshot\n'
+  pass=$((pass + 1))
+fi
+tmp_zip=$(find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null)
+tmp_listing=$(python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$tmp_zip" 2>&1)
+assert_contains "archive keeps a nested tmp directory" "$tmp_listing" "logs/tmp/keep.txt"
+assert_contains "archive keeps dotfiles" "$tmp_listing" ".hidden-note"
+assert_contains "archive keeps top-level files" "$tmp_listing" "context.md"
+if grep -q 'big-scratch' <<< "$tmp_listing"; then
+  printf 'FAIL  archive contains top-level tmp\n' >&2
+  fail=$((fail + 1))
+else
+  printf 'PASS  archive omits top-level tmp\n'
+  pass=$((pass + 1))
+fi
+
+# A symlinked workspace/ must still be copied (find does not descend into a symlink start
+# path unless it ends in `/.`), and an empty snapshot must never be published.
+repo="$fixture/symlink-ws-repo"
+target="$fixture/symlink-ws-backups"
+make_repo "$repo"
+mv "$repo/workspace" "$repo/real-workspace"
+ln -s real-workspace "$repo/workspace"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+out=$(cd "$repo" && PATH="$cpbin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+link_zip=$(find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null)
+if [ -z "$link_zip" ]; then
+  printf 'PASS  symlinked workspace publishes no archive when it is refused (rc=%s)\n' "$rc"
+  pass=$((pass + 1))
+else
+  link_listing=$(python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$link_zip" 2>&1)
+  assert_contains "symlinked workspace is copied, not archived empty" "$link_listing" "context.md"
+fi
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 exit "$fail"

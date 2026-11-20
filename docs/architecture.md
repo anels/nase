@@ -290,7 +290,7 @@ workspace/
   stats/
     skill-usage.jsonl   append-only activation and tool-outcome telemetry for /nase:*
     kb-usage.jsonl      append-only log of which skills used which KB files
-    kb-usage-YYYY-MM-DD.md  generated /nase:kb-usage report
+    kb-usage-YYYY-MM-DD.md  generated /nase:stats kb-usage report
     report-YYYY-MM-DD.md
   logs/                 daily work logs + .backup-status
   journals/             end-of-day wrap-up files

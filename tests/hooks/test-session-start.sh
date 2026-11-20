@@ -94,6 +94,14 @@ old trend
 ## Tech Digest — 2099-01-01
 
 future trend
+
+## Ad hoc — 2020-02-02 (/nase:learn)
+
+old adhoc trend
+
+## Ad hoc — 2099-02-02 (/nase:learn)
+
+future adhoc trend
 TRENDS
 
 cat > "$repo/workspace/skills/read-only.md" <<'SKILL'
@@ -342,6 +350,9 @@ assert_contains "warning-only backup status does not abort" "$out" "no successfu
 assert_contains "backup-target-only local paths does not abort" "$out" "backup target not reachable"
 assert_contains "old tech trend is archived" "$(cat "$repo/workspace/kb/general/tech-trends-archive-2020.md")" "old trend"
 assert_contains "future tech trend stays live" "$(cat "$repo/workspace/kb/general/tech-trends.md")" "future trend"
+assert_contains "old ad hoc trend (the live /nase:learn header) is archived" "$(cat "$repo/workspace/kb/general/tech-trends-archive-2020.md")" "old adhoc trend"
+assert_contains "future ad hoc trend stays live" "$(cat "$repo/workspace/kb/general/tech-trends.md")" "future adhoc trend"
+assert_not_contains "old ad hoc trend leaves the live file" "$(cat "$repo/workspace/kb/general/tech-trends.md")" "old adhoc trend"
 
 # A pending journal bypasses the source-exists gate so missing-source recovery
 # is reported instead of silently abandoned.

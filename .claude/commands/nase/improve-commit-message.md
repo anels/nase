@@ -66,8 +66,6 @@ Read the diff first. Only read full source files when the 5-line context is insu
 Pick the commit **type** from the project's `type-enum` (or standard list):
 `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
-Try jev first via `.claude/scripts/jev-judge.py` (`.claude/docs/jev-judgment-points.md` point `improve-commit-message.type`, `--type Choice` over the project's `type-enum` or the standard list above; state = diff summary); confidence < 0.9 or unavailable → pick from the list above.
-
 Pick an optional **scope** from the primary module/component affected (e.g., `auth`, `api`, `ui`, `db`, `deps`).
 
 ### 5. Generate improved message
@@ -94,10 +92,10 @@ If current message equals proposed message, output "Commit message already well-
 Use this amend operation after the applicable approval branch below:
 
 ```
-git -C {repo} commit --amend -m "type(scope): subject"
+git -C {repo} commit --amend -F {message_file}
 ```
 
-For multi-line messages, use `-m "subject" -m "body paragraph"`.
+Write the full proposed message to `{message_file}` (a file under `workspace/tmp/`) and amend with `-F`, so a body or trailer never depends on shell quoting. Preserve every existing trailer (`Co-Authored-By:`, `Signed-off-by:`, `Closes #N`) in the proposed message. Before the amend, save `git -C {repo} log -1 --format=%B` to `{original_file}` and note its `git interpret-trailers --only-trailers` output. After the amend, require the same trailer output. If it differs, restore with `git -C {repo} commit --amend -F {original_file}` and report the lost trailer.
 
 When `is_pushed: true`, `--auto-accept` does not authorize the amend. Approval cannot be inherited from a caller flag or earlier workflow confirmation. Display the full current and proposed messages, rerun `git -C {repo} log -1 --format=%H`, and require its output to equal the captured `{full_sha}`. Set `{history_status}` to `pushed` when `push_state: pushed`, or `possibly pushed because remote freshness failed` when `push_state: unknown`. Then ask this exact approval question immediately before the amend:
 

@@ -103,6 +103,8 @@ class Rule:
     fix: str
     pattern: re.Pattern[str] | None = None
     checker: Callable[[Document, Rule], list[Finding]] | None = None
+    # The rule is about URL syntax itself, so it must see URLs the default mask blanks.
+    sees_urls: bool = False
 
 
 @dataclass
@@ -110,6 +112,7 @@ class Document:
     text: str
     masked: str
     surface: str
+    url_visible: str = ""
     line_starts: list[int] = field(default_factory=list)
 
     def position(self, offset: int) -> tuple[int, int]:
@@ -144,18 +147,21 @@ class Document:
 # Quoted prose from someone else is NOT masked - read the hits before acting.
 
 FENCE_RE = re.compile(r"^(```|~~~).*?^\1", re.DOTALL | re.MULTILINE)
+_URL_MASK = re.compile(r"<?https?://[^\s>|]+>?")
 _MASK_PATTERNS = (
     FENCE_RE,
     re.compile(r"`[^`\n]+`"),
-    re.compile(r"<?https?://[^\s>|]+>?"),
+    _URL_MASK,
     re.compile(r"\A---\n.*?\n---[ \t]*\n?", re.DOTALL),
     re.compile(r"^[ \t]*\|.*\|[ \t]*$", re.MULTILINE),
 )
 
 
-def mask(text: str) -> str:
+def mask(text: str, keep_urls: bool = False) -> str:
     masked = text
     for pattern in _MASK_PATTERNS:
+        if keep_urls and pattern is _URL_MASK:
+            continue
         masked = pattern.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), masked)
     return masked
 
@@ -165,7 +171,13 @@ def build_document(text: str, surface: str) -> Document:
     for idx, ch in enumerate(text):
         if ch == "\n":
             starts.append(idx + 1)
-    return Document(text=text, masked=mask(text), surface=surface, line_starts=starts)
+    return Document(
+        text=text,
+        masked=mask(text),
+        surface=surface,
+        line_starts=starts,
+        url_visible=mask(text, keep_urls=True),
+    )
 
 
 # --- helpers ---------------------------------------------------------------
@@ -626,6 +638,7 @@ RULES: list[Rule] = [
         "Slack link embed",
         "paste the bare URL",
         re.compile(r"<https?://[^>\s]+\|[^>]*>"),
+        sees_urls=True,
     ),
     Rule(
         "SLK-TRAILURL",
@@ -729,11 +742,12 @@ def lint(text: str, surface: str) -> list[Finding]:
             findings.extend(rule.checker(doc, rule))
             continue
         assert rule.pattern is not None
+        haystack = doc.url_visible if rule.sees_urls else doc.masked
         findings.extend(
             doc.finding(
                 rule, match.start(), doc.text[match.start() : match.end()].strip()
             )
-            for match in rule.pattern.finditer(doc.masked)
+            for match in rule.pattern.finditer(haystack)
         )
     findings.sort(key=lambda f: (f.kind != "gate", f.line, f.col, f.rule))
     return findings

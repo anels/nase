@@ -54,6 +54,17 @@ done
 
 assert_contains "slop draft verdict recommends a rewrite" "$TMP/slop.json" "rewrite rather than patch"
 
+# --- Slack embed gate: the URL mask must not hide `<url|label>` ------------
+
+printf 'See <https://example.com/a|the doc> for more.\n' >"$TMP/embed.md"
+rc=$(run slack-dm "$TMP/embed.md" "$TMP/embed.json")
+if [ "$rc" = "1" ]; then pass "Slack link embed exits 1"; else fail "Slack link embed exits 1 (got $rc)"; fi
+n=$(jq_count "$TMP/embed.json" SLK-EMBED)
+if [ "$n" = "1" ]; then pass "Slack link embed trips SLK-EMBED"; else fail "Slack link embed trips SLK-EMBED (got $n)"; fi
+printf 'See https://example.com/a for more, or `<https://example.com/a|x>` in code.\n' >"$TMP/embed-ok.md"
+rc=$(run slack-dm "$TMP/embed-ok.md" "$TMP/embed-ok.json")
+if [ "$rc" = "0" ]; then pass "bare URL and inline-code embed pass"; else fail "bare URL and inline-code embed pass (got $rc)"; fi
+
 # --- review gates ----------------------------------------------------------
 
 rc=$(run github-review-comment "$FIXTURES/review-vague.md" "$TMP/revvague.json")

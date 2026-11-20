@@ -143,9 +143,9 @@ Only fall through to 4c for branches that are genuinely user-answerable, or wher
 
 ### 4c. Ask the frontier's user-answerable branches (batched round)
 
-Batch the round's user-answerable branches into a **single `AskUserQuestion` call** per `.claude/docs/skill-authoring-contract.md` → §5, which owns recommendation-first options and ordering by load-bearingness. Grill adds two bounds: the harness cap of 4 questions per call, and `ask_allowance` from the latest `grill-frontier.py` run (which is why Step 4 must pass `budget_spent`). If the frontier exceeds either, ask the most load-bearing branches that fit and carry the rest into the next round.
+Batch the round's user-answerable branches into a **single `AskUserQuestion` call** per `.claude/docs/design-human-input.md` → AskUserQuestion rules: recommendation-first options, ordered by load-bearingness. Grill adds two bounds: the harness cap of 4 questions per call, and `ask_allowance` from the latest `grill-frontier.py` run (which is why Step 4 must pass `budget_spent`). If the frontier exceeds either, ask the most load-bearing branches that fit and carry the rest into the next round.
 
-Grill-specific rules on top of §5:
+Grill-specific rules on top of those AskUserQuestion rules:
 - If you genuinely cannot form a recommendation, that is a signal to explore the codebase more before asking - not a reason to ask without one.
 - 1-3 alternatives is the working range. Drop the second when the decision is binary (sync vs async); drop both when the question is yes/no on a recommendation and let the harness-added "Other" carry disagreement.
 - "Other" is also the signal-channel for termination (Step 5).

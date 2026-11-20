@@ -40,7 +40,11 @@ The Atlassian MCP renamed these tools and changed the body shape. Read the live 
 | Body | top-level `contentFormat` + string `body` | `body: {format, value}` |
 | Doc formats | `adf`, `html`, `markdown` | `html`, `markdown`, **no `adf`** |
 | Other formats | none | `svg` (whiteboard), `csv` (database), `url` (embed / smart link / synced folder) |
-| Concurrency | no version field | `snapshotToken` from a prior `getConfluenceContent` is required for doc-body updates |
+| Required inputs | `cloudId`, `title`, `body` | create: `cloudId`, `contentType`, `parent`, `title`. Update: `cloudId`, plus `contentId` or `contentUrl` |
+| Content type | implied (page) | `contentType`: `page`, `live_doc`, `blogpost`, and others. Use `page` for a classic page |
+| Parent | `parentId` / `spaceId` fields | `parent`: `{spaceId}` for the space root, `{spaceId, parentContentId}`, `{parentContentId}`, or `{parentContentUrl}` |
+| Concurrency | no version field | `snapshotToken` from the latest `getConfluenceContent` or `updateConfluenceContent` response is required for doc-body updates; on `snapshot_stale`, re-read and reapply |
+| Authoring guidance | none | once per task, call `getContentFormatGuide` (`executeRead`, `inputs={toolName}` with `createConfluencePage` or `updateConfluencePage`), and call `getConfluenceSpace` for the target space unless `getConfluenceContent` returned `metadata.hasSpaceInstructions=false`; apply any returned `spaceInstructions` |
 
 The guard matches both generations and applies each one's own format enum, so an `adf` body sent to `updateConfluenceContent` is blocked. On the current MCP, use `html` wherever this doc says `adf`, because it is the server's own shape and round-trips `inlineCard`, panels, tables, and attachments. The ADF node recipes below are written as ADF JSON, so they apply to the older MCP and to anyone hand-building a tree; on the current MCP, fetch the page as `html` and edit the markup the server already returned for that node rather than translating the JSON by hand.
 
@@ -142,10 +146,10 @@ Each `updateConfluenceContent` call requires a full fetch + send cycle. Accumula
 When searching for a runbook by alert name, use noun fragments rather than the full hyphenated rule name:
 
 ```
-searchConfluence: text ~ "<noun1>" AND text ~ "<noun2>" AND space = "RPAAP"
+searchConfluence: text ~ "<noun1>" AND text ~ "<noun2>" AND space = "<runbook-space-key>"
 ```
 
-Also check the oncall handoff tree: `ancestor = 2921399304 AND text ~ "<alert keyword>"`.
+Also check the oncall handoff tree: `ancestor = <handoff-root-page-id> AND text ~ "<alert keyword>"`. Both values are examples of the shape. `workspace/config.md` has no Confluence section, so read the real space key and root page ID from the KB (`workspace/kb/ops/oncall-runbooks.md`) or ask the user.
 
 ---
 

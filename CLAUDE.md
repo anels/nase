@@ -2,7 +2,7 @@
 
 **What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere, with their paths in `.local-paths`. Read `workspace/context.md` only for the Workspace Boundary Policy or project context.
 
-**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. The fsd/address-comments verification gates run one fresh-context read-only verifier subagent; that reviewer is local, so those gates have no availability branch and are never skipped.
+**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. The fsd/address-comments verification gates run one fresh-context read-only verifier subagent; that reviewer is the persisted `nase-verifier` agent and is local, so those gates have no availability branch and are never skipped. A reviewer that returns no usable result stops the run with an error.
 
 ---
 

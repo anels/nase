@@ -255,17 +255,23 @@ def fenced_lines(lines: list[str]) -> set[int]:
     hands curation a section span that starts inside a code block.
     """
     inside: set[int] = set()
-    fence: str | None = None
+    fence = ""
     for idx, line in enumerate(lines, start=1):
         match = FENCE_RE.match(line)
-        if fence is None:
+        if not fence:
             if match:
-                fence = match.group(1)[0]
+                fence = match.group(1)
                 inside.add(idx)
             continue
         inside.add(idx)
-        if match and match.group(1)[0] == fence:
-            fence = None
+        # A longer opener such as ```` stays open across a nested ``` line.
+        if (
+            match
+            and match.group(1)[0] == fence[0]
+            and len(match.group(1)) >= len(fence)
+            and line.strip() == match.group(1)
+        ):
+            fence = ""
     return inside
 
 
@@ -834,9 +840,22 @@ def scan(args: argparse.Namespace) -> dict[str, Any]:
 
         last_updated = LAST_UPDATED_RE.search(line)
         if last_updated:
-            parsed = calendar_day(last_updated.group(1)).date()
-            age = (today - parsed).days
-            if age > args.stale_days:
+            try:
+                parsed = calendar_day(last_updated.group(1)).date()
+            except ValueError:
+                parsed = None
+                issues.append(
+                    issue(
+                        line=idx,
+                        category="bad_timestamp",
+                        action="needs_human",
+                        message=f"Last updated '{last_updated.group(1)}' is not a calendar date.",
+                        text=line,
+                        section=current_section,
+                    )
+                )
+            age = (today - parsed).days if parsed else 0
+            if parsed and age > args.stale_days:
                 issues.append(
                     issue(
                         line=idx,

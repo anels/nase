@@ -24,6 +24,16 @@ from nase_gh import run as nase_gh_run
 GH_TIMEOUT_SECONDS = 60
 # GNU `timeout`'s convention, so a caller can tell a stalled read from a gh error.
 GH_TIMEOUT_EXIT = 124
+# A read that ran but could not produce usable data (git timeout, bad JSON from gh,
+# a pagination response without a cursor). Distinct from 2 (usage) and from gh's own
+# exit code, which is passed through when gh itself fails.
+READ_FAILED_EXIT = 3
+# One error line, not a transcript: gh stderr can echo a request body or a header.
+STDERR_MAX_CHARS = 600
+_SECRET_RE = re.compile(
+    r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
+    r"|(?i:bearer|token)\s+[A-Za-z0-9._~+/=-]{16,})"
+)
 # Concurrent `gh` reads. Bounded so a PR with many review threads cannot open one
 # process per thread, and low enough to stay clear of GitHub's secondary rate limits.
 GH_MAX_PARALLEL = 8
@@ -289,6 +299,13 @@ def command_plan(pr: dict[str, Any], variant: str) -> dict[str, Any]:
         "issue_comments": gh_issue_comments_args(pr),
         "review_threads": gh_threads_args(pr),
     }
+
+
+def redact_stderr(text: str) -> str:
+    collapsed = " ".join(_SECRET_RE.sub("<redacted>", text).split())
+    if len(collapsed) > STDERR_MAX_CHARS:
+        return collapsed[:STDERR_MAX_CHARS] + "..."
+    return collapsed
 
 
 def run_gh(args: list[str]) -> str:
@@ -1323,7 +1340,14 @@ def main(argv: list[str]) -> int:
                 )
             )
         elif args.command == "finding-scope":
-            candidates = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
+            try:
+                candidates = json.loads(
+                    Path(args.candidates).read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError) as exc:
+                raise UsageError(
+                    f"--candidates is not readable JSON: {args.candidates}: {exc}"
+                ) from exc
             if not isinstance(candidates, list):
                 raise UsageError("--candidates must contain a JSON array")
             emit_json(
@@ -1362,7 +1386,13 @@ def main(argv: list[str]) -> int:
         )
         return GH_TIMEOUT_EXIT
     except subprocess.CalledProcessError as exc:
+        detail = redact_stderr(exc.stderr or "") or "no stderr"
+        command = " ".join(map(str, exc.cmd)) if isinstance(exc.cmd, (list, tuple)) else str(exc.cmd)
+        print(f"error: command exited {exc.returncode}: {command}: {detail}", file=sys.stderr)
         return exc.returncode
+    except (nase_git.GitTimeout, OSError, ValueError, RuntimeError) as exc:
+        print(f"error: read failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return READ_FAILED_EXIT
 
 
 if __name__ == "__main__":

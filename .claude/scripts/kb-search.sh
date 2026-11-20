@@ -172,6 +172,21 @@ extract_scored_blocks() {
       return 0
     }
 
+    # The entry date a `##` or `###` heading carries, or "" when it carries none. Accepts a
+    # leading date (`## 2026-05-01 title`) and a trailing one (`## Title (2026-05-01)`,
+    # `## Ad hoc <dash> 2026-05-01`). A `since` heading is a window, not an entry date.
+    # Plain classes, because BSD awk has no `{n}` interval support.
+    function heading_date(line,   rest, date_re) {
+      date_re = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
+      if (line !~ /^###? /) return ""
+      rest = line
+      sub(/^###? /, "", rest)
+      if (rest ~ ("^" date_re)) return substr(rest, 1, 10)
+      if (tolower(rest) ~ /since /) return ""
+      if (match(rest, "[ (]" date_re "[)]?[ \t\r]*$")) return substr(rest, RSTART + 1, 10)
+      return ""
+    }
+
     # Scoring counts occurrences, not matching lines - several hits on one line each count,
     # which is the contract `grep -Fio <needle> | wc -l` set. The needle is the
     # regex-escaped term, so `gsub` still matches literally.
@@ -255,7 +270,25 @@ extract_scored_blocks() {
 
     {
       buf[NR] = $0
-      level = heading_level($0)
+      # Track fenced code so a shell comment such as `# install step` is not read as a
+      # heading. The fence delimiter line itself never counts as a heading either.
+      fence_hit = 0
+      fence_line = $0
+      sub(/\r$/, "", fence_line)   # a CRLF closing fence must still close
+      if (match(fence_line, /^ ? ? ?(```+|~~~+)/)) {
+        fence_hit = 1
+        fence_mark = substr(fence_line, RSTART, RLENGTH)
+        sub(/^ +/, "", fence_mark)
+        if (fence_char == "") {
+          fence_char = substr(fence_mark, 1, 1)
+          fence_len = length(fence_mark)
+        } else if (substr(fence_mark, 1, 1) == fence_char && length(fence_mark) >= fence_len \
+                   && substr(fence_line, RSTART + RLENGTH) ~ /^[ \t]*$/) {
+          fence_char = ""
+        }
+      }
+      in_fence[NR] = (fence_hit || fence_char != "") ? 1 : 0
+      level = in_fence[NR] ? 0 : heading_level($0)
       if (level >= 1 && level <= 3) {
         section_count++
         section_start[section_count] = NR
@@ -296,8 +329,8 @@ extract_scored_blocks() {
         # substitutes this same value when it has no date to work with.
         entry_date = "0000-00-00"
         for (i = start; i <= end; i++) {
-          if (buf[i] ~ /^### [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) {
-            entry_date = substr(buf[i], 5, 10)
+          if (!in_fence[i] && (found_date = heading_date(buf[i])) != "") {
+            entry_date = found_date
             break
           }
         }

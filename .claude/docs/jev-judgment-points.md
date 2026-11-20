@@ -39,7 +39,7 @@ python3 .claude/scripts/jev-judge.py \
 
 Read the single line of JSON on stdout. `usable: false` (unavailable, low confidence, or a missing confidence) means fall back to the skill's own judgment for that point; `fallback_reason` says which case, and is worth quoting in a report when a point keeps falling back.
 
-**Telemetry.** Set `NASE_JEV_TELEMETRY_FILE=workspace/stats/jev.jsonl` to record one line per call. It carries `point`, `type`, `available`, `confidence`, `usable`, `fallback_reason`, `latency_ms`, and `criteria_sha256` (the first 12 hex chars of the criteria JSON). The hash groups call sites whose labels drifted apart; the fallback counts tell you which point is not worth keeping. The write is best-effort and never affects the answer.
+**Telemetry.** Set `NASE_JEV_TELEMETRY_FILE` to an absolute path to record one line per call. This workspace sets it in the git-ignored `.claude/settings.local.json` under `env`, to `<repo>/workspace/stats/jev.jsonl`. An absolute path is needed because a relative one resolves against the shell's cwd, which differs in a worktree. A line carries `point`, `type`, `available`, `confidence`, `usable`, `fallback_reason`, `latency_ms`, and `criteria_sha256` (the first 12 hex chars of the criteria JSON). It never carries state text. The hash groups call sites whose labels drifted apart; the fallback counts tell you which point is not worth keeping. After a few weeks, drop a point whose `usable` rate stays below about 60 percent. The write is best-effort and never affects the answer.
 
 `--type` takes the capitalized spelling (`Choice` / `Score` / `Noul`); the script lowercases it on the wire, because the API pins each question schema's `type` to a lowercase const and rejects anything else with HTTP 400.
 
@@ -47,11 +47,29 @@ A `Noul` call must pass `--instructions` with the one-line yes/no question, word
 
 `--dry-run` prints the request body and exits without a key and without a network call. Use it to check a new call site's shape, and note that `tests/scripts/test-jev-judge.sh` asserts the wire casing through it.
 
-## Where a point's definition lives
+## Which decisions may use it
 
-Each judgment point is documented once, inline at its own `Try jev first (...)` call site - in the skill/command file that uses it, or in the shared doc that file routes the step to, but never in both and never in a second table here. That sentence names the point, its `state` (the bounded text/JSON sent), and points at the labels/options already written a few lines above or below it in the same file (that list doubles as the point's `criteria`). Keeping the definition next to the call site means there's only one place to update when either changes.
+Jev is for a bounded, fuzzy judgment over non-sensitive text. Three kinds of decision never go to it.
 
-To find every point currently wired up: `grep -rn -i "try jev first" .claude workspace/skills`. `.claude/docs` is not optional - `discuss-pr.kind` and `discuss-pr.disposition` live only in `.claude/docs/discuss-pr-analysis.md`. A grep for the doc name misses call sites that cite only a point name.
+- Deterministic ones. A hash compare, a path-safety verdict, a numeric threshold, or a fixed-rule input classification is code or a written rule, and the skill applies it directly.
+- Ones whose input is private. PR and review text, Slack threads, Jira and Confluence text, KB content about a repo, diffs, matched lines from a scanner, and reflection answers stay local, because `NASE_JEV_EXCERPT_CHARS` only truncates what leaves the machine and does not redact it.
+- Safety gates. A model answer must not decide an `unsafe`, credential, or approval question.
+
+A new call site must say which of these it avoids. If it cannot, do not add one.
+
+## Surviving points
+
+Each point is defined once, inline at its own `Try jev first (...)` call site, so there is one place to update. This table only lists them. The state for each is generic text with identifiers removed.
+
+| Point | Where | Judgment |
+|---|---|---|
+| `tech-digest.relevance` | `.claude/commands/nase/tech-digest.md` | `adopt` / `watch` / `ignore` for a public news item against the matched topics |
+| `extract-skills.reusable`, `.non-obvious`, `.self-contained` | `.claude/commands/nase/extract-skills.md` | three yes/no checks on a skill candidate, worded so yes means the check passes |
+| `estimate-eta.lane` | `.claude/docs/eta-estimation.md` | dominant lane of a subtask |
+| `estimate-eta.size` | `.claude/commands/nase/estimate-eta.md` | S to XXL bucket of a subtask |
+| `doctor.probe` | `.claude/commands/nase/doctor.md` | constant-text liveness probe, only with `--deep` |
+
+To check the list, run `grep -rn -i "try jev first" .claude workspace/skills`. A point not in the table is stale and should be removed. `workspace/skills` call sites are personal files outside this repo's CI.
 
 ## Provenance
 

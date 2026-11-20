@@ -76,4 +76,15 @@ for unwanted in 'MOPS-3068' 'OPS-3068' 'sha-256' 'SHA-256' 'ci-1234' 'REQ-003' '
 done
 test "$(wc -w <<<"$refs" | tr -d ' ')" = 3
 
+# Months bucket in UTC even when the local zone is already in the next month:
+# 2026-07-31T23:30:00Z is 2026-08-01 08:30 in Tokyo.
+mkdir -p "$TMPDIR_TEST/utc"
+printf 'x\n' > "$TMPDIR_TEST/utc/edge.md"
+python3 -c 'import os,sys;os.utime(sys.argv[1],(1785540600,1785540600))' "$TMPDIR_TEST/utc/edge.md"
+utc_out=$(TZ=Asia/Tokyo bash "$SCRIPT" 2026-07 "$TMPDIR_TEST/utc")
+grep -q '=== edge (2026-07) ===' <<<"$utc_out"
+grep -q -- '---- 1 efforts with mtime in 2026-07' <<<"$utc_out"
+utc_out=$(TZ=Asia/Tokyo bash "$SCRIPT" 2026-08 "$TMPDIR_TEST/utc")
+grep -q -- '---- 0 efforts with mtime in 2026-08' <<<"$utc_out"
+
 printf 'month-efforts tests passed.\n'
