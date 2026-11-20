@@ -132,7 +132,7 @@ Otherwise auto-run the traces - no `AskUserQuestion`. Rank the candidates by how
 
 There is no pre-draft question. Drafting inline comments is local and private - it writes nothing to GitHub - so asking permission to draft costs a round trip and buys no safety. Produce the drafts (format below) for every finding that survives the outgoing gate, render them in the report, and continue into Step 8 in the same turn.
 
-- If nothing survives, say "No inline drafts - nothing to submit." and skip to the completion message, unless Step 3 batched reactions/replies the user agreed to, which still go through their own gates.
+- If nothing survives, say "No inline drafts." and still continue into Step 8 with `comments: []`. A review with no inline comment still has a verdict (approve, or one concrete reason it cannot yet), so the zero-draft path reuses the recommended-state table and the one gate. Step 3 batched reactions/replies the user agreed to still go through their own gates.
 - Chat-only delivery is a Step 8 answer ("Keep in chat"), not a Step 7 mode.
 - Do not ask the terminology question here. Step 8's `AskUserQuestion` carries it when `.claude/docs/terminology-discovery.md` produced candidates, so the run still asks once.
 
@@ -179,12 +179,12 @@ The LookerML cross-check and the PR-body correction are still worth having; they
 
 ## Step 8 - Stage 4: choose the state and submit (one gate)
 
-Enter whenever Step 7 left at least one draft. There is exactly one gate: it shows the review payload, the state, and the ownership consequence at once, so the run never asks a question whose answer is already implied by the payload it is about to show.
+Always enter, including when Step 7 left zero drafts (`comments: []`). There is exactly one gate: it shows the review payload, the state, and the ownership consequence at once, so the run never asks a question whose answer is already implied by the payload it is about to show.
 
 **Ownership check:** compare `viewerLogin` from the Step 2 `review-context` JSON against the PR `user.login`. Do not make a fresh `gh api user` call - it rode along in that batch precisely so the write boundary does not add a serial round trip.
 
 - If the PR is not the user's, the submission notifies the author. Do not ask a separate confirmation: the gate question names `@author` and its recommended option says the write notifies them.
-- If the PR is self-authored, GitHub does not allow the author to approve it. Never recommend or submit `APPROVE`; `COMMENT` is the only posting state. State the hypothetical merge verdict in chat instead of trying to encode it as an approval. Source: [GitHub required-review documentation](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
+- If the PR is self-authored, GitHub does not allow the author to approve it. Never recommend or submit `APPROVE`; `COMMENT` is the only posting state. State the hypothetical merge verdict in chat instead of trying to encode it as an approval. With zero inline drafts there is nothing to post at all: state the verdict in chat only and write nothing to GitHub. Source: [GitHub required-review documentation](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
 
 **Determine the recommended state** for a non-owned PR mechanically:
 
@@ -194,13 +194,15 @@ Enter whenever Step 7 left at least one draft. There is exactly one gate: it sho
 | A material `question (needs-answer)` prevents an approval verdict, but no must-not-merge issue is confirmed | `COMMENT` |
 | At least one confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer | `REQUEST_CHANGES` |
 
-`APPROVE` remains the default when the PR is mergeable, including LGTM-with-nits. Required-check failures alone do not create an inline comment or change the review state; branch protection owns that gate unless the failure exposes a separate validated code defect.
+`APPROVE` remains the default when the PR is mergeable, including LGTM-with-nits. Required-check failures alone do not create an inline comment or change the review state; branch protection owns that gate unless the failure exposes a separate validated code defect. The status is still reported: show `ci.required`, `ci.nonRequired`, `mergeStateStatus`, and `isDraft` from the Step 2 JSON in the gate display, and cite them in the body sentence when they are the decisive evidence. An `unknown` status is shown as unknown.
+
+**Cannot-approve conditions (any number of drafts):** the table above applies unchanged, with one extra rule for `APPROVE`. Recommend `COMMENT` instead when any of these holds, and name that one reason in the body: the PR is a draft, `refsResolved` or `headMatchesPr` is false, coverage is partial (`changedFilesOmitted` > 0 not recovered), the size gate warned and the review was not split, an open prerequisite PR, or an external target the diff assumes that Step 2.5 found absent.
 
 `REQUEST_CHANGES` is exceptional. It requires a PR-introduced issue with confidence ≥ 80, a concrete failure or binding-policy violation, no safe follow-up path, and an explicit must-not-merge reason. It is not limited to already-observed production incidents: confirmed acceptance-criteria failure, compile/build break, security/privacy/data-integrity violation, public-contract break, or unsafe deploy/migration/rollback may qualify. Missing tests alone do not.
 
-Eligible states for a non-owned PR: `APPROVE` only when there is no blocking issue and no `needs-answer`; `COMMENT` only when there is no blocking issue; `REQUEST_CHANGES` only when a confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer. For a self-authored PR, `COMMENT` is the only eligible state.
+Eligible states for a non-owned PR: `APPROVE` only when there is no blocking issue and no `needs-answer`; `COMMENT` only when there is no blocking issue; `REQUEST_CHANGES` only when a confirmed `issue (blocking)` has a `must_not_merge_reason` and no safe defer. For a self-authored PR, `COMMENT` is the only eligible state. With one of the cannot-approve reasons above, `APPROVE` is not eligible.
 
-**Build the recommended payload, then ask once.** Build the options from eligible states only: prepare the manifest for the recommended state and show it - `jq . "$MANIFEST"`, the body, and the inline-comment count - immediately before the question. Then make one `AskUserQuestion` call with at most four options: the recommended state, the next eligible state when one exists, keep in chat, discard. A third eligible state is reachable under Other. Carry the terminology question from `.claude/docs/terminology-discovery.md` as a second `questions` entry in the same call when it produced candidates, so the run still asks once.
+**Build the recommended payload, then ask once.** Build the options from eligible states only: prepare the manifest for the recommended state and show it - `jq . "$MANIFEST"`, the body, the inline-comment count (possibly 0), and the one-line check status from the gate display - immediately before the question. Then make one `AskUserQuestion` call with at most four options: the recommended state, the next eligible state when one exists, keep in chat, discard. A third eligible state is reachable under Other. Carry the terminology question from `.claude/docs/terminology-discovery.md` as a second `questions` entry in the same call when it produced candidates, so the run still asks once. A zero-draft Step 8 carries it the same way; on a self-authored zero-draft PR there is no submission gate, so ask it alone.
 
 ```
 Question: "Submit this review on {owner}/{repo}#{number} as {RECOMMENDED}? {N} inline comments plus the body shown above.{ PR is @author's - this notifies them.}"
@@ -220,7 +222,10 @@ Drop the `{NEXT_ELIGIBLE}` option when there is no second eligible state. For a 
 - Picking a different state changes the payload, so it needs its own approval: rebuild the payload with that `event`, show the new manifest and body, and ask one confirmation naming the new state. Do not execute the manifest the user did not see.
 - Keep in chat / discard: render the drafts (or not) and end; no manifest is authorized, and the manifest prepared for the shown payload is abandoned unspent.
 - Recompute state eligibility from the confirmed findings immediately before building the payload shown above. If the recommended state is no longer eligible, do not build or authorize a manifest; present the changed evidence and ask again.
-- Body: for `APPROVE`, "LGTM" or "LGTM with nits" - never repeat the fix mechanism or re-summarize the PR. For `COMMENT`, name the unresolved question, missing domain evidence, or self-review verdict without calling it blocking. For `REQUEST_CHANGES`, name the confirmed must-not-merge concern in one or two sentences.
+- Body: exactly one sentence in every state. No What section, axes table, scorecard, Checked, Out of scope, or tl;dr; the scorecard stays chat-only. The sentence carries concrete evidence and a SHA or `path:line` when one exists.
+  - Zero inline, `COMMENT`: exactly one concrete reason the PR cannot be approved yet, for example: "Not approving yet because the PR can merge today but the new command is not in the CLI catalog snapshot, so every command in the skill fails."
+  - Zero inline, `APPROVE`: the decisive evidence, for example: "Every command and flag matches the SDK source at the head SHA, and Required checks are green."
+  - With inline comments: one sentence that summarizes the review without repeating the inline content. For `REQUEST_CHANGES`, it names the confirmed must-not-merge concern. For `COMMENT`, it names the unresolved question or missing evidence without calling it blocking.
 - Inline comments: post the drafts verbatim - the Step 7 **Draft format** rules (no label prefix, ~60 words, supporting evidence held back for chat) plus the `github-review-comment` capsule are the posting contract, not a drafting-only style. Use `output:` language and the voice profile per `.claude/docs/voice-profile-routing.md` with `surface=github-review-comment`. Each needs `path` and `line` (or `start_line`+`line` for a range); use `side: "RIGHT"` for the PR head.
 - The private payload snippet, the before/after-gate marker, and the reactions/replies/resolve mechanics live in `.claude/docs/discuss-pr-submit.md`; read it before building the manifest. The gate itself stays in this file.
 
@@ -240,7 +245,7 @@ Reached after Step 8 - submitted, kept in chat, or discarded. Emit a single chat
 - Daily log: <appended | skipped>
 ```
 
-When nothing was written, the block is the same minus the `Review`, `State`, `Reactions`, and `Replies` lines, and the headline states the outcome instead - "💬 Kept in chat - {N} inline drafts above." or "🚫 Discarded - nothing was posted."
+When nothing was written, the block is the same minus the `Review`, `State`, `Reactions`, and `Replies` lines, and the headline states the outcome instead - "💬 Kept in chat - the verdict and {N} inline drafts above." (a self-authored PR with no drafts gets the verdict in chat the same way) or "🚫 Discarded - nothing was posted."
 
 Get the review URL from the execute response (`html_url`, or build `https://github.com/<owner>/<repo>/pull/<N>#pullrequestreview-<id>` from the returned `id`). If a write partially failed (review submitted but a reaction failed), use ⚠️ instead of ✅ and list the failures explicitly.
 

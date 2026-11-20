@@ -16,6 +16,8 @@ Research first; minimize questions. Read `workspace/context.md`, then `workspace
 
 **Effort-doc intake (design handoff):** before repo inference, scan `$ARGUMENTS` tokens for a slug matching `workspace/efforts/{slug}.md`. If found, read the effort doc and extract:
 - `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.
+- `### Intent` (`Why:`, `Done looks like:`, `Not wanted:`) → store as `design_intent`. It is the user's purpose and exclusions; Phase 6.4 checks the candidate against it. A run with no effort doc has no `design_intent`, which is fine: the Intent check is skipped.
+- The `Validation - how to get the real number` section (lines shaped `{source} : {exact command} - expect {value}`) → store as `design_validation`. Phase 6.1 Step 3 runs these commands.
 - The latest `## Grill Session → ### Constraints for implementation` block (if any) → store as `design_constraints`. These are evidence-backed decisions - carry them into Phase 4 and every subagent prompt; do not re-litigate them silently.
 - `### Implementation Plan` → store as `design_impl_plan` (per-step files/tests/done + dependency graph). Seed Phase 3.7 decomposition from these steps instead of re-deriving them; the design already marked which steps are parallel vs sequential.
 - `### PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases. When the plan has more than one PR, read it per `.claude/docs/pr-plan-readiness.md` and follow `.claude/docs/fsd-parallel-prs.md`: build all `fsd-ready` PRs together, with the effort-doc intake run once for the wave, repo inference and `gate_profile` run once per distinct repo, the Phase 2 prompt run once for the wave, and Phases 1.5 and 3 run per PR.
@@ -97,7 +99,7 @@ execution mode = Direct with Phase isolation (4 sequential steps).
 
 **Then ask the gaps** in one `AskUserQuestion` `questions` array. Four entries is the harness maximum, so: with any derivation the gaps fit in one call; with none derived, ask Q0-Q3 in the first call and Q4 in a second call immediately after - never a fifth entry in one array.
 
-Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR, create without asking"), `pr_preauthorized` = `open_pr` (Q3 offers no ask-before-creating option), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
+Store answers: `success_criteria` = derived criteria or Q0 answer, `execution_mode` = derived or Q1 answer, `worktree` = (Q2 = "Yes - worktree"), `open_pr` = (Q3 = "Yes - draft PR, create without asking"), `pr_preauthorized` = `open_pr` (Q3 offers no ask-before-creating option), `tdd_mode` = (Q4 = "Yes"). After the answers, freeze `canonical_task_spec` from the original task text, every `success_criteria` item, `design_intent` when present, and all `design_constraints`. Preserve their exact meaning through Phase 6.4; the final inventory and the candidate review's spec conformance audit against this complete source.
 
 **Options for the entries you do ask:**
 

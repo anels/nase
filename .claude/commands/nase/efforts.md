@@ -1,7 +1,7 @@
 ---
 name: nase:efforts
 description: "Reconcile active efforts with live PR and Jira state. Use for effort status, sync efforts, stalled work, or what am I working on."
-argument-hint: "[--by-scope|--by-repo] [--verbose] [--closed]"
+argument-hint: "[--by-scope|--by-repo] [--verbose] [--closed] [--no-ask]"
 category: Reporting
 model: sonnet
 effort: medium
@@ -9,9 +9,9 @@ effort: medium
 
 ## Purpose
 
-`/nase:today` shows a capped morning snapshot and status-syncs tracked work as a side effect. This skill answers a different question: *across all my efforts right now, where does everything stand?* - full count and inventory, plus what a stale frontmatter field cannot tell you: which docs fell out of sync with their PR/Jira reality.
+`/nase:today` shows a capped morning snapshot and status-syncs tracked work as a side effect. This skill answers a different question: *across all my efforts right now, where does everything stand?* - full inventory, and which docs fell out of sync with their PR/Jira reality.
 
-Because it already does the live reads, it **applies** the deterministic repairs on the spot: running it should leave the inventory correct, not just describe how to fix it. The rules are not reinvented here - both this skill and `/nase:today` call `.claude/docs/effort-model.md` and `.claude/docs/effort-drift.md`. It mutates effort docs and its own report and log entry, never PR, Jira, or KB state.
+Because it already does the live reads, it **applies** the deterministic repairs on the spot, then acts on what is left: it closes and validates what it can prove, and walks you through the rest. Both this skill and `/nase:today` call `.claude/docs/effort-model.md` and `.claude/docs/effort-drift.md`. It mutates effort docs and its own report and log entry, never PR, Jira, or KB state.
 
 ## Step 0: Language preflight (run first)
 
@@ -19,7 +19,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspa
 
 ## Mode routing
 
-`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip Steps 1-4 below. That document owns the report (`workspace/stats/closed-effort-audit-{YYYY-MM-DD}.md`), the chat reply, and the daily-log line in its Step 4; do not also write Step 5's `effort-status` report or Step 6's log line. Nothing else re-reads those docs, so a wrong record there survives indefinitely - and because `/nase:effort-rollup` drops `status: wontfix` from the delivery record, an effort whose code shipped but whose verdict was dropped takes its merged PRs out of the impact report with it. Run it on the `/nase:kb-review` cadence rather than every session; the default run stays active-only and fast.
+`--closed` audits terminal docs in `done/` and `archive/*/` instead of active efforts: follow `.claude/docs/effort-doc-audit.md → Part 2` and skip Steps 1-4.5 below. That document owns the report, the chat reply, and the daily-log line in its Step 4; do not also write Step 5's report or Step 6's log line. Run it on the `/nase:kb-review` cadence, not every session.
 
 Every other flag runs the workflow below.
 
@@ -29,8 +29,7 @@ Every other flag runs the workflow below.
 
 - Active: every `workspace/efforts/*.md` excluding `done/` and `archive/`. Read each file's YAML frontmatter (`status`, `scope`, `repo`, `jira`, `created`, and, if present, `blocked-by`, `discovered-from`, `tracking_only`) and its `## Lifecycle` section if present. Capture last-updated date via `stat` mtime.
 - Done: count files in `workspace/efforts/done/` (count only - don't read each).
-- Archived: count files under `workspace/efforts/archive/*/` (count only). Terminal tracking-only efforts land here instead of `done/` per `.claude/docs/effort-model.md → Terminal Destination`, so reporting `done/` alone understates what closed.
-
+- Archived: count files under `workspace/efforts/archive/*/` (count only).
 If `workspace/efforts/` has no active files, say so and stop.
 
 ### Step 2: Classify each active effort by lifecycle stage
@@ -43,45 +42,58 @@ python3 .claude/scripts/effort-state.py --file "workspace/efforts/<slug>.md"
 
 Use its `stage`, `evidence`, `pending_followups`, and `needs_live_verification` fields. If `needs_live_verification` is true, keep the lifecycle result visible and resolve the conflict through the Step 3 live PR/Jira reads.
 
-Status vocabulary lives in `.claude/docs/effort-model.md -> Status Vocabulary`; tolerate real-world extras (`tracked`, `blocked`, `awaiting-deploy`) by mapping them through the rules above rather than discarding them.
+Status vocabulary: `.claude/docs/effort-model.md -> Status Vocabulary`. Map real-world extras (`tracked`, `blocked`, `awaiting-deploy`) through it, do not discard them.
 
-Also capture any `blocked-by` values. Do not finalize the **unblocked** flag yet: effort-slug blockers can be resolved locally from `done/` or `archive/*/`, but PR/Jira blockers need the Step 3 live reads.
+Also capture any `blocked-by` values. Finalize the **unblocked** flag after Step 3: PR/Jira blockers need the live reads.
 
 ### Step 3: Drift check (the value-add - verify against live state)
 
-One command does the live reads and audits the classifier's two mechanical blind spots in one pass (~15 s for 50 efforts / 90 PRs - do not fan out agents or call `gh` serially instead):
+One command does the live reads and audits the classifier's two mechanical blind spots in one pass (~15 s; do not fan out agents or call `gh` serially):
 
 ```bash
-python3 .claude/scripts/effort-pr-sweep.py --check-reverts
+python3 .claude/scripts/effort-pr-sweep.py --check-reverts --merge-details --json-out workspace/tmp/effort-sweep-{YYYY-MM-DD}.json
 ```
 
-It returns live state per PR (including `mergeCommit`), any **invisible** delivery PRs - cited by a checked lifecycle row but missing from `pr_references.delivery` because the row label is not canonical - and any merge commit a later **revert** commit names.
+It returns live state per PR (including `mergeCommit`, plus changed files and merge-commit checks for merged PRs of awaiting-deploy or fully merged efforts), any **invisible** delivery PRs (cited by a checked lifecycle row, missing from `pr_references.delivery`), and any merge commit a later **revert** commit names.
 
-Read `.claude/docs/effort-drift.md → Classifier Blind Spots` before acting on either. **Repair every `likely-delivery` hint in place, without asking**: canonical `PR opened` label keeping the row's own PR number, fix the prose that merge falsified (delivery notes still reading "all five are open"), re-run `effort-state.py`, apply the transition it returns. The sweep already classified it; handing it back as a question parks a known-wrong doc. Every other hint is a legitimate exclusion - classify, do not bulk-relabel. A revert means ancestry is lying: grep a symbol the PR *added* at the ring commit.
+Read `.claude/docs/effort-drift.md → Classifier Blind Spots` before acting on either. **Repair every `likely-delivery` hint in place, without asking**: canonical `PR opened` label keeping the row's own PR number, fix the prose that merge falsified, re-run `effort-state.py`, apply the transition it returns. Every other hint is a legitimate exclusion - classify, do not bulk-relabel. A revert means ancestry is lying: grep a symbol the PR *added* at the ring commit.
 
-Keep delivery, report-only, and dependency PR sets separate: only the delivery set feeds the transition, and folding the other two into it is how a merely-mentioned PR turns into merge evidence. Jira: read-only status read if an MCP is available. If a tracked Jira issue cannot be read, mark its transition input `unreadable` and report the effort as unresolved.
+Keep delivery, report-only, and dependency PR sets separate: only the delivery set feeds the transition. Jira: read-only status read if an MCP is available. If a tracked Jira issue cannot be read, mark its transition input `unreadable` and report the effort as unresolved.
 
-After live reads, compute the **unblocked** flag per `.claude/docs/effort-model.md → Dependency & Discovery Fields`, which owns the resolver rules and the computed-view definition. Name the skipped check in the blocked reason when a PR or Jira blocker could not be read. This set answers "what can I actually pick up right now"; it sits beside the stage classifier and does not replace it.
+After live reads, compute the **unblocked** flag per `.claude/docs/effort-model.md → Dependency & Discovery Fields`, which owns the resolver rules and the computed-view definition. Name the skipped check in the blocked reason when a PR or Jira blocker could not be read.
 
-Pass the live delivery PR states, Jira state, and unresolved-blocker flag to the `effort-state.py` command in `.claude/docs/effort-drift.md -> Drift Auto-Sync`. Apply its `transition` output exactly - `transition.status`, `transition.destination_dir` on `action: move` (never assume `done/`), and `transition.stale_canonical_rows`. Stage the frontmatter change and the checkbox flips as one proposed file so one guarded `apply` / `apply-move` covers both, no per-item prompt, matching `/nase:today` Step 1.
+Pass the live delivery PR states, Jira state, unresolved-blocker flag, and `--live-json` (the sweep file) to the `effort-state.py` command in `.claude/docs/effort-drift.md -> Drift Auto-Sync`. Apply its `transition` output exactly - `transition.status`, `transition.destination_dir` on `action: move` (never assume `done/`), and `transition.stale_canonical_rows`. Stage the frontmatter change and the checkbox flips as one proposed file so one guarded `apply` / `apply-move` covers both, no per-item prompt, matching `/nase:today` Step 1.
 
 An `action: none` transition can still carry `stale_canonical_rows`: `reason: already-awaiting-deploy` means the frontmatter is right and only the row lags. Apply the flips there too, otherwise the drift survives every run.
 
 Record each transition and each row flip applied for the Step 5 report. Report-only signals (no mutation):
 - effort with **no PR and no mtime change in 14+ days** → **stalled**, may need attention or a `/nase:design --review {slug}` pass.
-- **doc drift**, split into repair-without-asking and report-for-a-human by `.claude/docs/effort-doc-audit.md → Part 1`. Apply that split rather than re-deriving it; name the exact line and the suggested edit for everything it routes to a human, and check the sweep's `delivery_owners` before repairing any invisible PR - a `sibling-delivery` hint means another effort's delivery set already claims it.
+- **doc drift**, split into repair-without-asking and report-for-a-human by `.claude/docs/effort-doc-audit.md → Part 1`. Name the exact line and suggested edit for everything it routes to a human, and check the sweep's `delivery_owners` before repairing any invisible PR (a `sibling-delivery` hint means another effort already claims it).
 - **structural defects** from `effort-state.py`'s `structure` block, per the same doc. These never raise `needs_live_verification`, so nothing else surfaces them.
-- transition `reason: undelivered-lifecycle-rows` → **held back**. Report each `transition.undelivered` row verbatim with its line number: a real outstanding PR means the effort correctly stayed active, a stale plan row means edit that row (`.claude/docs/effort-model.md → Multi-Deliverable Efforts`). Never paraphrase them away - an unexplained hold reads as a bug and gets worked around.
+- transition `reason: undelivered-lifecycle-rows` → **held back**. Report each `transition.undelivered` row verbatim with its line number: a real outstanding PR means the effort correctly stayed active, a stale plan row means edit that row (`.claude/docs/effort-model.md → Multi-Deliverable Efforts`). Never paraphrase them away.
+
+### Step 3.5: Close and validate
+
+For every active effort, act on the `next_action` from the Step 3 `--evaluate-transition ... --live-json` run, per `.claude/docs/effort-drift.md → Next actions` (evidence, allowlist, pass rules). Re-run `effort-state.py` only for an effort Step 3 or an earlier 3.5 action edited:
+
+- `close`: apply `next_action.edit` as one guarded exact-string edit, re-run the classifier, and apply the `completed` transition and move it returns.
+- `validate`: run each `next_action.rows[].command` once and judge it by the pass rule. Tick a passing row with its evidence note. Any other result stays unticked and joins Step 4.5 as `validation-failed` or `validation-inconclusive`.
+
+No Jira transition or PR write, here or in Step 4.5 (`effort-drift.md` Boundary).
 
 ### Step 4: Count
 
-Count **after** the Step 3 transitions so active/`done/` totals reflect post-sync reality.
+Count **after** the Step 3 and 3.5 transitions so active/`done/` totals reflect post-sync reality.
 
 - By stage (Planning / Implementing / In review / Awaiting deploy / Follow-up).
-- By raw frontmatter `status:` value (shows vocabulary spread).
+- By raw frontmatter `status:` value.
 - Unblocked vs blocked (from Step 3): count of unblocked active efforts and the list of blocked ones with their blocker.
-- Totals: active, `done/`, `archive/*/`, plus this run's transitioned, Lifecycle rows ticked, PRs relabelled, held-back, stalled and doc-drift counts.
+- Totals: active, `done/`, `archive/*/`, plus this run's transitioned, Lifecycle rows ticked, PRs relabelled, held-back, stalled, doc-drift, closed, validated, advance and asked counts.
 - If `$ARGUMENTS` has `--by-scope` or `--by-repo`, add a count grouped by that frontmatter field.
+
+### Step 4.5: Ask pass
+
+Skip with `--no-ask`. Otherwise walk the user through the remaining `ask` and `advance` efforts: `.claude/docs/skill-contract.md` batching with `AskUserQuestion`, and the chunk, cap and ranking rules in `.claude/docs/effort-drift.md → Next actions` (Ask pass). Continue until the list is done or the user stops. Apply effort-doc edits through the workspace write guard. Keep each answer for the report.
 
 ### Step 5: Write report + chat summary
 
@@ -106,6 +118,16 @@ Write the full report to `workspace/stats/effort-status-{YYYY-MM-DD}.md` (re-run
 ## Doc drift - needs a human edit   ← omit section if none
 - {effort} - L{line}: {what is wrong} → {the edit to make}
 
+## Next actions     ← omit empty subsections
+### Closed this run
+- {effort} - {evidence}; ticked L{line}
+### Validated this run
+- {effort} - L{line} `{command}` -> {outcome}
+### Can advance
+- {effort} - {context} → `{command}`
+### Needs your decision
+- {effort} - {reason}: {context} → {answer or open}
+
 ## Attention
 - {effort} - {stalled, awaiting-deploy, or unresolved-read reason} → {recommended action}
 
@@ -121,24 +143,26 @@ Per `.claude/docs/skill-contract.md`, the chat reply is pointer + bounded summar
 Effort status → workspace/stats/effort-status-{YYYY-MM-DD}.md
 Active: {N} ({P} planning, {I} implementing, {R} in review, {D} awaiting deploy) · done/: {M} · archive/: {A}
 Unblocked: {U} · Blocked: {B} · Transitions: {K} applied · Rows ticked: {T} · PRs relabelled: {L} · Held back: {H} · Stalled: {S} · Doc drift: {X}
+Next: closed {CL} · validated {VA} · advance {AD} · asked {AQ}
+Top: {effort} - `{command}`  (first by the Top ranking)
 ```
-With `--verbose`, also echo the per-effort table inline (otherwise it lives only in the file).
+With `--verbose`, also echo the per-effort table inline.
 
 ### Step 6: Log
 
 Append one line to `workspace/logs/{YYYY-MM-DD}.md` per `.claude/docs/daily-log-format.md`:
 ```
-- {HH:MM} | efforts: {N} active, {K} transitions applied, {T} Lifecycle rows ticked, {L} invisible PRs relabelled, {H} held back, {X} doc drift
+- {HH:MM} | efforts: {N} active, {K} transitions applied, {T} Lifecycle rows ticked, {L} invisible PRs relabelled, {H} held back, {X} doc drift, closed {CL}, validated {VA}, advance {AD}, asked {AQ}
 ```
 
 </workflow>
 
 ## Notes
 
-Two things auto-write: the Drift Auto-Sync transition (`/nase:today` applies the same rule) and the `likely-delivery` relabel. Everything else is reported for a human. The dividing line is not how risky the edit is but **whether the live reads determined the repair or someone still has to decide what the row means** - guessing the second kind from prose is what this skill must not do unsupervised.
+Four things auto-write: the Drift Auto-Sync transition (`/nase:today` applies the same rule), the `likely-delivery` relabel, the Step 3.5 `close` row tick, and the Step 3.5 `validate` row tick. Everything else is reported, or asked in Step 4.5. The dividing line is **whether the live reads determined the repair or someone still has to decide what the row means**; this skill must not guess the second kind from prose.
 
 Run this before `/nase:effort-rollup` in any session that runs both: this skill repairs effort docs and that one reports from them read-only, so the reverse order publishes a report built on half-synced docs.
 
-Effort docs get edited by other sessions while this runs. Use exact-string edits for row repairs rather than staging a whole file, re-`stat` before any guarded write, and if the active count moved mid-run, say so in the report instead of publishing a count that was true at Step 1.
+Effort docs get edited by other sessions while this runs. Use exact-string edits for row repairs rather than staging a whole file, re-`stat` before any guarded write, and if the active count moved mid-run, say so in the report.
 
 Before calling any effort complete, read the full text of its unchecked rows - `.claude/docs/effort-drift.md → Classifier Blind Spots` explains why `pending_followups: 0` is not evidence.

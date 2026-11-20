@@ -33,6 +33,8 @@ Source pattern: [addyosmani/agent-skills](https://github.com/addyosmani/agent-sk
 | "Reply looks resolved, mark the thread done." | A reply is not a fix. Resolve only after the change lands AND matches what the reviewer asked at HEAD. |
 | "The reviewer is probably right, just apply it." | Verify the premise first (file-vs-description, conditional premise). A wrong premise = `decline` with the missed evidence, not a silent accept-then-revert. |
 | "Every named malformed case is handled, close it." | If any reviewer-named value lands in `silent`, the fix is not done. Check each case reaches its intended branch. |
+| "The reviewer pointed at that line, patch it there." | Ask whether the line is the cause or the symptom. A guard, retry, or special case that hides the failure is a symptom patch. Probe for the cause-level fix, and propose it in the reply or plan. |
+| "The reviewer asked for it, add it." | Check it against `design_intent` and the success criteria. An ask that goes beyond the intent or traces to no criterion is declined or split to a follow-up, however politely it was put. |
 
 ## `/nase:prep-merge` - Gate 3 Feedback Surfaces / Gate 10 Push
 

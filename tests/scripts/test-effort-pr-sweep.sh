@@ -369,5 +369,213 @@ else
   report 1 "revert scan resolves repo paths case-insensitively and records misses"
 fi
 
+# `--merge-details` reads changed files and merge-commit checks for merged delivery PRs of
+# efforts awaiting deploy. Unreadable or capped data must never read as complete or green,
+# because `effort-state.py` closes work on it.
+tests=$((tests + 1))
+if python3 - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+from datetime import datetime, timedelta, timezone
+
+spec = importlib.util.spec_from_file_location("sweep", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+def stub(answers):
+    seen = []
+
+    def fake_run(cmd):
+        seen.append(cmd)
+        text = " ".join(cmd)
+        for needle, (code, out) in answers.items():
+            if needle in text:
+                return type("P", (), {"returncode": code, "stdout": out, "stderr": ""})()
+        return type("P", (), {"returncode": 1, "stdout": "", "stderr": "no stub"})()
+
+    module.run = fake_run
+    return seen
+
+
+seen = stub({"/pulls/7/files": (0, "tests/a.ts\t\nsrc/old.ts\ttests/a.ts\n")})
+files = module.pr_files("acme", "platform", 7)
+assert files == {"files": ["src/old.ts", "tests/a.ts"], "files_truncated": False}, files
+call = " ".join(seen[0])
+assert "-X GET" in call and "--paginate" in call and "per_page=100" in call, call
+
+stub({"/pulls/7/files": (0, "".join(f"f{i}.ts\t\n" for i in range(3000)))})
+capped = module.pr_files("acme", "platform", 7)
+assert capped["files_truncated"] is True and len(capped["files"]) == 3000, capped
+
+# The cap counts raw API entries: a listing full of repeated paths is still capped.
+stub({"/pulls/7/files": (0, "dup.ts\tdup.ts\n" * 3000)})
+repeated = module.pr_files("acme", "platform", 7)
+assert repeated == {"files": ["dup.ts"], "files_truncated": True}, repeated
+
+stub({"/pulls/7/files": (0, "dup.ts\t\n" * 2999)})
+assert module.pr_files("acme", "platform", 7)["files_truncated"] is False
+
+stub({"/pulls/7/files": (1, "")})
+assert module.pr_files("acme", "platform", 7) == {"files": None, "files_truncated": False}
+
+
+OLD = "2020-01-01T00:00:00Z"
+
+
+def checks(runs, status, merged_at=OLD):
+    stub({"/check-runs": runs, "/status": status})
+    return module.merge_checks("acme", "platform", "abc", merged_at)
+
+
+def ago(minutes):
+    when = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+green = (0, "completed success\n")
+quiet = (0, "pending 0")
+assert checks(green, quiet, ago(2)) == "pending"
+assert checks(green, quiet, ago(20)) == "success"
+assert checks(green, quiet, None) == "unknown"
+assert checks(green, quiet, "not a date") == "unknown"
+assert checks(green, quiet, "2020-01-01T00:00:00") == "unknown"
+assert checks((0, "completed failure\n"), quiet, ago(2)) == "failure"
+assert checks((0, ""), quiet, ago(20)) == "none"
+assert checks((0, ""), quiet, ago(2)) == "pending"
+assert module.MERGE_CHECKS_SETTLE_SECONDS == 15 * 60
+
+
+assert checks((0, "completed success\ncompleted neutral\ncompleted skipped\n"), (0, "success 1")) == "success"
+assert checks((0, "completed success\ncompleted failure\n"), (0, "success 1")) == "failure"
+assert checks((0, "completed success\ncompleted cancelled\n"), (0, "pending 0")) == "failure"
+assert checks((0, "completed success\nin_progress -\n"), (0, "pending 0")) == "pending"
+assert checks((0, "completed success\n"), (0, "pending 2")) == "pending"
+assert checks((0, "completed success\n"), (0, "failure 2")) == "failure"
+assert checks((0, "completed success\n"), (0, "error 1")) == "failure"
+assert checks((0, ""), (0, "pending 0")) == "none"
+assert checks((0, "completed success\ncompleted mystery\n"), (0, "success 1")) == "unknown"
+assert checks((0, "completed success\ncompleted -\n"), (0, "pending 0")) == "unknown"
+assert checks((0, "completed success\n"), (0, "stale 1")) == "unknown"
+assert checks((0, "completed mystery\ncompleted failure\n"), (0, "pending 0")) == "failure"
+assert checks((0, "completed mystery\nin_progress -\n"), (0, "pending 0")) == "pending"
+assert checks((1, ""), (0, "success 1")) == "unknown"
+assert checks((0, "completed success\n"), (1, "")) == "unknown"
+
+
+def audit(stage, status, refs):
+    return {"stage": stage, "status": status, "delivery_refs": refs}
+
+
+live = {
+    "a/r#1": {"state": "MERGED", "mergeCommit": "s1"},
+    "a/r#2": {"state": "MERGED", "mergeCommit": "s2"},
+    "a/r#3": {"state": "OPEN"},
+    "a/r#4": {"state": "MERGED", "mergeCommit": None},
+    "a/r#5": {"state": "UNREADABLE"},
+}
+audits = [
+    audit("awaiting_deploy", "awaiting-deploy", [["a", "r", 1], ["a", "r", 3]]),
+    audit("in_review", "in-review", [["a", "r", 2]]),
+    audit("in_review", "in-review", [["a", "r", 3]]),
+    audit("awaiting_deploy", "awaiting-deploy", [["a", "r", 4], ["a", "r", 5]]),
+    audit("in_review", "in-review", []),
+]
+targets = module.detail_targets(audits, live)
+assert targets == [("a", "r", 1, "s1"), ("a", "r", 2, "s2")], targets
+PY
+then
+  report 0 "merge details read capped files and checks conservatively and bound their targets"
+else
+  report 1 "merge details read capped files and checks conservatively and bound their targets"
+fi
+
+# End to end through a stubbed `gh`: the flag adds read-only API calls for merged delivery
+# PRs of an awaiting-deploy effort and nothing else, and its absence adds none.
+mkdir -p "$TMPDIR_TEST/bin" "$TMPDIR_TEST/live-efforts"
+cat > "$TMPDIR_TEST/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_CALLS"
+case "$*" in
+  "pr view 9001"*) printf '{"number":9001,"state":"MERGED","mergedAt":"2020-01-01T00:00:00Z","mergeCommit":{"oid":"deadbeefcafe"},"statusCheckRollup":[],"title":"t","baseRefName":"main"}\n' ;;
+  "pr view 9002"*) printf '{"number":9002,"state":"OPEN","statusCheckRollup":[],"title":"t","baseRefName":"main"}\n' ;;
+  *"/pulls/9001/files"*) printf 'tests/a.test.ts\t\nsrc/old.ts\ttests/new.ts\n' ;;
+  *"/commits/deadbeefcafe/check-runs"*) printf 'completed success\ncompleted neutral\n' ;;
+  *"/commits/deadbeefcafe/status"*) printf 'pending 0\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$TMPDIR_TEST/bin/gh"
+
+cat > "$TMPDIR_TEST/live-efforts/awaiting.md" <<'EOF'
+---
+status: awaiting-deploy
+repo: acme/platform
+---
+
+## Lifecycle
+
+- [x] PR opened - https://github.com/acme/platform/pull/9001
+- [x] Merged
+- [ ] Deployed (if applicable)
+EOF
+cat > "$TMPDIR_TEST/live-efforts/reviewing.md" <<'EOF'
+---
+status: in-review
+repo: acme/platform
+---
+
+## Lifecycle
+
+- [x] PR opened - https://github.com/acme/platform/pull/9002
+EOF
+
+export GH_CALLS="$TMPDIR_TEST/gh-calls.log"
+: > "$GH_CALLS"
+PATH="$TMPDIR_TEST/bin:$PATH" python3 "$SCRIPT" --efforts-dir "$TMPDIR_TEST/live-efforts" \
+  --format json > "$TMPDIR_TEST/live-plain.json"
+tests=$((tests + 1))
+if ! grep -q '^api' "$GH_CALLS" && jq -e '.live["acme/platform#9001"] | has("files") | not' \
+  "$TMPDIR_TEST/live-plain.json" >/dev/null; then
+  report 0 "without --merge-details the sweep makes no extra calls and adds no fields"
+else
+  report 1 "without --merge-details the sweep makes no extra calls and adds no fields" "$(cat "$GH_CALLS")"
+fi
+
+: > "$GH_CALLS"
+PATH="$TMPDIR_TEST/bin:$PATH" python3 "$SCRIPT" --efforts-dir "$TMPDIR_TEST/live-efforts" \
+  --merge-details --json-out "$TMPDIR_TEST/live-details.json" > "$TMPDIR_TEST/live-human.txt"
+assert_jq "merge details land on the merged delivery PR of an awaiting-deploy effort" \
+  "$TMPDIR_TEST/live-details.json" \
+  '.live["acme/platform#9001"] | .files == ["src/old.ts","tests/a.test.ts","tests/new.ts"]
+     and .files_truncated == false and .merge_checks == "success"'
+assert_jq "an open PR of an in-review effort gets no merge details" "$TMPDIR_TEST/live-details.json" \
+  '.live["acme/platform#9002"] | has("files") or has("merge_checks") | not'
+tests=$((tests + 1))
+if [[ "$(grep -c '^api' "$GH_CALLS")" -eq 3 ]] && [[ "$(grep '^api' "$GH_CALLS" | grep -c -- '-X GET')" -eq 3 ]]; then
+  report 0 "merge details use exactly three GET reads for one merged PR"
+else
+  report 1 "merge details use exactly three GET reads for one merged PR" "$(cat "$GH_CALLS")"
+fi
+assert_jq "--json-out writes the same JSON the json format prints" "$TMPDIR_TEST/live-details.json" \
+  'has("efforts") and has("live")'
+
+PATH="$TMPDIR_TEST/bin:$PATH" python3 "$SCRIPT" --efforts-dir "$TMPDIR_TEST/live-efforts" \
+  --json-out "$TMPDIR_TEST/new/nested/sweep.json" > /dev/null
+assert_jq "--json-out creates a missing parent directory" \
+  "$TMPDIR_TEST/new/nested/sweep.json" 'has("efforts") and has("live")'
+
+: > "$TMPDIR_TEST/not-a-dir"
+rc=0
+PATH="$TMPDIR_TEST/bin:$PATH" python3 "$SCRIPT" --efforts-dir "$TMPDIR_TEST/live-efforts" \
+  --json-out "$TMPDIR_TEST/not-a-dir/sweep.json" > "$TMPDIR_TEST/unwritable.out" 2> "$TMPDIR_TEST/unwritable.err" || rc=$?
+tests=$((tests + 1))
+if [[ "$rc" -ne 0 ]] && grep -q 'cannot write --json-out' "$TMPDIR_TEST/unwritable.err" \
+  && jq -e 'has("live")' "$TMPDIR_TEST/unwritable.out" >/dev/null; then
+  report 0 "an unwritable --json-out exits non-zero and still prints the result"
+else
+  report 1 "an unwritable --json-out exits non-zero and still prints the result" "rc=$rc $(cat "$TMPDIR_TEST/unwritable.err")"
+fi
+
 printf '\n%d assertions, %d failures\n' "$tests" "$failures"
 [[ "$failures" -eq 0 ]]

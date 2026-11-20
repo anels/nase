@@ -241,6 +241,40 @@ Submitted review as APPROVE
 TXT
 assert_cmd "self review rejects submitted APPROVE" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-self-review --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-self-review-bad.txt"
 
+cat > "$TMPDIR_TEST/discuss-zero-approve-ok.txt" <<'TXT'
+No inline drafts.
+Recommended state: APPROVE
+Inline comments: 0
+Review body: Commands and flags match the SDK at 22970da, and Required checks are green.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-zero-inline-approve --output "$TMPDIR_TEST/discuss-zero-approve-ok.txt" >/dev/null
+pass "zero-inline approve scores ok"
+
+cat > "$TMPDIR_TEST/discuss-zero-approve-bad.txt" <<'TXT'
+No inline drafts.
+Recommended state: APPROVE
+Inline comments: 0
+Review body: LGTM
+TXT
+assert_cmd "zero-inline approve rejects a bare LGTM body" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-zero-inline-approve --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-zero-approve-bad.txt"
+
+cat > "$TMPDIR_TEST/discuss-zero-stale-ok.txt" <<'TXT'
+Finding: the PR body says the skill stays a draft, but that claim is stale at head 4be91c0 (SKILL.md:12 sets it ready).
+Recommended state: COMMENT
+Inline comments: 0
+Review body: Not approving yet because the PR body says the skill stays a draft but SKILL.md:12 at 4be91c0 already enables it.
+TXT
+"$PYTHON_BIN" "$SCRIPT" score --eval-set "$EVAL_SET" --case discuss-pr-zero-inline-stale-claim --output "$TMPDIR_TEST/discuss-zero-stale-ok.txt" >/dev/null
+pass "zero-inline stale claim scores ok"
+
+cat > "$TMPDIR_TEST/discuss-zero-stale-bad.txt" <<'TXT'
+Finding: the PR body claim is stale against head 4be91c0.
+Recommended state: APPROVE
+Inline comments: 0
+Review body: Not approving yet because the claim is stale. Please also fix the table.
+TXT
+assert_cmd "zero-inline stale claim rejects APPROVE and a two-sentence body" bash -c '! "$1" "$2" score --eval-set "$3" --case discuss-pr-zero-inline-stale-claim --output "$4" >/dev/null' _ "$PYTHON_BIN" "$SCRIPT" "$EVAL_SET" "$TMPDIR_TEST/discuss-zero-stale-bad.txt"
+
 cat > "$TMPDIR_TEST/request-ok.txt" <<'TXT'
 Candidate reviewers:
 Alice - owns src/cache

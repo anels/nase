@@ -11,7 +11,7 @@ This reference owns four `/nase:fsd` phases. Phases 8, 8.5 and 8.6 - the pull re
 
 ## Phase 8: Pull Request (if PR = Yes)
 
-Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors (relevant in team mode).
+Follow `.claude/docs/pr-creation-pattern.md` (steps 1–4) to discover the PR template, draft the description with `surface=github-pr-body`, align the title with the commit subject, and preserve co-authors (relevant in team mode). The body and any comment fsd posts follow 2d (necessary content only).
 
 Then apply `.claude/docs/pr-gates-consumption.md` §3 with the Phase 1 `gate_profile`: ensure a required ticket key sits in the documented PR-title position, every required PR-body section exists at its minimum length, and - if the diff crossed a `gate_profile.size` threshold that mandates it - `## How to Review` is filled. Never invent a ticket key; keep the placeholder and flag it if unknown.
 
@@ -82,10 +82,10 @@ Follow `.claude/docs/verification-matrix.md` §1, §2, §3, §5. Skip §4 becaus
 
 **Execute before rendering:** a matrix fsd only writes is a promise; a matrix fsd partially ran is evidence. Before rendering:
 - Attempt every `required` row whose `command` runs locally inside `{work_root}`: local builds, env-var-switched `dotnet run`/`npm start` smoke checks, dry-run commands.
-- When `claudeRunSkills.recipes` exists and the change affects runtime behavior, include `/verify` as a required behavioral row and run it before manual smoke rows that duplicate the same coverage.
+- Reuse the Phase 6.1 Step 3 real-run evidence (`design_validation` commands, `/verify` recipe, or the smallest real invocation) as the required behavioral row instead of re-running the same commands. Run only rows that evidence does not cover.
 - Attempt the 🔥 critical row above all when it can run locally.
 - Record outcomes as `✅ done` with the actual output as evidence.
-- Skip rows needing deployment, external environments, or credentials fsd doesn't hold. Keep the row's requirement level and mark it `not run` with one short reason the reviewer can read - `required, not run, needs staging credentials` is the shape. The Status cell never says who ran or skipped the row, so it never names fsd. Never fabricate.
+- Skip rows needing deployment, external environments, or credentials fsd doesn't hold, only when the user was already asked about them at Phase 6.1 Step 3. Keep the row's requirement level and mark it `not run` with one short reason the reviewer can read - `required, not run, needs staging credentials` is the shape. The Status cell never says who ran or skipped the row, so it never names fsd. Never fabricate.
 - If the 🔥 critical row exists and could not be run locally, say so in the Phase 10 report's Critical line.
 
 Skill-specific outputs:
@@ -134,7 +134,7 @@ Runs only when `open_pr = true` and Phase 8 returned a `pr_url`. "Ready for revi
 | Condition | Met when |
 |---|---|
 | Closed | `closure_state = done`. Anything else, including a missing value, is unmet. |
-| Verified | No `required` Phase 8.5 row is marked `not run`, the 🔥 critical row included, and `verification_in_body` is `true` or `n/a` (a skipped Phase 8.5 edit is unmet). A run with no rows (docs-only change) is met. A PR with a required row that needs a deployment or credentials stays draft by design, so the reviewer runs that row before marking it ready. |
+| Verified | No `required` Phase 8.5 row is marked `not run`, the 🔥 critical row included, and `verification_in_body` is `true` or `n/a` (a skipped Phase 8.5 edit is unmet). A run with no rows (docs-only change) is met. A PR with a required row that needs a deployment or credentials, and that the user already decided to leave unrun at Phase 6.1 Step 3, stays draft by design, so the reviewer runs that row before marking it ready. |
 | Unblocked | The PR's `design_pr_plan` row has `Depends on = none` and `External blockers = none`. A run with no plan row is met. |
 | CI green | Every check on the PR head passed, required or not, per the CI check below. |
 

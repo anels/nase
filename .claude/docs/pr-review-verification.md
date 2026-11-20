@@ -73,6 +73,7 @@ Use this to answer four explicit questions about the PR before any specialist ru
   - Diff exceeds Jira AC (extra files, unrelated edits) and PR body does not justify the extension → flag as ⚠️ scope creep.
   - MCP unavailable / ticket access denied → mark `Scope` evidence as `Jira fetch skipped: MCP unreachable` and fall back to description-only comparison.
 - If no Jira key is found: compare diff against the PR body's stated change list. Every diff file should map to a body claim; every body claim should map to at least one diff file. Asymmetries become findings.
+- **Body claims that bear on risk** (auth behavior, merge conditions such as "stays a draft", dependency or publish state) are checked against the PR HEAD, not read as given. A claim the HEAD contradicts is a stale-claim finding with the `path:line` or state that refutes it. Prose claims stay hypotheses (see the principle above).
 
 **Pillar 2 - Rationale soundness**
 - Read Step 2.5 Problem/Old/New/Constraints and ask: given that problem statement, does the chosen approach make sense?

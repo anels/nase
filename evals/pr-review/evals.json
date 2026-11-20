@@ -187,6 +187,79 @@
       ]
     },
     {
+      "id": "discuss-pr-zero-inline-approve",
+      "skill": "nase:discuss-pr",
+      "title": "Zero inline drafts still proposes APPROVE with one evidence sentence",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/135",
+      "expected_output": "With no surviving inline draft the review still reaches the submission gate, recommends APPROVE, and the body is one sentence naming the decisive evidence with a SHA or file:line. No LGTM, no structured body.",
+      "assertions": [
+        {
+          "name": "still reaches the submission gate with zero inline comments",
+          "type": "must_contain_regex",
+          "pattern": "(?i)inline comments?:\\s*0"
+        },
+        {
+          "name": "recommends approve",
+          "type": "must_contain_regex",
+          "pattern": "(?i)recommended state:\\s*APPROVE"
+        },
+        {
+          "name": "body names evidence with a SHA or file line",
+          "type": "must_contain_regex",
+          "pattern": "(?im)^review body:[^\\n]*(\\b[0-9a-f]{7,40}\\b|[^\\s`]+:\\d+)"
+        },
+        {
+          "name": "body is one sentence",
+          "type": "must_not_contain_regex",
+          "pattern": "(?im)^review body:[^\\n]*[.!?]\\s+[A-Z]"
+        },
+        {
+          "name": "body is not a bare LGTM or a structured report",
+          "type": "must_not_contain_regex",
+          "pattern": "(?im)(^review body:\\s*LGTM|tl;dr|^#+\\s*(what|out of scope|checked)\\b)"
+        }
+      ]
+    },
+    {
+      "id": "discuss-pr-zero-inline-stale-claim",
+      "skill": "nase:discuss-pr",
+      "title": "Zero inline drafts with a stale PR body claim cannot approve",
+      "prompt": "/nase:discuss-pr https://github.com/example/service/pull/136",
+      "expected_output": "A PR body claim that bears on risk is checked against the PR HEAD and found stale. With zero inline drafts the review recommends COMMENT, and the body is one sentence starting 'Not approving yet because' with one concrete reason.",
+      "assertions": [
+        {
+          "name": "flags the stale body claim against HEAD",
+          "type": "must_contain_regex",
+          "pattern": "(?i)(stale|contradict\\w*)[^\\n]*(PR body|body claim|description)|(PR body|body claim|description)[^\\n]*(stale|contradict\\w*)"
+        },
+        {
+          "name": "recommends comment, not approve",
+          "type": "must_contain_regex",
+          "pattern": "(?i)recommended state:\\s*COMMENT"
+        },
+        {
+          "name": "does not recommend approve or request changes",
+          "type": "must_not_contain_regex",
+          "pattern": "(?i)recommended state:\\s*(APPROVE|REQUEST_CHANGES)"
+        },
+        {
+          "name": "body is one concrete reason",
+          "type": "must_contain_regex",
+          "pattern": "(?im)^review body:\\s*Not approving yet because[^\\n]+"
+        },
+        {
+          "name": "body is one sentence",
+          "type": "must_not_contain_regex",
+          "pattern": "(?im)^review body:[^\\n]*[.!?]\\s+[A-Z]"
+        },
+        {
+          "name": "body is not a structured report",
+          "type": "must_not_contain_regex",
+          "pattern": "(?im)(tl;dr|^#+\\s*(what|out of scope|checked)\\b)"
+        }
+      ]
+    },
+    {
       "id": "address-comments-classification",
       "skill": "nase:address-comments",
       "title": "Review thread classification before mutation",

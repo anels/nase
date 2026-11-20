@@ -12,6 +12,7 @@ REVIEW_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-review-{number}-XXXXXXXX")
 REVIEW_FILE="$REVIEW_DIR/review.json"
 # Build with jq from the confirmed state, body, and drafted inline comments:
 #   {"event":"APPROVE|COMMENT|REQUEST_CHANGES","body":"...","comments":[{"path":"...","line":N,"side":"RIGHT","body":"..."}]}
+#   Zero surviving inline drafts: INLINE_COMMENTS_JSON='[]' (comments: []); the one-sentence body carries the verdict.
 jq -n --arg event "$STATE" --arg body "$REVIEW_BODY" --argjson comments "$INLINE_COMMENTS_JSON" \
   '{event:$event, body:$body, comments:$comments}' > "$REVIEW_FILE"
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \

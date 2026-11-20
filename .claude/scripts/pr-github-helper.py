@@ -9,7 +9,9 @@ import os
 import re
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
@@ -50,6 +52,7 @@ LIGHT_FIELDS = (
     "body",
     "state",
     "isDraft",
+    "mergeStateStatus",
     "headRefOid",
     "additions",
     "deletions",
@@ -234,6 +237,27 @@ def gh_issue_comments_args(pr: dict[str, Any]) -> list[str]:
     ]
 
 
+def gh_checks_args(pr: dict[str, Any], required: bool) -> list[str]:
+    """`gh pr checks` reads GraphQL `isRequired`, which a normal contributor can query.
+
+    The branch-protection REST endpoint answers 403 to anyone without admin rights, so
+    it is not used. `--required` filters to the checks branch protection waits on.
+    """
+    args = [
+        "gh",
+        "pr",
+        "checks",
+        str(pr["number"]),
+        "--repo",
+        pr["repo_full_name"],
+        "--json",
+        "name,bucket,state",
+    ]
+    if required:
+        args.append("--required")
+    return args
+
+
 def gh_viewer_args() -> list[str]:
     """The authenticated login, for the caller's own-PR check.
 
@@ -319,19 +343,34 @@ def run_gh(args: list[str]) -> str:
     return completed.stdout
 
 
-def run_gh_all(plan: dict[str, list[str]]) -> dict[str, str]:
-    """Run independent `gh` reads concurrently and return stdout keyed by plan name.
+def run_bounded(tasks: dict[str, Callable[[], Any]]) -> dict[str, Any]:
+    """Run independent reads concurrently, at most `GH_MAX_PARALLEL` at once.
 
     Every call is a separate `gh` process reading a different endpoint, so the only
-    shared state is the network. Futures are read back in plan order, so both the
-    returned mapping and the `CalledProcessError` a failing call raises match a
-    serial run.
+    shared state is the network. The results come back keyed in plan order. The first
+    call to fail, in completion order, raises at once and queued reads are cancelled.
+    When several reads fail, the one reported is the first to complete, so which of two
+    failures surfaces can vary from run to run; a single failure is always reported
+    promptly.
+    Reads already running are not interrupted: each finishes in its own thread, bounded
+    by `GH_TIMEOUT_SECONDS`, and its result is dropped. The interpreter waits for those
+    threads at exit.
     """
-    if len(plan) < 2:
-        return {name: run_gh(args) for name, args in plan.items()}
-    with ThreadPoolExecutor(max_workers=min(GH_MAX_PARALLEL, len(plan))) as pool:
-        pending = {name: pool.submit(run_gh, args) for name, args in plan.items()}
+    if len(tasks) < 2:
+        return {name: task() for name, task in tasks.items()}
+    pool = ThreadPoolExecutor(max_workers=min(GH_MAX_PARALLEL, len(tasks)))
+    try:
+        pending = {name: pool.submit(task) for name, task in tasks.items()}
+        for future in as_completed(pending.values()):
+            future.result()
         return {name: future.result() for name, future in pending.items()}
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def run_gh_all(plan: dict[str, list[str]]) -> dict[str, str]:
+    """Run independent `gh` reads concurrently and return stdout keyed by plan name."""
+    return run_bounded({name: partial(run_gh, args) for name, args in plan.items()})
 
 
 def run_git(
@@ -722,18 +761,107 @@ def other_feedback_surfaces(pr: dict[str, Any], max_body_chars: int) -> dict[str
     }
 
 
+CHECK_NAMES_MAX = 10
+_FAIL_BUCKETS = ("fail", "cancel")
+
+
+def read_checks(args: list[str]) -> tuple[str, list[dict[str, Any]]]:
+    """One `gh pr checks` read as `(status, rows)`; status is ok, none, or unknown.
+
+    gh exits 1 when a check failed and 8 while one is pending, and still prints the
+    rows, so a non-zero exit with JSON on stdout is data. An empty stdout is `none`
+    only when gh says so on stderr. Anything else (403, timeout, bad JSON) is
+    `unknown`, never a guess.
+    """
+    try:
+        out = run_gh(args)
+    except subprocess.CalledProcessError as exc:
+        out = exc.output or ""
+        if not out.strip():
+            stderr = str(exc.stderr or "")
+            if "no required checks reported" in stderr or "no checks reported" in stderr:
+                return "none", []
+            return "unknown", []
+    except (subprocess.TimeoutExpired, OSError):
+        return "unknown", []
+    try:
+        rows = json.loads(out)
+    except JSONDecodeError:
+        return "unknown", []
+    if not isinstance(rows, list):
+        return "unknown", []
+    return "ok", [row for row in rows if isinstance(row, dict)]
+
+
+def summarize_checks(status: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if status != "ok":
+        return {"status": status, "total": 0, "failing": [], "pending": []}
+    failing = [str(r.get("name")) for r in rows if r.get("bucket") in _FAIL_BUCKETS]
+    pending = [str(r.get("name")) for r in rows if r.get("bucket") == "pending"]
+    return {
+        "status": "fail" if failing else "pending" if pending else "pass",
+        "total": len(rows),
+        "failing": failing[:CHECK_NAMES_MAX],
+        "pending": pending[:CHECK_NAMES_MAX],
+    }
+
+
+def ci_tasks(pr: dict[str, Any]) -> dict[str, Callable[[], Any]]:
+    return {
+        "checks_required": partial(read_checks, gh_checks_args(pr, True)),
+        "checks_all": partial(read_checks, gh_checks_args(pr, False)),
+    }
+
+
+CheckRead = tuple[str, list[dict[str, Any]]]
+
+
+def ci_summary(required: CheckRead, everything: CheckRead) -> dict[str, Any]:
+    """Required vs non-required check state, with `unknown` where it cannot be read.
+
+    Reported to the reviewer as evidence only. Branch protection still owns the merge
+    gate, so nothing here changes a review state.
+    """
+    req_status, req_rows = required
+    all_status, all_rows = everything
+    # Without the required list the two groups cannot be split, so say so for both.
+    if "unknown" in (req_status, all_status):
+        shared = "unknown"
+    elif all_status == "none":
+        shared = "none"
+    else:
+        shared = None
+    if shared:
+        return {
+            key: summarize_checks(shared, []) for key in ("required", "nonRequired")
+        }
+    required_names = {row.get("name") for row in req_rows}
+    others = [row for row in all_rows if row.get("name") not in required_names]
+    return {
+        "required": summarize_checks(req_status, req_rows),
+        "nonRequired": summarize_checks("ok" if others else "none", others),
+    }
+
+
+def read_review_inputs(pr: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The raw `gh` reads for one review and the CI summary, in one bounded plan."""
+    reads: dict[str, list[str]] = {
+        "metadata": gh_metadata_args(pr, "light"),
+        "comments": gh_review_comments_args(pr),
+        "reviews": gh_reviews_args(pr),
+        "issue_comments": gh_issue_comments_args(pr),
+        "viewer": gh_viewer_args(),
+    }
+    raw = run_bounded(
+        {name: partial(run_gh, args) for name, args in reads.items()} | ci_tasks(pr)
+    )
+    return raw, ci_summary(raw["checks_required"], raw["checks_all"])
+
+
 def review_context(
     pr: dict[str, Any], max_body_chars: int, max_kb_paths: int
 ) -> dict[str, Any]:
-    raw = run_gh_all(
-        {
-            "metadata": gh_metadata_args(pr, "light"),
-            "comments": gh_review_comments_args(pr),
-            "reviews": gh_reviews_args(pr),
-            "issue_comments": gh_issue_comments_args(pr),
-            "viewer": gh_viewer_args(),
-        }
-    )
+    raw, ci = read_review_inputs(pr)
     metadata = json.loads(raw["metadata"])
     paths = changed_file_paths(metadata)
     file_count = (
@@ -748,6 +876,10 @@ def review_context(
         "pr": pr,
         "viewerLogin": raw["viewer"].strip(),
         "metadata": metadata,
+        "isDraft": bool(metadata.get("isDraft")),
+        # GitHub computes this lazily, so UNKNOWN is a real answer, not a guess.
+        "mergeStateStatus": metadata.get("mergeStateStatus") or "UNKNOWN",
+        "ci": ci,
         "sizeGate": size_gate(metadata, 1500, 1500),
         "changedFiles": paths,
         "changedFilesOmitted": max(0, file_count - len(paths)),

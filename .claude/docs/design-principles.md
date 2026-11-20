@@ -46,10 +46,31 @@ Why the orders differ:
 - **Small utility** leads with KISS/DRY - the only real questions are "is it simple?" and "does it already exist?"; First Principles is overkill for a formatter.
 - **Complex component** leads with First Principles then SOLID - get the model right, then enforce clean responsibility boundaries before simplifying.
 
+## Solution selection
+
+Propose 2-3 materially distinct options. At least one is system-level and fixes the root cause.
+
+A workaround is recognized by these smells:
+
+- swallowed exceptions
+- special-case branches
+- sleeps or retries that hide timing
+- one-off flags
+- suppressed lint or test failures
+- anything that treats a symptom
+
+A workaround is allowed only with a stated reason it is not treating a symptom, for example legacy-data compatibility. In `--auto` runs and in fsd, choose the best-evidenced option without asking the user to pick. Interactive `/nase:design` keeps its approach-choice checkpoint, and a cross-repo or security-shaped architecture choice is presented as a recommendation for approval. Development cost informs the ETA, not the selection.
+
+## Over-engineering check
+
+Every new abstraction, parameter, file, flag, or branch must trace to a success criterion or the Intent. If it traces to neither, remove it.
+
 ## How callers use this
 
 - **`/nase:design`** - declare the ordering as the lens before presenting options; evaluate each option by which principles it honors or violates, with Elegance as an explicit dimension.
 - **`/nase:fsd` Phase 3.6** - classify `task_type`, store the matching `principle_order`, and apply the lead principle during Green (implement only what the principle requires) and the full order during Refactor.
 - **`/nase:simplify`** - use the order to decide what to cut; the reuse-first ladder operationalizes DRY + YAGNI, and the merge gate decides which duplicates to consolidate.
+- **`/nase:fsd` Phase 6.4 review** - apply Solution selection and the Over-engineering check to the diff: a workaround without a stated reason, or an addition that traces to no success criterion or the Intent, is a finding.
+- **`/nase:address-comments`** - apply the same two checks to each reviewer suggestion before accepting it (cause vs symptom, scope guard).
 
 The classification is a lens, not a cage - if a task genuinely spans two scenarios, lead with the higher-altitude one and note the blend.

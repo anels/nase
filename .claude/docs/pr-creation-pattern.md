@@ -7,6 +7,7 @@
   - [2a. No local-only path references](#2a-no-local-only-path-references)
   - [2b. No unexplained plan-internal labels](#2b-no-unexplained-plan-internal-labels)
   - [2c. No tool names or plan ids outside the workspace](#2c-no-tool-names-or-plan-ids-outside-the-workspace)
+  - [2d. Necessary content only](#2d-necessary-content-only)
 - [3. PR Title = Commit Subject](#3-pr-title--commit-subject)
 - [4. Co-Author Preservation](#4-co-author-preservation)
 
@@ -112,6 +113,10 @@ This applies to the PR title too. Because the title must equal the commit subjec
 External text says nothing about the skill, workflow or phase that produced it. Every string the run writes follows that rule - branch name, PR title, PR body, commit message, review reply - so none of them carries `fsd`, `nase`, a phase name, or an id from the local plan (`pr75`, `REQ-003`). The reviewer cannot look any of that up and learns nothing from it. Say what happened instead: `not run, the unit tests cover it with a real git and a bare remote`, not `not run by fsd, ...`.
 
 AI attribution is the one exception: §4 makes it a per-repo choice.
+
+### 2d. Necessary content only
+
+A PR description, and any comment a skill posts on the PR, holds only what a reviewer needs: what changed and why, and how it was verified. No thanks, no praise, no filler, no tool or process narration, and no restating the diff.
 
 ## 3. PR Title = Commit Subject
 
