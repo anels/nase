@@ -87,6 +87,8 @@ If the run had a surprise/non-obvious win (novel approach, avoided near-miss, bu
 
 Skip failed or routine no-surprise runs; routine wins dilute downstream skill-optimization signal.
 
+When the surprise is a rule that would help a later run, also write it as a lesson per `.claude/docs/lessons-format.md -> Writing a lesson from a run`. Phase 3 of the next run reads it back.
+
 ## Error Handling
 
 <error_handling>

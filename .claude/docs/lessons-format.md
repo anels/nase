@@ -42,9 +42,27 @@ Pick the closest match. Do not invent new categories - extend this list instead.
 | `/nase:reflect` | any | After a task, on surprise / mistake / discovery |
 | `/nase:wrap-up` Step 6 | `calibration` | When ETA divergence ≥ 30% |
 | `/nase:wrap-up` Step 9 | `style` | When approved style deltas update `workspace/communication-style.md` |
-| `/nase:address-comments` Phase 10 | `code` | When a reviewer surfaced a non-obvious coding rule |
+| `/nase:address-comments` Phase 10 | any but `style`, `calibration` | Every run decides (see § Writing a lesson from a run) |
 | `/nase:extract-skills` | any | When a hard-won lesson surfaces during skill extraction |
-| `/nase:fsd` Phase 9 | any | Only if the run produced a surprise or near-miss (see § Signal-to-noise) |
+| `/nase:fsd` Phase 10 | any but `style`, `calibration` | Only if the run produced a surprise or near-miss (see § Writing a lesson from a run) |
+
+## Readers
+
+`.claude/scripts/lessons-lookup.py` prints the best few entries for a task. It skips `calibration` and `style` entries, entries whose title carries `-> applied to` because a doc already holds that rule, and entries whose title carries `-> rejected`. It reads only `## {category} -- {date} -- {title}` entries, so the one-line `- {date} ...` archive bullets are never returned.
+
+| Skill | Where it runs |
+|-------|---------------|
+| `/nase:address-comments` | Phase 3, Step 3-0 |
+| `/nase:fsd` | Phase 3, Lessons preflight |
+
+## Writing a lesson from a run
+
+A candidate comes from the run and is verified in it. It is a rule a reviewer or user surfaced that the code did not already follow, a guard, hook, or tool behavior that blocked or surprised you, a documented step that failed as written, or a repo constraint you confirmed in code.
+
+- A constraint that belongs to one repo goes through `/nase:kb-update {repo}`, which applies `.claude/docs/kb-write-routing.md -> Shared admission contract`.
+- A rule that holds across repos goes to this file, staged through `.claude/docs/workspace-write-guard.md`. Pick the closest category and search the file for the same rule first.
+
+Write without asking, except a wording correction on an external draft, which follows `.claude/docs/style-delta-capture.md`. Name the skill, the tool, or the file path where the trap lives in the `When:` line, because `lessons-lookup.py` matches on those words.
 
 ## Signal-to-noise
 

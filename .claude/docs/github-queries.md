@@ -95,30 +95,33 @@ MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
 jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
-NEW_ID=$(python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST" | jq -r .id)
-# No EXIT trap: execute re-hashes the payload. Remove "$REPLY_DIR" after the read-back below passes.
+python3 .claude/scripts/external-write-action.py execute --manifest "$MANIFEST" | jq -r .id
+# The printed id is {new_id} in the read-back call below, and "$REPLY_DIR" is its {reply_dir}.
+# No EXIT trap: execute re-hashes the payload. Remove the reply dir after the read-back below passes.
 ```
 
 ### Read-back verification (mandatory)
 
-The reply body only exists correctly if GitHub stored what you wrote, so confirm at the consumer boundary before reporting the thread as answered or resolving it:
+The reply body only exists correctly if GitHub stored what you wrote, so confirm at the consumer boundary before reporting the thread as answered or resolving it.
+
+Run this as its own call and write the comment id and the reply paths (`{reply_dir}`, `{reply_file}`) as literals. The CLI guard denies a `gh` command that takes an argument from a variable captured out of `execute`, and shell variables from the reply call do not survive into this one anyway.
 
 ```bash
 # Private 0700 payload dir - see external-mutation-policy.md -> Private payload directory.
 POSTED_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pr-reply-posted-XXXXXXXX")
 POSTED_FILE="$POSTED_DIR/posted.md"
-gh api "repos/{owner}/{repo}/pulls/comments/$NEW_ID" --jq .body | tr -d '\r' > "$POSTED_FILE"
-if [[ "$(cat "$POSTED_FILE")" == "$(tr -d '\r' < "$REPLY_FILE")" ]]; then
-  printf 'reply %s verified\n' "$NEW_ID"
+gh api "repos/{owner}/{repo}/pulls/comments/{new_id}" -X GET --jq .body | tr -d '\r' > "$POSTED_FILE"
+if [[ "$(cat "$POSTED_FILE")" == "$(tr -d '\r' < "{reply_file}")" ]]; then
+  printf 'reply %s verified\n' "{new_id}"
+  rm -rf "{reply_dir}" "$POSTED_DIR"
 else
-  diff "$REPLY_FILE" "$POSTED_FILE" || true
-  printf 'POSTED BODY MISMATCH for comment %s - inspect before resolving\n' "$NEW_ID"
+  diff "{reply_file}" "$POSTED_FILE" || true
+  printf 'POSTED BODY MISMATCH for comment %s - inspect before resolving\n' "{new_id}"
 fi
-# Clean up only now, after execute and the comparison have both returned.
-rm -rf "$REPLY_DIR" "$POSTED_DIR"
+# Clean up only after the comparison passes. On a mismatch keep both dirs for the PATCH below.
 ```
 
-`$(cat …)` strips trailing newlines on both sides and `tr -d '\r'` absorbs line-ending normalization, so this compares content only and does not fire on cosmetic differences. On mismatch, report the comment ID and the diff, do not resolve the thread, and fix the body with a gated `--method PATCH` on `repos/{owner}/{repo}/pulls/comments/$NEW_ID` using the same `--input` payload shape.
+`$(cat …)` strips trailing newlines on both sides and `tr -d '\r'` absorbs line-ending normalization, so this compares content only and does not fire on cosmetic differences. On mismatch, report the comment ID and the diff, do not resolve the thread, and fix the body with a gated `--method PATCH` on `repos/{owner}/{repo}/pulls/comments/{new_id}` using the same `--input` payload shape.
 
 ### Never use `-f body=@FILE`
 

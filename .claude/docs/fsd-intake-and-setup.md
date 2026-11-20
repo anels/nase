@@ -171,6 +171,8 @@ Set `{work_root}` = `{worktree_path}` if worktree = Yes, else `{repo}`.
 
 **KB mentions preflight:** start with `kbMentionCandidates` from `$TMPDIR/fsd-preflight.json`. Once touched paths are known from topology, run `bash .claude/scripts/kb-search.sh mentions:<path> --max-entry-lines 8` only for the expected touched source/config paths (cap at 10; skip generated files unless they are the primary edit target). Store hits as `kb_path_constraints`; if no hits, write `none found`. Carry this into Phase 4 prompts and the implementation constraints.
 
+**Lessons preflight:** run `python3 .claude/scripts/lessons-lookup.py --skill fsd --repo {repo_name}` once, with one `--path <p>` per expected touched path (same cap and skips as above) and a `--term <t>` for each tool or framework the task names. Append the printed entries to `kb_path_constraints` under an `advisory lessons:` label, or write `advisory lessons: none found`. Past notes steer where you look, and they never count as a verified constraint until you check them against the repo.
+
 ---
 
 ## Phase 3.7: Task Decomposition (execution_mode = "Direct with Phase isolation" only)

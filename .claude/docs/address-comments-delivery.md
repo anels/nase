@@ -332,7 +332,9 @@ Otherwise invoke `/nase:request-review {pr_url} --mode re-review-ping` with the 
 
 ## Phase 10: Learn
 
-Offer `/nase:kb-update` for confirmed non-obvious architectural constraints. Put general coding lessons under the `code` category in `workspace/tasks/lessons.md` using `.claude/docs/lessons-format.md`.
+Decide on every run, including one with no code change, and name the outcome in the Phase 11 report. A skipped decision leaves no trace, which is how lessons go missing.
+
+Follow `.claude/docs/lessons-format.md -> Writing a lesson from a run`. A run with nothing that qualifies writes nothing, and the report says `Lessons: none`.
 
 ## Phase 11: Cleanup and Report
 
@@ -351,6 +353,7 @@ PR comments addressed ✓
   Merge conflict:  {resolved via merge of origin/{baseRefName} | none}
   Required checks: {N} fixed (local re-run passed), {M} blocked or flaky: {names}   # omit when none failed
   Worktree:        {retained path or n/a}
+  Lessons:         {N} written to {KB file or lessons.md} | none
   Slack pings:     {M} drafts staged for {comma-separated logins}   # omit when 0
   Commit:          {short_sha} - {commit_subject}                   # omit when no commit
 ```
