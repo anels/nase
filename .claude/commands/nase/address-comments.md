@@ -39,7 +39,7 @@ Follow `.claude/docs/pr-input-guard.md`. On empty input, ask for one PR URL with
 
 ## State contract
 
-Phases 1-4 produce and must return: `owner`, `repo`, `number`, `repo_path`, `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `pr_head_ref`, `gate_profile`, `module_inventory`, `merge_conflict`, `required_failures`, the PR-unique dossier path, each thread's `id` and `databaseId`, and the final dossier/action map.
+Phases 1-4 produce and must return: `owner`, `repo`, `number`, `repo_path`, `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `pr_head_ref`, `gate_profile`, `design_intent` (or `none`), `module_inventory`, `merge_conflict`, `required_failures`, the PR-unique dossier path, each thread's `id` and `databaseId`, and the final dossier/action map.
 
 `worktree_path`, `pr_branch`, `merge_sha`, and `no_commit` are set inside `.claude/docs/address-comments-delivery.md` and stay live from there on. A Phase 1-4 return that omits them is complete, not truncated.
 

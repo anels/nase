@@ -29,6 +29,7 @@ assert_contains "$DOC skips the hand-off for a cancelled write" "$DOC" 'Skipped 
 assert_contains "onboard lists candidates without asking" .claude/commands/nase/onboard.md 'without asking'
 assert_contains "learn carries the question in its existing ask" .claude/commands/nase/learn.md 'terminology question from `.claude/docs/terminology-discovery.md`'
 assert_contains "discuss-pr carries the question in its existing ask" .claude/docs/discuss-pr-output.md 'terminology question from `.claude/docs/terminology-discovery.md`'
+assert_contains "discuss-pr zero-draft Step 8 still carries the question" .claude/docs/discuss-pr-output.md 'A zero-draft Step 8 carries it the same way'
 
 step_3a_skips_web() {
   local text

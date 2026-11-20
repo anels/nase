@@ -145,6 +145,8 @@ A decline rationale ("this is intentional because X") is a claim about a mechani
 
 One reply per declined thread, ≤3 lines each. Do not batch declines under blanket "out of scope" / "scope-creep" wording.
 
+**Reply content rule (all categories):** a reply follows `.claude/docs/pr-creation-pattern.md` 2d (necessary content only): it states only what changed or the reason.
+
 ### For reply-only threads:
 
 Follow `.claude/docs/voice-profile-routing.md` with `surface=github-review-reply`. Draft concise, non-defensive reply text.

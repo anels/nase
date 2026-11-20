@@ -29,6 +29,8 @@ If a guard is false, do not update `.local-paths` automatically; ask for the cor
 
 **Load the PR gate profile.** Follow `.claude/docs/pr-gates-consumption.md` §1–2 to read the repo's `## PR Gates` KB section (with the live-fetch fallback when stale/empty) into `gate_profile`. Phases 8 and 8b use it so the commit subject and any PR-body restructure satisfy the repo's commit-lint and PR-description gates.
 
+**Load the design intent.** Find the effort doc by grepping `workspace/efforts/*.md` for the PR URL in the `## Lifecycle` rows, and read its `### Intent` section (`Why:`, `Done looks like:`, `Not wanted:`) plus `### Success Criteria` as `design_intent`. If no effort doc names the PR, use the purpose stated in the PR description. That source is weaker, so a scope-guard hit from it is flagged to the user, not declined on its own. If neither exists, set `design_intent = none`, skip the scope guard in Phase 3, and say so in the plan.
+
 ## Phase 2: Fetch Latest & Unresolved Review Threads
 
 Fetch remote refs for the KB-resolved repo:
@@ -98,9 +100,11 @@ Apply these gates in order:
 1. **File-vs-description**: apply `.claude/docs/pr-review-verification.md` §3. If the reviewer's prose does not match the file at the referenced line, decline the suggestion regardless of other factors.
 2. **Conditional premise verification**: for suggestions phrased "if X, then change Y", "match the existing pattern A", or "unify on existing behavior", verify X or trace why pattern A exists before classifying. If the premise is wrong or the cited pattern is itself buggy, classify as `decline` and reply with the missed evidence. When the premise concerns a predicate/guard/disabled-state (e.g. "this gate is always true so the window never happens"), trace who *populates* that state at runtime - async effects, child components, fixtures - not just the static expression; a test that force-passes N× proves timing, not that the state window cannot exist.
 3. **Correctness**: Does the suggestion fix an actual bug or prevent a real failure mode? Or is the current code already correct?
-4. **Context**: Does the suggestion conflict with API contracts, performance constraints, framework behavior, KB rules, or cross-repo consumers?
-5. **Substance vs. style**: Does it meaningfully improve correctness, clarity, testability, or maintainability? Or is it preference-only churn?
-6. **Regression risk**: Could accepting introduce a new invariant break, test gap, or rollout risk?
+4. **Cause vs symptom**: Does the suggestion fix the cause, or does it treat the symptom the reviewer pointed at? Use the smells in `.claude/docs/design-principles.md` → Solution selection. A symptom-only suggestion is not accepted as-is. Probe for the cause-level fix and propose that instead.
+5. **Context**: Does the suggestion conflict with API contracts, performance constraints, framework behavior, KB rules, or cross-repo consumers?
+6. **Scope guard**: Does the suggestion go beyond `design_intent` (including its `Not wanted:`) or add something that traces to no success criterion? If so, decline it or split it to a follow-up using the middle-ground probe below. Skipped when `design_intent = none`.
+7. **Substance vs. style**: Does it meaningfully improve correctness, clarity, testability, or maintainability? Or is it preference-only churn?
+8. **Regression risk**: Could accepting introduce a new invariant break, test gap, or rollout risk?
 
 **Classify each thread after the gates:**
 
@@ -137,15 +141,16 @@ Ask about any `ask-user` threads using the full dossier. Collect answers, update
 
 ```
 Found {N} unresolved review threads:
+Design intent: {one-line Why from the effort doc | PR description purpose | none - scope guard skipped}
 
-  1. [{risk}] [{path}:{line}] {premise} -> accept
+  1. [{risk}] [{path}:{line}] {premise} -> accept | {cause or symptom}
      evidence: {diff/base/head + KB/caller/test summary}
      action: {what_you_plan_to_do}
      verification: {post-change check}
-  2. [{risk}] [{path}:{line}] {premise} -> decline
+  2. [{risk}] [{path}:{line}] {premise} -> decline | {cause or symptom}
      evidence: {why the premise is false / already fixed / out of scope / risky}
      reply: {draft_reply_summary}
-  3. [{risk}] [{path}:{line}] {premise} -> reply-only
+  3. [{risk}] [{path}:{line}] {premise} -> reply-only | {cause or symptom}
      evidence: {why no code change is needed}
      reply: {draft_reply_summary}
   ...

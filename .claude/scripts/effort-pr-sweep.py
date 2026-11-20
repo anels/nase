@@ -28,7 +28,16 @@ transitions. The hints exist so the caller classifies rather than bulk-edits.
 whether a doc would transition on evidence that is not its own, and a terminal doc has no
 transition left to fire.
 
-Exit status is 0 whenever the sweep itself ran. Unreadable PRs are reported as data.
+`--merge-details` adds `files` (every changed path, renames counting both sides),
+`files_truncated` and `merge_checks` (`success|failure|pending|none|unknown`) to the `live`
+entry of each merged delivery PR whose effort is awaiting deploy or fully merged. They
+feed `effort-state.py --live-json`, which decides whether an effort can close on tests,
+CI and docs alone. Without the flag the call count is unchanged.
+
+Exit status is 0 whenever the sweep itself ran. Unreadable PRs are reported as data. The
+one exception is `--json-out`: when that file cannot be written the sweep prints the
+payload on stdout and exits 1, so a caller gating on the exit code must read stdout (or
+re-run after fixing the path).
 """
 
 from __future__ import annotations
@@ -38,7 +47,9 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -56,7 +67,19 @@ CANONICAL_RE = re.compile(
     re.IGNORECASE,
 )
 SUBPROCESS_TIMEOUT = 60
+MERGE_CHECKS_SETTLE_SECONDS = 15 * 60
 GH_FIELDS = "number,state,reviewDecision,mergedAt,mergeCommit,statusCheckRollup,title,baseRefName"
+FILES_API_CAP = 3000
+CHECK_FAILURE_CONCLUSIONS = frozenset(
+    {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
+)
+CHECK_SUCCESS_CONCLUSIONS = frozenset({"success", "neutral", "skipped"})
+COMBINED_STATUS_VERDICTS = {
+    "success": "success",
+    "pending": "pending",
+    "failure": "failure",
+    "error": "failure",
+}
 
 # Why a cited PR may be *correctly* absent from the delivery set. Order matters: the first
 # match wins, and `likely-delivery` is the fallthrough that actually needs a human decision.
@@ -169,6 +192,164 @@ def read_pr(ref: tuple[str, str, int]) -> tuple[str, dict]:
         return key, classify_state(json.loads(proc.stdout))
     except json.JSONDecodeError as exc:
         return key, {"state": "UNREADABLE", "error": f"bad json: {exc}"}
+
+
+def pr_files(owner: str, repo: str, number: int) -> dict:
+    """Every path a merged PR changed, including the old path of a rename.
+
+    `gh pr view --json files` stops at 100 paths and says nothing when it does, so the
+    REST listing is paged instead. That endpoint caps at 3000 files, and a listing that
+    reaches the cap is reported truncated rather than complete. A rename counts both
+    paths: moving `src/a.ts` to `tests/a.ts` still edits shipped code.
+    """
+    proc = run(
+        [
+            "gh",
+            "api",
+            "-X",
+            "GET",
+            f"repos/{owner}/{repo}/pulls/{number}/files",
+            "-F",
+            "per_page=100",
+            "--paginate",
+            "--jq",
+            r'.[] | [.filename, (.previous_filename // "")] | @tsv',
+        ]
+    )
+    if proc.returncode != 0:
+        return {"files": None, "files_truncated": False}
+    entries = [line for line in proc.stdout.splitlines() if line]
+    paths = sorted({path for line in entries for path in line.split("\t") if path})
+    return {"files": paths, "files_truncated": len(entries) >= FILES_API_CAP}
+
+
+def merge_check_commands(
+    owner: str, repo: str, sha: str
+) -> tuple[list[str], list[str]]:
+    base = f"repos/{owner}/{repo}/commits/{sha}"
+    runs = [
+        "gh",
+        "api",
+        "-X",
+        "GET",
+        f"{base}/check-runs",
+        "-F",
+        "per_page=100",
+        "--paginate",
+        "--jq",
+        r'.check_runs[] | "\(.status) \(.conclusion // "-")"',
+    ]
+    combined = [
+        "gh",
+        "api",
+        "-X",
+        "GET",
+        f"{base}/status",
+        "--jq",
+        r'"\(.state) \(.total_count)"',
+    ]
+    return runs, combined
+
+
+def settled(merged_at: str | None, now: datetime | None = None) -> str | None:
+    """`None` when the merge is old enough for its checks to be complete, else the verdict.
+
+    Workflows queue after the merge, so the checks registered so far can all pass while
+    later ones are not yet queued. An unreadable `mergedAt` is `unknown`, never settled.
+    """
+    if not merged_at:
+        return "unknown"
+    try:
+        merged = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
+    except ValueError:
+        return "unknown"
+    if merged.tzinfo is None:
+        return "unknown"
+    age = (now or datetime.now(timezone.utc)) - merged
+    return None if age.total_seconds() >= MERGE_CHECKS_SETTLE_SECONDS else "pending"
+
+
+def roll_up_checks(
+    runs: subprocess.CompletedProcess[str],
+    combined: subprocess.CompletedProcess[str],
+    merged_at: str | None,
+) -> str:
+    """Roll the merge commit's check runs and combined status into one word.
+
+    Anything unreadable is `unknown`, never `success`: the caller closes work on this
+    value, and `success` additionally waits for the merge to settle.
+    """
+    if runs.returncode != 0 or combined.returncode != 0:
+        return "unknown"
+    verdicts: set[str] = set()
+    for line in runs.stdout.splitlines():
+        status, _, conclusion = line.partition(" ")
+        if status != "completed":
+            verdicts.add("pending")
+        elif conclusion in CHECK_FAILURE_CONCLUSIONS:
+            verdicts.add("failure")
+        elif conclusion in CHECK_SUCCESS_CONCLUSIONS:
+            verdicts.add("success")
+        else:
+            verdicts.add("unknown")
+    state, _, total = combined.stdout.strip().partition(" ")
+    if total.isdigit() and int(total) > 0:
+        verdicts.add(COMBINED_STATUS_VERDICTS.get(state, "unknown"))
+    for verdict in ("failure", "pending", "unknown", "success"):
+        if verdict in verdicts:
+            return (settled(merged_at) or verdict) if verdict == "success" else verdict
+    return "pending" if settled(merged_at) == "pending" else "none"
+
+
+def merge_checks(owner: str, repo: str, sha: str, merged_at: str | None) -> str:
+    runs, combined = merge_check_commands(owner, repo, sha)
+    return roll_up_checks(run(runs), run(combined), merged_at)
+
+
+def merged_details(
+    pool: ThreadPoolExecutor, target: tuple[str, str, int, str], merged_at: str | None
+) -> Callable[[], tuple[str, dict]]:
+    """Start the three reads one merged PR needs on `pool`; the result waits for them."""
+    owner, repo, number, sha = target
+    runs_cmd, combined_cmd = merge_check_commands(owner, repo, sha)
+    files = pool.submit(pr_files, owner, repo, number)
+    runs = pool.submit(run, runs_cmd)
+    combined = pool.submit(run, combined_cmd)
+
+    def collect() -> tuple[str, dict]:
+        return f"{owner}/{repo}#{number}", {
+            **files.result(),
+            "merge_checks": roll_up_checks(
+                runs.result(), combined.result(), merged_at
+            ),
+        }
+
+    return collect
+
+
+def detail_targets(
+    audits: list[dict], live: dict[str, dict]
+) -> list[tuple[str, str, int, str]]:
+    """Merged delivery PRs worth the extra reads.
+
+    Only an effort that is awaiting deploy, or whose every delivery PR has merged and so
+    is about to be, can be closed on this evidence. Every other PR stays at one read.
+    """
+    targets: dict[str, tuple[str, str, int, str]] = {}
+    for audit in audits:
+        refs = audit.get("delivery_refs") or []
+        states = [live.get(f"{o}/{r}#{n}", {}).get("state") for o, r, n in refs]
+        awaiting = audit.get("stage") == "awaiting_deploy" or audit.get("status") in {
+            "awaiting-deploy",
+            "merged",
+        }
+        if not refs or not (awaiting or all(s == "MERGED" for s in states)):
+            continue
+        for (owner, repo, number), state in zip(refs, states, strict=True):
+            sha = live.get(f"{owner}/{repo}#{number}", {}).get("mergeCommit")
+            if state == "MERGED" and sha:
+                targets[f"{owner}/{repo}#{number}"] = (owner, repo, number, sha)
+    return list(targets.values())
 
 
 def effort_state(path: Path) -> dict | None:
@@ -548,6 +729,16 @@ def main() -> int:
         action="store_true",
         help="audit terminal docs (done/ + archive/) instead of active efforts",
     )
+    ap.add_argument(
+        "--merge-details",
+        action="store_true",
+        help="add files, files_truncated and merge_checks to merged delivery PRs of "
+        "efforts awaiting deploy (extra read-only gh calls)",
+    )
+    ap.add_argument(
+        "--json-out",
+        help="also write the JSON result to this path, whatever --format prints",
+    )
     ap.add_argument("--format", choices=["human", "json"], default="human")
     args = ap.parse_args()
 
@@ -618,6 +809,21 @@ def main() -> int:
     if not args.no_live and all_refs:
         with ThreadPoolExecutor(max_workers=10) as pool:
             live = dict(pool.map(read_pr, sorted(all_refs)))
+        if args.merge_details and not args.closed:
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                collectors = [
+                    merged_details(
+                        pool,
+                        target,
+                        live.get(f"{target[0]}/{target[1]}#{target[2]}", {}).get(
+                            "mergedAt"
+                        ),
+                    )
+                    for target in detail_targets(audits, live)
+                ]
+                for collect in collectors:
+                    key, details = collect()
+                    live[key].update(details)
 
     # `--closed` implies revert checking: its whole output is "this merged, record it as
     # delivered", and a reverted merge would turn that into a false delivery claim.
@@ -663,9 +869,24 @@ def main() -> int:
             },
         }
 
-    if args.format == "json":
-        print(json.dumps(result, indent=2, sort_keys=True))
-        return 0
+    if args.json_out or args.format == "json":
+        payload = json.dumps(result, indent=2, sort_keys=True)
+        if args.json_out:
+            out_path = Path(args.json_out)
+            try:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(payload, encoding="utf-8")
+            except OSError as exc:
+                print(
+                    f"ERROR: cannot write --json-out {args.json_out}: {exc}; "
+                    "the result follows on stdout",
+                    file=sys.stderr,
+                )
+                print(payload)
+                return 1
+        if args.format == "json":
+            print(payload)
+            return 0
 
     flagged = [a for a in audits if a.get("invisible")]
     if args.closed:

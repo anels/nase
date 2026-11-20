@@ -742,6 +742,9 @@ required = {
         "Build the options from eligible states only",
         "Recompute state eligibility",
         "`REQUEST_CHANGES` is the only submission state",
+        "still continue into Step 8 with `comments: []`",
+        "**Cannot-approve conditions (any number of drafts):**",
+        "exactly one sentence in every state",
     ],
 }
 
@@ -906,6 +909,7 @@ required = {
         "What never earns a comment",
         "Repos that mandate documentation",
         "When a reviewer asks for a comment",
+        "Comment density as a design signal",
     ],
     ".claude/docs/fsd-implementation-loop.md": [
         ".claude/docs/code-comment-policy.md",

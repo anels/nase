@@ -6,6 +6,7 @@
 - What earns a comment
 - What never earns a comment
 - Shape, when one is warranted
+- Comment density as a design signal
 - Existing comments
 - Repos that mandate documentation
 - When a reviewer asks for a comment
@@ -88,6 +89,13 @@ After - drops everything the code already shows and keeps the anchored reason:
 ```
 // Upstream feed emits null rows during partial ingestion (PROJ-4412).
 ```
+
+## Comment density as a design signal
+
+Code that needs many comments to be understood is a design problem, not a documentation gap.
+Report it against the code: rename, extract, or restructure until the code reads on its own.
+Do not fix it by adding comments, and do not hide it by trimming them. A reviewer, or the
+`/nase:fsd` Phase 6.4 `comment_quality` lens, records it as a code finding, not a comment nit.
 
 ## Existing comments
 

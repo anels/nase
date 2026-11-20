@@ -117,7 +117,7 @@ Get configured build, lint, typecheck, and test commands from KB or `CLAUDE.md`.
 
 After all gates pass, apply the Step 2.6 test-presence soft gate against the merge-base diff. Skip it when `tdd_mode = true` because the RED gate already covers it.
 
-If `claudeRunSkills.recipes` from preflight is non-empty and this task changes runtime behavior, prefer Claude Code `/verify` as the first behavioral smoke check after local gates. Record the exact command result as preliminary evidence. If no recipe exists, or the change is docs/config-only, record why `/verify` was not applicable.
+If `claudeRunSkills.recipes` from preflight is non-empty and this task changes runtime behavior, prefer Claude Code `/verify` as the first behavioral smoke check after local gates. Record the exact command result as preliminary evidence. The binding real-run gate is Phase 6.1 Step 3, which runs after the last edit.
 
 **Dependency-bump consumer fixes:** build the full solution, including `*Tests.csproj`, and run affected suites. A single-project or Release-only build is insufficient because CI may stop before compiling test consumers.
 
@@ -160,7 +160,13 @@ This uses the same temporary-index algorithm as the final bundle and performs th
 
 ### 3. Focused behavioral evidence
 
-Run the smallest regression test for every changed user path or reported bug, plus the original reproduction or strict-TDD RED evidence when available. For a bug fix without captured RED evidence, record the smallest plausible mutation the regression test would reject. Do not delete, weaken, or rewrite an assertion merely to make an existing failing test green. Adding or strengthening tests for the real contract is allowed.
+Run the smallest regression test for every changed user path or reported bug, plus the original reproduction or strict-TDD RED evidence when available. For a bug fix without captured RED evidence, record the smallest plausible mutation the regression test would reject.
+
+**Real run (hard gate).** After the final edit, run the user path once for real. Use, in order: the `design_validation` commands when present; else the repo's `/verify` recipe (`claudeRunSkills.recipes` from preflight); else the smallest real invocation of the changed behavior. Record each command, with `exit_code` 0 and a bounded summary, as a `commands` record in the Step 6 evidence JSON. `verify-bundle.py` rejects a non-zero exit code, so a failing run cannot be recorded: fix the root cause and restart Phase 6, or stop and ask the user. For a bug fix, capture the original reproduction failing before the fix when you can (strict-TDD RED evidence counts); otherwise use the mutation check above. A change that touches no runtime behavior (docs or config only) records the check that proves the edited content, not a skipped row. Run only commands that are local or read-only: a validation command that writes to a shared or production system, or deploys, deletes, or publishes, stops the run for the user instead of running.
+
+If the path cannot be run locally (it needs credentials, a deployment, or another environment), STOP and ask the user how to proceed. Do not continue with a `not run` row. Phase 8.5 reuses this evidence instead of re-running the same commands.
+
+Do not delete, weaken, or rewrite an assertion merely to make an existing failing test green. Adding or strengthening tests for the real contract is allowed.
 
 Use scoped mutation, property, or fuzz evidence only when the target repository already configures the tool and the changed risk surface clearly fits it. Never install a new tool for FSD.
 

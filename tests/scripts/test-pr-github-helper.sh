@@ -241,6 +241,7 @@ full = {
     "body": "body text",
     "state": "OPEN",
     "isDraft": True,
+    "mergeStateStatus": "BLOCKED",
     "headRefOid": os.environ["PR_HEAD_SHA"],
     "headRefName": "feature/pr",
     "baseRefName": "main",
@@ -268,6 +269,15 @@ print(json.dumps({k: full[k] for k in fields} if fields else full))
   *"pr diff 42"*)
     echo "unknown flag" >&2
     exit 1
+    ;;
+  # gh exits 1 while a check has failed and still prints the rows, so the stub does too.
+  *"pr checks 42"*"--required"*)
+    echo '[{"name":"build","bucket":"fail","state":"FAILURE"}]'
+    exit 1
+    ;;
+  *"pr checks 42"*)
+    echo '[{"name":"build","bucket":"fail","state":"FAILURE"},{"name":"lint","bucket":"pass","state":"SUCCESS"},{"name":"codecov","bucket":"pending","state":"PENDING"}]'
+    exit 8
     ;;
   *"api user"*)
     echo "octo-dev"
@@ -328,6 +338,10 @@ assert data["reviewComments"][0]["inReplyToId"] == 500
 assert [item["id"] for item in data["reviewSubmissions"]] == [601], "empty-body approval carries nothing"
 assert data["reviewSubmissions"][0]["author"] == "lead"
 assert data["viewerLogin"] == "octo-dev"
+assert data["isDraft"] is True
+assert data["mergeStateStatus"] == "BLOCKED"
+assert data["ci"]["required"] == {"status": "fail", "total": 1, "failing": ["build"], "pending": []}, data["ci"]
+assert data["ci"]["nonRequired"] == {"status": "pending", "total": 2, "failing": [], "pending": ["codecov"]}, data["ci"]
 assert data["issueComments"][0]["author"] == "sonarcloud[bot]"
 assert data["issueComments"][0]["authorIsBot"] is True
 assert data["kbMentions"] == []
@@ -832,9 +846,10 @@ spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
-# A barrier asserts the overlap without timing: every one of the five reads must be
-# in flight before any returns, so a serial implementation deadlocks on the timeout.
-barrier = threading.Barrier(5, timeout=10)
+# A barrier asserts the overlap without timing: every one of the seven reads (five
+# GitHub reads plus the required and full `gh pr checks`) must be in flight before any
+# returns, so a serial implementation deadlocks on the timeout.
+barrier = threading.Barrier(7, timeout=10)
 metadata = {
     "number": 42,
     "title": "t",
@@ -853,6 +868,8 @@ metadata = {
 
 def fake_run_gh(args):
     barrier.wait()
+    if args[:3] == ["gh", "pr", "checks"]:
+        return "[]"
     if args[:2] == ["gh", "pr"]:
         return json.dumps(metadata)
     if args[:3] == ["gh", "api", "user"]:
@@ -867,6 +884,202 @@ assert context["reviewComments"] == []
 assert context["reviewSubmissions"] == []
 assert context["issueComments"] == []
 assert context["viewerLogin"] == "octo-dev"
+PY
+
+assert_cmd "review-context bounds its reads and the check reads by GH_MAX_PARALLEL" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import json
+import sys
+import threading
+import time
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+lock = threading.Lock()
+state = {"live": 0, "peak": 0}
+metadata = {
+    "number": 42, "title": "t", "url": "https://github.com/acme/widgets/pull/42",
+    "body": "", "state": "OPEN", "isDraft": False, "headRefOid": "deadbeef",
+    "additions": 1, "deletions": 1, "changedFiles": 1,
+    "files": [{"path": "src/a.ts", "additions": 1, "deletions": 0, "changeType": "MODIFIED"}],
+    "baseRefName": "main",
+}
+
+
+def fake_run_gh(args):
+    with lock:
+        state["live"] += 1
+        state["peak"] = max(state["peak"], state["live"])
+    time.sleep(0.05)
+    with lock:
+        state["live"] -= 1
+    if args[:3] == ["gh", "pr", "checks"]:
+        return "[]"
+    if args[:2] == ["gh", "pr"]:
+        return json.dumps(metadata)
+    if args[:3] == ["gh", "api", "user"]:
+        return "octo-dev\n"
+    return "[]"
+
+
+module.run_gh = fake_run_gh
+module.GH_MAX_PARALLEL = 3
+module.review_context(module.normalized_pr("acme", "widgets", 42), 200, 0)
+assert state["peak"] <= 3, state
+assert state["peak"] >= 2, state
+PY
+
+assert_cmd "review-context surfaces a failed metadata read without waiting for the checks" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import subprocess
+import sys
+import threading
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+release = threading.Event()
+
+
+def fake_run_gh(args):
+    if args[:3] == ["gh", "pr", "checks"]:
+        release.wait(30)
+        return "[]"
+    if args[:3] == ["gh", "pr", "view"]:
+        raise subprocess.CalledProcessError(1, args, output="", stderr="HTTP 404")
+    return "[]"
+
+
+module.run_gh = fake_run_gh
+outcome = {}
+
+
+def target():
+    try:
+        module.review_context(module.normalized_pr("acme", "widgets", 42), 200, 0)
+    except Exception as exc:
+        outcome["exc"] = exc
+
+
+worker = threading.Thread(target=target, daemon=True)
+worker.start()
+worker.join(5)
+seen = dict(outcome)
+release.set()
+worker.join(5)
+assert isinstance(seen.get("exc"), subprocess.CalledProcessError), seen
+PY
+
+assert_cmd "run_bounded surfaces a later immediate failure before an earlier slow read finishes" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+import threading
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+release = threading.Event()
+
+
+def slow():
+    release.wait(30)
+    return "slow"
+
+
+def boom():
+    raise ValueError("boom")
+
+
+outcome = {}
+
+
+def target():
+    try:
+        module.run_bounded({"slow": slow, "boom": boom})
+    except ValueError as exc:
+        outcome["exc"] = exc
+
+
+worker = threading.Thread(target=target, daemon=True)
+worker.start()
+worker.join(5)
+seen = dict(outcome)
+release.set()
+worker.join(5)
+assert isinstance(seen.get("exc"), ValueError), seen
+PY
+
+assert_cmd "the review read plan reports unknown, none, and the required split without guessing" \
+  "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import json
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+pr = module.normalized_pr("acme", "widgets", 42)
+
+assert module.gh_checks_args(pr, True)[-1] == "--required"
+assert "--required" not in module.gh_checks_args(pr, False)
+
+
+def only_checks(check_read):
+    def run(args):
+        return check_read(args) if args[:3] == ["gh", "pr", "checks"] else "[]"
+    return run
+
+
+def ci(pr):
+    return module.read_review_inputs(pr)[1]
+
+
+def fail(returncode, output="", stderr=""):
+    def run(args):
+        raise subprocess.CalledProcessError(returncode, args, output=output, stderr=stderr)
+    return only_checks(run)
+
+
+# A 403 (or any unreadable answer) is unknown for both groups, never an empty pass.
+module.run_gh = fail(1, stderr="HTTP 403: Resource not accessible")
+unknown = {"status": "unknown", "total": 0, "failing": [], "pending": []}
+assert ci(pr) == {"required": unknown, "nonRequired": unknown}, ci(pr)
+
+# gh's own "no checks" message is a real none, which differs from unknown.
+module.run_gh = fail(1, stderr="no checks reported on the 'x' branch")
+none = {"status": "none", "total": 0, "failing": [], "pending": []}
+assert ci(pr) == {"required": none, "nonRequired": none}
+
+# Checks exist but none is required: required is none, the rest are non-required.
+rows = json.dumps([{"name": "lint", "bucket": "pass", "state": "SUCCESS"}])
+
+
+def mixed(args):
+    if "--required" in args:
+        raise subprocess.CalledProcessError(1, args, output="", stderr="no required checks reported on the 'x' branch")
+    return rows
+
+
+module.run_gh = only_checks(mixed)
+result = ci(pr)
+assert result["required"]["status"] == "none", result
+assert result["nonRequired"] == {"status": "pass", "total": 1, "failing": [], "pending": []}, result
+
+# A timeout is unknown too.
+def hang(args):
+    raise subprocess.TimeoutExpired(args, 1)
+
+
+module.run_gh = only_checks(hang)
+assert ci(pr)["required"]["status"] == "unknown"
 PY
 
 assert_cmd "run_gh_all keeps a single read serial" \

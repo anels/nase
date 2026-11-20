@@ -86,11 +86,11 @@ After gathering: synthesize context internally. No user interaction - proceed di
 
 Follow the base command's interactive workflow Steps 3-5 with these adaptations:
 
-**Approach selection** - do not ask mid-pipeline. Run the Research Ladder. If a decision is still unknowable, add it to `human_input_queue`, use the most KB-aligned default assumption, and log its evidence.
+**Approach selection** - do not ask mid-pipeline. Run the Research Ladder. If a decision is still unknowable, add it to `human_input_queue`, use the most KB-aligned default assumption, and log its evidence. Infer the `### Intent` (why, done looks like, not wanted) from the request and evidence, and queue it in `human_input_queue` with the inferred text as the default so the Step 4.5 batch confirms it. Option rules follow `.claude/docs/design-principles.md` → Solution selection.
 
 **Plan gates and PR packaging** - Part B already ran at 1j against the gathered evidence; here re-check only the gates whose inputs the chosen option changed, then run Part C. Write a junior-implementable `### Implementation Plan` with per-step files, tests, done conditions, and dependency graph. Write `### PR Plan` with `Target PR count: 1` unless a Core Contract split boundary applies, using the table and `fsd-ready` rule in `.claude/docs/pr-plan-readiness.md` even for one PR. If more than one PR is proposed, run the Research Ladder against the split boundary and explain why one coherent PR is worse for review or merge safety. Then run the same ladder on each `External blockers: none` and each `Depends on: none`, and settle any file overlap between ready PRs before the doc is staged.
 
-**Recommendation** - auto-select the best evidenced option. If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
+**Recommendation** - auto-select the best evidenced option. A workaround is never auto-selected without the stated reason Solution selection requires. If the recommendation is a hybrid, define it explicitly using the Design Principles ordering.
 
 **ETA** - read `.claude/docs/eta-estimation.md` and write the ETA section from the implementation steps. The base skill scores `ETA` as a Quality criterion in every mode, so auto mode owns producing it; `--review` scores what is written here.
 

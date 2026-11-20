@@ -7,7 +7,7 @@
 - Part C: Implementation-Readiness Spec
 
 Used by `/nase:design` interactive Steps 1-6, `/nase:fsd` Phase 3.5, `design-auto-mode.md`, and `design-grill-mode.md`.
-Three parts: **A. External Research** (look outward before designing), **B. Plan-Phase Gates** (what to prove before committing to an approach), **C. Implementation-Readiness Spec** (what makes a plan junior-implementable). Apply only the parts that fit the scope - a quick-fix touches A lightly and skips most of B.
+Three parts: **A. External Research** (look outward before designing), **B. Plan-Phase Gates** (what to prove before committing to an approach), **C. Implementation-Readiness Spec** (what makes a plan junior-implementable). Apply only the parts that fit the scope - a quick-fix touches A lightly and skips most of B, except the B2 root-cause gate.
 
 The contract throughout: **execute, don't narrate. Every technical claim cites a path, URL, or command output - never memory.** A claim you cannot restate in your own words does not enter the design (comprehension gate).
 
@@ -66,7 +66,7 @@ If the work is fixing a defect: **you cannot design a fix for a bug you cannot r
 
 ### B2. Root-cause gate (bug-shaped work only)
 
-Design the fix for the **originating** cause, not the surface symptom - symptom-patching guarantees recurrence.
+Design the fix for the **originating** cause, not the surface symptom - symptom-patching guarantees recurrence. Quick fixes run this gate too, per `.claude/docs/design-principles.md` → Solution selection.
 
 - Pick the technique that fits the shape: **5 Whys** for linear causation; **Fishbone/Ishikawa** when many factors span categories (system / code / data / process / environment); **Fault Tree** for interconnected or safety-critical failures.
 - Reach a cause whose removal prevents recurrence. Look for systemic factors (missing test, weak invariant, process gap), not individual blame.
@@ -94,7 +94,7 @@ Before deciding what tests the change needs, know what exists.
 
 Upgrade plain pros/cons to a structured comparison so the choice is auditable, not gut-feel.
 
-- Options as rows; **weighted criteria** as columns (e.g. quality, simplicity/complexity, robustness, scalability, KB/pattern alignment, elegance, maintainability, performance, security, review/PR cost, risk). Weight by what matters for *this* design. **Do not add a "development cost / effort / time-to-build" column** - build cost is not a decision weight (see `/nase:design` → *What a technical decision optimizes for*). Runtime/operational/maintenance cost belongs under robustness/maintainability; review/PR cost stays as a reviewability concern.
+- Options as rows (per `.claude/docs/design-principles.md` → Solution selection); **weighted criteria** as columns (e.g. quality, simplicity/complexity, robustness, scalability, KB/pattern alignment, elegance, maintainability, performance, security, review/PR cost, risk). Weight by what matters for *this* design. **Do not add a "development cost / effort / time-to-build" column** - build cost is not a decision weight (see `/nase:design` → *What a technical decision optimizes for*). Runtime/operational/maintenance cost belongs under robustness/maintainability; review/PR cost stays as a reviewability concern.
 - Score each cell; the recommendation is the weighted result - but state it, don't hide behind the math.
 - For architecture-level choices, prefer an **ATAM-style utility tree**: turn quality goals into testable scenarios, surface risks / sensitivity points / explicit trade-offs.
 - **Spike the unknowns.** If an option hinges on a risky unknown, prototype/spike it rather than deciding on paper.
@@ -150,6 +150,6 @@ Not just an ordered list:
 
 Don't force a heavy spec on a small change:
 
-- **quick-fix** → a few lines: what, where (file:line), the one acceptance check. Skip the full template.
+- **quick-fix** → a few lines: what, where (file:line), the one acceptance check, a one-line Intent, and the options per `.claude/docs/design-principles.md` → Solution selection. Skip the full template.
 - **feature** → full template, C1–C6 applied at normal depth.
 - **initiative** → full template + sub-effort decomposition with dependency order; each sub-effort carries its own C2/C4/C6.

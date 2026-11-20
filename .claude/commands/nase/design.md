@@ -19,6 +19,7 @@ Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md
 4. Record `Target PR count`, `Reviewability`, and `Validation - how to get the real number`. Write the `### PR Plan` as the table in `.claude/docs/pr-plan-readiness.md`: each PR row with `Scope`, `Depends on`, `External blockers`, `Touches`, and a derived `fsd-ready` flag. `/nase:fsd` builds every `fsd-ready: yes` PR in parallel, so a flag that is wrong either holds back work that could start or starts work that cannot finish.
 5. Ask only questions that code, KB, docs, history, telemetry, or official sources cannot answer. Batch genuine human decisions.
 6. When the request does not say why the user wants it, ask why before proposing approaches in interactive mode. A linked Jira ticket, effort doc, or spec often states it, so read those first. Ask open-ended, with no example reasons. `--auto` queues it for the Step 4.5 batch instead, where the recommended option states the reason the design inferred from evidence.
+7. Write an `### Intent` section immediately before `### Success Criteria`, with three bullets: `Why:` (the reason for the work), `Done looks like:` (the observable end state), and `Not wanted:` (what is explicitly out). The design stays inside it. `/nase:fsd` and `/nase:address-comments` read it as `design_intent`. In interactive mode show the Intent at the approach-choice checkpoint; in `--auto` mode the inferred Intent goes into the Step 4.5 batch for confirmation. `fsd` treats `Not wanted:` as binding, so it never goes unconfirmed.
 
 ## Mode routing
 
@@ -40,8 +41,8 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 1. Resolve the repo with `.claude/docs/repo-resolution.md`. Load relevant KB, repo `CLAUDE.md`/README/docs, code paths, callers, tests, history, active efforts, and primary external sources.
 2. Prove applicable reproduction, root cause, scale/usage, coverage, rollout, and observability assumptions. Mark missing evidence as a gap that cannot support another claim.
 3. Map entry points, changed functions/types, downstream callers, tests, and operational surfaces. Do not invent paths.
-4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. Quick fixes may use two one-line options. Model routing: default to `verifier` (sonnet) for scoring and `worker` (sonnet) for traces; route to `architect` (opus) only when the decision is a cross-repo or security-shaped architecture call with no local precedent a verifier pass cannot cover (see `.claude/roles.yaml` → `architect` use_when). "This feels important" is not a trigger.
-5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
+4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. At least one option fixes the root cause at the system level. Quick fixes keep the compact format (one line per option), but an option that treats a symptom is labelled as such and defaults to rejected. Model routing: default to `verifier` (sonnet) for scoring and `worker` (sonnet) for traces; route to `architect` (opus) only when the decision is a cross-repo or security-shaped architecture call with no local precedent a verifier pass cannot cover (see `.claude/roles.yaml` → `architect` use_when). "This feels important" is not a trigger.
+5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; intent (why, done looks like, not wanted); success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
 6. Self-review up to three times against the quality criteria below, scoring each round with a **verifier** subagent (`Agent(model="sonnet", effort="medium")` with the `verifier` `prompt_prefix`, started with a fresh context window, the role `.claude/roles.yaml` assigns to draft scoring) so the pass is read-only and independent. Research fixable gaps before asking the user.
 7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Run `citation-validator.py` and `effort-state.py --evaluate-transition` against the staged content first, as `.claude/docs/design-auto-mode.md → 5a` specifies. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
 8. Optional Jira creation: read `.claude/docs/external-mutation-policy.md`, then use a fresh payload-bound token and a concrete approval immediately before the write. Skip this step, and that read, when no Jira issue is being created.
@@ -55,6 +56,8 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 - Grounding: load-bearing claims cite paths, commands, telemetry, or primary sources.
 - Scope: goals and non-goals define clear boundaries.
 - Root cause: bug designs include reproduction evidence and fix the originating cause.
+- Intent: the `### Intent` section is written (why, done looks like, not wanted) and the design stays within it.
+- System-level fix: the chosen option fixes the cause, not the symptom, per `.claude/docs/design-principles.md` → Solution selection.
 - Risk: failure, migration, rollout, security, observability, and recovery paths are addressed where applicable.
 - Elegance: few moving parts, clear ownership, existing patterns, no speculative layer.
 - Reviewability: one PR by default; justified splits include order and independent value.
@@ -66,4 +69,4 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 
 This command creates or updates the effort design. `/nase:fsd`, `/nase:prep-merge`, and `/nase:wrap-up` own later lifecycle transitions through `.claude/docs/effort-transitions.md`.
 
-Scale depth to the task: a quick fix gets a compact design; an initiative gets full decomposition. The durable artifact is the effort doc, not the chat transcript.
+Scale depth to the task: a quick fix gets a compact design with a one-line Intent; an initiative gets full decomposition. The durable artifact is the effort doc, not the chat transcript.

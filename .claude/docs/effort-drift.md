@@ -9,6 +9,7 @@ operate on is in `effort-model.md`.
 
 - Drift Auto-Sync
 - Classifier Blind Spots
+- Next actions
 - PR Reference Resolution
 
 Shared rules for `workspace/efforts/{slug}.md` and related `todo.md` entries.
@@ -175,6 +176,66 @@ symbol the PR *added* at the ring commit, because that is the only check that
 distinguishes "in history" from "in the build". Resolve merge SHAs with
 `gh pr view <n> --json mergeCommit` and never `git log --grep='(#N)'`, which matches the
 revert's own subject and cherry-pick backports.
+
+## Next actions
+
+After the Drift Auto-Sync transition, `/nase:efforts` acts on each effort in this order: close what is provably closable, validate what a read can validate, propose what can advance, then ask the user about the rest. `effort-state.py` decides; the skill carries it out.
+
+```bash
+python3 .claude/scripts/effort-pr-sweep.py --check-reverts --merge-details --json-out workspace/tmp/effort-sweep-{date}.json
+python3 .claude/scripts/effort-state.py --file workspace/efforts/{slug}.md --evaluate-transition \
+  --delivery-pr-state {live state per delivery PR} --jira-state {live Jira state} \
+  --live-json workspace/tmp/effort-sweep-{date}.json
+```
+
+`--live-json` is the sweep's JSON. `--merge-details` adds `files`, `files_truncated` and `merge_checks` to merged delivery PRs of efforts awaiting deploy, or whose every delivery PR is merged. Jira and blocker flags are the Drift Auto-Sync ones. An effort with `jira:` in its frontmatter and no live `--jira-state` (or `untracked`) is `delivery-state-unresolved`, never closable. With no `--live-json`, no delivery PR reads as merged, so nothing closes. A value of the wrong type in the file is dropped, so it fails closed too. Reuse each effort's `next_action` from this run; re-run the helper only for an effort edited since. When `--json-out` cannot be written the sweep prints the payload on stdout and exits 1, so a caller gating on the exit code must read stdout, or re-run after fixing the path.
+
+`next_action` is `{kind, reason, command, evidence, context}`, plus `edit` on `close`, `rows` (`line`, `command`, `expect`) on `validate`, and `blocking` (the count of distinct reasons blocking a close) on `ask`.
+
+| kind | meaning | who acts |
+|---|---|---|
+| `close` | tests, CI and docs only; nothing is deployed | the skill ticks the row, then applies the `completed` transition |
+| `validate` | pending post-deploy rows with a read-only command | the skill runs `rows[].command`, ticks passing rows |
+| `advance` | a PR can start or merge; `command` is the skill to run | the user, from the printed command |
+| `ask` | a candidate that is not closable or validatable; `reason` says why | the user, through the ask pass |
+| `none` | nothing to do | nobody |
+
+**Auto-close evidence rule.** All of these hold, or the kind is `ask` with the first failing reason:
+
+- stage `awaiting_deploy`; every delivery PR `MERGED`; no open delivery PR; no unresolved blocker
+- no undelivered Lifecycle row except `Deployed`; no pending `Follow-up:` or post-deploy row
+- Jira `done`, or no `jira:` in the frontmatter
+- every merge commit's `merge_checks` is `success`, meaning every check run concluded `success`, `neutral` or `skipped`, and the PR merged at least 15 minutes ago (`MERGE_CHECKS_SETTLE_SECONDS` in `effort-pr-sweep.py`: later workflows may not be queued yet, so a younger merge reads `pending` and a missing `mergedAt` reads `unknown`). `none`, `pending`, `unknown`, `failure` and any other conclusion all fail.
+- every changed path of every delivery PR, both sides of a rename, matches `NON_DEPLOYED_PATH_PATTERNS` and none matches `NON_DEPLOYED_DENY_PATTERNS` in `effort-state.py`, which own the exact patterns. In words: docs, tests and CI only; anything that ships is denied, even under a test or docs name. `.github/` is an allow-list (workflows named `ci`, `test`, `lint`, `check`, `validate`, `pr` or `verify`, optionally with one platform or suite qualifier, plus `CODEOWNERS` and issue and PR templates), so any other workflow or script is denied, and `e2e/` is not a test directory. A truncated, empty or unread file list fails.
+- an unchecked heavy suite under `## Validation` does not block the close: for a tests/CI/docs-only effort the merge commit's green checks are the evidence that stands in for it. A heavy post-deploy row still blocks (`validation-heavy-not-run`).
+- exactly one unchecked `Deployed` row, and it is the bare label, optionally with `(if applicable)`, `(n/a)` or `(optional)`. A row that carries prose may hold the real blocker (Classifier Blind Spots, point 2), so it is never auto-ticked.
+
+**Known limits.** `docs/**/*.md` and root `*.md` count as not deployed, so a repo that publishes docs or ships a README inside a package needs its `Deployed` row ticked by a human; the allow list cannot see that. An effort with any path outside the allow list never auto-closes, but docs and root markdown are inside it. A command with an env prefix (`GH_HOST=x gh ...`) is never auto-run, because env can change tool behaviour.
+
+`close` returns `edit.old` and `edit.new`. Apply it as one exact-string edit: `- [x] Deployed - n/a, tests/CI/docs only ({evidence})`. Then re-run the classifier and apply the `completed` transition and move it returns, as in the `likely-delivery` repair.
+
+**Read-only allowlist** for a post-deploy row's command. A command is the single backtick span that starts with a known tool. It runs only if it is exactly one invocation with no operator, redirect or substitution outside quotes and no control character (newline included) anywhere, and is one of:
+
+- `gh api` where every method flag (`-X V`, `-XV`, `--method V`, `--method=V`) agrees on exactly one `GET`; with no method flag, no `-f`, `-F`, `--field` or `--raw-field`. Never `--input`, a method-override header, or an endpoint that is or ends with `graphql`.
+- `gh pr|run|release view|list|checks`, without `--web` or `--watch`
+- `az monitor log-analytics query`, `az monitor app-insights query`, `az monitor metrics list`, `az monitor activity-log list`; any other `az` command refuses
+- `git grep|log|show`, optionally after `--no-pager` and `-C <path>`, and only with flags on that subcommand's positive list in `GIT_FLAG_SPECS`. An unknown flag refuses (`-O*`, `--open-files-in-pager`, `--output`, `-c`, `--exec-path`, `--config-env`).
+
+Anything else is `validation-not-readonly`. Heavy local suites, matched on the command head only (`dotnet test|build`, `npm|pnpm|yarn test|build`, `vitest`, `jest`, `pytest`, `node --test`, `cargo`, `go test`, `bash tests/`), in a post-deploy row or an unchecked row under `## Validation` are `validation-heavy-not-run` and never run here.
+
+**Validate.** Run only after `Deployed` is ticked; with `Deployed` unchecked the kind is `ask` with `deployed-needs-ring-evidence`. Each row carries `expect`, the backtick span after `expect`, `expects` or `expected` in the row, or null. A run passes only when the exit code is 0, the output is not empty (not whitespace, `[]`, `{}`, `null`, `0` or a table with no data rows), and the output contains `expect` when there is one. A passing run ticks the row and appends ` - validated {YYYY-MM-DD HH:MM}: {command} -> passed; output: {first 80 characters}`. A non-zero exit, or non-empty output that lacks `expect`, is `validation-failed`. Exit 0 with empty or zero-row output is `validation-inconclusive`. Neither is ticked.
+
+**Advance.** Parse the `### PR Plan` table from `pr-plan-readiness.md`. A row is startable when its own PR has no delivery PR, every `Depends on` PR is `MERGED` in the live read, and `External blockers` is `none`. A delivery PR maps to a plan row only when the lines that cite it name exactly one plan id (`PR2`, `PR-2`); any unmapped delivery PR turns the whole plan to `none` (`plan-prs-unattributed`) because it could be a row already opened. A prose plan has no columns and is never advanceable. Also: a `planned` effort with no PR and no blocker proposes `/nase:fsd {slug}`; `merge-ready` with an open PR proposes `/nase:prep-merge {pr_url}`.
+
+**`ask` reason codes** (closed set): `deployed-needs-ring-evidence`, `jira-not-done`, `files-outside-tests-ci-docs`, `files-unverified`, `merge-checks-failing`, `merge-checks-unknown`, `validation-not-readonly`, `validation-heavy-not-run`, `validation-failed`, `validation-inconclusive`, `undelivered-row-stale`, `delivery-state-unresolved`, `delivery-pr-not-merged`, `plan-rows-pending`, `pending-followups`, `stalled`. The helper never emits `validation-failed` or `validation-inconclusive`; the skill sets them after a run. `plan-rows-pending` is a parsed PR Plan with a row whose own PR is not merged. `stalled` is no delivery PR and an untouched doc for 14 days. When a heavy suite is owed, `validation-heavy-not-run` leads an ask over the file-evidence reasons.
+
+**Other reason codes** (closed set): `close` is `tests-ci-docs-only`; `validate` is `read-only-validation`; `advance` is `merge-ready-open-pr`, `planned-unblocked` or `plan-row-startable`; `none` is `blocked`, `no-plan-table`, `plan-prs-unattributed`, `no-startable-pr` or `deployed-checked` (Deployed is ticked and the transition decides the rest).
+
+**Ask pass.** Batching follows `skill-contract.md`. `AskUserQuestion` allows at most 4 options per question and 4 questions per call, so group asks by reason code and split each group into chunks of at most 4 efforts, one chunk per question, at most 4 questions per call. The question names the reason, the state, the evidence and what is missing, then the suggested action marked `(Recommended)`. Its options are the chunk's efforts; a selected effort gets the suggested action, an unselected one stays open. Ask about at most the top 12 items per run by the ranking below. The rest stay in the report under Needs your decision as open. `--no-ask` skips the pass and lists every ask and advance as open.
+
+**Top ranking.** The `Top:` chat line and the ask cap use one order: a close blocked by exactly one reason (`blocking` is 1), then `validation-failed` and `validation-inconclusive`, then `advance`, then every other ask. Ties break by slug.
+
+**Boundary.** The skill edits effort docs, its own report and its log line, through the workspace write guard. It never runs a Jira transition or any PR write. When the user approves one in the ask pass, the skill prints the exact command or owning skill (`/nase:prep-merge`, `/nase:fsd`, the Jira transition) for the user to run. Only a read-only command that passed the allowlist is ever executed.
 
 ## PR Reference Resolution
 

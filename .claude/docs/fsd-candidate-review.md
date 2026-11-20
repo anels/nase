@@ -66,6 +66,10 @@ Apply the full `discuss-pr` lens set: problem fit, correctness, simple-design se
 
 A conditional axis that passes proves it was looked at with one short evidence string; the three required axes and anything that is not `PASS` carry a full reason, because those are the ones a human acts on.
 
+The `simple_design` lens adds two checks. **Scope trace:** every new abstraction, parameter, file, flag, or branch must trace to a success criterion or to `design_intent`; an addition that traces to neither is a finding. **Workaround detection:** any smell listed in `.claude/docs/design-principles.md` → Solution selection is a finding, unless the change states why it is not treating a symptom.
+
+The `problem_fit` lens adds **Intent conformance** against `design_intent`: the change must serve the `Why:`, reach `Done looks like:`, and not touch anything on the `Not wanted:` list. When there is no `design_intent` (a run with no effort doc), skip this check.
+
 `findings` holds only `P0` and `P1` - things that must change before this ships. Everything else worth mentioning goes in `deferred` as a one-line string with `path:line`, carrying no severity, no repair fields, and no blocker.
 
 The `test_quality` axis is blocking. It must judge observable behavioral contracts, plausible failure power or a mutation seam, risk-appropriate positive/negative/boundary/error paths, regression fidelity, concrete assertions over values/state/side effects/absence, isolation of nondeterministic inputs, mock fidelity, retry/order/concurrency/locale/timezone determinism, and whether parameterized cases add distinct behavior. Source-text grep, incidental snapshots, test count, and line coverage cannot alone prove behavior.
