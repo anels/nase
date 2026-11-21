@@ -220,7 +220,8 @@ for agent in \
   nase-repo-state-scanner \
   nase-workspace-state-scanner \
   nase-pr-metadata-reader \
-  nase-reviewer-owner-scanner
+  nase-reviewer-owner-scanner \
+  nase-verifier
 do
   path=".claude/agents/${agent}.md"
   assert_contains "${agent} has minimal read tools" "$path" 'tools: Read, Grep, Glob'
