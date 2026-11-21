@@ -236,6 +236,30 @@ has "quoted heredoc into bash is still a script" $'bash <<\'EOF\'\ngh pr merge 1
 has "heredoc into sudo bash" $'sudo bash <<EOF\ngh pr merge 1\nEOF\n' "$MERGE"
 has "heredoc into bash after a continuation" $'bash \\\n  <<\'EOF\'\ngh pr merge 1\nEOF\n' "$MERGE"
 lacks "heredoc into python is data" $'python3 - <<\'PY\'\ngh pr merge 1\nPY\nbash -n f.sh\n' gh
+
+# --- interpreter inline code and remote/container exec ------------------------------
+# Inline code is another language, not shell: `git` inside it is invisible to the
+# parser, so a literal naming git (or a dynamic code word) fails the scan closed.
+check "python -c naming git is unparseable" "python3 -c 'import subprocess; subprocess.run([\"git\",\"reset\",\"--hard\"])'" '.unparseable == true and (.invocations | all(.argv[0] != "git"))'
+check "python -c without git stays parseable" "python3 -c 'print(1)'" '.unparseable == false'
+check "python -c mentioning digit is not git" "python3 -c 'print(\"digit\")'" '.unparseable == false'
+check "dynamic python -c is unparseable" 'python3 -c "$CODE"' '.unparseable == true'
+check "python -c after a valued option is still found" "python3 -W ignore -c 'import subprocess; subprocess.run([\"git\"])'" '.unparseable == true'
+check "python file operand is not inline code" "python3 deploy.py" '.unparseable == false'
+check "perl -e naming git is unparseable" "perl -e 'system(\"git\", \"reset\", \"--hard\")'" '.unparseable == true'
+check "ruby -e naming git is unparseable" "ruby -e 'system(\"git reset --hard\")'" '.unparseable == true'
+check "node -e naming git is unparseable" "node -e 'require(\"child_process\").execSync(\"git reset --hard\")'" '.unparseable == true'
+check "node --eval naming git is unparseable" "node --eval='console.log(\"git\")'" '.unparseable == true'
+check "php -r naming git is unparseable" "php -r 'shell_exec(\"git reset --hard\");'" '.unparseable == true'
+has "ssh tail is scanned" 'ssh localhost git push origin main' '["git","push","origin","main"]'
+has "ssh with options before the host" 'ssh -p 2222 -o StrictHostKeyChecking=no host git status' '["git","status"]'
+check "ssh with no remote command runs nothing" 'ssh localhost' '.invocations | length == 1 and .[0].argv[0] == "ssh"'
+has "docker exec tail is scanned" 'docker exec mycontainer git push origin main' '["git","push","origin","main"]'
+has "docker exec with options" 'docker exec -it -e FOO=1 mycontainer git status' '["git","status"]'
+has "docker exec with -- separator" 'docker exec mycontainer -- git status' '["git","status"]'
+has "kubectl exec tail is scanned" 'kubectl exec mypod -- git push origin main' '["git","push","origin","main"]'
+has "kubectl exec with global and exec options" 'kubectl -n prod exec -c app mypod git status' '["git","status"]'
+check "kubectl without exec is not a remote command" 'kubectl get pods' '.invocations | all(.argv[0] != "git")'
 has "command after the heredoc still runs" $'cat <<EOF\nbody\nEOF\ngh pr merge 1' "$MERGE"
 has "tab-indented heredoc terminator" $'cat <<-EOF\n\tbody\n\tEOF\ngh pr merge 1' "$MERGE"
 has "two heredocs on one line" $'cat <<A <<B\nx\nA\ny\nB\ngh pr merge 1' "$MERGE"

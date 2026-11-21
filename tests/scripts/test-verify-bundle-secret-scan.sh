@@ -146,6 +146,18 @@ class SecretScanTest(unittest.TestCase):
                     "credential-assignment",
                 )
 
+    def test_bare_camel_case_keys_are_flagged(self):
+        # Bare camelCase names end in a credential suffix only after
+        # case-insensitive comparison: `apiKey` does not end in `ApiKey`.
+        # `clientSecret` was already caught by the generic `Secret` suffix
+        # and stays flagged; all-lowercase `apikey` is caught too.
+        for key in (b"apiKey", b"accessToken", b"refreshToken", b"clientSecret", b"apikey"):
+            with self.subTest(key=key):
+                self.assertEqual(
+                    module.secret_kind(key + b'="production-canary-4831"'),
+                    "credential-assignment",
+                )
+
     def test_arbitrary_calls_do_not_hide_hardcoded_values(self):
         for value in (b'evil("literal")', b'SecretStr("hardcoded-secret")', b'str("hardcoded-secret")'):
             with self.subTest(value=value):

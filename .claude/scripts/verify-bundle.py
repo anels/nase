@@ -447,7 +447,11 @@ def is_credential_name(value: bytes) -> bool:
         for name in SNAKE_CREDENTIAL_NAMES
     ):
         return True
-    return any(value.endswith(suffix) for suffix in CAMEL_CREDENTIAL_SUFFIXES)
+    # The suffix comparison is case-insensitive: a bare camelCase name such as
+    # `apiKey` ends in `ApiKey` only after lowering, and the most common
+    # JS/JSON key shapes are exactly these bare forms. (`clientSecret` was
+    # already caught by the generic `Secret` suffix; the lowering keeps it so.)
+    return any(value.lower().endswith(suffix.lower()) for suffix in CAMEL_CREDENTIAL_SUFFIXES)
 
 
 def assigned_value(matched: bytes) -> bytes | None:
