@@ -1240,6 +1240,36 @@ assert rc == module.READ_FAILED_EXIT == 3, rc
 assert "read failed" in captured.getvalue(), captured.getvalue()
 PY
 
+assert_cmd "a null pullRequest is a clean read failure, not a traceback" \
+  env "PATH=$TMPDIR_TEST/failbin:$PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import io
+import json
+import sys
+from contextlib import redirect_stderr
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+# GitHub answers `pullRequest: null` for a deleted or never-existing PR.
+# That used to raise AttributeError inside fetch_review_threads, which
+# main() does not catch, so the run died with a traceback and exit 1.
+# A missing repository is the same shape one level up (KeyError).
+for payload in (
+    {"data": {"repository": {"pullRequest": None}}},
+    {"data": {"repository": None}},
+    {"data": {}},
+):
+    module.run_gh = lambda args, payload=payload: json.dumps(payload)
+    captured = io.StringIO()
+    with redirect_stderr(captured):
+        rc = module.main(["review-threads", "acme/widgets#42"])
+    assert rc == module.READ_FAILED_EXIT == 3, (payload, rc)
+    assert "read failed" in captured.getvalue(), captured.getvalue()
+    assert "Traceback" not in captured.getvalue(), captured.getvalue()
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\npr-github-helper tests passed.\n'
   exit 0
