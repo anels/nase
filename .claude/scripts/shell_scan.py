@@ -61,6 +61,9 @@ SCRIPT_VIAS = frozenset(
         "trap",
         "pipe-to-shell",
         "here-string",
+        "ssh",
+        "docker-exec",
+        "kubectl-exec",
     }
 )
 
@@ -75,6 +78,115 @@ _GIT_VALUE_OPTIONS = frozenset(
     {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix",
      "--attr-source", "--config-env"}
 )
+# A bare word `git` inside an interpreter's inline code. Word boundaries matter:
+# `digit` must not match, or every `print("digit")` would fail the scan closed.
+_GIT_WORD_RE = re.compile(r"\bgit\b")
+# Short options of `ssh` that take a value (`-p 2222`, `-p2222`, `-o StrictHostKeyChecking=no`).
+_SSH_VALUE_SHORTS = frozenset(
+    {"b", "B", "c", "D", "e", "E", "F", "i", "I", "J", "l", "L", "m", "o", "O", "p", "Q", "R", "S", "W", "w"}
+)
+# Long options of `kubectl` that take a value when they appear before the subcommand.
+_KUBECTL_GLOBAL_VALUE_LONGS = frozenset(
+    {
+        "--as", "--as-group", "--as-uid", "--cache-dir", "--certificate-authority",
+        "--client-certificate", "--client-key", "--cluster", "--context", "--kubeconfig",
+        "--log-backtrace-at", "--log-dir", "--log-file", "--log-file-max-size",
+        "--log-flush-frequency", "--namespace", "--output", "--password", "--request-timeout",
+        "--selector", "--server", "--stderrthreshold", "--tls-server-name", "--token",
+        "--user", "--username", "--vmodule",
+    }
+)
+# Options of `kubectl exec` itself that take a value, before or after the pod.
+_KUBECTL_EXEC_VALUE_SHORTS = frozenset({"c", "n", "v"})
+_KUBECTL_EXEC_VALUE_LONGS = frozenset(
+    {
+        "--container", "--namespace", "--pod-running-timeout", "--request-timeout",
+        "--kubeconfig", "--context", "--as", "--as-group", "--as-uid",
+    }
+)
+
+
+def _interpreter_spec(
+    name: str,
+) -> tuple[tuple[str, ...], frozenset[str], frozenset[str], bool] | None:
+    """Inline-code flags for a script interpreter, or None for other programs.
+
+    Returns (code flags, value options, stop options, positional code): a code
+    flag's value is itself a program written in the interpreter's language; a
+    value option consumes the next word (`-W ignore`); a stop option ends
+    inline-code parsing (`-m` runs a module, so everything after it belongs to
+    the module, not the interpreter); positional code means the program text is
+    the first positional word (`awk 'BEGIN {...}'`), not a flag value.
+    """
+    base = name.lower()
+    if (
+        base in ("python", "python2", "python3", "pypy", "pypy3")
+        or re.fullmatch(r"python\d+(\.\d+)?", base)
+        or re.fullmatch(r"pypy\d+", base)
+    ):
+        return (("-c",), frozenset({"-W", "-X"}), frozenset({"-m"}), False)
+    if base == "perl":
+        return (("-e", "-E"), frozenset({"-M", "-I"}), frozenset(), False)
+    if base == "ruby" or re.fullmatch(r"ruby\d+(\.\d+)?", base):
+        return (("-e",), frozenset({"-r", "-I"}), frozenset(), False)
+    if base in ("node", "nodejs"):
+        return (
+            ("-e", "-p", "--eval", "--print"),
+            frozenset({"-r", "--require", "--input-type"}),
+            frozenset(),
+            False,
+        )
+    if base == "php" or re.fullmatch(r"php\d+", base):
+        return (("-r", "-B", "-R", "-E"), frozenset({"-d"}), frozenset({"-f"}), False)
+    if base == "osascript":
+        return (("-e",), frozenset({"-l", "-s"}), frozenset(), False)
+    if base == "expect":
+        return (("-c",), frozenset(), frozenset({"-f"}), False)
+    if base == "julia":
+        return (
+            ("-e", "-E", "--eval", "--print"),
+            frozenset({"-L", "--project", "--sysimage", "--machine-file"}),
+            frozenset(),
+            False,
+        )
+    if base in ("rscript", "r"):
+        return (("-e",), frozenset({"--default-packages"}), frozenset(), False)
+    if base in ("awk", "gawk", "mawk", "nawk"):
+        return ((), frozenset({"-F", "-v", "-W"}), frozenset({"-f"}), True)
+    return None
+
+
+def _skip_option_words(
+    args: list[str],
+    index: int,
+    valued_shorts: frozenset[str],
+    valued_longs: frozenset[str],
+) -> int:
+    """Return the index of the first non-option word at or after `index`.
+
+    A valued short option consumes its attached value or the next word
+    (`-p2222`, `-p 2222`); a valued long option consumes its `=value` or the
+    next word (`--env=A`, `--env A`). `--` ends option parsing."""
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            return index + 1
+        if not arg.startswith("-") or arg == "-":
+            return index
+        if arg.startswith("--"):
+            name, sep, _ = arg.partition("=")
+            # `--opt=` carries an (empty) value after `=`, so only consume the
+            # next word when there is no `=` at all and the option takes one.
+            index += 1 if sep or name not in valued_longs else 2
+            continue
+        chars = arg[1:]
+        takes_next = False
+        for pos, char in enumerate(chars):
+            if char in valued_shorts:
+                takes_next = pos == len(chars) - 1
+                break
+        index += 2 if takes_next else 1
+    return index
 _CLOSE_KEYWORDS = frozenset({"}", "done", "fi"})
 _CASE_STOPS = frozenset({";;", ";&", ";;&", "esac"})
 _SPECIAL_PARAMS = "@*#?-$!0123456789"
@@ -1614,6 +1726,18 @@ class _Parser:
                 elif arg.startswith("--command="):
                     self._nested(arg.partition("=")[2], "su-c")
             return
+        if _interpreter_spec(name) is not None:
+            self._after_interpreter(inv)
+            return
+        if name == "ssh":
+            self._after_ssh(inv)
+            return
+        if name == "docker":
+            self._after_docker_exec(inv)
+            return
+        if name == "kubectl":
+            self._after_kubectl_exec(inv)
+            return
         if name == "git":
             self._after_git(args)
             return
@@ -1640,6 +1764,156 @@ class _Parser:
             for arg in args:
                 self.ctx.vars.pop(arg, None)
                 self.ctx.env.pop(arg, None)
+
+    def _after_interpreter(self, inv: Invocation) -> None:
+        """Judge an interpreter's inline code. The code is another language, not
+        shell, so a `git` call inside it is invisible to the shell parser:
+        `subprocess.run(["git", "reset", "--hard"])` parses as one opaque word.
+        A literal code word naming git as a word, or a dynamic code word the
+        scanner cannot see, therefore fails the scan closed; the git hook blocks
+        unparseable input that names git. A file operand (`python3 script.py`)
+        and heredoc/stdin input stay opaque by design. Known gaps: encoded
+        payloads (e.g. base64) carry no `git` literal; `sqlite3` dot-commands
+        (`.shell git ...` inside the SQL argument) are not parsed; `docker run`
+        and `kubectl run` execute arbitrary commands with no `exec` involved."""
+        spec = _interpreter_spec(inv.name)
+        if spec is None:
+            return
+        flags, valued, stop, positional_code = spec
+        valued_shorts = {opt[1] for opt in valued if len(opt) == 2 and opt.startswith("-")}
+        args = inv.argv[1:]
+        code: str | None = None
+        code_dyn = False
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg == "--":
+                if positional_code and index + 1 < len(args):
+                    # The word after `--` is the program text, not an option.
+                    code = args[index + 1]
+                    code_dyn = inv.dyn[index + 2]
+                break
+            if arg in stop:
+                return
+            if not arg.startswith("-") or arg == "-":
+                if positional_code:
+                    # The first positional word is the program text (`awk '...'`).
+                    code = arg
+                    code_dyn = inv.dyn[index + 1]
+                    break
+                return  # first positional word is the script file (or stdin)
+            if arg in valued:
+                index += 2
+                continue
+            if arg in flags:
+                if index + 1 >= len(args):
+                    return
+                code = args[index + 1]
+                code_dyn = inv.dyn[index + 2]
+                break
+            if arg.startswith("--"):
+                name, _, value = arg.partition("=")
+                if name in flags:
+                    code = value
+                    code_dyn = inv.dyn[index + 1]
+                    break
+                index += 1
+                continue
+            # A valued short option with its value attached (`-Wignore`, `-Mfoo`).
+            if len(arg) > 2 and arg[1] in valued_shorts:
+                index += 1
+                continue
+            short = [flag for flag in flags if len(flag) == 2]
+            attached = next(
+                (
+                    flag
+                    for flag in short
+                    if arg.startswith(flag) and len(arg) > len(flag) and arg[len(flag)] != "-"
+                ),
+                None,
+            )
+            if attached is not None:
+                code = arg[len(attached) :]
+                code_dyn = inv.dyn[index + 1]
+                break
+            bundled = next(
+                (
+                    flag
+                    for flag in short
+                    if re.fullmatch(r"-[A-Za-z]*" + re.escape(flag[1]) + r"$", arg)
+                ),
+                None,
+            )
+            if bundled is not None:
+                if index + 1 >= len(args):
+                    return
+                code = args[index + 1]
+                code_dyn = inv.dyn[index + 2]
+                break
+            index += 1
+        if code is None:
+            return
+        if code_dyn or _GIT_WORD_RE.search(code):
+            self._fail()
+
+    def _after_ssh(self, inv: Invocation) -> None:
+        """The words after the host are a remote shell command: scan them."""
+        args = inv.argv[1:]
+        index = _skip_option_words(args, 0, _SSH_VALUE_SHORTS, frozenset())
+        if index >= len(args):
+            return
+        index += 1  # host
+        if index < len(args) and args[index] == "--":
+            index += 1
+        if index < len(args):
+            self._nested(" ".join(args[index:]), "ssh")
+
+    def _after_docker_exec(self, inv: Invocation) -> None:
+        """`docker [global opts] [container] exec [opts] <container> <command>`: scan the command."""
+        args = inv.argv[1:]
+        index = _skip_option_words(
+            args, 0, frozenset({"c", "H", "l"}),
+            frozenset({"--config", "--context", "--host", "--log-level", "--tlskey", "--tlscacert", "--tlscert"}),
+        )
+        if index < len(args) and args[index] == "container":
+            index += 1
+        if index >= len(args) or args[index] != "exec":
+            return
+        index = _skip_option_words(
+            args, index + 1, frozenset({"e", "u", "w"}),
+            frozenset({"--env", "--env-file", "--user", "--workdir", "--detach-keys", "--gpus", "--isolation"}),
+        )
+        if index >= len(args):
+            return
+        index += 1  # container
+        if index < len(args) and args[index] == "--":
+            index += 1
+        if index < len(args):
+            self._nested(" ".join(args[index:]), "docker-exec")
+
+    def _after_kubectl_exec(self, inv: Invocation) -> None:
+        """`kubectl [global opts] exec [opts] <pod> [opts] [--] <command>`: scan the command.
+
+        Cobra accepts flags interspersed after positional args, so options may
+        also appear after the pod (`kubectl exec mypod -c app -- git push`).
+        """
+        args = inv.argv[1:]
+        index = _skip_option_words(
+            args, 0, frozenset({"l", "n", "o", "s", "v"}), _KUBECTL_GLOBAL_VALUE_LONGS
+        )
+        if index >= len(args) or args[index] != "exec":
+            return
+        index = _skip_option_words(
+            args, index + 1, _KUBECTL_EXEC_VALUE_SHORTS, _KUBECTL_EXEC_VALUE_LONGS
+        )
+        if index >= len(args):
+            return
+        index += 1  # pod
+        index = _skip_option_words(
+            args, index, _KUBECTL_EXEC_VALUE_SHORTS, _KUBECTL_EXEC_VALUE_LONGS
+        )
+        if index < len(args):
+            self._nested(" ".join(args[index:]), "kubectl-exec")
 
     def _git_alias(self, config: str) -> None:
         key, _, value = config.partition("=")

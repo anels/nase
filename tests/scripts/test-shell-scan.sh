@@ -236,6 +236,54 @@ has "quoted heredoc into bash is still a script" $'bash <<\'EOF\'\ngh pr merge 1
 has "heredoc into sudo bash" $'sudo bash <<EOF\ngh pr merge 1\nEOF\n' "$MERGE"
 has "heredoc into bash after a continuation" $'bash \\\n  <<\'EOF\'\ngh pr merge 1\nEOF\n' "$MERGE"
 lacks "heredoc into python is data" $'python3 - <<\'PY\'\ngh pr merge 1\nPY\nbash -n f.sh\n' gh
+
+# --- interpreter inline code and remote/container exec ------------------------------
+# Inline code is another language, not shell: `git` inside it is invisible to the
+# parser, so a literal naming git (or a dynamic code word) fails the scan closed.
+check "python -c naming git is unparseable" "python3 -c 'import subprocess; subprocess.run([\"git\",\"reset\",\"--hard\"])'" '.unparseable == true and (.invocations | all(.argv[0] != "git"))'
+check "python -c without git stays parseable" "python3 -c 'print(1)'" '.unparseable == false'
+check "python -c mentioning digit is not git" "python3 -c 'print(\"digit\")'" '.unparseable == false'
+check "dynamic python -c is unparseable" 'python3 -c "$CODE"' '.unparseable == true'
+check "python -c after a valued option is still found" "python3 -W ignore -c 'import subprocess; subprocess.run([\"git\"])'" '.unparseable == true'
+check "python file operand is not inline code" "python3 deploy.py" '.unparseable == false'
+check "perl -e naming git is unparseable" "perl -e 'system(\"git\", \"reset\", \"--hard\")'" '.unparseable == true'
+check "ruby -e naming git is unparseable" "ruby -e 'system(\"git reset --hard\")'" '.unparseable == true'
+check "node -e naming git is unparseable" "node -e 'require(\"child_process\").execSync(\"git reset --hard\")'" '.unparseable == true'
+check "node --eval naming git is unparseable" "node --eval='console.log(\"git\")'" '.unparseable == true'
+check "php -r naming git is unparseable" "php -r 'shell_exec(\"git reset --hard\");'" '.unparseable == true'
+has "ssh tail is scanned" 'ssh localhost git push origin main' '["git","push","origin","main"]'
+has "ssh with options before the host" 'ssh -p 2222 -o StrictHostKeyChecking=no host git status' '["git","status"]'
+check "ssh with no remote command runs nothing" 'ssh localhost' '.invocations | length == 1 and .[0].argv[0] == "ssh"'
+has "docker exec tail is scanned" 'docker exec mycontainer git push origin main' '["git","push","origin","main"]'
+has "docker exec with options" 'docker exec -it -e FOO=1 mycontainer git status' '["git","status"]'
+has "docker exec with -- separator" 'docker exec mycontainer -- git status' '["git","status"]'
+has "kubectl exec tail is scanned" 'kubectl exec mypod -- git push origin main' '["git","push","origin","main"]'
+has "kubectl exec with global and exec options" 'kubectl -n prod exec -c app mypod git status' '["git","status"]'
+check "kubectl without exec is not a remote command" 'kubectl get pods' '.invocations | all(.argv[0] != "git")'
+
+# --- review follow-ups on PR #159 -----------------------------------------------------
+# ssh short options that take a value: the option's value must not be read as the host.
+has "ssh -L valued option" 'ssh -L 8080:localhost:80 host git push origin main' '["git","push","origin","main"]'
+has "ssh -O valued option" 'ssh -O forward host git push origin main' '["git","push","origin","main"]'
+has "ssh -E valued option" 'ssh -E /tmp/sshlog host git push origin main' '["git","push","origin","main"]'
+has "ssh -B valued option" 'ssh -B eth0 host git push origin main' '["git","push","origin","main"]'
+# Cobra accepts flags interspersed after positional args, including after the pod.
+has "kubectl exec flags after pod" 'kubectl exec mypod -c app -- git push' '["git","push"]'
+has "kubectl exec flags after pod without --" 'kubectl exec mypod -c app git push' '["git","push"]'
+has "kubectl --vmodule global option" 'kubectl --vmodule pod=4 exec mypod -- git push' '["git","push"]'
+has "kubectl --log-flush-frequency global option" 'kubectl --log-flush-frequency 5s exec mypod -- git push' '["git","push"]'
+has "docker container exec" 'docker container exec myc git reset --hard' '["git","reset","--hard"]'
+# `--opt=` carries an (empty) value after `=`, so the next word is not its value.
+has "docker exec --env= empty value" 'docker exec --env= myc git status' '["git","status"]'
+has "kubectl exec --kubeconfig= empty value" 'kubectl exec --kubeconfig= pod -- git push' '["git","push"]'
+# More interpreters whose argument is code, same H2 class as python3 -c.
+check "awk program naming git is unparseable" "awk 'BEGIN{system(\"git reset --hard\")}'" '.unparseable == true'
+check "awk -f file stays parseable" "awk -f prog.awk" '.unparseable == false'
+check "osascript -e naming git is unparseable" "osascript -e 'do shell script \"git push origin main\"'" '.unparseable == true'
+check "expect -c naming git is unparseable" "expect -c 'spawn git reset --hard'" '.unparseable == true'
+check "node --print naming git is unparseable" "node --print 'require(\"child_process\").execSync(\"git status\")'" '.unparseable == true'
+check "julia -e naming git is unparseable" "julia -e 'println(\"git\")'" '.unparseable == true'
+check "Rscript -e naming git is unparseable" "Rscript -e 'system(\"git reset --hard\")'" '.unparseable == true'
 has "command after the heredoc still runs" $'cat <<EOF\nbody\nEOF\ngh pr merge 1' "$MERGE"
 has "tab-indented heredoc terminator" $'cat <<-EOF\n\tbody\n\tEOF\ngh pr merge 1' "$MERGE"
 has "two heredocs on one line" $'cat <<A <<B\nx\nA\ny\nB\ngh pr merge 1' "$MERGE"
