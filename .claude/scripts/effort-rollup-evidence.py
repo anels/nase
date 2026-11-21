@@ -99,7 +99,9 @@ def parse_time(value: str) -> datetime:
     # one entry point covers all seven call sites: ValueError is caught by
     # the callers that validate input and by main() otherwise.
     if not isinstance(value, str):
-        raise ValueError(f"timestamp must be a string, got {type(value).__name__}")
+        raise ValueError(  # noqa: TRY004
+            f"timestamp must be a string, got {type(value).__name__}"
+        )
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 

@@ -1344,7 +1344,7 @@ def fetch_review_threads(pr: dict[str, Any]) -> dict[str, Any]:
             # A deleted or never-existing PR answers `pullRequest: null`; that
             # is a failed read, not a crash: main() turns RuntimeError into
             # READ_FAILED_EXIT.
-            raise RuntimeError(
+            raise RuntimeError(  # noqa: TRY004
                 "could not fetch review threads for "
                 f"{pr.get('owner')}/{pr.get('repo')}#{pr.get('number')}: "
                 "GitHub returned no pull request"

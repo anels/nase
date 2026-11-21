@@ -19,7 +19,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import nase_git
 from nase_json import canonical_bytes
 
-THEATER_PHRASE_RE = re.compile(r"grep|coverage|snapshot|test counts?", re.IGNORECASE)
+# "test count" is a two-word phrase, so it must also match when the words are
+# joined by an underscore or hyphen (`test_count`, `test-count`); the single
+# words (`grep`, `coverage`, `snapshot`) already match as substrings.
+THEATER_PHRASE_RE = re.compile(r"grep|coverage|snapshot|test[ _-]counts?", re.IGNORECASE)
 PATH_SUFFIX_RE = re.compile(r"\.\w+(?::\d+)*$")
 
 
