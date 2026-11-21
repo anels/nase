@@ -1613,6 +1613,57 @@ else
 fi
 reset_token_state
 
+# --- a claim waits for the authorize lock --------------------------------------
+# claim_token's rename must hold the same lock cmd_authorize uses for its
+# "already active" check. While a third party holds that lock, an executor
+# must not claim the token: the token stays at its path and no
+# `.executing-*` claim appears until the lock is released.
+reset_token_state
+manifest=$(prepare_action)
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+rm -f "$TMPDIR_TEST/m9-lock-held"
+python3 - "$TOKEN" "$TMPDIR_TEST/m9-lock-held" <<'PY' &
+import fcntl
+import sys
+import time
+
+token, signal = sys.argv[1:]
+with open(f"{token}.lock", "a") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    with open(signal, "w") as fh:
+        fh.write("held")
+    time.sleep(8)
+PY
+m9_holder=$!
+for _ in $(seq 1 50); do
+  [[ -f "$TMPDIR_TEST/m9-lock-held" ]] && break
+  sleep 0.1
+done
+set +e
+NASE_FAKE_OUTPUT="$TMPDIR_TEST/gh-m9-args" PATH="$TMPDIR_TEST/bin:$PATH" \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest" \
+  --timeout-seconds 5 > "$TMPDIR_TEST/m9.out" 2> "$TMPDIR_TEST/m9.err" &
+m9_execute=$!
+m9_claimed=0
+for _ in $(seq 1 40); do
+  if [[ ! -f "$TOKEN" ]] || ls "$TOKEN".executing-* >/dev/null 2>&1; then
+    m9_claimed=1
+    break
+  fi
+  sleep 0.1
+done
+kill "$m9_holder" 2>/dev/null
+wait "$m9_execute"
+m9_rc=$?
+set -e
+if [[ "$m9_claimed" -eq 0 && "$m9_rc" -eq 0 && -f "$TMPDIR_TEST/gh-m9-args" ]]; then
+  report 0 "claim_token waits for the authorize lock before claiming"
+else
+  report 1 "claim_token waits for the authorize lock before claiming" \
+    "claimed_while_locked=$m9_claimed rc=$m9_rc $(cat "$TMPDIR_TEST/m9.err" 2>/dev/null)"
+fi
+reset_token_state
+
 LEDGER="$TMPDIR_TEST/workspace/logs/.external-writes.jsonl"
 reset_ledger_state() {
   rm -rf "$LEDGER" "$LEDGER.lock" "$TMPDIR_TEST/workspace/tmp/external-actions"
