@@ -1062,6 +1062,13 @@ def gh_api_methods(args: list[str]) -> list[str]:
 
 
 def gh_api_is_read_only(args: list[str]) -> bool:
+    # A token starting with `$` is a bare expansion whose value the classifier
+    # cannot see: it could expand into a method flag (`-X POST`) or a different
+    # endpoint, so `gh api $X` must never certify as a read. Tokens with `$`
+    # embedded after literal text (e.g. `repos/$OWNER/$REPO`) keep their
+    # literal anchors and stay allowed.
+    if any(t.startswith("$") for t in args):
+        return False
     if any(GH_BUNDLED_SHORT_RE.match(t) for t in args):
         return False
     flags = {t.partition("=")[0] if t.startswith("--") else t[:2] for t in args}
@@ -1077,6 +1084,11 @@ def gh_api_is_read_only(args: list[str]) -> bool:
 
 
 def gh_is_read_only(args: list[str]) -> bool:
+    # Same bare-expansion rule as `gh_api_is_read_only`: a token starting
+    # with `$` (e.g. `gh pr view $N`) could expand into `--web` or another
+    # write-shaped argument the classifier cannot see.
+    if any(t.startswith("$") for t in args):
+        return False
     if args[:1] == ["api"]:
         return gh_api_is_read_only(args[1:])
     if len(args) > 1 and args[0] in {"pr", "run", "release"}:
