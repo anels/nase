@@ -93,6 +93,13 @@ def secret_kind(data: bytes) -> str | None:
 
 
 def parse_time(value: str) -> datetime:
+    # A non-string timestamp (a hand-edited or external bundle can hold any
+    # JSON shape) used to raise AttributeError here, which main() does not
+    # catch, so validate crashed with a traceback. Checking the type at this
+    # one entry point covers all seven call sites: ValueError is caught by
+    # the callers that validate input and by main() otherwise.
+    if not isinstance(value, str):
+        raise ValueError(f"timestamp must be a string, got {type(value).__name__}")
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 

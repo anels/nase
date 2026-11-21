@@ -738,6 +738,32 @@ assert sorted(outcomes) == sorted(plan)
 assert outcomes["example/service#2"].data == {"number": 2}
 PY
 
+assert_cmd "non-string timestamps are a clean ValueError, not a traceback" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("effort_rollup_evidence", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+# A non-string timestamp used to raise AttributeError inside parse_time, which
+# main() does not catch, so validate crashed with a traceback. The type check
+# at parse_time's entry turns every bad shape into ValueError, which main()
+# reports as a clean ERROR with exit code 2.
+for bad in (None, 123, 1.5, True, {"at": "2026-08-01"}, ["2026-08-01"]):
+    try:
+        module.parse_time(bad)
+    except ValueError:
+        pass
+    except AttributeError:
+        raise AssertionError(f"parse_time({bad!r}) raised AttributeError")
+    else:
+        raise AssertionError(f"parse_time({bad!r}) did not raise")
+assert module.parse_time("2026-08-01T00:00:00Z").isoformat() == "2026-08-01T00:00:00+00:00"
+assert module.parse_time("2026-08-01T12:00:00+00:00").isoformat() == "2026-08-01T12:00:00+00:00"
+PY
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\neffort-rollup-evidence tests passed.\n'
   exit 0
