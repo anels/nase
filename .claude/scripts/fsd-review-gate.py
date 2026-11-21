@@ -19,22 +19,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import nase_git
 from nase_json import canonical_bytes
 
-THEATER_PHRASE_RE = re.compile(r"grep|coverage|snapshot|test counts?", re.IGNORECASE)
+# "test count" is a two-word phrase, so it must also match when the words are
+# joined by an underscore or hyphen (`test_count`, `test-count`); the single
+# words (`grep`, `coverage`, `snapshot`) already match as substrings.
+THEATER_PHRASE_RE = re.compile(r"grep|coverage|snapshot|test[ _-]counts?", re.IGNORECASE)
 PATH_SUFFIX_RE = re.compile(r"\.\w+(?::\d+)*$")
 
 
 def _is_path_or_identifier(word: str) -> bool:
-    if "_" in word or PATH_SUFFIX_RE.search(word):
-        return True
-    return word.endswith("/") or word.startswith(("/", "./", "../")) or word.count("/") >= 2
+    # A bare snake_case word is prose, not an identifier: `line_coverage 95%`
+    # names the same weak evidence as `line coverage`. A word counts as a path
+    # or identifier only when it has path features, e.g.
+    # `tests/test_coverage_report.py:40`. (Normalizing underscores to spaces
+    # instead would false-positive on exactly that path.)
+    return bool(
+        PATH_SUFFIX_RE.search(word)
+        or word.endswith("/")
+        or word.startswith(("/", "./", "../"))
+        or word.count("/") >= 2
+    )
 
 
 def is_theater_evidence(entry: str) -> bool:
-    """True when the entry names a weak-evidence phrase outside a path or identifier.
+    """True when the entry names a weak-evidence phrase outside a path.
 
-    Paths (`tests/test_coverage_report.py:40`, `coverage/index.html`) and snake_case
-    identifiers are dropped first. Everything else is searched as plain text, so
-    `line-coverage 95%`, `grep-based check` and `grep/rg of assertions` still count as weak.
+    Paths (`tests/test_coverage_report.py:40`, `coverage/index.html`) are
+    dropped first. A bare snake_case word is prose, not a path, so
+    `line_coverage 95%` still counts. Everything else is searched as plain
+    text, so `line-coverage 95%`, `grep-based check` and `grep/rg of
+    assertions` still count as weak.
     """
     words = [word for word in entry.split() if not _is_path_or_identifier(word)]
     return bool(THEATER_PHRASE_RE.search(" ".join(words)))

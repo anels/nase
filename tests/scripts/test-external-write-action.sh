@@ -1135,6 +1135,11 @@ expect_guard_rc "terraform state rm stays blocked" 10 "terraform state rm aws_x.
 expect_guard_rc "terraform init -migrate-state is a mutation" 10 "terraform init -migrate-state"
 expect_guard_rc "terraform apply is still guarded" 10 "terraform apply"
 expect_guard_rc "terraform -chdir apply is still guarded" 10 "terraform -chdir=infra apply -auto-approve"
+expect_guard_rc "terraform -chdir with a separate value still finds apply" 10 "terraform -chdir plan apply"
+expect_guard_rc "terraform -chdir with a separate value still finds plan" 0 "terraform -chdir infra plan"
+expect_guard_rc "terraform --chdir with a separate value still finds plan" 0 "terraform --chdir infra plan"
+expect_guard_rc "terraform -chdir with a separate value still finds destroy" 10 "terraform -chdir infra destroy"
+expect_guard_rc "terraform with an unknown global option fails closed" 10 "terraform -bogus plan"
 expect_guard_rc "terraform destroy is still guarded" 10 "terraform destroy"
 expect_rc "terraform apply can be prepared" 0 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system terraform --summary "apply" -- \
@@ -1612,6 +1617,77 @@ else
   report 1 "of 16 synchronized authorizes with no prior token exactly one wins" "$race_detail"
 fi
 reset_token_state
+
+# --- a claim waits for the authorize lock --------------------------------------
+# claim_token's rename must hold the same lock cmd_authorize uses for its
+# "already active" check. While a third party holds that lock, an executor
+# must not claim the token: the token stays at its path and no
+# `.executing-*` claim appears until the lock is released.
+reset_token_state
+manifest=$(prepare_action)
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
+rm -f "$TMPDIR_TEST/m9-lock-held"
+python3 - "$TOKEN" "$TMPDIR_TEST/m9-lock-held" <<'PY' &
+import fcntl
+import sys
+import time
+
+token, signal = sys.argv[1:]
+with open(f"{token}.lock", "a") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    with open(signal, "w") as fh:
+        fh.write("held")
+    time.sleep(8)
+PY
+m9_holder=$!
+for _ in $(seq 1 50); do
+  [[ -f "$TMPDIR_TEST/m9-lock-held" ]] && break
+  sleep 0.1
+done
+set +e
+NASE_FAKE_OUTPUT="$TMPDIR_TEST/gh-m9-args" PATH="$TMPDIR_TEST/bin:$PATH" \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$manifest" \
+  --timeout-seconds 5 > "$TMPDIR_TEST/m9.out" 2> "$TMPDIR_TEST/m9.err" &
+m9_execute=$!
+m9_claimed=0
+for _ in $(seq 1 40); do
+  if [[ ! -f "$TOKEN" ]] || ls "$TOKEN".executing-* >/dev/null 2>&1; then
+    m9_claimed=1
+    break
+  fi
+  sleep 0.1
+done
+kill "$m9_holder" 2>/dev/null
+wait "$m9_execute"
+m9_rc=$?
+set -e
+if [[ "$m9_claimed" -eq 0 && "$m9_rc" -eq 0 && -f "$TMPDIR_TEST/gh-m9-args" ]]; then
+  report 0 "claim_token waits for the authorize lock before claiming"
+else
+  report 1 "claim_token waits for the authorize lock before claiming" \
+    "claimed_while_locked=$m9_claimed rc=$m9_rc $(cat "$TMPDIR_TEST/m9.err" 2>/dev/null)"
+fi
+reset_token_state
+
+# --- no token and no workspace dir is a clean error, not a traceback -----------
+# claim_token opens the lock file before it renames the token. On a root with no
+# `workspace/` directory that open raised FileNotFoundError outside the handler
+# meant for "no token", so execute died with a traceback.
+bare_root=$(mktemp -d)
+set +e
+python3 "$SCRIPT" --root "$bare_root" execute --manifest "$bare_root/none.json" \
+  > "$bare_root/out" 2> "$bare_root/err"
+bare_rc=$?
+set -e
+if [[ "$bare_rc" -ne 0 ]] \
+  && grep -q "no external-write token present" "$bare_root/err" \
+  && ! grep -q "Traceback" "$bare_root/err"; then
+  report 0 "execute without a token or workspace dir fails cleanly"
+else
+  report 1 "execute without a token or workspace dir fails cleanly" \
+    "rc=$bare_rc $(tail -n 2 "$bare_root/err")"
+fi
+rm -rf "$bare_root"
 
 LEDGER="$TMPDIR_TEST/workspace/logs/.external-writes.jsonl"
 reset_ledger_state() {

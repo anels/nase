@@ -232,6 +232,10 @@ KUBECTL_GLOBAL_FLAGS = {
 # between backends, which writes the remote state.
 TERRAFORM_STATE_MOVING_INIT_FLAGS = {"force-copy", "migrate-state"}
 TERRAFORM_HELP_FLAGS = {"-help", "-version", "--help", "--version"}
+# Global options Terraform accepts before the subcommand. `-chdir` takes a
+# value (separate or `=` form); the rest take none.
+TERRAFORM_GLOBAL_VALUE_OPTIONS = {"-chdir", "--chdir"}
+TERRAFORM_GLOBAL_FLAGS = {"-help", "--help", "-version", "--version"}
 PYTHON_VALUE_OPTIONS = {"-W", "-X", "--check-hash-based-pycs"}
 CONFLUENCE_PUBLISH_SCRIPT = "confluence-publish.py"
 # `attach` uploads or overwrites attachment bytes on any page with the stored Atlassian
@@ -393,17 +397,36 @@ def azure_datafactory_read_only(command_path: list[str]) -> bool:
     )
 
 
-def terraform_command(words: list[str]) -> list[str]:
-    """Return the words from the Terraform subcommand on, or [] when there is none."""
-    for index, word in enumerate(words):
+def terraform_command(words: list[str]) -> list[str] | None:
+    """Return the words from the Terraform subcommand on, or None when unknown.
+
+    Value-taking global options are skipped with their value, so
+    `terraform -chdir plan apply` reads as `apply`, not `plan`. Returns None
+    for a global option this guard does not know, because the next word could
+    then be that option's value and not the subcommand; callers fail closed
+    on None rather than guess.
+    """
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word == "--":
+            return words[index + 1 :]
         if not word.startswith("-"):
             return words[index:]
+        name = word.split("=", 1)[0]
+        if name in TERRAFORM_GLOBAL_VALUE_OPTIONS:
+            index += 1 if "=" in word else 2
+        elif name in TERRAFORM_GLOBAL_FLAGS:
+            index += 1
+        else:
+            return None
     return []
 
 
 def terraform_subcommand(words: list[str]) -> str | None:
     """Return the Terraform subcommand after global options such as -chdir."""
-    return next(iter(terraform_command(words)), None)
+    command = terraform_command(words)
+    return command[0] if command else None
 
 
 def terraform_flag_names(words: list[str]) -> set[str]:
@@ -2111,8 +2134,16 @@ def claim_token(root: Path, timeout_seconds: float) -> tuple[Path, dict[str, Any
         f"{path.name}.executing-{os.getpid()}-{deadline}-{uuid.uuid4().hex}"
     )
     try:
-        path.replace(claimed)
+        with open(path.with_name(f"{path.name}.lock"), "a") as lock:
+            # The rename must hold the same lock `cmd_authorize` uses for its
+            # "already active" check: otherwise a claim can land in the middle
+            # of that check-then-write, and authorize's view of the token state
+            # is stale when it writes a second token.
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            path.replace(claimed)
     except FileNotFoundError as exc:
+        # Covers a missing token and a missing `workspace/` directory alike:
+        # the lock file cannot be opened when its directory is absent.
         raise ActionError("no external-write token present") from exc
     try:
         token = json.loads(claimed.read_text(encoding="utf-8"))

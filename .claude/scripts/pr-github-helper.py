@@ -1335,7 +1335,20 @@ def fetch_review_threads(pr: dict[str, Any]) -> dict[str, Any]:
     while True:
         raw = run_gh(gh_threads_args(pr, cursor))
         response = json.loads(raw)
-        pull_request = response["data"]["repository"]["pullRequest"]
+        data = response.get("data") if isinstance(response, dict) else None
+        repository = data.get("repository") if isinstance(data, dict) else None
+        pull_request = (
+            repository.get("pullRequest") if isinstance(repository, dict) else None
+        )
+        if not isinstance(pull_request, dict):
+            # A deleted or never-existing PR answers `pullRequest: null`; that
+            # is a failed read, not a crash: main() turns RuntimeError into
+            # READ_FAILED_EXIT.
+            raise RuntimeError(  # noqa: TRY004
+                "could not fetch review threads for "
+                f"{pr.get('owner')}/{pr.get('repo')}#{pr.get('number')}: "
+                "GitHub returned no pull request"
+            )
         threads_connection = pull_request.get("reviewThreads") or {}
 
         if merged_pull_request is None:
