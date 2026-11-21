@@ -1135,6 +1135,11 @@ expect_guard_rc "terraform state rm stays blocked" 10 "terraform state rm aws_x.
 expect_guard_rc "terraform init -migrate-state is a mutation" 10 "terraform init -migrate-state"
 expect_guard_rc "terraform apply is still guarded" 10 "terraform apply"
 expect_guard_rc "terraform -chdir apply is still guarded" 10 "terraform -chdir=infra apply -auto-approve"
+expect_guard_rc "terraform -chdir with a separate value still finds apply" 10 "terraform -chdir plan apply"
+expect_guard_rc "terraform -chdir with a separate value still finds plan" 0 "terraform -chdir infra plan"
+expect_guard_rc "terraform --chdir with a separate value still finds plan" 0 "terraform --chdir infra plan"
+expect_guard_rc "terraform -chdir with a separate value still finds destroy" 10 "terraform -chdir infra destroy"
+expect_guard_rc "terraform with an unknown global option fails closed" 10 "terraform -bogus plan"
 expect_guard_rc "terraform destroy is still guarded" 10 "terraform destroy"
 expect_rc "terraform apply can be prepared" 0 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system terraform --summary "apply" -- \
