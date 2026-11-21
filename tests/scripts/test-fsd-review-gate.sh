@@ -1111,12 +1111,22 @@ class ReviewGateTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertNotEqual(self.reduce("combined", 1, result)["action"], "INVALID")
 
+        # A bare snake_case word without a theater phrase stays clean.
+        result["axes"]["test_quality"]["evidence"] = ["my_function returns 2"]
+        self.assertNotEqual(self.reduce("combined", 1, result)["action"], "INVALID")
+
         for entries in (
             ["grep -q guard app.py", "100 percent line coverage"],
             ["snapshot matches", "the test count went up"],
             ["line-coverage 95%", "greps confirm", "grepped output"],
             ["grep-based check of the diff", "coverage-report 95%", "snapshot-diff matches"],
             ["grep/rg of assertions", "coverage/branch report"],
+            # A snake_case word is prose, not an identifier: `line_coverage`
+            # names the same weak evidence as `line coverage` and must not
+            # evade the check. A path with the same words still does not
+            # count (covered above by tests/test_coverage_report.py:40).
+            ["line_coverage 95%"],
+            ["test_count went up"],
         ):
             result["axes"]["test_quality"]["evidence"] = entries
             self.assertEqual(self.reduce("combined", 1, result)["action"], "INVALID", entries)
