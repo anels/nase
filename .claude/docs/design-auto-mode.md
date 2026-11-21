@@ -148,7 +148,7 @@ Also check: has any codebase or KB data gathered in Steps 1–3 revealed assumpt
 
 ### 4b. Exit condition
 
-All criteria PASS or ≤1 WEAK → verdict: **APPROVED**. Exit loop → Step 5.
+All criteria PASS or ≤1 WEAK → verdict: **APPROVED**. Exit loop → 4e.
 
 ### 4c. Resolve remaining issues
 
@@ -156,9 +156,13 @@ For each FAIL/WEAK criterion, for each specific gap: run the Research Ladder, fi
 
 ### 4d. Re-score and iterate
 
-Re-evaluate Quality Criteria. If APPROVED: exit loop. If not APPROVED and iterations < 3: increment and repeat from 4a.
+Re-evaluate Quality Criteria. If APPROVED: exit loop → 4e. If not APPROVED and iterations < 3: increment and repeat from 4a.
 
 After 3 iterations: exit with status `max-iterations`. Remaining issues go to `human_input_queue` for Step 4.5; anything deferred there becomes Human Input Required.
+
+### 4e. Naive-reader check
+
+Run `.claude/docs/design-comprehension-reader.md` on the APPROVED draft. Fix a gap in the draft first, such as defining a term or adding the missing explanation. Use the Research Ladder only when the gap needs a fact the draft lacks. A `blocking` finding that survives the second run goes to `human_input_queue`. The contract's re-score after a fix applies here too. Then continue to Step 4.5, which Step 4.5 skips when the queue is empty.
 
 ---
 

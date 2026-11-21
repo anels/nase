@@ -99,7 +99,9 @@ Score **every** criterion in `.claude/commands/nase/design.md → Quality criter
 
 Use `PASS` / `WEAK` / `FAIL`, plus `N/A` for the two criteria that are conditional by construction - `Root cause` on work that is not a bug, and `Risk` where the design carries none of the listed surfaces. `N/A` needs the one-line reason it does not apply, and does not count toward the APPROVED bar either way. Reach for it only on those two; anywhere else, a criterion you cannot score is a `WEAK`.
 
-Also check for **unresolved staleness**: after the Step 2 repair, does the codebase or KB still invalidate an assumption in the design? A repaired already-shipped item remains in the audit evidence but is not reopened.
+**Who scores.** Step 2 edits the doc on the main thread, so the main thread must not also score its own edits. Spawn the persisted `nase-verifier` (`.claude/docs/review-modes.md → Default pattern`) with one fresh `Agent` call. Pass the absolute path of the doc as it stands after Step 2, a pointer to `design.md → Quality criteria` for the verifier to read, and the scoring scale above. Do not pass what Step 2 changed or why. The verifier scores every criterion with a one-line reason each, and the main thread records those rows unchanged as the scorecard that Step 4 counts. The main thread never edits a verifier row, and the staleness check below can only add an issue, never clear a `FAIL` or `WEAK` row. On an empty or malformed result, follow `review-modes.md → Error handling`; a second failure stops the review with `scoring: not run` instead of a verdict.
+
+Also check for **unresolved staleness** on the main thread, because it needs the Step 2 evidence the verifier is not given: after the Step 2 repair, does the codebase or KB still invalidate an assumption in the design? A repaired already-shipped item remains in the audit evidence but is not reopened.
 
 ## Step 3.5: Doc Hygiene Pass (auto-cleanup)
 

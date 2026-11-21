@@ -165,38 +165,70 @@ else
 fi
 
 # The role's tools list is advisory: only a persisted agent's `tools:` frontmatter is an
-# enforced whitelist. The persisted verifier must exist, list read-only tools, and name
-# no write or shell tool, so the gate can truthfully report an enforced read-only review.
-VERIFIER_AGENT=.claude/agents/nase-verifier.md
-if [ ! -f "$VERIFIER_AGENT" ]; then
-  fail "persisted verifier agent $VERIFIER_AGENT is missing"
-elif python3 - "$VERIFIER_AGENT" <<'PY'
+# enforced whitelist. Each persisted review agent must exist, run in plan mode, and list
+# only read tools, so the gate can truthfully report an enforced read-only review.
+# mode `subset` allows any non-empty subset of the listed tools; `exact` requires the set.
+check_agent_frontmatter() {
+  local label="$1" path="$2" name="$3" mode="$4"
+  shift 4
+  if [ ! -f "$path" ]; then
+    fail "persisted $label agent $path is missing"
+    return
+  fi
+  if python3 - "$path" "$name" "$mode" "$@" <<'PY'
 import re
 import sys
 
-text = open(sys.argv[1], encoding="utf-8").read()
+path, name, mode, *allowed = sys.argv[1:]
+text = open(path, encoding="utf-8").read()
 front = re.match(r"---\n(.*?)\n---\n", text, re.S)
 if not front:
-    print("verifier agent has no frontmatter", file=sys.stderr)
+    print("%s has no frontmatter" % name, file=sys.stderr)
     sys.exit(1)
-fields = dict(re.findall(r"^(\w+):\s*(.*)$", front.group(1), re.M))
-if fields.get("name") != "nase-verifier":
-    print("verifier agent name is not nase-verifier", file=sys.stderr)
+fields = dict(re.findall(r"^(\w+):[ \t]*(.*)$", front.group(1), re.M))
+if fields.get("name") != name:
+    print("agent name is not %s" % name, file=sys.stderr)
+    sys.exit(1)
+if fields.get("permissionMode") != "plan":
+    print("%s does not run in plan mode" % name, file=sys.stderr)
     sys.exit(1)
 declared = {t.strip() for t in fields.get("tools", "").split(",") if t.strip()}
 if not declared:
-    print("verifier agent declares no tools frontmatter", file=sys.stderr)
+    print("%s declares no tools frontmatter" % name, file=sys.stderr)
     sys.exit(1)
-forbidden = declared - {"Read", "Grep", "Glob"}
-if forbidden:
-    print("verifier agent grants non-read tools %s" % sorted(forbidden), file=sys.stderr)
+if declared - set(allowed):
+    print("%s grants non-read tools %s" % (name, sorted(declared - set(allowed))), file=sys.stderr)
+    sys.exit(1)
+if mode == "exact" and declared != set(allowed):
+    print("%s tools must be exactly %s, got %s" % (name, sorted(allowed), sorted(declared)), file=sys.stderr)
     sys.exit(1)
 PY
-then
-  pass "persisted verifier agent is read-only by its tools frontmatter"
-else
-  fail "persisted verifier agent no longer enforces read-only review"
-fi
+  then
+    pass "persisted $label agent is read-only by its tools frontmatter"
+  else
+    fail "persisted $label agent no longer enforces read-only review"
+  fi
+}
+
+check_agent_frontmatter verifier .claude/agents/nase-verifier.md nase-verifier subset Read Grep Glob
+
+# --- 6b. The design naive-reader is persisted, Read-only, and wired in -------
+# The comprehension read is only a fresh-reader test if the agent has no way to
+# run commands or edit, and only runs if each design mode points at the contract.
+READER_DOC=.claude/docs/design-comprehension-reader.md
+check_agent_frontmatter reader .claude/agents/nase-comprehension-reader.md \
+  nase-comprehension-reader exact Read
+
+assert_contains "reader contract names the persisted agent" \
+  "$READER_DOC" '`nase-comprehension-reader`'
+assert_contains "interactive design runs the naive-reader check after APPROVED" \
+  .claude/commands/nase/design.md 'After APPROVED, run the naive-reader check in `.claude/docs/design-comprehension-reader.md`'
+assert_contains "auto design has the naive-reader step" \
+  .claude/docs/design-auto-mode.md '### 4e. Naive-reader check'
+assert_contains "auto design exits the scoring loop into the naive-reader step" \
+  .claude/docs/design-auto-mode.md 'If APPROVED: exit loop → 4e.'
+assert_contains "review mode spawns the persisted verifier to score" \
+  .claude/docs/design-review-mode.md 'Spawn the persisted `nase-verifier`'
 
 # --- 7. The empty-turn cause is documented -----------------------------------
 # Two runs were lost to an agent that accepts a review spawn and returns
