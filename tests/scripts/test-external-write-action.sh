@@ -1669,6 +1669,26 @@ else
 fi
 reset_token_state
 
+# --- no token and no workspace dir is a clean error, not a traceback -----------
+# claim_token opens the lock file before it renames the token. On a root with no
+# `workspace/` directory that open raised FileNotFoundError outside the handler
+# meant for "no token", so execute died with a traceback.
+bare_root=$(mktemp -d)
+set +e
+python3 "$SCRIPT" --root "$bare_root" execute --manifest "$bare_root/none.json" \
+  > "$bare_root/out" 2> "$bare_root/err"
+bare_rc=$?
+set -e
+if [[ "$bare_rc" -ne 0 ]] \
+  && grep -q "no external-write token present" "$bare_root/err" \
+  && ! grep -q "Traceback" "$bare_root/err"; then
+  report 0 "execute without a token or workspace dir fails cleanly"
+else
+  report 1 "execute without a token or workspace dir fails cleanly" \
+    "rc=$bare_rc $(tail -n 2 "$bare_root/err")"
+fi
+rm -rf "$bare_root"
+
 LEDGER="$TMPDIR_TEST/workspace/logs/.external-writes.jsonl"
 reset_ledger_state() {
   rm -rf "$LEDGER" "$LEDGER.lock" "$TMPDIR_TEST/workspace/tmp/external-actions"

@@ -2133,16 +2133,18 @@ def claim_token(root: Path, timeout_seconds: float) -> tuple[Path, dict[str, Any
     claimed = path.with_name(
         f"{path.name}.executing-{os.getpid()}-{deadline}-{uuid.uuid4().hex}"
     )
-    with open(path.with_name(f"{path.name}.lock"), "a") as lock:
-        # The rename must hold the same lock `cmd_authorize` uses for its
-        # "already active" check: otherwise a claim can land in the middle of
-        # that check-then-write, and authorize's view of the token state is
-        # stale when it writes a second token.
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
+    try:
+        with open(path.with_name(f"{path.name}.lock"), "a") as lock:
+            # The rename must hold the same lock `cmd_authorize` uses for its
+            # "already active" check: otherwise a claim can land in the middle
+            # of that check-then-write, and authorize's view of the token state
+            # is stale when it writes a second token.
+            fcntl.flock(lock, fcntl.LOCK_EX)
             path.replace(claimed)
-        except FileNotFoundError as exc:
-            raise ActionError("no external-write token present") from exc
+    except FileNotFoundError as exc:
+        # Covers a missing token and a missing `workspace/` directory alike:
+        # the lock file cannot be opened when its directory is absent.
+        raise ActionError("no external-write token present") from exc
     try:
         token = json.loads(claimed.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
