@@ -25,12 +25,11 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import fcntl
 import pathlib
 import re
 import sys
 
-from nase_fs import atomic_write
+from nase_fs import atomic_write, lock_exclusive
 from nase_time import local_now
 
 TAG_RE = re.compile(r"^[a-z0-9][a-z0-9:-]*$")
@@ -86,7 +85,7 @@ def main() -> int:
     path = pathlib.Path(args.root) / "workspace" / "logs" / f"{day}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path.parent / ".daily-log.lock", "a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_exclusive(lock)
         try:
             raw = path.read_bytes().decode("utf-8", errors="surrogateescape")
         except FileNotFoundError:

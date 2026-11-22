@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import re
@@ -21,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import nase_git
 import shell_scan
-from nase_fs import sha256_bytes, sha256_file
+from nase_fs import lock_exclusive, sha256_bytes, sha256_file
 from nase_json import canonical_bytes
 from nase_time import parse_ts, utc_now_iso
 from workspace_lock import pid_alive
@@ -2105,7 +2104,7 @@ def cmd_authorize(args: argparse.Namespace) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path.with_name(f"{path.name}.lock"), "a") as lock:
         # Two authorizers must not both pass the "already active" check below.
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_exclusive(lock)
         for claim in path.parent.glob(f"{path.name}.executing-*"):
             if claim_is_stale(claim):
                 discard_dead_file(claim, "abandoned external-write claim")
@@ -2139,7 +2138,7 @@ def claim_token(root: Path, timeout_seconds: float) -> tuple[Path, dict[str, Any
             # "already active" check: otherwise a claim can land in the middle
             # of that check-then-write, and authorize's view of the token state
             # is stale when it writes a second token.
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            lock_exclusive(lock)
             path.replace(claimed)
     except FileNotFoundError as exc:
         # Covers a missing token and a missing `workspace/` directory alike:
@@ -2181,7 +2180,7 @@ def record_outcome(
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path.with_name(f"{path.name}.lock"), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            lock_exclusive(lock)
             fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
             with os.fdopen(fd, "a", encoding="utf-8") as ledger:
                 ledger.write(json.dumps(row, sort_keys=True) + "\n")

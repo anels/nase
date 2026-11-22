@@ -656,6 +656,80 @@ PY
 platform_rc=$?
 assert_cmd "missing fcntl fails closed without import crash" test "$platform_rc" = "0"
 
+python3 - "$SCRIPT" <<'PY'
+import builtins
+import importlib.util
+import json
+import os
+import sys
+import tempfile
+import time
+from pathlib import Path
+from unittest import mock
+
+script = Path(sys.argv[1])
+real_import = builtins.__import__
+
+def import_without_fcntl(name, *args, **kwargs):
+    if name == "fcntl":
+        raise ImportError("simulated non-Unix platform")
+    return real_import(name, *args, **kwargs)
+
+with mock.patch("builtins.__import__", side_effect=import_without_fcntl):
+    spec = importlib.util.spec_from_file_location("workspace_lock_weak", script)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+assert module.fcntl is None
+os.environ.pop(module.WEAK_ENV, None)
+with tempfile.TemporaryDirectory() as raw:
+    root = Path(raw)
+    try:
+        module.acquire(root, 0)
+    except module.LockError as exc:
+        assert module.WEAK_ENV in str(exc)
+    else:
+        raise AssertionError("weak mode must stay off without the opt-in")
+
+    os.environ[module.WEAK_ENV] = "1"
+    lease = module.acquire(root, 0)
+    try:
+        module.acquire(root, 20)
+    except module.LockBusyError:
+        pass
+    else:
+        raise AssertionError("second acquire must be busy")
+    try:
+        module.release(module.Lease(root.resolve(), "0" * 32))
+    except module.LockError:
+        pass
+    else:
+        raise AssertionError("release with a foreign nonce must fail")
+    live_locks = lease.lock_dir.parent
+    assert module._weak_remove(live_locks, lease.lock_dir, "stale", "f" * 32) is False
+    assert lease.lock_dir.exists(), "a lock with a different nonce must be handed back"
+    assert module._weak_read_owner(lease.lock_dir)["nonce"] == lease.nonce
+    module.release(lease)
+    assert not lease.lock_dir.exists()
+
+    lease = module.acquire(root, 0)
+    owner_file = lease.lock_dir / module.OWNER_NAME
+    owner = json.loads(owner_file.read_text(encoding="utf-8"))
+    owner["pid"] = 2**22 + 12345
+    owner_file.write_text(json.dumps(owner), encoding="utf-8")
+    old = time.time() - 60
+    os.utime(lease.lock_dir, (old, old))
+    recovered = module.acquire(root, 500)
+    assert recovered.nonce != lease.nonce
+    module.release(recovered)
+    assert not recovered.lock_dir.exists()
+    assert module.pid_alive(os.getpid())
+PY
+weak_rc=$?
+assert_cmd "opt-in weak lock acquires, blocks, recovers stale, releases" test "$weak_rc" = "0"
+
 if [[ "$failures" -eq 0 ]]; then
   printf '\nworkspace lock tests passed.\n'
   exit 0

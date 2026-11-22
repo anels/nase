@@ -218,7 +218,8 @@ def positive_int(value: str) -> int:
 
 
 def fsync_file(path: Path) -> None:
-    with path.open("rb") as handle:
+    # Windows rejects fsync on a read-only handle with EBADF, so open for update there.
+    with path.open("r+b" if sys.platform == "win32" else "rb") as handle:
         os.fsync(handle.fileno())
 
 
