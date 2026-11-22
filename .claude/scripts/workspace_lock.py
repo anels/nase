@@ -22,6 +22,10 @@ except ImportError:  # pragma: no cover - exercised on non-Unix Python builds.
 
 
 STALE_AFTER_SECONDS = 10.0
+# Opt-in for platforms without fcntl or dir_fd (Windows): a path-based lock with the
+# same API but no inode pinning or no-follow guarantees. Never the default.
+WEAK_ENV = "NASE_WEAK_LOCK"
+_REPARSE_POINT = 0x400
 LOCKS_NAME = ".nase-locks"
 LOCK_NAME = "workspace-mutation.lock"
 OWNER_NAME = "owner.json"
@@ -68,7 +72,10 @@ def _no_follow_flag() -> int:
 
 def _require_fd_platform() -> None:
     if fcntl is None:
-        raise LockError("platform lacks required file locking support")
+        raise LockError(
+            "platform lacks required file locking support "
+            f"(set {WEAK_ENV}=1 to opt into the weaker path-based lock)"
+        )
     if not DIR_FD_SUPPORTED:
         raise LockError("platform lacks required dir_fd filesystem support")
     if not FD_INSPECTION_SUPPORTED:
@@ -355,9 +362,40 @@ def _quarantine_stale_at(
         os.close(guard_fd)
 
 
+def _windows_pid_alive(pid: int) -> bool:
+    # os.kill(pid, 0) is CTRL_C_EVENT on Windows, so probe with OpenProcess instead.
+    import ctypes
+    from ctypes import wintypes
+
+    # A process that exits with code 259 (STILL_ACTIVE) must not read as alive, so
+    # test the process handle's signaled state instead of the exit code. A reused PID
+    # is a known limit: the owner file cannot tell the old process from the new one.
+    access = 0x1000 | 0x100000  # QUERY_LIMITED_INFORMATION | SYNCHRONIZE
+    wait_timeout = 0x102
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.OpenProcess(access, False, pid)
+    if not handle:
+        # Access denied still means the process exists.
+        return ctypes.get_last_error() == 5
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def pid_alive(pid: object) -> bool:
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
         return False
+    if sys.platform == "win32":
+        try:
+            return _windows_pid_alive(pid)
+        except (OSError, OverflowError, ValueError):
+            return False
     try:
         os.kill(pid, 0)
     except PermissionError:
@@ -402,11 +440,146 @@ def _cleanup_created_lock(
     os.rmdir(claim_name, dir_fd=locks_fd)
 
 
+def _weak_mode() -> bool:
+    return fcntl is None and os.environ.get(WEAK_ENV) == "1"
+
+
+def _is_link_like(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & _REPARSE_POINT
+    )
+
+
+def _weak_dirs(root: Path, *, create: bool) -> tuple[Path, Path]:
+    locks = root / LOCKS_NAME
+    if _is_link_like(locks):
+        raise LockError("lock parent is a link")
+    if create:
+        try:
+            locks.mkdir(exist_ok=True)
+        except OSError as exc:
+            raise LockError(f"lock parent cannot be created: {exc}") from exc
+    elif not locks.is_dir():
+        raise LockError(f"lock parent does not exist: {locks}")
+    return locks, locks / LOCK_NAME
+
+
+def _weak_read_owner(lock: Path) -> dict[str, object] | None:
+    try:
+        data = json.loads((lock / OWNER_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _weak_remove(locks: Path, lock: Path, tag: str, nonce: object) -> bool:
+    """Rename-claim the lock directory, then delete it; False if someone else won.
+
+    The claimed directory must still carry `nonce`: a different owner means another
+    process replaced the lock after the caller looked, so it goes back untouched.
+    """
+    claim = locks / f"{LOCK_NAME}.{tag}-{uuid.uuid4().hex}"
+    try:
+        lock.rename(claim)
+    except OSError:
+        return False
+    if (_weak_read_owner(claim) or {}).get("nonce") != nonce:
+        try:
+            claim.rename(lock)
+        except OSError as exc:
+            raise LockError(
+                f"a live lock was claimed by mistake and preserved: {claim}"
+            ) from exc
+        return False
+    with suppress(OSError):
+        (claim / OWNER_NAME).unlink()
+    try:
+        claim.rmdir()
+    except OSError as exc:
+        raise LockError(f"claimed lock cannot be removed, preserved: {claim}") from exc
+    return True
+
+
+def _weak_recover_stale(locks: Path, lock: Path) -> None:
+    try:
+        age = time.time() - lock.stat().st_mtime
+    except OSError:
+        return
+    owner = _weak_read_owner(lock) or {}
+    if age <= STALE_AFTER_SECONDS or pid_alive(owner.get("pid")):
+        return
+    _weak_remove(locks, lock, "stale", owner.get("nonce"))
+
+
+_WEAK_WARNED: list[bool] = []
+
+
+def _weak_acquire(root: Path, timeout_ms: int, pid: int) -> Lease:
+    if not _WEAK_WARNED:
+        _WEAK_WARNED.append(True)
+        print(
+            f"WARNING: {WEAK_ENV}=1: using the path-based workspace lock, which "
+            "lacks inode pinning and no-follow checks; a crashed holder blocks "
+            f"writers for up to {STALE_AFTER_SECONDS:.0f}s",
+            file=sys.stderr,
+        )
+    locks, lock = _weak_dirs(root, create=True)
+    deadline = time.monotonic() + max(timeout_ms, 0) / 1000
+    nonce = uuid.uuid4().hex
+    while True:
+        try:
+            lock.mkdir()
+        except FileExistsError:
+            _weak_recover_stale(locks, lock)
+            if time.monotonic() >= deadline:
+                raise LockBusyError("workspace mutation lock is busy") from None
+            time.sleep(0.05)
+            continue
+        except OSError as exc:
+            raise LockError(f"workspace mutation lock cannot be created: {exc}") from exc
+        owner = {
+            "pid": pid,
+            "nonce": nonce,
+            "created_at": time.time(),
+            "root": str(root),
+        }
+        try:
+            with open(lock / OWNER_NAME, "x", encoding="utf-8") as handle:
+                json.dump(owner, handle, sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
+            verified = _weak_read_owner(lock)
+            if not verified or verified.get("nonce") != nonce:
+                raise LockError("lock path changed before acquisition completed")
+        except (LockError, OSError) as exc:
+            with suppress(LockError, OSError):
+                _weak_remove(locks, lock, "acquire-failed", nonce)
+            if isinstance(exc, LockError):
+                raise
+            raise LockError(f"lock owner cannot be created: {exc}") from exc
+        return Lease(root=root, nonce=nonce)
+
+
+def _weak_release(lease: Lease, root: Path) -> None:
+    locks, lock = _weak_dirs(root, create=False)
+    owner = _weak_read_owner(lock)
+    if not owner or owner.get("nonce") != lease.nonce:
+        raise LockError("workspace mutation lock ownership changed")
+    if not _weak_remove(locks, lock, f"release-{lease.nonce}", lease.nonce):
+        raise LockError("workspace mutation lock changed before release claim")
+
+
 def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
     root = root.expanduser().resolve()
     effective_pid = owner_pid if owner_pid is not None else os.getpid()
     if effective_pid <= 0:
         raise LockError("workspace mutation lock owner PID must be greater than zero")
+    if _weak_mode():
+        return _weak_acquire(root, timeout_ms, effective_pid)
     root_fd, _, locks_fd, locks_metadata = _open_lock_roots(root, create=True)
     deadline = time.monotonic() + max(timeout_ms, 0) / 1000
     nonce = uuid.uuid4().hex
@@ -468,6 +641,8 @@ def release(lease: Lease) -> None:
     root = lease.root.expanduser().resolve()
     if not _valid_nonce(lease.nonce):
         raise LockError("workspace mutation lock nonce is invalid")
+    if _weak_mode():
+        return _weak_release(lease, root)
     root_fd, _, locks_fd, locks_metadata = _open_lock_roots(root, create=False)
     lock_fd: int | None = None
     try:

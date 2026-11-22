@@ -9,11 +9,15 @@ already reported success. One implementation is the only way that stays fixed.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import pathlib
 import stat
+import sys
 import tempfile
+import time
+import typing
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -33,8 +37,44 @@ def sha256_file(path: pathlib.Path | str) -> str:
     return digest.hexdigest()
 
 
+try:
+    import fcntl
+except ImportError:  # Windows has no fcntl; msvcrt byte-range locking stands in.
+    fcntl = None
+    import msvcrt
+
+
+def lock_exclusive(handle: typing.IO[typing.Any], timeout_seconds: float = 30.0) -> None:
+    """Block until `handle` holds an exclusive lock; closing the handle releases it.
+
+    On Windows only a contended lock is retried, and only until the deadline, so a
+    filesystem that rejects byte-range locks fails instead of spinning.
+    """
+    if fcntl is not None:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        return
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.EACCES, errno.EDEADLK) or (
+                time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(0.05)
+
+
 def fsync_dir(path: pathlib.Path | str) -> None:
-    """Flush a directory entry, which is what makes a rename survive a crash."""
+    """Flush a directory entry, which is what makes a rename survive a crash.
+
+    A no-op on Windows: it cannot open a directory with os.open and has no directory
+    fsync, so a rename there is as durable as NTFS journaling makes it.
+    """
+    if sys.platform == "win32":
+        return
     descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)
