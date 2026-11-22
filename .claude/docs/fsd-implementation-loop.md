@@ -19,7 +19,7 @@ This workspace holds a high bar for the health of the tree we push. Three signal
 This is the one sanctioned exception to `CLAUDE.md`'s "while we're at it" rejection - and it is narrow: it covers **lint errors, test failures, and test flakiness only**, never general drive-by refactors.
 
 **Attribute, then fix - both, not either:**
-- First attribute. Is this a regression my diff introduced, or pre-existing / upstream? Per `feedback_ci-unrelated-test-check-develop-first.md`, run `git log --since='48 hours ago' origin/{default_branch} -- <test-path>` and rebase onto current default before debugging. Attribution tells you *what kind* of failure it is; it never tells you to skip the fix.
+- First attribute. Is this a regression my diff introduced, or pre-existing / upstream? Per `feedback_ci-unrelated-test-check-develop-first.md`, run `git log --since='48 hours ago' origin/{base_branch} -- <test-path>` and rebase onto current `{base_branch}` before debugging. Attribution tells you *what kind* of failure it is; it never tells you to skip the fix.
 - A regression you introduced → fix inline; it is part of this change.
 - Pre-existing / upstream that survives the rebase → still fix it. **Default: fix inline in this branch and call it out in the Phase 10 report.** Isolate into a separate commit/PR (or escalate to the owning team) *only* when the fix crosses a repo or owner boundary, or would materially balloon the diff past the Phase 6.1 guardrail - but never leave the gate red to keep the diff small.
 
@@ -148,7 +148,7 @@ For edited YAML, TOML, XML, HCL, or JSON, parse the exact depended-on fields rat
 Capture the candidate metadata once, then extract both values used by the final bundle:
 
 ```bash
-BASE=$(git -C {worktree_or_repo} merge-base origin/{default_branch} HEAD)
+BASE=$(git -C {worktree_or_repo} merge-base origin/{base_branch} HEAD)
 candidate_metadata=$(python3 .claude/scripts/verify-bundle.py \
   --repo "{worktree_or_repo}" --base "$BASE" --candidate-tree-only)
 tested_candidate_tree_oid=$(printf '%s\n' "$candidate_metadata" | jq -er '.candidate_tree_oid')

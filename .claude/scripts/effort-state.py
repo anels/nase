@@ -197,6 +197,7 @@ BARE_DEPLOYED_ROW_RE = re.compile(
 )
 JIRA_ABSENT_VALUES = frozenset({"", "none", "null", "n/a", "~", "-"})
 PLAN_ID_RE = re.compile(r"(?i)\bPR[- ]?(\d+[a-z]?)\b")
+STACKS_ON_RE = re.compile(r"(?i)^yes\s*[-\u2013\u2014]\s*stacks on\b")
 SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
 
 FILE_EVIDENCE_REASONS = frozenset({"files-outside-tests-ci-docs", "files-unverified"})
@@ -1228,6 +1229,7 @@ class PlanRow(NamedTuple):
     depends: list[str]
     depends_parsed: bool
     no_blockers: bool
+    stacks_on: str | None = None
 
 
 def parse_pr_plan(lines: list[str]) -> list[PlanRow] | None:
@@ -1244,6 +1246,7 @@ def parse_pr_plan(lines: list[str]) -> list[PlanRow] | None:
             name: header.index(name)
             for name in ("pr", "depends on", "external blockers")
         }
+        ready_column = header.index("fsd-ready") if "fsd-ready" in header else None
         rows: list[PlanRow] = []
         for offset in range(index + 1, len(lines)):
             cells = table_cells(lines[offset])
@@ -1257,6 +1260,12 @@ def parse_pr_plan(lines: list[str]) -> list[PlanRow] | None:
             if not own:
                 continue
             depends = cells[columns["depends on"]]
+            stacks_on = None
+            if ready_column is not None and ready_column < len(cells):
+                ready_cell = clean_cell(cells[ready_column])
+                if STACKS_ON_RE.match(ready_cell):
+                    parent = PLAN_ID_RE.search(ready_cell)
+                    stacks_on = f"PR{parent.group(1).upper()}" if parent else None
             rows.append(
                 PlanRow(
                     id=f"PR{own.group(1).upper()}",
@@ -1265,6 +1274,7 @@ def parse_pr_plan(lines: list[str]) -> list[PlanRow] | None:
                     or bool(PLAN_ID_RE.search(depends)),
                     no_blockers=clean_cell(cells[columns["external blockers"]])
                     == "none",
+                    stacks_on=stacks_on,
                 )
             )
         return rows
@@ -1342,6 +1352,49 @@ def pending_plan_rows(
     return f"PR Plan rows without a merged PR: {', '.join(owed)}" if owed else ""
 
 
+def _chain_below(row: PlanRow, plan: list[PlanRow]) -> set[str]:
+    """Every PR below `row` in its stack: its parent and the parent's transitive dependencies."""
+    by_id = {r.id: r for r in plan}
+    seen: set[str] = set()
+    pending = [row.stacks_on] if row.stacks_on else []
+    while pending:
+        pr_id = pending.pop()
+        if pr_id in seen:
+            continue
+        seen.add(pr_id)
+        if pr_id in by_id:
+            pending.extend(by_id[pr_id].depends)
+    return seen
+
+
+def _dependencies_met(
+    row: PlanRow,
+    plan: list[PlanRow],
+    opened: dict[str, PrRef],
+    live_of: Callable[[PrRef], LiveRecord],
+) -> bool:
+    """Every dependency merged, or open and below this row in its stack.
+
+    A `stacks on` that names no dependency, or a dependency outside the parent's chain
+    (a diamond), leaves that dependency to the merge rule. A parent that merged or closed
+    is not open, so every dependency needs the merge then.
+    """
+    parent = row.stacks_on
+    parent_open = bool(
+        parent
+        and parent in row.depends
+        and parent in opened
+        and live_of(opened[parent]).get("state") == "OPEN"
+    )
+    below = _chain_below(row, plan) if parent_open else set()
+    return all(
+        dep in opened
+        and live_of(opened[dep]).get("state")
+        in (("MERGED", "OPEN") if dep in below else ("MERGED",))
+        for dep in row.depends
+    )
+
+
 def advance_action(
     classification: Classification,
     live_of: Callable[[PrRef], LiveRecord],
@@ -1391,10 +1444,7 @@ def advance_action(
         if row.id not in opened
         and row.no_blockers
         and row.depends_parsed
-        and all(
-            dep in opened and live_of(opened[dep]).get("state") == "MERGED"
-            for dep in row.depends
-        )
+        and _dependencies_met(row, plan, opened, live_of)
     ]
     if not startable:
         return _action("none", "no-startable-pr")
@@ -1403,7 +1453,16 @@ def advance_action(
         "advance",
         "plan-row-startable",
         f"/nase:fsd {slug} {ids[0]}",
-        [f"{i}: dependencies merged, no external blockers, not opened" for i in ids],
+        [
+            f"{row.id}: "
+            + (
+                "dependencies merged or stackable"
+                if row.stacks_on
+                else "dependencies merged"
+            )
+            + ", no external blockers, not opened"
+            for row in startable
+        ],
         f"{len(ids)} PR(s) startable: {', '.join(ids)}",
     )
 

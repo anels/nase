@@ -249,6 +249,7 @@ terraform_import_named_read='{"tool_name":"Bash","tool_input":{"command":"terraf
 terraform_import_named_raw_read='{"tool_name":"Bash","tool_input":{"command":"terraform -chdir=/tmp output -raw import"}}'
 github_workflow_write='{"tool_name":"Bash","tool_input":{"command":"gh workflow run deploy.yml --ref feature/test"}}'
 github_comment_write='{"tool_name":"Bash","tool_input":{"command":"gh pr comment 7 --body approved"}}'
+github_stack_view='{"tool_name":"Bash","tool_input":{"command":"gh stack view --short"}}'
 github_write_via_shell='{"tool_name":"Bash","tool_input":{"command":"bash -lc '\''gh pr create --draft --title test'\''"}}'
 github_write_via_eval=$(jq -cn --arg command "bash -c 'eval \"gh pr create --draft --title test\"'" '{tool_name:"Bash",tool_input:{command:$command}}')
 github_write_via_function=$(jq -cn --arg command "bash -c 'function deploy { gh pr create --draft --title test; }; deploy'" '{tool_name:"Bash",tool_input:{command:$command}}')
@@ -277,6 +278,11 @@ expect_rc "Confluence attachment upload is a raw external mutation" .claude/hook
 expect_rc "Confluence plan stays a local read" .claude/hooks/external-cli-write-guard.sh "$confluence_plan_read" 0
 expect_rc "raw GitHub workflow mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_workflow_write" 2 "raw external mutation"
 expect_rc "raw GitHub comment mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_comment_write" 2 "raw external mutation"
+for stack_verb in link push submit sync rebase; do
+  stack_cmd=$(jq -cn --arg command "gh stack $stack_verb" '{tool_name:"Bash",tool_input:{command:$command}}')
+  expect_rc "gh stack $stack_verb fails closed" .claude/hooks/external-cli-write-guard.sh "$stack_cmd" 2
+done
+expect_rc "gh stack view read allowed" .claude/hooks/external-cli-write-guard.sh "$github_stack_view" 0
 expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"
 expect_rc "dynamic shell eval fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_eval" 2 "unrecognized external CLI"
 # The function body is read as commands now, so the mutation inside it is named directly

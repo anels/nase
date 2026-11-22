@@ -61,7 +61,7 @@ done
 
 assert_cmd "PR plan readiness doc exists" test -f .claude/docs/pr-plan-readiness.md
 assert_cmd "FSD parallel PRs doc exists" test -f .claude/docs/fsd-parallel-prs.md
-assert_contains "fsd runs several fsd-ready PRs as one wave" .claude/commands/nase/fsd.md 'Several `fsd-ready` PRs run as one wave'
+assert_contains "fsd runs ready PRs as one layered wave" .claude/commands/nase/fsd.md 'several ready PRs run as one wave in layers'
 assert_contains "fsd intake routes multi-PR plans to the wave doc" .claude/docs/fsd-intake-and-setup.md 'fsd-parallel-prs\.md'
 assert_contains "design core contract requires the readiness table" .claude/commands/nase/design.md 'pr-plan-readiness\.md'
 assert_contains "design auto mode writes the readiness table" .claude/docs/design-auto-mode.md 'pr-plan-readiness\.md'
@@ -75,6 +75,14 @@ assert_contains "readiness prefixes paths when the plan spans repos" .claude/doc
 assert_contains "wave never runs two agents in one checkout" .claude/docs/fsd-parallel-prs.md 'Never run two agents in one checkout'
 assert_contains "wave opens a draft PR only on the shared answer" .claude/docs/fsd-parallel-prs.md 'a draft PR only when `open_pr` is true'
 assert_contains "wave re-dispatches a blocked agent with its brief" .claude/docs/fsd-parallel-prs.md 'fresh `Agent\(\)` call'
+assert_contains "readiness lets a code-only dependency stack instead of wait" .claude/docs/pr-plan-readiness.md 'yes - stacks on \{PR\}'
+assert_not_contains "readiness no longer treats every dependency as a wait for the merge" .claude/docs/pr-plan-readiness.md 'Waiting on another PR to merge is a dependency'
+assert_contains "wave runs stacked PRs in layers" .claude/docs/fsd-parallel-prs.md 'Layer 0'
+assert_contains "wave starts a stacked PR once its own parent is pushed" .claude/docs/fsd-parallel-prs.md 'A child starts as soon as its own parent is pushed'
+assert_contains "intake branches a stacked PR from its parent" .claude/docs/fsd-intake-and-setup.md 'Ref: `origin/\{base_branch\}`'
+assert_contains "PR create targets the stack parent" .claude/docs/fsd-pr-delivery.md '\-\-base \{base_branch\}'
+assert_contains "ready gate keeps a PR draft while its parent is draft" .claude/docs/fsd-pr-delivery.md 'which is still draft'
+assert_contains "candidate bundle diffs against the stack parent" .claude/docs/fsd-implementation-loop.md 'merge-base origin/\{base_branch\} HEAD'
 assert_contains "address-comments judges accept diffs after the merge commit" .claude/docs/address-comments-delivery.md 'git -C \{worktree_path\} diff \{merge_sha\}\.\.HEAD'
 assert_contains "address-comments stages resolved conflicts before the marker check" .claude/docs/address-comments-delivery.md 'diff HEAD --check'
 assert_contains "address-comments resolves the base SHA before reading its checks" .claude/docs/address-comments-delivery.md 'base_sha=\$\(git -C \{repo_path\} rev-parse origin/\{baseRefName\}\)'
