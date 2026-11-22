@@ -87,7 +87,7 @@ If the target surface does not exist in the scene table, add a new row with the 
 
 `/nase:wrap-up` Step 9:
 
-1. Grep today's log for pending `\[STYLE-DELTA\]` lines only. Ignore `[STYLE-DELTA-APPLIED]` and `[STYLE-DELTA-DISCARDED]` terminal markers.
+1. Run `bash .claude/scripts/style-delta-pending.sh`. It prints `path:line:text` for every pending `[STYLE-DELTA]` line in the log files directly under `workspace/logs/`, oldest log first. The marker has to sit right after the bullet's optional `HH:MM (note) | style-delta: ` prefix, or directly after `- ` on a legacy line, so prose that mentions the marker and the `[STYLE-DELTA-APPLIED]` / `[STYLE-DELTA-DISCARDED]` terminal markers never match. `workspace/logs/archive/` is not scanned. Rewrite each processed line in the file the script printed, which may be an earlier day's log.
 2. If none, set `style-delta=skipped-no-deltas`. Stop.
 3. Cluster deltas by target section. Within each cluster, dedup near-identical rules using substring match or shared key phrase.
 4. For each cluster, draft a concrete style-doc edit: added bullet, amended example, or banned-list entry. Cite daily-log lines as evidence (`source: log {time}, {time}`).
