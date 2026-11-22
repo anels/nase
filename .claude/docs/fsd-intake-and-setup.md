@@ -20,7 +20,7 @@ Research first; minimize questions. Read `workspace/context.md`, then `workspace
 - The `Validation - how to get the real number` section (lines shaped `{source} : {exact command} - expect {value}`) → store as `design_validation`. Phase 6.1 Step 3 runs these commands.
 - The latest `## Grill Session → ### Constraints for implementation` block (if any) → store as `design_constraints`. These are evidence-backed decisions - carry them into Phase 4 and every subagent prompt; do not re-litigate them silently.
 - `### Implementation Plan` → store as `design_impl_plan` (per-step files/tests/done + dependency graph). Seed Phase 3.7 decomposition from these steps instead of re-deriving them; the design already marked which steps are parallel vs sequential.
-- `### PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases. When the plan has more than one PR, read it per `.claude/docs/pr-plan-readiness.md` and follow `.claude/docs/fsd-parallel-prs.md`: build all `fsd-ready` PRs together, with the effort-doc intake run once for the wave, repo inference and `gate_profile` run once per distinct repo, the Phase 2 prompt run once for the wave, and Phases 1.5 and 3 run per PR.
+- `### PR Plan` → store as `design_pr_plan`. Default to the design PR plan when deciding whether to keep one PR or split; do not create extra PRs just because the implementation has multiple phases. When the plan has more than one PR, read it per `.claude/docs/pr-plan-readiness.md` and follow `.claude/docs/fsd-parallel-prs.md`: build all ready PRs together (a `yes - stacks on {PR}` row joins a later layer and opens on top of its parent's branch), with the effort-doc intake run once for the wave, repo inference and `gate_profile` run once per distinct repo, the Phase 2 prompt run once for the wave, and Phases 1.5 and 3 run per PR.
 - `## Topology` (if present) → seed Phase 1.5 with it instead of rebuilding; Phase 3 finalization re-verifies the listed paths still exist in `{work_root}`.
 - Frontmatter `repo:` → store as `repo_hint_from_design`; use it as the target repo unless the user explicitly named a different one.
 
@@ -153,15 +153,17 @@ Print: `FSD options captured - starting implementation.`
 
 Generate `{branch_name}` before the worktree decision: lowercase kebab-case, `feat/` or `fix/` prefix, max 50 chars, strip filler words. Build it from what the change does, never from the effort slug or a plan-internal label such as a design PR id (`pr75`), `phase-2` or `REQ-003`; a reviewer reads the branch name without the plan that defines them. If `git show-ref refs/heads/{branch_name} refs/remotes/origin/{branch_name}` finds it, append `-v2`, `-v3`, etc. until free.
 
+Set `{base_branch}`, the branch this PR targets and branches from. It is `{default_branch}` for every run except a stacked PR (`.claude/docs/fsd-parallel-prs.md → Stacked PRs`), where it is the parent PR's `branch_name`. That covers a PR named alone whose parent is already open: take `headRefName` and `headRefOid` from the `gh pr list` read in Pick the wave. For a stacked PR, run `git -C {repo} fetch origin {base_branch}` first and confirm `git -C {repo} rev-parse origin/{base_branch}` equals the parent's `head_sha` (the agent's returned value, or `headRefOid`). A mismatch means the parent moved, so stop and report it.
+
 Derive `{branch_slug}` only for local artifact paths: replace `/` and other characters outside `[A-Za-z0-9._-]` with `-`, trim leading/trailing `-`, and fall back to `branch` if empty. Never use `{branch_slug}` for git refs.
 
 **If worktree = Yes:**
-1. Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `fsd`. Ref: `origin/{default_branch}`. Use the branch name generated above.
+1. Follow the worktree pattern in `.claude/docs/worktree-pattern.md`. Suffix: `fsd`. Ref: `origin/{base_branch}`. Use the branch name generated above.
 2. All subsequent git and file operations use absolute paths to `{worktree_path}`. Do NOT use `EnterWorktree` - it creates its own worktree and won't adopt this one.
 
 **If worktree = No:**
 - Confirm repo is on the default branch with a clean working tree. If not: stop and tell the user to clean up first (do not force-checkout or stash without asking).
-- Create a new branch: `git -C {repo} checkout -b {branch_name} origin/{default_branch}`
+- Create a new branch: `git -C {repo} checkout -b {branch_name} origin/{base_branch}`
 
 Set `{work_root}` = `{worktree_path}` if worktree = Yes, else `{repo}`.
 

@@ -1391,6 +1391,71 @@ next_action na-plan-open live-open --delivery-pr-state OPEN
 assert_jq "advance waits while the dependency PR is still open" \
   "$TMPDIR_TEST/na-plan-open-next.json" '.next_action.kind == "none"'
 
+sed -e 's/^| PR2 | wire the probe | PR1 | none | `src\/health\/\*` | yes |$/| PR2 | wire the probe | PR1 | none | `src\/health\/*` | yes - stacks on PR1 |/' \
+  "$TMPDIR_TEST/na-plan-open.md" > "$TMPDIR_TEST/na-plan-stacked.md"
+next_action na-plan-stacked live-open --delivery-pr-state OPEN
+assert_jq "advance starts a stacked PR while its parent is still open" \
+  "$TMPDIR_TEST/na-plan-stacked-next.json" \
+  '.next_action.kind == "advance" and .next_action.command == "/nase:fsd na-plan-stacked PR2" and
+   (.next_action.evidence[0] | contains("stackable"))'
+cp "$TMPDIR_TEST/na-plan-stacked.md" "$TMPDIR_TEST/na-plan-stacked-closed.md"
+live_json live-closed CLOSED "$safe_files" success
+cat > "$TMPDIR_TEST/na-plan-chain.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+---
+
+## Lifecycle
+- [x] Implementation started
+- [x] PR opened - **PR1** - https://github.com/acme/widget/pull/10
+
+### PR Plan
+
+| PR | Scope | Depends on | External blockers | Touches | fsd-ready |
+|---|---|---|---|---|---|
+| PR1 | add the cache | none | none | `src/cache/*` | yes |
+| PR2 | wire the probe | PR1 | none | `src/health/*` | yes - stacks on PR1 |
+| PR3 | switch callers | PR1, PR2 | none | `src/api/*` | yes - stacks on PR2 |
+EOF
+next_action na-plan-chain live-open --delivery-pr-state OPEN
+assert_jq "advance proposes the next PR of a chain while its parent is open" \
+  "$TMPDIR_TEST/na-plan-chain-next.json" '.next_action.kind == "advance" and (.next_action.context | contains("PR2"))'
+cat > "$TMPDIR_TEST/na-plan-diamond.md" <<'EOF'
+---
+status: in-progress
+repo: acme/widget
+---
+
+## Lifecycle
+- [x] Implementation started
+- [x] PR opened - **PR1** - https://github.com/acme/widget/pull/10
+- [x] PR opened - **PR2** - https://github.com/acme/widget/pull/11
+
+### PR Plan
+
+| PR | Scope | Depends on | External blockers | Touches | fsd-ready |
+|---|---|---|---|---|---|
+| PR1 | add the cache | none | none | `src/cache/*` | yes |
+| PR2 | wire the probe | none | none | `src/health/*` | yes |
+| PR3 | switch callers | PR1, PR2 | none | `src/api/*` | yes - stacks on PR2 |
+EOF
+jq '.live["acme/widget#11"] = .live["acme/widget#10"]' "$TMPDIR_TEST/live-open.json" > "$TMPDIR_TEST/live-open2.json"
+next_action na-plan-diamond live-open2 --delivery-pr-state OPEN --delivery-pr-state OPEN
+assert_jq "advance does not start a row that stacks on one open parent but needs an unrelated open PR" \
+  "$TMPDIR_TEST/na-plan-diamond-next.json" '.next_action.reason == "no-startable-pr"'
+sed -e 's/| yes - stacks on PR1 |/| yes - stacks on PR9 |/' "$TMPDIR_TEST/na-plan-stacked.md" > "$TMPDIR_TEST/na-plan-stacked-stray.md"
+next_action na-plan-stacked-stray live-open --delivery-pr-state OPEN
+assert_jq "advance ignores a stacks-on parent that is not one of the dependencies" \
+  "$TMPDIR_TEST/na-plan-stacked-stray-next.json" '.next_action.kind == "none"'
+sed -e 's/| yes - stacks on PR1 |/| yes \xe2\x80\x93 stacks on PR1 |/' "$TMPDIR_TEST/na-plan-stacked.md" > "$TMPDIR_TEST/na-plan-stacked-dash.md"
+next_action na-plan-stacked-dash live-open --delivery-pr-state OPEN
+assert_jq "advance reads an en-dash stacks-on cell" \
+  "$TMPDIR_TEST/na-plan-stacked-dash-next.json" '.next_action.kind == "advance"'
+next_action na-plan-stacked-closed live-closed --delivery-pr-state CLOSED
+assert_jq "advance does not stack on a parent PR that was closed" \
+  "$TMPDIR_TEST/na-plan-stacked-closed-next.json" '.next_action.kind == "none"'
+
 cat > "$TMPDIR_TEST/na-plan-unattributed.md" <<'EOF'
 ---
 status: in-progress

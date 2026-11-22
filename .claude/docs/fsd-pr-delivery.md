@@ -19,6 +19,8 @@ Then apply `.claude/docs/pr-gates-consumption.md` §3 with the Phase 1 `gate_pro
 
 Every `gh` mutation below is the exact argv passed to `external-write-action.py`; never run a raw mutating `gh` command. The helper enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`), so there is no separate snippet to run and no `gh auth` call to make - those are blocked.
 
+When `base_branch` is not the default branch, put one line at the top of the body: `Stacked on #{parent_number}. Merge it first.` A reviewer sees only this layer and needs the order.
+
 Draft the exact PR payload and show it to the user. Gate creation via `AskUserQuestion` immediately before the mutation, unless one of two pre-authorizations applies. Either `pr_preauthorized = true`, because the user chose "create without asking" in the intake (Q3), or `python3 .claude/scripts/autonomy-policy.py --class pr-create-draft` reports `decision: auto`. In both cases the user already consented, so still show the payload, then prepare and execute it without a question and append the audit entry with `python3 .claude/scripts/daily-log-append.py autonomy "pr-create-draft {repo_owner}/{repo_name} {manifest}"` (add `run pre-authorized` to the entry for the first case). The run-level consent covers only this one draft PR from this run's own branch. It never removes the manifest binding, the account guard or the prose gates, and it does not apply when a Phase 6 blocker or a failed gate stopped the run, because no PR is opened then. The question below is for every other run:
 
 ```
@@ -44,7 +46,7 @@ EOF
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
   --system github --summary "create draft PR {repo_owner}/{repo_name}" -- \
   gh pr create --draft --title "{commit_subject_line}" --body-file "$PR_BODY_FILE" \
-  --base {default_branch} --head {branch_name} -R {repo_owner}/{repo_name} | jq -r .manifest)
+  --base {base_branch} --head {branch_name} -R {repo_owner}/{repo_name} | jq -r .manifest)
 jq . "$MANIFEST"
 # AskUserQuestion approved this exact manifest. Then:
 python3 .claude/scripts/external-write-action.py authorize --manifest "$MANIFEST"
@@ -135,7 +137,7 @@ Runs only when `open_pr = true` and Phase 8 returned a `pr_url`. "Ready for revi
 |---|---|
 | Closed | `closure_state = done`. Anything else, including a missing value, is unmet. |
 | Verified | No `required` Phase 8.5 row is marked `not run`, the 🔥 critical row included, and `verification_in_body` is `true` or `n/a` (a skipped Phase 8.5 edit is unmet). A run with no rows (docs-only change) is met. A PR with a required row that needs a deployment or credentials, and that the user already decided to leave unrun at Phase 6.1 Step 3, stays draft by design, so the reviewer runs that row before marking it ready. |
-| Unblocked | The PR's `design_pr_plan` row has `Depends on = none` and `External blockers = none`. A run with no plan row is met. |
+| Unblocked | The PR's `design_pr_plan` row has `External blockers = none`, and each `Depends on` PR is merged, or is this PR's stack parent or sits below the parent in the chain. Read each other dependency with `gh pr view {dep_number} -R {repo_owner}/{repo_name} --json state`; a plan row or Lifecycle line is a claim, not evidence. For a stacked PR, read the parent with `gh pr view {parent_number} -R {repo_owner}/{repo_name} --json isDraft,headRefOid`. A parent that is still a draft is unmet (`stacked on {PR}, which is still draft`), so a reviewer never sees a ready PR on top of a draft one. A `headRefOid` that differs from the `head_sha` this PR was built on is unmet (`parent moved`). A run with no plan row is met. |
 | CI green | Every check on the PR head passed, required or not, per the CI check below. |
 
 **CI check.** First confirm the PR carries the pushed commit. `gh pr view {pr_number} -R {repo_owner}/{repo_name} --json headRefOid --jq .headRefOid` must equal `git -C {work_root} rev-parse HEAD`; a mismatch is unmet (`head moved`). `git -C {work_root} status --porcelain` must print nothing, because `done` binds the committed tree; otherwise unmet (`worktree changed after review`). Then run `python3 .claude/scripts/content-identity.py same-tree --repo {work_root} --expect {approved_candidate_tree_oid} --actual HEAD`; any non-zero exit is unmet (`content changed after review`). Phase 7 asserts the tree only before the push, and a commit added afterwards moves the PR head and local `HEAD` together, so the `head moved` check alone cannot see it. Then wait for the checks, as its own Bash call with `timeout: 600000`, no `$(...)`, and no loop. Ignore its exit code, because the read below decides:
