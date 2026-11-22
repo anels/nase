@@ -765,7 +765,10 @@ assert_exit "old lock without a pid lets the backup publish" 1 "$(count_archives
 
 # Several runs that all see the same dead owner must not each reclaim the lock. The harness
 # runs the hook's own lock block (cut out by markers) in parallel and counts the runs that
-# believe they hold the lock at the same time. rm -rf then mkdir lets two of them in.
+# hold the lock at the same time. rm -rf then mkdir lets two of them in. A run that takes the
+# lock after the first holder released it is legal, so a late starter on a slow CI runner
+# must not count: each holder claims a "held" marker for its whole hold, and a failed claim
+# means two holders overlapped.
 lock_block_script() {
   local hook_file="$1" out_file="$2" tail_cmd="$3"
   {
@@ -790,15 +793,15 @@ lock_race_rounds_with_overlap() {
     sleep 0.2
     : > "$t/go"
     wait
-    n=$(grep -c ACQ "$t/out" || true)
-    [ "$n" -gt 1 ] && bad=$((bad + 1))
+    n=$(grep -c OVERLAP "$t/out" || true)
+    [ "$n" -gt 0 ] && bad=$((bad + 1))
     rm -rf "$t"
   done
   printf '%s' "$bad"
 }
 
 acq_new="$fixture/lock-acq-new.sh"
-lock_block_script "$HOOK" "$acq_new" 'echo ACQ; sleep 0.3'
+lock_block_script "$HOOK" "$acq_new" 'if mkdir "$TARGET/held" 2>/dev/null; then sleep 0.3; rmdir "$TARGET/held"; else echo OVERLAP; fi'
 overlap_rounds=$(lock_race_rounds_with_overlap "$acq_new" 20)
 assert_exit "concurrent stale-lock reclaim never admits two holders" 0 "$overlap_rounds" "rounds with >1 holder: $overlap_rounds"
 
