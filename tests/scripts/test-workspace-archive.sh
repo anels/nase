@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
+# Without fcntl the archive CLI fails closed; the weak lock is the supported opt-in.
+python3 -c 'import fcntl' 2>/dev/null || export NASE_WEAK_LOCK=1
+
 python3 - "$ROOT" <<'PY'
 import importlib.util
 import json
@@ -279,7 +282,10 @@ assert_journal_tamper_rejected(
     "lessons",
     lambda data: data["entries"][0].__setitem__(
         "marker",
-        data["entries"][0]["marker"].replace("offset=11", "offset=x"),
+        data["entries"][0]["marker"].replace(
+            "offset=" + data["entries"][0]["marker"].split("offset=", 1)[1].split(" ", 1)[0],
+            "offset=x",
+        ),
     ),
 )
 assert_journal_tamper_rejected(
@@ -329,13 +335,16 @@ def run_archive_cli(fixture, kind="lessons"):
 
 
 # Archive and journal paths must reject FIFOs and symlinks without blocking.
-fixture = make_root()
-source = fixture / "workspace/tasks/lessons.md"
-source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
-original = source.read_bytes()
-os.mkfifo(fixture / "workspace/tasks/lessons-archive.md")
-assert run_archive_cli(fixture).returncode == 1
-assert source.read_bytes() == original
+if hasattr(os, "mkfifo"):
+    fixture = make_root()
+    source = fixture / "workspace/tasks/lessons.md"
+    source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
+    original = source.read_bytes()
+    os.mkfifo(fixture / "workspace/tasks/lessons-archive.md")
+    assert run_archive_cli(fixture).returncode == 1
+    assert source.read_bytes() == original
+else:
+    print("SKIP  archive FIFO fails closed (no os.mkfifo)")
 
 fixture = make_root()
 source = fixture / "workspace/tasks/lessons.md"
@@ -348,15 +357,18 @@ assert run_archive_cli(fixture).returncode == 1
 assert source.read_bytes() == original
 assert outside.read_text(encoding="utf-8") == "outside\n"
 
-fixture = make_root()
-source = fixture / "workspace/tasks/lessons.md"
-source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
-original = source.read_bytes()
-journal = module.journal_path(fixture, "lessons")
-journal.parent.mkdir()
-os.mkfifo(journal)
-assert run_archive_cli(fixture).returncode == 1
-assert source.read_bytes() == original
+if hasattr(os, "mkfifo"):
+    fixture = make_root()
+    source = fixture / "workspace/tasks/lessons.md"
+    source.write_text("# Lessons\n\n" + lesson(), encoding="utf-8")
+    original = source.read_bytes()
+    journal = module.journal_path(fixture, "lessons")
+    journal.parent.mkdir()
+    os.mkfifo(journal)
+    assert run_archive_cli(fixture).returncode == 1
+    assert source.read_bytes() == original
+else:
+    print("SKIP  journal FIFO fails closed (no os.mkfifo)")
 
 fixture = make_root()
 source = fixture / "workspace/tasks/lessons.md"
@@ -780,7 +792,12 @@ result = subprocess.run(
     timeout=10,
 )
 assert result.returncode == 0, result
-assert "WARNING" not in result.stderr, result.stderr
+rotation_stderr = "".join(
+    line
+    for line in result.stderr.splitlines(keepends=True)
+    if not line.startswith("WARNING: NASE_WEAK_LOCK=1")
+)
+assert "WARNING" not in rotation_stderr, result.stderr
 remaining = source.read_text(encoding="utf-8")
 assert "2026-13-45" in remaining, remaining
 assert "title" not in remaining, remaining

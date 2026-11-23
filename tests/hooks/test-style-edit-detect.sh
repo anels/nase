@@ -112,5 +112,16 @@ run_case "PR build and verbose test" "fix the PR build, the test is too verbose"
 run_case "Chinese message queue code" "把这个消息队列的重试逻辑精简一下" no-match
 run_case "Chinese comment parser code" "这个评论解析器太啰嗦，精简一下" no-match
 
+# Subagent hand-backs and task notifications are not the user's words.
+run_case "agent hand-back report" 'Another Claude session sent a message:
+<agent-message from="abc123">
+The Slack draft is too formal, rewrite it.
+</agent-message>' no-match
+run_case "task notification" '[SYSTEM NOTIFICATION - NOT USER INPUT]
+<task-notification>
+<summary>the PR description is too wordy, rewrite it</summary>
+</task-notification>' no-match
+run_case "same wording typed by the user" "The Slack draft is too formal, rewrite it." match
+
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

@@ -12,6 +12,10 @@ command -v python3 >/dev/null 2>&1 || exit 0
 [ -r "$CHECK" ] || exit 0
 
 payload=$(cat)
-[[ $payload == *workspace*logs* ]] || exit 0
+# Leave before python unless the edited path is a workspace log. Matching the key in the
+# raw JSON keeps the common case free of jq; the checker still makes the real decision,
+# and it also gets anything that is not a JSON object so it can say it was not checked.
+LOG_PATH_KEY='"file_path"[[:space:]]*:[[:space:]]*"[^"]*workspace[/\\]+logs[/\\]'
+[[ $payload =~ $LOG_PATH_KEY || $payload != \{* ]] || exit 0
 
 printf '%s' "$payload" | python3 "$CHECK"

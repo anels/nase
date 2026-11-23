@@ -12,6 +12,9 @@ HOOK="$ROOT/.claude/hooks/session-start.sh"
 pass=0
 fail=0
 
+# Without fcntl the archive helpers fail closed; the weak lock is the supported opt-in.
+python3 -c 'import fcntl' 2>/dev/null || export NASE_WEAK_LOCK=1
+
 assert_contains() {
   local desc="$1" haystack="$2" needle="$3"
   if grep -qF -- "$needle" <<< "$haystack"; then
@@ -424,6 +427,21 @@ cat > "$repo/workspace/logs/.backup-status" <<'STATUS'
 STATUS
 out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
 assert_contains "throttle and retention lines are not a good backup" "$out" "last good backup: 2026-05-28T11:00:00"
+
+# A successful run logs its warnings before the closing `[OK] created` line.
+cat > "$repo/workspace/logs/.backup-status" <<'STATUS'
+2026-05-28T09:00:00 [ERROR] zip failed (exit 12)
+2026-05-28T10:00:00 [WARNING] skipped a commit summary containing a credential-like value
+2026-05-28T10:00:01 [OK] created nase-backup-20260528-100001.zip (1M)
+2026-05-28T10:00:02 [OK] retention cleanup: removed 1 old backup(s) (policy: days:30)
+STATUS
+out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+assert_contains "warning logged before the closing OK line is surfaced" "$out"   "last backup had an issue — 2026-05-28T10:00:00 [WARNING] skipped a commit summary"
+assert_not_contains "an error older than the last good backup is not replayed" "$out" "zip failed"
+
+printf '%s\n' '2026-05-28T11:00:00 [OK] workspace unchanged since last archive - skipped (x retained)'   >> "$repo/workspace/logs/.backup-status"
+out=$(cd "$repo" && bash .claude/hooks/session-start.sh)
+assert_not_contains "a later clean run clears the surfaced warning" "$out" "last backup had an issue"
 
 cp "$repo/.local-paths" "$repo/.local-paths.bak"
 {

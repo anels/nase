@@ -231,6 +231,8 @@ def github_remote(path: Path) -> str | None:
         completed = subprocess.run(
             ["git", "-C", str(path), "remote", "get-url", "origin"],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=10,
             check=False,

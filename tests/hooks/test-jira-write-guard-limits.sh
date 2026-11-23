@@ -20,6 +20,11 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 mkdir -p "$TMP_ROOT/workspace/logs"
 TOKEN="$TMP_ROOT/workspace/.jira-write-token"
 
+# Windows has no flock, so the lock helper refuses to run there without this opt-in.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) export NASE_WEAK_LOCK=1 ;;
+esac
+
 tool="mcp__plugin_atlassian_atlassian__transitionJiraIssue"
 input=$(jq -cn --arg tool "$tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
 
@@ -98,8 +103,67 @@ expect "max_ops of 100000 is blocked" 2 "ceiling"
 write_token 0 '"00000000000000000000001"' ""
 expect "max_ops with more than 4 digits is blocked even when small" 2 "ceiling"
 
+# The decrement rewrites the token in place; it used to fsync a read-only handle and
+# open the directory, both of which Windows refuses.
+write_token 0 3 ""
+expect "batch call with ops left is allowed" 0
+if [ "$(jq -r '.max_ops' "$TOKEN" 2>/dev/null | tr -d '\r')" = "2" ]; then
+  pass "batch token max_ops is decremented in place"
+else
+  fail "batch token max_ops was not decremented (token: $(cat "$TOKEN" 2>/dev/null))"
+fi
+
+# A lock helper that warns on stderr before printing its lease must still yield the lease.
+NOISY_BIN="$TMP_ROOT/noisy-bin"
+mkdir -p "$NOISY_BIN"
+REAL_PYTHON=$(command -v python3)
+cat >"$NOISY_BIN/python3" <<EOF
+#!/usr/bin/env bash
+case "\$*" in *workspace_lock.py*acquire*) echo "WARNING: lock helper noise" >&2 ;; esac
+exec "$REAL_PYTHON" "\$@"
+EOF
+chmod +x "$NOISY_BIN/python3"
+write_token 0 3 ""
+OLD_PATH=$PATH
+PATH="$NOISY_BIN:$PATH"
+expect "stderr noise from the lock helper does not invalidate the lease" 0
+PATH=$OLD_PATH
+
+# A single-shot token naming two issues: jq prints one key per line, and a CRLF jq
+# used to leave a carriage return on the first key.
+link_tool="mcp__plugin_atlassian_atlassian__createIssueLink"
+input=$(jq -cn --arg tool "$link_tool" \
+  '{tool_name:$tool,tool_input:{inwardIssue:"SRE-1",outwardIssue:"SRE-2",type:"Blocks"}}')
+link_sha=$(printf '%s' "$input" | jq -cS '.tool_input' | tr -d '\r' | {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256; else sha256sum; fi
+} | awk '{print $1}')
+jq -n --arg tool "$link_tool" --arg created "$(stamp 0)" --arg sha "$link_sha" \
+  '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_sha256:$sha,payload_summary:"link"}' >"$TOKEN"
+expect "single-shot token with two issue keys matches both" 0
+input=$(jq -cn --arg tool "$tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
+
 rm -f "$TOKEN"
 expect "block message names the sanctioned token script" 2 "jira-write-token.py"
+
+# An unexpected failure before the lock is taken must block (exit 2), not exit 1.
+BROKEN_BIN="$TMP_ROOT/broken-bin"
+mkdir -p "$BROKEN_BIN"
+printf '#!/usr/bin/env bash\nexit 3\n' >"$BROKEN_BIN/date"
+chmod +x "$BROKEN_BIN/date"
+write_token 0 3 ""
+PATH="$BROKEN_BIN:$PATH"
+expect "an unexpected error before the lock fails closed" 2 "failing closed"
+PATH=$OLD_PATH
+
+# The token writer must report success once the token is in place.
+printf '{"probe":true}' >"$TMP_ROOT/content.json"
+rm -f "$TOKEN"
+if python3 "$ROOT/.claude/scripts/jira-write-token.py" --root "$TMP_ROOT" \
+  --content-file "$TMP_ROOT/content.json" >/dev/null 2>&1 && [ -f "$TOKEN" ]; then
+  pass "jira-write-token.py exits 0 after publishing the token"
+else
+  fail "jira-write-token.py failed or left no token"
+fi
 
 if [ "$failures" -gt 0 ]; then
   printf '%d failure(s)\n' "$failures" >&2

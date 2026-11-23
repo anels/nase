@@ -27,13 +27,19 @@ canonicalize_path() {
   local path="$1"
   local py
   local resolved
+  # Expand `~` against the shell's HOME: native Windows Python expands it against
+  # USERPROFILE, which is a different directory whenever HOME is overridden.
+  case "$path" in
+    "~") path="$HOME" ;;
+    "~/"*) path="$HOME/${path#"~/"}" ;;
+  esac
   py=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
   if [ -n "$py" ]; then
     "$py" - "$path" <<'PY'
 from pathlib import Path
 import sys
 
-print(Path(sys.argv[1]).expanduser().resolve(strict=False))
+print(Path(sys.argv[1]).expanduser().resolve(strict=False).as_posix())
 PY
     return
   fi
@@ -80,33 +86,70 @@ fi
 if ! REAL_TARGET=$(canonicalize_path "$TARGET"); then
   log_status "WARNING" "could not canonicalize target path; validating raw path: $TARGET"
 fi
-# Denylist for the most obvious dangerous roots
-case "$REAL_TARGET" in
-  / | "$HOME" | /Users | /home | /tmp | /private/tmp | /var | /etc | /usr )
-    log_status "ERROR" "unsafe target path: $TARGET (resolves to: $REAL_TARGET)"
-    exit 1
-    ;;
-esac
-# Depth guard: require at least 3 path components (e.g. /c/Users/me/backup, not /c/Users)
-DEPTH=$(printf '%s' "$REAL_TARGET" | tr '/' '\n' | grep -c .)
-if [ "$DEPTH" -lt 3 ]; then
-  log_status "ERROR" "target path too shallow (depth $DEPTH) — refusing: $TARGET (resolves to: $REAL_TARGET)"
-  exit 1
-fi
-# Ancestor guard: target must not be an ancestor of HOME or NASE_ROOT
-case "$HOME/" in "$REAL_TARGET/"*) log_status "ERROR" "target is ancestor of HOME: $REAL_TARGET"; exit 1 ;; esac
-case "$NASE_ROOT/" in "$REAL_TARGET/"*) log_status "ERROR" "target is ancestor of NASE_ROOT: $REAL_TARGET"; exit 1 ;; esac
-
+REAL_HOME=$(canonicalize_path "$HOME") || REAL_HOME="$HOME"
+REAL_ROOT=$(canonicalize_path "$NASE_ROOT") || REAL_ROOT="$NASE_ROOT"
 SRC="$NASE_ROOT/workspace"
 if ! REAL_SRC=$(canonicalize_path "$SRC"); then
   REAL_SRC="$SRC"
 fi
-case "$REAL_TARGET" in
-  "$REAL_SRC"|"$REAL_SRC"/*)
-    log_status "ERROR" "backup target must be outside workspace/: $TARGET (resolves to: $REAL_TARGET)"
+
+# Drive-letter paths compare case-insensitively; POSIX paths compare as written.
+path_key() {
+  case "$1" in
+    [A-Za-z]:*) printf '%s' "$1" | tr '[:upper:]' '[:lower:]' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+# True when $1 equals $2 or is a directory above it.
+path_contains() {
+  local outer inner
+  outer=$(path_key "$1")
+  inner=$(path_key "$2")
+  outer=${outer%/}
+  case "$inner/" in "$outer/"*) return 0 ;; esac
+  return 1
+}
+TARGET_KEY=$(path_key "$REAL_TARGET")
+
+# Denylist for the most obvious dangerous roots
+case "$TARGET_KEY" in
+  / | "$HOME" | "$REAL_HOME" | "$(path_key "$REAL_HOME")" | /Users | /home | /tmp | /private/tmp | /var | /etc | /usr \
+  | [a-z]: | [a-z]:/ | [a-z]:/users | [a-z]:/windows | [a-z]:/program\ files | [a-z]:/program\ files\ \(x86\) | [a-z]:/programdata )
+    log_status "ERROR" "unsafe target path: $TARGET (resolves to: $REAL_TARGET)"
     exit 1
     ;;
 esac
+# Depth guard: require at least 3 path components (e.g. /c/Users/me/backup, not /c/Users).
+# A drive letter is a root, not a component, so D:/nase-backup is one level under its root
+# and is allowed; the denylist above covers the system directories at that level.
+DEPTH_PATH="$REAL_TARGET"
+MIN_DEPTH=3
+case "$TARGET_KEY" in
+  [a-z]:*) DEPTH_PATH="${TARGET_KEY#[a-z]:}"; MIN_DEPTH=1 ;;
+esac
+DEPTH=$(printf '%s' "$DEPTH_PATH" | tr '/' '\n' | grep -c . || true)
+if [ "$DEPTH" -lt "$MIN_DEPTH" ]; then
+  log_status "ERROR" "target path too shallow (depth $DEPTH) — refusing: $TARGET (resolves to: $REAL_TARGET)"
+  exit 1
+fi
+# Ancestor guard: target must not be an ancestor of HOME or NASE_ROOT
+for guarded_home in "$HOME" "$REAL_HOME"; do
+  if path_contains "$REAL_TARGET" "$guarded_home"; then
+    log_status "ERROR" "target is ancestor of HOME: $REAL_TARGET"
+    exit 1
+  fi
+done
+for guarded_root in "$NASE_ROOT" "$REAL_ROOT"; do
+  if path_contains "$REAL_TARGET" "$guarded_root"; then
+    log_status "ERROR" "target is ancestor of NASE_ROOT: $REAL_TARGET"
+    exit 1
+  fi
+done
+
+if path_contains "$REAL_SRC" "$REAL_TARGET"; then
+  log_status "ERROR" "backup target must be outside workspace/: $TARGET (resolves to: $REAL_TARGET)"
+  exit 1
+fi
 
 TARGET="$REAL_TARGET"
 
@@ -353,6 +396,13 @@ note_advisory_scan "$SCAN_OUTPUT"
 # ---------------------------------------------------------------------------
 # Create and validate a local zip snapshot before external publication.
 # ---------------------------------------------------------------------------
+# A hard kill (the hook timeout) skips the EXIT trap and leaves a full workspace copy in
+# the temp directory. Remove only directories with this hook's mktemp name and layout
+# that are more than a day old; a live run is minutes old.
+while IFS= read -r -d '' stale_snapshot; do
+  [ -d "$stale_snapshot/workspace" ] || continue
+  rm -rf "$stale_snapshot"
+done < <(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'nase-backup.??????' -mmin +1440 -print0 2>/dev/null || true)
 SNAPSHOT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/nase-backup.XXXXXX") || {
   log_status "ERROR" "cannot create local backup snapshot directory"
   exit 1
@@ -399,7 +449,9 @@ import stat
 import sys
 
 digest = hashlib.sha256()
-source_fd = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+source_fd = os.open(
+    sys.argv[1], os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+)
 try:
     if not stat.S_ISREG(os.fstat(source_fd).st_mode):
         raise OSError("hash input is not a regular file")
@@ -598,17 +650,24 @@ import sys
 source_path, destination_path = sys.argv[1:]
 target_dir = os.path.dirname(destination_path)
 partial_path = os.path.join(target_dir, ".nase-backup-%s.partial" % secrets.token_hex(6))
-source_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+# O_BINARY: a text-mode descriptor on Windows rewrites newline bytes inside the archive.
+binary = getattr(os, "O_BINARY", 0)
+source_flags = os.O_RDONLY | binary | getattr(os, "O_NOFOLLOW", 0)
 source_fd = os.open(source_path, source_flags)
 partial_fd = None
 try:
-    partial_fd = os.open(partial_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    partial_fd = os.open(
+        partial_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | binary, 0o600
+    )
     with os.fdopen(source_fd, "rb", closefd=False) as source, os.fdopen(
         partial_fd, "wb", closefd=False
     ) as partial:
         shutil.copyfileobj(source, partial, 1024 * 1024)
         partial.flush()
         os.fsync(partial.fileno())
+    # Windows refuses to rename a file that still has an open handle.
+    os.close(partial_fd)
+    partial_fd = None
     if os.path.lexists(destination_path):
         raise FileExistsError(destination_path)
     os.rename(partial_path, destination_path)
@@ -672,6 +731,12 @@ for archive_candidate in "$TARGET"/nase-backup-*.zip; do
   # `rm -f` removed. Retention deleting less than before is a behavior change, so the
   # `-L` arm keeps the set identical; the no-match case still falls through.
   [ -e "$archive_candidate" ] || [ -L "$archive_candidate" ] || continue
+  # Retention owns only the names this hook generates. A hand-named archive sorts after
+  # every timestamp and would otherwise take a slot from, or outlive, the real newest one.
+  case "${archive_candidate##*/}" in
+    nase-backup-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].zip) ;;
+    *) continue ;;
+  esac
   BACKUPS+=("$archive_candidate")
 done
 DELETED=0
@@ -683,7 +748,7 @@ if [ -n "$RETENTION_DAYS" ]; then
     RETAINED=()
     for backup in ${BACKUPS[@]+"${BACKUPS[@]}"}; do
       BDATE=$(basename "$backup" | sed -n 's/nase-backup-\([0-9]\{8\}\)-.*/\1/p')
-      if [ -n "$BDATE" ] && [ "$BDATE" -lt "$RETENTION_CUTOFF" ]; then
+      if [ -n "$BDATE" ] && [ "$BDATE" -lt "$RETENTION_CUTOFF" ] && [ "${backup##*/}" != "${ZIP_NAME:-}" ]; then
         rm -f "$backup"
         ((++DELETED))
       else
@@ -699,6 +764,8 @@ fi
 if [ -n "$RETENTION_COUNT" ] && [ "${#BACKUPS[@]}" -gt "$RETENTION_COUNT" ]; then
   TO_DELETE=$(( ${#BACKUPS[@]} - RETENTION_COUNT ))
   for ((i=0; i<TO_DELETE; i++)); do
+    # A clock step backwards can sort the archive just published among the oldest.
+    [ "${BACKUPS[$i]##*/}" != "${ZIP_NAME:-}" ] || continue
     rm -f "${BACKUPS[$i]}"
     ((++DELETED))
   done

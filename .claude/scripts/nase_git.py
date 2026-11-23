@@ -78,6 +78,8 @@ def run(
             cwd=cwd,
             check=check,
             text=text,
+            encoding="utf-8" if text else None,
+            errors="replace" if text else None,
             capture_output=True,
             env=merged_env,
             timeout=timeout,

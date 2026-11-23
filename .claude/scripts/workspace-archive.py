@@ -101,7 +101,12 @@ def open_safe_regular(root: Path, path: Path, label: str) -> int:
         ) from exc
     if not stat.S_ISREG(metadata.st_mode) or lexical_path.is_symlink():
         raise ArchiveError(f"{label} is not a lexical regular file: {lexical_path}")
-    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
     try:
         descriptor = os.open(lexical_path, flags)
     except OSError as exc:
@@ -180,6 +185,10 @@ def fsync_file(root: Path, path: Path, label: str) -> None:
     descriptor = open_safe_regular(root, path, label)
     try:
         os.fsync(descriptor)
+    except OSError:
+        # Windows cannot flush a read-only handle; the writer already synced the data.
+        if os.name != "nt":
+            raise
     finally:
         os.close(descriptor)
 
@@ -226,7 +235,12 @@ def snapshot_matches(path: Path, snapshot: tuple[bytes, os.stat_result] | None) 
         or metadata.st_mtime_ns != original_metadata.st_mtime_ns
     ):
         return False
-    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
     with os.fdopen(os.open(path, flags), "rb") as handle:
         return sha256_bytes(handle.read()) == sha256_bytes(original_bytes)
 
@@ -252,8 +266,11 @@ def atomic_replace(
     backup = path.with_name(f".{path.name}.backup-{uuid.uuid4().hex}")
     claimed = False
     try:
-        os.fchmod(fd, mode)
         with os.fdopen(fd, "wb") as handle:
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), mode)
+            else:
+                os.chmod(tmp, mode)
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())

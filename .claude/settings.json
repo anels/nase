@@ -129,7 +129,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Monitor",
+        "matcher": "Bash|Monitor|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -139,7 +139,7 @@
         ]
       },
       {
-        "matcher": "Bash|Monitor",
+        "matcher": "Bash|Monitor|PowerShell",
         "hooks": [
           {
             "type": "command",

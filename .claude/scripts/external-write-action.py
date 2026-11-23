@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -18,7 +19,6 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import nase_git
 import shell_scan
 from nase_fs import lock_exclusive, sha256_bytes, sha256_file
 from nase_json import canonical_bytes
@@ -33,6 +33,7 @@ EXECUTE_TIMEOUT_SECONDS = 900
 # Distinct from every other exit code because the outcome is unknown, not failed:
 # the CLI may have applied the mutation before the bound expired.
 EXECUTE_TIMEOUT_EXIT = 11
+EXECUTE_LAUNCH_EXIT = 12
 # The token and actor lookups run before the mutation, so bounding only the mutation
 # would leave `execute` able to hang here instead. These are two short `gh` calls;
 # a stall in either is a clean preflight failure, because nothing has mutated yet.
@@ -243,9 +244,22 @@ CONFLUENCE_WRITE_SUBCOMMANDS = {"attach"}
 GUARDED_EXECUTABLES = ("gh", "az", "kubectl", "terraform")
 # A path prefix still names the same binary, so `/usr/bin/gh` counts; a longer word that
 # merely starts with one does not, so `github`, `azure`, and `terraform-docs` do not.
+WINDOWS_EXECUTABLE_SUFFIXES = (".exe", ".cmd", ".bat", ".com")
 GUARDED_MENTION_RE = re.compile(
-    r"(?<![\w-])(?:" + "|".join(GUARDED_EXECUTABLES) + r")(?![\w.-])", re.IGNORECASE
+    r"(?<![\w-])(?:"
+    + "|".join(GUARDED_EXECUTABLES)
+    + r")(?:\.(?:exe|cmd|bat|com))?(?![\w.-])",
+    re.IGNORECASE,
 )
+
+
+def program_name(word: str) -> str:
+    """Lowercase basename of a program word, so a Windows path to `gh.exe` reads as `gh`."""
+    name = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    for suffix in WINDOWS_EXECUTABLE_SUFFIXES:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 # `gh` command table. Every command lands in one of three classes, and anything the table
@@ -256,7 +270,13 @@ GUARDED_MENTION_RE = re.compile(
 #            contracts: a new `gh` noun and a new mutating verb arrive independently.
 GH_READ_VERBS = frozenset({"checks", "diff", "list", "status", "view", "watch"})
 GH_LOCAL_COMMANDS = frozenset(
-    {("pr", "checkout"), ("repo", "clone"), ("gist", "clone")}
+    {
+        ("pr", "checkout"),
+        ("repo", "clone"),
+        ("gist", "clone"),
+        ("release", "download"),
+        ("run", "download"),
+    }
 )
 GH_LOCAL_FLAGS = frozenset({"--version", "--help", "-h"})
 GH_MUTATING_OBJECTS = frozenset(
@@ -294,6 +314,8 @@ def gh_command_class(words: list[str]) -> str | None:
         return None
     if words[0] == "help" or (len(words) == 1 and words[0] in GH_LOCAL_FLAGS):
         return "local"
+    if words[0] == "status":
+        return "read"
     if len(words) < 2:
         return None
     if words[0] in GH_MUTATING_OBJECTS and words[1] in GH_MUTATING_VERBS:
@@ -422,6 +444,22 @@ def terraform_command(words: list[str]) -> list[str] | None:
     return []
 
 
+def terraform_chdir(argv: list[str]) -> str | None:
+    """Return the `-chdir` directory, which Terraform resolves every other path against."""
+    index = 1
+    while index < len(argv):
+        word = argv[index]
+        if not word.startswith("-") or word == "--":
+            return None
+        name, delimiter, value = word.partition("=")
+        if name.lower() in TERRAFORM_GLOBAL_VALUE_OPTIONS:
+            if delimiter:
+                return value
+            return argv[index + 1] if index + 1 < len(argv) else None
+        index += 1
+    return None
+
+
 def terraform_subcommand(words: list[str]) -> str | None:
     """Return the Terraform subcommand after global options such as -chdir."""
     command = terraform_command(words)
@@ -462,7 +500,7 @@ def confluence_publish_subcommand(argv: list[str]) -> str | None:
     """Return the `confluence-publish.py` subcommand this argv runs, or None."""
     if not argv:
         return None
-    executable = Path(argv[0]).name.lower()
+    executable = program_name(argv[0])
     if executable == CONFLUENCE_PUBLISH_SCRIPT:
         rest = argv[1:]
     elif re.fullmatch(r"python[0-9.]*", executable):
@@ -501,7 +539,7 @@ def parse_timestamp(value: str) -> datetime:
 def mutation_system(argv: list[str]) -> str | None:
     if not argv:
         return None
-    executable = Path(argv[0]).name.lower()
+    executable = program_name(argv[0])
     words = [word.lower() for word in argv[1:]]
 
     if executable == "gh":
@@ -539,7 +577,14 @@ def mutation_system(argv: list[str]) -> str | None:
             return "azure"
         if command_path in AZURE_LOCAL_CONFIG_COMMANDS:
             return None
-        if any(word in AZURE_MUTATING_VERBS for word in command_path):
+        # The last verb decides: `pipelines build list` is a read although `build` alone
+        # queues one, and `config set key=value` still ends on `set`.
+        verbs = [
+            word
+            for word in command_path
+            if word in AZURE_MUTATING_VERBS or word in AZURE_READ_VERBS
+        ]
+        if verbs and verbs[-1] in AZURE_MUTATING_VERBS:
             return "azure"
         return None
 
@@ -690,6 +735,15 @@ def token_path(root: Path) -> Path:
     return root / "workspace" / ".external-write-token"
 
 
+def payload_base(root: Path, argv: list[str]) -> Path:
+    """Directory the CLI resolves a relative payload path against."""
+    if argv and program_name(argv[0]) == "terraform":
+        chdir = terraform_chdir(argv)
+        if chdir:
+            return resolve_payload_path(root, chdir)
+    return root
+
+
 def resolve_payload_path(root: Path, raw_path: str) -> Path:
     path = Path(raw_path)
     if not path.is_absolute():
@@ -748,7 +802,7 @@ def positional_arguments(
 
 def payload_scan_tokens(argv: list[str]) -> list[tuple[int, str]]:
     """The words a CLI's flag parser sees after the program name, with their argv index."""
-    if argv[:2] and Path(argv[0]).name.lower() == "gh" and argv[1:2] == ["api"]:
+    if argv[:2] and program_name(argv[0]) == "gh" and argv[1:2] == ["api"]:
         tokens, _ = expand_gh_api_tokens(argv[2:])
         return [(index + 2, token) for index, token in tokens]
     return list(enumerate(argv))[1:]
@@ -843,7 +897,7 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
     later. The second pass binds any other word that resolves to an existing regular
     file, so a file-valued flag missing from the tables cannot slip past unhashed.
     """
-    executable = Path(argv[0]).name.lower() if argv else ""
+    executable = program_name(argv[0]) if argv else ""
     file_flags = set(PAYLOAD_FILE_FLAGS)
     if executable == "gh":
         file_flags.update({"--env-file", "--notes-file"})
@@ -928,11 +982,8 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
         system == "terraform"
         and terraform_subcommand([word.lower() for word in argv[1:]]) == "apply"
     ):
-        subcommand_index = next(
-            index
-            for index, value in enumerate(argv[1:], 1)
-            if not value.startswith("-")
-        )
+        command = terraform_command(argv[1:]) or []
+        subcommand_index = len(argv) - len(command)
         positionals = positional_arguments(
             argv,
             subcommand_index + 1,
@@ -940,8 +991,10 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
                 "-backup",
                 "-lock-timeout",
                 "-parallelism",
+                "-replace",
                 "-state",
                 "-state-out",
+                "-target",
                 "-var",
                 "-var-file",
             },
@@ -950,6 +1003,7 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
 
     files: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
+    base = payload_base(root, argv)
 
     def bind(index: int, value: str, required: bool) -> None:
         if (index, value) in seen:
@@ -960,7 +1014,7 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
                 raise ActionError("stdin payloads cannot be bound to an approved action")
             return
         try:
-            path = resolve_payload_path(root, value)
+            path = resolve_payload_path(base, value)
             is_file = path.is_file()
         except (OSError, ValueError):
             path = None
@@ -970,7 +1024,7 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
                 raise ActionError(f"payload file does not exist: {value}")
             return
         if required:
-            reject_symlinked_path(root, value)
+            reject_symlinked_path(base, value)
         try:
             digest = sha256_file(path)
         except OSError as exc:
@@ -1008,7 +1062,7 @@ def literal_at_file_fields(root: Path, argv: list[str]) -> list[str]:
     local path instead of the prose, and the manifest still looks correct because
     `payload_files` hashes the file it can see.
     """
-    if not argv or Path(argv[0]).name.lower() != "gh" or argv[1:2] != ["api"]:
+    if not argv or program_name(argv[0]) != "gh" or argv[1:2] != ["api"]:
         return []
     offenders: list[str] = []
     argv = [*argv[:2], *expand_gh_api_args(argv[2:])[0]]
@@ -1071,7 +1125,6 @@ def github_target_host(argv: list[str]) -> str:
 
 
 def github_target_owner(
-    root: Path,
     argv: list[str],
     explicit_owner: str | None = None,
 ) -> str:
@@ -1177,20 +1230,12 @@ def github_target_owner(
             raise ActionError("explicit GitHub owner does not match the command target")
         return derived
 
-    remote = nase_git.run("remote", "get-url", "origin", repo=root, text=True)
-    if remote.returncode == 0:
-        try:
-            host, owner = github_repo_selector(remote.stdout.strip())
-        except ActionError:
-            pass
-        else:
-            if host == "github.com":
-                if explicit_owner and owner.casefold() != explicit_owner.casefold():
-                    raise ActionError(
-                        "explicit GitHub owner does not match the current origin"
-                    )
-                return owner
-    raise ActionError("cannot map the GitHub target owner to an approved account")
+    # No fallback to this checkout's origin: `root` is the nase workspace, so a write
+    # that names no repository would land on the workspace repo, not the product repo.
+    raise ActionError(
+        "GitHub write names no repository; add -R owner/repo so it cannot land on "
+        "the nase workspace checkout"
+    )
 
 
 def configured_github_account(root: Path, owner: str) -> str:
@@ -1294,7 +1339,6 @@ def validated_github_account(root: Path, action: dict[str, Any]) -> tuple[str, s
     if not isinstance(owner_override, bool):
         raise ActionError("GitHub manifest owner source is invalid")
     resolved_owner = github_target_owner(
-        root,
         action["argv"],
         owner if owner_override else None,
     )
@@ -1305,12 +1349,18 @@ def validated_github_account(root: Path, action: dict[str, Any]) -> tuple[str, s
     return approved, host
 
 
+def launch_argv(argv: list[str]) -> list[str]:
+    """Resolve the program on PATH; Windows ships `az` as `az.cmd`, which a bare name misses."""
+    return [shutil.which(argv[0]) or argv[0], *argv[1:]]
+
+
 def run_github_action(
     root: Path, action: dict[str, Any], timeout: int
 ) -> subprocess.CompletedProcess:
     """Run with the approved account token without changing shared gh state."""
     approved, host = validated_github_account(root, action)
-    executable = action["argv"][0]
+    argv = launch_argv(action["argv"])
+    executable = argv[0]
     token = github_account_token(executable, host, approved)
     if (
         github_token_actor(executable, root, host, token).casefold()
@@ -1320,7 +1370,7 @@ def run_github_action(
             "approved GitHub token actor does not match its account mapping"
         )
     return subprocess.run(
-        action["argv"],
+        argv,
         cwd=root,
         env=github_subprocess_environment(host, token),
         check=False,
@@ -1339,7 +1389,7 @@ def action_payload(
     if actual_system is None:
         if (
             argv
-            and Path(argv[0]).name.lower() == "kubectl"
+            and program_name(argv[0]) == "kubectl"
             and kubectl_command([word.lower() for word in argv[1:]]) is None
         ):
             raise ActionError(
@@ -1371,7 +1421,7 @@ def action_payload(
     }
     if system == "github":
         action["github_host"] = github_target_host(argv)
-        owner = github_target_owner(root, argv, github_owner)
+        owner = github_target_owner(argv, github_owner)
         action["github_owner"] = owner
         action["github_owner_override"] = github_owner is not None
         action["github_account"] = configured_github_account(root, owner)
@@ -1566,7 +1616,8 @@ def lint_prose_texts(
                 ],
                 input=text,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                 timeout=20,
                 check=False,
             )
@@ -1592,6 +1643,7 @@ def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
         findings.extend(
             lint_prose_texts(root, prose_inline_texts(action["argv"]), surface)
         )
+    base = payload_base(root, action.get("argv") or [])
     for entry in action.get("payload_files", []):
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise ActionError("manifest payload file entry is invalid")
@@ -1604,7 +1656,7 @@ def verify_payload_files(root: Path, action: dict[str, Any]) -> None:
                 "manifest payload file entry has no argument to re-resolve; prepare it again"
             )
         try:
-            current = resolve_payload_path(root, argument)
+            current = resolve_payload_path(base, argument)
         except (OSError, ValueError) as exc:
             raise ActionError(f"payload path cannot be resolved: {argument}") from exc
         if current != path:
@@ -1739,7 +1791,7 @@ def _carried_words(argv: list[str]) -> list[str]:
     """
     words = argv[1:]
     for index, word in enumerate(words):
-        name = Path(word).name.lower()
+        name = program_name(word)
         if name in INERT_PROGRAMS and name not in AMBIGUOUS_ARGUMENT_WORDS:
             return words[:index]
     return words
@@ -1761,7 +1813,7 @@ def _nested_scripts(words: list[str]):
 def _interpreter_code(inv: shell_scan.Invocation, command: str) -> str | None:
     """Return the code text an interpreter runs when it is inline or fed on stdin."""
     argv = inv.argv
-    name = Path(argv[0]).name.lower()
+    name = program_name(argv[0])
     if re.match(r"^(?:awk|gawk|mawk)$", name):
         return next((w for w in argv[1:] if not w.startswith("-")), None)
     skip_value = False
@@ -1798,7 +1850,7 @@ def carrier_argvs(result: shell_scan.ScanResult, command: str):
         argv = inv.argv
         if not argv or inv.function_call or inv.head_dynamic or "eval" in inv.via:
             continue
-        name = Path(argv[0]).name.lower()
+        name = program_name(argv[0])
         if name in UNBINDABLE_HEADS:
             continue
         if name in GUARDED_EXECUTABLES or name in INERT_PROGRAMS or inv.is_shell():
@@ -1812,12 +1864,12 @@ def carrier_argvs(result: shell_scan.ScanResult, command: str):
                     tokens = re.findall(r"[\w./:=@-]+|--?[\w-]+", code)
                     for i, token in enumerate(tokens):
                         window = tokens[i : i + INLINE_TOKEN_WINDOW]
-                        if token.lower() in GUARDED_EXECUTABLES and mutation_system(window):
+                        if program_name(token) in GUARDED_EXECUTABLES and mutation_system(window):
                             yield window
                 continue
         words = _carried_words(argv)
         guarded_at = next(
-            (i for i, w in enumerate(words) if Path(w).name.lower() in GUARDED_EXECUTABLES),
+            (i for i, w in enumerate(words) if program_name(w) in GUARDED_EXECUTABLES),
             len(words),
         )
         if INTERPRETERS_RE.match(name) and any(
@@ -1825,7 +1877,7 @@ def carrier_argvs(result: shell_scan.ScanResult, command: str):
         ):
             continue
         for i, word in enumerate(words):
-            if Path(word).name.lower() in GUARDED_EXECUTABLES and mutation_system(words[i:]):
+            if program_name(word) in GUARDED_EXECUTABLES and mutation_system(words[i:]):
                 yield words[i:]
         if name in EXEC_WRAPPERS:
             for text in _nested_scripts(words):
@@ -1845,12 +1897,12 @@ def dynamic_args_are_reads(result: shell_scan.ScanResult) -> bool:
         return False
     for invocation in result.invocations:
         argv = invocation.argv
-        if not argv or Path(argv[0]).name.lower() not in GUARDED_EXECUTABLES:
+        if not argv or program_name(argv[0]) not in GUARDED_EXECUTABLES:
             continue
         if "subst" in invocation.via or invocation.env_dynamic:
             return False
         if invocation.dynamic and not (
-            Path(argv[0]).name.lower() == "gh"
+            program_name(argv[0]) == "gh"
             and len(argv) >= 3
             and not any(invocation.dyn[:3])
             and argv[1].lower() not in {"api", "auth"}
@@ -1868,7 +1920,7 @@ def command_has_mutation(argvs: list[list[str]]) -> bool:
 def known_safe_external_command(argv: list[str]) -> bool:
     if not argv:
         return True
-    executable = Path(argv[0]).name.lower()
+    executable = program_name(argv[0])
     words = [word.lower() for word in argv[1:]]
     if executable == "gh":
         if not words:
@@ -1967,10 +2019,16 @@ def known_safe_external_command(argv: list[str]) -> bool:
             return False
         if command[0] == "config":
             return len(command) >= 2 and command[1] in {"current-context", "get-contexts"}
+        if command[0] == "rollout":
+            return command[1:2] in (["status"], ["history"])
+        if command[0] == "auth":
+            return command[1:2] == ["can-i"]
         return command[0] in {
             "api-resources",
             "cluster-info",
             "describe",
+            "events",
+            "explain",
             "get",
             "logs",
             "top",
@@ -1992,8 +2050,11 @@ def known_safe_external_command(argv: list[str]) -> bool:
                 terraform_flag_names(options) & {"json", "raw"}
                 or any(not word.startswith("-") for word in options)
             )
+        if subcommand == "show":
+            # `-json` prints sensitive values in clear text; the human form redacts them.
+            return "json" not in terraform_flag_names(options)
         if subcommand == "state":
-            return options[:1] == ["list"]
+            return options[:1] in (["list"], ["show"])
         if subcommand == "workspace":
             return options[:1] in (["list"], ["show"])
         return False
@@ -2004,7 +2065,7 @@ def command_has_unrecognized_external_cli(argvs: list[list[str]]) -> bool:
     for argv in argvs:
         if argv == [UNRECOGNIZED_SHELL_COMMAND]:
             return True
-        executable = Path(argv[0]).name.lower() if argv else ""
+        executable = program_name(argv[0]) if argv else ""
         if (
             executable in GUARDED_EXECUTABLES
             and mutation_system(argv) is None
@@ -2234,7 +2295,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
                             file=sys.stderr,
                         )
                 completed = subprocess.run(
-                    action["argv"],
+                    launch_argv(action["argv"]),
                     cwd=args.root,
                     env=environment,
                     check=False,
@@ -2256,6 +2317,15 @@ def cmd_execute(args: argparse.Namespace) -> int:
             )
             record_outcome(args.root, manifest_path, action, None, "unknown")
             return EXECUTE_TIMEOUT_EXIT
+        except OSError as exc:
+            print(
+                f"ERROR: could not launch {action['argv'][0]}: {exc}\n"
+                "  Nothing was mutated. The one-shot token is spent, so a retry needs a "
+                "new approval.",
+                file=sys.stderr,
+            )
+            record_outcome(args.root, manifest_path, action, None, "not-launched")
+            return EXECUTE_LAUNCH_EXIT
         record_outcome(
             args.root,
             manifest_path,
@@ -2295,6 +2365,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 "prepared": len(manifests),
                 "executed": sum(1 for o in outcomes if o in ("ok", "failed")),
                 "unknown_outcome": outcomes.count("unknown"),
+                "not_launched": outcomes.count("not-launched"),
                 "prepared_not_executed": len(manifests - ledger_names),
                 "ledger_without_manifest": len(ledger_names - manifests),
                 "malformed_ledger_lines": malformed,
@@ -2306,7 +2377,9 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 
 def cmd_guard(args: argparse.Namespace) -> int:
-    command = args.command or ""
+    command = args.command
+    if command is None:
+        command = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     result = shell_scan.scan(command)
     unbindable_target = bool(command) and (result.unparseable or bool(result.top_opaque))
     # Failing closed here is only justified when a guarded CLI could actually be
@@ -2389,7 +2462,9 @@ def build_parser() -> argparse.ArgumentParser:
     execute.set_defaults(func=cmd_execute)
 
     guard = subparsers.add_parser("guard", help="reject raw known mutation commands")
-    guard.add_argument("--command", required=True)
+    guard.add_argument(
+        "--command", help="command text; read from stdin when omitted"
+    )
     guard.set_defaults(func=cmd_guard)
 
     audit = subparsers.add_parser(

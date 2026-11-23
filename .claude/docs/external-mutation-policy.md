@@ -72,9 +72,13 @@ GitHub CLI, ADO, Azure, Kubernetes, Terraform, and Confluence attachment-upload 
 ```bash
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
   --system github --summary "create draft PR" -- \
-  gh pr create --draft --title "{title}" --body-file "{body_file}" \
+  gh pr create -R "{owner}/{repo}" --head "{branch}" --draft \
+    --title "{title}" --body-file "{body_file}" \
   | jq -r .manifest)
 
+# `prepare` refuses a GitHub write that names no repository (`-R owner/repo`, or a
+# `repos/{owner}/...` API path): the helper runs in the nase checkout, so an
+# unqualified `gh pr merge 12` would act on the workspace repo.
 # Show the manifest and exact payload content before asking.
 cat "$body_file"
 jq . "$MANIFEST"

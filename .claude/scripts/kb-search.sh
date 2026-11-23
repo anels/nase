@@ -115,6 +115,11 @@ fi
 
 # ── determine search scope ─────────────────────────────────────────────────────
 KB_ROOT="workspace/kb"
+# Run from another directory, the relative root finds nothing and looks like "no results".
+# Fall back to the workspace this script belongs to; results stay workspace-relative.
+if [ ! -d "$KB_ROOT" ] && [ -d "$SCRIPT_DIR/../../$KB_ROOT" ]; then
+  cd "$SCRIPT_DIR/../.."
+fi
 case "$DOMAIN_FILTER" in
   general)      SEARCH_DIRS=("$KB_ROOT/general") ;;
   projects)     SEARCH_DIRS=("$KB_ROOT/projects") ;;

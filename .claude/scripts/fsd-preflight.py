@@ -134,6 +134,8 @@ def tool_availability(root: Path) -> list[dict[str, Any]]:
         ],
         check=False,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=TOOL_PROBE_TIMEOUT_SECONDS,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,

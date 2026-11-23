@@ -10,6 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from nase_fs import fsync_dir
 from workspace_lock import LockError, held
 
 
@@ -30,11 +31,7 @@ def write_token(root: Path, content: bytes, timeout_ms: int) -> None:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, workspace / ".jira-write-token")
-            directory_fd = os.open(workspace, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            fsync_dir(workspace)
         except Exception:
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary)

@@ -95,7 +95,13 @@ def require_tool(name: str) -> str:
 def run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired as exc:
         raise TranscriptError(

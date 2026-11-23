@@ -20,6 +20,12 @@ INPUT=$(cat)
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null || true)
 [ -z "$PROMPT" ] && exit 0
 
+# Subagent hand-backs and background-task notices arrive on this event too. They are
+# model or harness text, so their wording says nothing about the user's style.
+case "$PROMPT" in
+  *'<agent-message '* | *'<task-notification>'* | *'[SYSTEM NOTIFICATION - NOT USER INPUT]'*) exit 0 ;;
+esac
+
 NB='[^[:alnum:]_]'
 
 # Wording cues: phrases about how text reads.

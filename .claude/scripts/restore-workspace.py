@@ -135,6 +135,8 @@ def seven_zip_members(archive: Path) -> list[dict[str, Any]]:
         result = subprocess.run(
             [seven_zip_binary(), "l", "-slt", str(archive)],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
             timeout=SEVEN_ZIP_LIST_TIMEOUT_SECONDS,
@@ -1025,7 +1027,7 @@ def resolve_backup(target_raw: str, selection: str) -> str:
     if not selection:
         raise RestoreError("no backup selected")
     target_real = canonicalize_path(target_raw)
-    if selection.startswith(("/", "~")):
+    if selection.startswith(("/", "~")) or Path(selection).is_absolute():
         candidate = selection
     else:
         candidate = f"{target_raw}/{selection}"

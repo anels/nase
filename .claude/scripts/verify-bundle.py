@@ -40,7 +40,17 @@ SECRET_PATTERNS = (
     (
         "known-token",
         re.compile(
-            rb"\b(?:AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})\b"
+            rb"\b(?:AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|[sr]k_(?:live|test)_[A-Za-z0-9]{16,})\b"
+        ),
+    ),
+    # A bare `token` key names too many non-secrets (parser tokens, page cursors) to join
+    # the credential names, so only a quoted opaque literal counts: 24+ token characters
+    # mixing letters and digits.
+    (
+        "token-literal",
+        re.compile(
+            rb"(?i)(?<![A-Za-z0-9_-])[\"']?token[\"']?[ \t]*[:=][ \t]*"
+            rb"([\"'])(?=[A-Za-z_-]*[0-9])(?=[0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\1"
         ),
     ),
 )
@@ -111,7 +121,11 @@ COMMAND_SUBSTITUTION_VALUE = re.compile(rb"^\$\([^()\r\n]*\)$")
 # `"$(cat token).suffix"`). A value that splices in command output is generated at run time,
 # so it cannot be the literal credential no matter what surrounds it. The substitution must
 # name something — a leading letter or underscore — so `$()` cannot launder a literal.
-EMBEDDED_COMMAND_SUBSTITUTION = re.compile(rb"\$\([A-Za-z_][^()\r\n]*\)")
+# A one- or two-letter name with no argument (`hunter$(x)2`) is neither a command with
+# arguments nor a plausible variable macro, so it stays a literal.
+EMBEDDED_COMMAND_SUBSTITUTION = re.compile(
+    rb"\$\((?:[A-Za-z_][A-Za-z0-9_.-]{2,}|[A-Za-z_][^()\r\n]*[ \t][^()\r\n]*)\)"
+)
 # PowerShell also groups a command with a bare paren (`$password = (az ... )`). Bare parens
 # are far weaker evidence than `$(`, so require a command word *plus* at least one argument —
 # that keeps `(az keyvault secret show ...)` while `(azurePassword123XY)` stays a literal.
@@ -156,8 +170,9 @@ URL_CREDENTIAL_REFERENCE = re.compile(
 FAIL_CLOSED_VALUES = frozenset({b"<overlong-quoted-value>", b"<unterminated-quoted-value>"})
 # Prose, not an assignment. Markdown running text is full of incidental `key=` shapes whose
 # value carries no secret at all, and each of these is provable rather than heuristic:
-#   - no alphanumeric character at all (`...`, an elision, a stray backtick run). Every
-#     credential format in SECRET_PATTERNS requires alphanumerics, so this cannot hide one.
+#   - no alphanumeric character at all (`...`, an elision, a stray backtick run, a `****`
+#     mask). A long run of many distinct symbols is the exception: `!@#$%^&*()` is a
+#     plausible password, so `is_symbol_filler` keeps it flagged.
 #   - a bare short decimal, which is how a doc writes a *length* (`secret=32 chars`).
 #   - a printf/format conversion specifier, which is a placeholder by definition.
 NON_ALPHANUMERIC_VALUE = re.compile(rb"^[^A-Za-z0-9]{1,12}$")
@@ -177,7 +192,13 @@ SNAKE_CREDENTIAL_NAMES = (
     b"client_secret",
     b"access_token",
     b"refresh_token",
+    b"auth_token",
+    b"bearer_token",
     b"secret",
+    b"secret_key",
+    b"private_key",
+    b"access_key",
+    b"passphrase",
 )
 CAMEL_CREDENTIAL_SUFFIXES = (
     b"Password",
@@ -187,8 +208,16 @@ CAMEL_CREDENTIAL_SUFFIXES = (
     b"ClientSecret",
     b"AccessToken",
     b"RefreshToken",
+    b"AuthToken",
+    b"BearerToken",
     b"Secret",
+    b"SecretKey",
+    b"PrivateKey",
+    b"AccessKey",
+    b"Passphrase",
 )
+SYMBOL_PASSWORD_MIN_LENGTH = 8
+SYMBOL_PASSWORD_MIN_DISTINCT = 6
 DELIMITED_SPANS = ((b"$((", b"))"), (b"${{", b"}}"), (b"$(", b")"), (b"<", b">"))
 
 
@@ -212,6 +241,15 @@ def command_substitution_span(candidate: bytes) -> bytes | None:
     return None
 
 
+def is_symbol_filler(value: bytes) -> bool:
+    if not NON_ALPHANUMERIC_VALUE.fullmatch(value):
+        return False
+    return (
+        len(value) < SYMBOL_PASSWORD_MIN_LENGTH
+        or len(set(value)) < SYMBOL_PASSWORD_MIN_DISTINCT
+    )
+
+
 def reference_like(value: bytes) -> bool:
     """Return whether the value is a run-time reference rather than a literal credential."""
     if value in FAIL_CLOSED_VALUES:
@@ -231,7 +269,7 @@ def reference_like(value: bytes) -> bool:
             or ACTIONS_EXPRESSION_VALUE.fullmatch(candidate)
             or ACTIONS_EXPRESSION_OPEN.fullmatch(candidate)
             or ANGLE_PLACEHOLDER_SPAN.fullmatch(candidate)
-            or NON_ALPHANUMERIC_VALUE.fullmatch(candidate)
+            or is_symbol_filler(candidate)
             or COUNT_VALUE.fullmatch(candidate)
             or FORMAT_SPECIFIER_VALUE.fullmatch(candidate)
             or URL_CREDENTIAL_REFERENCE.fullmatch(candidate)

@@ -6,7 +6,7 @@ def clip($x; $n):
 # accessToken). Weak words (pat, pwd, sig) must be a whole segment so compat:, tokenizer
 # and path= are left alone.
 def scrub:
-  tostring
+  (if . == null then "" else tostring end)
   | gsub("-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"; "[REDACTED_PRIVATE_KEY]")
   | gsub("(?i)(?<pre>authorization[\"']?[[:space:]]*[:=][[:space:]]*)(?:bearer|basic|token|digest|negotiate)[[:space:]]+[^[:space:]\"',;]+"; "\(.pre)[REDACTED]")
   | gsub("(?i)(?<pre>\\bbearer[[:space:]]+)[A-Za-z0-9._~+/=-]{8,}"; "\(.pre)[REDACTED]")

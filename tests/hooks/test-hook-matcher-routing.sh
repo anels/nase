@@ -32,6 +32,7 @@ EDIT_POST=post-edit-ruff.sh,post-edit-shellcheck.sh
 ROUTES="
 PreToolUse|Bash|$GIT_GUARDS
 PreToolUse|Monitor|$GIT_GUARDS
+PreToolUse|PowerShell|$GIT_GUARDS
 PreToolUse|Edit|$EDIT_PRE
 PreToolUse|Write|$EDIT_PRE
 PreToolUse|MultiEdit|$EDIT_PRE
@@ -112,7 +113,7 @@ for event in PreToolUse PostToolUse; do
     else
       fail "$event $script is registered in settings.json but no route row expects it"
     fi
-  done < <(python3 "$HELPER" scripts "$SETTINGS" "$event")
+  done < <(python3 "$HELPER" scripts "$SETTINGS" "$event" | tr -d '\r')
 done
 
 # Mutation probes: break a matcher in a scratch copy and require the table to notice.
@@ -132,8 +133,11 @@ mutate_probe() {
 }
 
 mutate_probe "Monitor dropped from the Bash guards" \
-  '(.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")).matcher = "Bash"' \
+  '(.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor|PowerShell")).matcher = "Bash|PowerShell"' \
   "PreToolUse Monitor"
+mutate_probe "PowerShell dropped from the Bash guards" \
+  '(.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor|PowerShell")).matcher = "Bash|Monitor"' \
+  "PreToolUse PowerShell"
 mutate_probe "slack_add_reaction dropped from the Slack write regex" \
   '(.hooks.PreToolUse[] | select(.matcher | test("slack_add_reaction"))).matcher |= sub("\\|slack_add_reaction"; "")' \
   "slack_add_reaction"

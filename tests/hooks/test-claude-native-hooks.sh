@@ -81,6 +81,18 @@ printf '{"error":"rate limit %s","error_details":"too many requests %s","last_as
 assert_jq "StopFailure writes session failure summary" "$FIXTURE/workspace/stats/session-failures.jsonl" \
   'select(.event == "StopFailure" and (.error | contains("redaction-test-secret") | not) and (.error_details | contains("redaction-test-token") | not) and .last_assistant_chars == 11 and has("last_assistant_preview") | not)'
 
+printf '{"session_id":"absent-fields"}' \
+  | NASE_ROOT="$FIXTURE" HOOK_EVENT_NAME=StopFailure \
+    bash "$ROOT/.claude/hooks/track-session-failure.sh" >/dev/null 2>&1
+assert_jq "StopFailure logs an absent error as empty, not the string null" "$FIXTURE/workspace/stats/session-failures.jsonl" \
+  'select(.session == "absent-fields" and .error == "" and .error_details == "")'
+
+printf '{"session_id":"absent-fields","tool_name":"Bash"}' \
+  | NASE_ROOT="$FIXTURE" HOOK_EVENT_NAME=PostToolUseFailure \
+    bash "$ROOT/.claude/hooks/track-tool-failure.sh" >/dev/null 2>&1
+assert_jq "PostToolUseFailure logs an absent error as empty, not the string null" "$FIXTURE/workspace/stats/tool-failures.jsonl" \
+  'select(.session == "absent-fields" and .error == "")'
+
 # Slack write tools beyond send/canvas must be gated by the guard and by settings.json wiring.
 settings="$ROOT/.claude/settings.json"
 slack_write_tools="slack_send_message slack_schedule_message slack_create_canvas slack_update_canvas slack_add_reaction slack_create_conversation slack_add_list_record slack_update_list_record slack_create_list slack_update_list slack_complete_file_upload"

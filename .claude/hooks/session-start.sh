@@ -67,9 +67,25 @@ SKILL_SYNC_CHANGED=0
   # Check last backup status: surface errors AND last successful run timestamp.
   STATUS_FILE="$NASE_ROOT/workspace/logs/.backup-status"
   if [ -f "$STATUS_FILE" ]; then
-    LAST=$(tail -n1 "$STATUS_FILE")
-    if echo "$LAST" | grep -qE "ERROR|WARNING"; then
-      echo "[session-start] WARNING: last backup had an issue — $LAST"
+    # A successful run logs its warnings before its closing `[OK] created` line, so the
+    # last line alone hides them. Report the warnings of the last archive-producing run
+    # plus every warning and error logged since the last successful run.
+    BACKUP_ISSUES=$(awk '
+      /\[WARNING\]/ { cur[++n] = $0; next }
+      /\[ERROR\]/ { for (i = 1; i <= n; i++) out[++m] = cur[i]; out[++m] = $0; n = 0; next }
+      /\[OK\] (created |synced |workspace unchanged since last archive)/ {
+        m = 0
+        if ($0 ~ /\[OK\] created /) for (i = 1; i <= n; i++) out[++m] = cur[i]
+        n = 0
+      }
+      END {
+        for (i = 1; i <= n; i++) out[++m] = cur[i]
+        for (i = (m > 5 ? m - 4 : 1); i <= m; i++) print out[i]
+      }' "$STATUS_FILE")
+    if [ -n "$BACKUP_ISSUES" ]; then
+      while IFS= read -r LAST; do
+        echo "[session-start] WARNING: last backup had an issue — $LAST"
+      done <<< "$BACKUP_ISSUES"
       echo "[session-start] Check .local-paths config or run /restore to verify data"
     fi
     # Only these stop-backup.sh lines mean an archive covers the workspace; the
@@ -117,7 +133,8 @@ SKILL_SYNC_CHANGED=0
       echo "[session-start] WARNING: python3/python not found — workspace skill sync skipped"
     else
       SYNC_RC=0
-      SYNC_OUTPUT=$("$PYTHON" "$NASE_ROOT/.claude/scripts/sync-workspace-skills.py" \
+      # The sync report contains non-ASCII; a Windows Python otherwise encodes a pipe as cp1252.
+      SYNC_OUTPUT=$(PYTHONIOENCODING=utf-8 "$PYTHON" "$NASE_ROOT/.claude/scripts/sync-workspace-skills.py" \
         --root "$NASE_ROOT" 2>&1) || SYNC_RC=$?
       if [ -n "$SYNC_OUTPUT" ]; then
         printf '%s\n' "$SYNC_OUTPUT"

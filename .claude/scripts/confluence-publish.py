@@ -66,6 +66,8 @@ from confluence_markup import (
     unresolving_font_stacks,
 )
 
+FENCE_LINE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
 
 def markdown_blocks(text: str) -> tuple[str, list[Block], list[str]]:
     warnings = []
@@ -95,8 +97,14 @@ def markdown_blocks(text: str) -> tuple[str, list[Block], list[str]]:
             warnings.append(message)
 
     blocks = [Block()]
+    fence = ""
     for line in lines:
-        if line.startswith("## "):
+        marker = FENCE_LINE.match(line)
+        if marker and not fence:
+            fence = marker.group(1)
+        elif marker and marker.group(1).startswith(fence) and not marker.group(2).strip():
+            fence = ""
+        if not fence and not marker and line.startswith("## "):
             if blocks[-1].html:
                 blocks.append(Block(level=2, heading=line[3:].strip()))
             else:
@@ -461,14 +469,29 @@ def extract_styles(raw: str) -> str:
     return "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", raw, re.DOTALL))
 
 
+WINDOWS_BROWSERS = (
+    ("Google", "Chrome", "Application", "chrome.exe"),
+    ("Microsoft", "Edge", "Application", "msedge.exe"),
+)
+
+
 def find_chrome() -> str | None:
-    for candidate in (
+    candidates = [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    ):
+    ]
+    for variable in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+        base = os.environ.get(variable)
+        if base:
+            candidates.extend(os.path.join(base, *parts) for parts in WINDOWS_BROWSERS)
+    for candidate in candidates:
         if os.path.exists(candidate):
             return candidate
-    return shutil.which("google-chrome") or shutil.which("chromium")
+    for name in ("google-chrome", "chromium", "chrome", "msedge"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
 
 
 DARK_MEDIA = re.compile(r"@media[^{]*prefers-color-scheme\s*:\s*dark[^{]*\{")
@@ -528,11 +551,17 @@ def measure_height(chrome: str, path: str, width: int) -> int:
         "--virtual-time-budget=4000",
         f"--window-size={width},800",
         "--dump-dom",
-        f"file://{path}",
+        Path(path).resolve().as_uri(),
     ]
     try:
         done = subprocess.run(
-            argv, capture_output=True, timeout=30, text=True, check=False
+            argv,
+            capture_output=True,
+            timeout=30,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return 0
@@ -613,7 +642,7 @@ def cmd_render(args) -> int:
                 "--default-background-color=ffffffff",
                 f"--window-size={doc_width},{height}",
                 f"--screenshot={target}",
-                f"file://{html_path}",
+                Path(html_path).resolve().as_uri(),
             ]
             try:
                 subprocess.run(argv, capture_output=True, timeout=30, check=False)
@@ -677,6 +706,8 @@ def api_token(service: str, account: str) -> str:
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=KEYCHAIN_TIMEOUT_SECONDS,
                 check=False,
             )
@@ -804,10 +835,16 @@ def existing_attachments(site: str, email: str, token: str, page_id: str) -> dic
     try:
         with open_https(request, 30) as response:
             data = json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            # Every upload after this would fail the same way; say so once.
+            raise RuntimeError(
+                f"cannot list attachments on page {page_id}: HTTP {exc.code}"
+            ) from exc
+        return {}
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
-        # Worst case this misses an existing attachment and uploads a second
-        # version, which Confluence handles; a traceback here would abort the
-        # whole page instead.
+        # A transient listing failure only costs the reuse of an existing
+        # attachment; each upload still reports its own outcome.
         return {}
     return {
         a["title"]: {"id": a.get("id", ""), "file_id": a.get("fileId", "")}
@@ -894,7 +931,7 @@ def resolve_site(explicit: str) -> str:
 def cmd_attach(args) -> int:
     try:
         site = resolve_site(args.site)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         sys.stderr.write(f"{exc}\n")
         return 2
     with open(args.plan, encoding="utf-8") as handle:
@@ -914,8 +951,12 @@ def cmd_attach(args) -> int:
         print(f"nothing to attach for page {args.page_index}")
         return 0
 
-    token = api_token(args.keychain_service, args.account)
-    already = existing_attachments(site, args.account, token, args.page_id)
+    try:
+        token = api_token(args.keychain_service, args.account)
+        already = existing_attachments(site, args.account, token, args.page_id)
+    except RuntimeError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 2
     body_path = page["body_file"]
     body = Path(body_path).read_text(encoding="utf-8")
 
@@ -944,6 +985,10 @@ def cmd_attach(args) -> int:
         except (urllib.error.URLError, OSError) as exc:
             visual["status"] = "attach-failed:network"
             sys.stderr.write(f"upload {visual['png']} failed: {exc}\n")
+            continue
+        except json.JSONDecodeError as exc:
+            visual["status"] = "attach-failed:bad-response"
+            sys.stderr.write(f"upload {visual['png']} returned non-JSON: {exc}\n")
             continue
         if not media_id:
             visual["status"] = "attach-failed:no-media-id"

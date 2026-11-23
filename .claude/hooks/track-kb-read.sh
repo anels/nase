@@ -21,9 +21,9 @@ LOGGER="$HOOK_DIR/../scripts/kb-usage-log.py"
 
 INPUT=$(cat)
 # Every Bash command in a session passes through here, so leave before any jq or python
-# when the payload never mentions the KB.
+# when the payload never mentions the KB. A Windows path reaches the JSON as `workspace\\kb`.
 case "$INPUT" in
-  *workspace/kb*) ;;
+  *workspace/kb* | *'workspace\\kb'*) ;;
   *) exit 0 ;;
 esac
 
@@ -40,7 +40,8 @@ esac
 # misses (an inline `python3 -c open(..., "w")`) are counted as reads, so Bash is an
 # upper bound.
 JQ_PROGRAM=$(cat <<'JQ'
-def kb_paths: [scan("workspace/kb/[^\\s\"\\x27\\x60()<>|;&,{}\\[\\]:\\\\]+\\.(?:md|sql)")];
+def slashed: gsub("\\\\+"; "/");
+def kb_paths: [slashed | scan("workspace/kb/[^\\s\"\\x27\\x60()<>|;&,{}\\[\\]:\\\\]+\\.(?:md|sql)")];
 def stages: [splits("\\s*(&&|\\|\\||[;|&\\n])\\s*")];
 def writes: test("(^|\\s)(rm|mv|cp|tee|touch|install|rsync|truncate|dd|git\\s+(add|commit|checkout|stash|restore))\\s|sed\\s+-i|perl\\s+-\\S*i|>>?\\s*\\S*workspace/kb");
 def listed_paths:
@@ -50,12 +51,12 @@ def listed_paths:
     + ([(.content // "") | splits("\\n") | select(test("^[^:]+\\.(md|sql):")) | sub(":.*$"; "")] | join("\n"))
   end;
 (.tool_name // "Read") as $tool
-| ((.tool_input.path // "") + " " + (.tool_input.glob // "") + " " + (.tool_input.pattern // "")) as $aim
-| (.tool_input.command // "") as $cmd
+| ((.tool_input.path // "") + " " + (.tool_input.glob // "") + " " + (.tool_input.pattern // "") | slashed) as $aim
+| (.tool_input.command // "" | slashed) as $cmd
 | (if $tool == "Read" then
-     [.tool_input.file_path // .tool_input.path // ""]
+     [.tool_input.file_path // .tool_input.path // "" | slashed]
    elif ($tool == "Grep" or $tool == "Glob") and ($aim | contains("workspace/kb")) then
-     ((.tool_response // "" | listed_paths | kb_paths) + [.tool_input.path // ""])
+     ((.tool_response // "" | listed_paths | kb_paths) + [.tool_input.path // "" | slashed])
    elif $tool == "Bash" then
      [$cmd | stages[] | select(writes | not) | kb_paths[]]
    else [] end
@@ -91,6 +92,8 @@ esac
 
 FILES=()
 while IFS= read -r path; do
+  # A native Windows jq prints CRLF, which leaves a CR on every line but the last.
+  path=${path%$'\r'}
   [ -n "$path" ] && FILES+=("$path")
 done <<< "$PATHS"
 

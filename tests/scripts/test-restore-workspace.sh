@@ -15,8 +15,28 @@ assert_cmd "real 7z binary is available" test -n "$SEVEN_ZIP"
 
 make_zip() {
   local source=$1 destination=$2
-  (cd "$source" && zip -qr "$destination" .)
+  if command -v zip >/dev/null 2>&1; then
+    (cd "$source" && zip -qr "$destination" .)
+  else
+    (cd "$source" && "$SEVEN_ZIP" a -tzip -bso0 -bsp0 "$destination" . >/dev/null)
+  fi
 }
+
+skips=0
+skip() {
+  printf 'SKIP  %s\n' "$1"
+  skips=$((skips + 1))
+}
+# Git Bash without native symlink support makes `ln -s` copy the target.
+if ln -s probe-target "$TMPROOT/symlink-probe" 2>/dev/null && [ -L "$TMPROOT/symlink-probe" ]; then
+  SYMLINKS=1
+else
+  SYMLINKS=0
+fi
+rm -rf "$TMPROOT/symlink-probe"
+
+# Without fcntl the restore helper fails closed; the weak lock is the supported opt-in.
+python3 -c 'import fcntl' 2>/dev/null || export NASE_WEAK_LOCK=1
 
 case_dir="$TMPROOT/flat"
 mkdir -p "$case_dir/root/workspace" "$case_dir/source/kb"
@@ -163,6 +183,10 @@ expected=$(python3 -c 'import os, sys; print(int(os.stat(sys.argv[1]).st_mtime))
 actual=$(python3 -c 'import os, sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$case_dir/root/workspace/efforts/old.md")
 assert_cmd "7z restore keeps the member's stored mtime" test "$actual" = "$expected"
 
+if [ "$SYMLINKS" != 1 ]; then
+  skip "legacy 7z symlink metadata fails closed (no symlink support)"
+  skip "legacy 7z link rejection is explicit (no symlink support)"
+else
 case_dir="$TMPROOT/link7z"
 mkdir -p "$case_dir/root" "$case_dir/source"
 printf 'target\n' > "$case_dir/source/file"
@@ -172,6 +196,7 @@ python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/link.7z" 
 link_rc=$?
 assert_cmd "legacy 7z symlink metadata fails closed" test "$link_rc" = 2
 assert_contains "legacy 7z link rejection is explicit" "$case_dir/err" "link member is not allowed"
+fi
 
 python3 - "$ROOT" "$TMPROOT/candidate-types" <<'PY'
 import importlib.util
@@ -199,13 +224,16 @@ else:
 
 special = base / "special"
 special.mkdir()
-os.mkfifo(special / "fifo")
-try:
-    module.validate_candidate(special, [{"path": "fifo", "type": "file"}])
-except module.RestoreError:
-    pass
+if hasattr(os, "mkfifo"):
+    os.mkfifo(special / "fifo")
+    try:
+        module.validate_candidate(special, [{"path": "fifo", "type": "file"}])
+    except module.RestoreError:
+        pass
+    else:
+        raise SystemExit("special-file candidate was accepted")
 else:
-    raise SystemExit("special-file candidate was accepted")
+    print("SKIP  special-file candidate is rejected (no os.mkfifo)")
 PY
 assert_cmd "candidate hard links and special files are rejected" test "$?" = 0
 
@@ -641,27 +669,38 @@ resolve_backup() {
 
 # Output is canonical, so expectations compare against the resolved target
 # (macOS /var is a symlink to /private/var).
-backup_target_real=$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve())' "$backup_target")
+backup_target_real=$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve().as_posix())' "$backup_target")
 
 out=$(resolve_backup "$backup_target" "nase-backup-20260101-000000.zip")
 assert_cmd "bare name resolves under the backup target" \
-  test "$out" = "$backup_target_real/nase-backup-20260101-000000.zip"
+  test "${out//\\//}" = "$backup_target_real/nase-backup-20260101-000000.zip"
 
 out=$(resolve_backup "$backup_target/" "nase-backup-20260102-000000.7z")
 assert_cmd "trailing-slash target still resolves a .7z archive" \
-  test "$out" = "$backup_target_real/nase-backup-20260102-000000.7z"
+  test "${out//\\//}" = "$backup_target_real/nase-backup-20260102-000000.7z"
 
 out=$(resolve_backup "$backup_target" "$backup_target/nase-backup-20260101-000000.zip")
 assert_cmd "absolute selection inside the target is accepted" \
-  test "$out" = "$backup_target_real/nase-backup-20260101-000000.zip"
+  test "${out//\\//}" = "$backup_target_real/nase-backup-20260101-000000.zip"
+
+# A drive-letter absolute path starts with neither `/` nor `~`.
+if command -v cygpath >/dev/null 2>&1; then
+  out=$(resolve_backup "$backup_target" "$(cygpath -w "$backup_target/nase-backup-20260101-000000.zip")")
+  assert_cmd "drive-letter absolute selection inside the target is accepted" \
+    test "${out//\\//}" = "$backup_target_real/nase-backup-20260101-000000.zip"
+fi
 
 resolve_backup "$backup_target" "../outside/nase-backup-20260103-000000.zip" >/dev/null
 assert_cmd "traversal outside the backup target is rejected" test "$?" = 2
 assert_cmd "traversal error names the containment guard" \
   grep -q "outside backup-target" "$TMPROOT/resolve.err"
 
-resolve_backup "$backup_target" "nase-backup-escape.zip" >/dev/null
-assert_cmd "symlink escaping the backup target is rejected" test "$?" = 2
+if [ "$SYMLINKS" != 1 ]; then
+  skip "symlink escaping the backup target is rejected (no symlink support)"
+else
+  resolve_backup "$backup_target" "nase-backup-escape.zip" >/dev/null
+  assert_cmd "symlink escaping the backup target is rejected" test "$?" = 2
+fi
 
 resolve_backup "$backup_target" "notes.zip" >/dev/null
 assert_cmd "non-nase archive name is rejected" test "$?" = 2
@@ -722,7 +761,7 @@ assert_cmd "7z listing over the declared byte ceiling is rejected before extract
 assert_cmd "7z listing rejection writes no manifest" test ! -e "$case_dir/m.json"
 
 if [[ "$failures" -eq 0 ]]; then
-  printf '\nrestore workspace tests passed.\n'
+  printf '\nrestore workspace tests passed (%d skipped).\n' "$skips"
   exit 0
 fi
 

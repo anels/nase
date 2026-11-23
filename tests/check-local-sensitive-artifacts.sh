@@ -24,9 +24,10 @@ if [ "$NASE_SCAN_ADVISORY" = "1" ] && [ "${1:-}" != "--workspace" ] && [ "${1:-}
 fi
 
 if [ "${1:-}" = "--stdin" ]; then
-  python3 - "$SOURCE_ROOT" 3<&0 <<'PY'
+  # The program goes in through -c so stdin stays the scanned stream. Handing the stream
+  # over on fd 3 does not survive into a native Windows Python.
+  stdin_scan_program=$(cat <<'PY'
 import importlib.util
-import os
 import pathlib
 import sys
 
@@ -36,12 +37,13 @@ if spec is None or spec.loader is None:
     raise SystemExit(2)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-with os.fdopen(3, "rb") as stream:
-    match = module.scan_stream_for_secret(stream)
+match = module.scan_stream_for_secret(sys.stdin.buffer)
 if match:
     print(f"FAIL: possible {match[0]} in input; value is redacted.", file=sys.stderr)
     raise SystemExit(1)
 PY
+)
+  python3 -c "$stdin_scan_program" "$SOURCE_ROOT"
   exit $?
 fi
 

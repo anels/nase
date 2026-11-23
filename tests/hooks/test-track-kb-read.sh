@@ -218,6 +218,22 @@ run_payload "hook-glob" "$payload"
 assert_jq "T16: a Glob over the KB records the matched file" \
   'select(.session == "hook-glob" and .file == "workspace/kb/projects/other.md" and .source == "grep-hook")'
 
+payload=$(jq -nc '{tool_name:"Read",tool_input:{file_path:"workspace\\kb\\general\\read.md"}}')
+run_payload "hook-backslash" "$payload"
+assert_jq "T17: a Read with a backslash path is recorded with forward slashes" \
+  'select(.session == "hook-backslash" and .file == "workspace/kb/general/read.md" and .source == "read-hook")'
+
+payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"cat workspace\\kb\\general\\read.md workspace/kb/general/data.sql"}}')
+run_payload "hook-bash-two" "$payload"
+assert_count "T18: every KB file named in one Bash command is recorded" "2" \
+  '[.[] | select(.session == "hook-bash-two" and .source == "bash-hook")] | length'
+
+if grep -q $'\r' "$FIXTURE/workspace/stats/kb-usage.jsonl"; then
+  fail_msg "T19: the ledger holds a carriage return"
+else
+  pass_msg "T19: the ledger is LF-only"
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

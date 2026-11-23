@@ -13,6 +13,11 @@ trap cleanup EXIT
 
 mkdir -p "$TMP_ROOT/workspace/logs"
 
+# Windows has no flock, so the lock helper refuses to run there without this opt-in.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) export NASE_WEAK_LOCK=1 ;;
+esac
+
 pass=0
 fail=0
 
@@ -66,7 +71,7 @@ expect_missing_jq() {
 }
 
 payload_sha() {
-  printf '%s' "$1" | jq -cS '.tool_input // {}' | python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+  printf '%s' "$1" | jq -cS '.tool_input // {}' | tr -d '\r' | python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
 slack_send='{"tool_name":"mcp__plugin_slack_slack__slack_send_message","tool_input":{"channel_id":"C1","text":"hi"}}'
@@ -184,16 +189,16 @@ small_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateCo
 # whenever that cap moves.
 confluence_limit=$(grep -Eo '^LIMIT=[0-9]+' .claude/hooks/confluence-size-guard.sh | grep -Eo '[0-9]+')
 large_body=$(printf '%*s' "$((confluence_limit + 1))" '' | tr ' ' x)
-large_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
-large_confluence_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
+large_confluence=$(printf '%s' "$large_body" | jq -cRs '. as $body | {tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
+large_confluence_alt=$(printf '%s' "$large_body" | jq -cRs '. as $body | {tool_name:"mcp__atlassian_rovo_mcp__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
 # One 中 is 3 UTF-8 bytes, so this stays just over the byte cap while its
 # character count stays well under it - that is the case the guard must catch.
 wide_body=$(printf "中%.0s" $(seq 1 $((confluence_limit / 3 + 1))))
-wide_confluence=$(jq -cn --arg body "$wide_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
+wide_confluence=$(printf '%s' "$wide_body" | jq -cRs '. as $body | {tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"adf"}}')
 markdown_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"markdown"}}')
 html_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluencePage",tool_input:{body:"<p>short</p>",contentFormat:"html"}}')
 storage_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:"short",contentFormat:"storage"}}')
-large_html_confluence=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"html"}}')
+large_html_confluence=$(printf '%s' "$large_body" | jq -cRs '. as $body | {tool_name:"mcp__plugin_atlassian_atlassian__updateConfluencePage",tool_input:{body:$body,contentFormat:"html"}}')
 unset_confluence=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createConfluencePage",tool_input:{body:"short"}}')
 confluence_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluencePage","tool_input":{"pageId":"1","contentFormat":"markdown"}}'
 expect_rc "confluence small adf body allowed" .claude/hooks/confluence-size-guard.sh "$small_confluence" 0
@@ -216,9 +221,9 @@ content_markdown=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__createCo
 content_svg=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"svg",value:"<svg/>"}}}')
 content_adf=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"adf",value:"x"}}}')
 content_unset=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{value:"x"}}}')
-content_large=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"html",value:$body}}}')
-content_large_alt=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__atlassian_rovo_mcp__createConfluenceContent",tool_input:{body:{format:"markdown",value:$body}}}')
-content_large_edits=$(jq -cn --arg body "$large_body" '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{edits:[{name:"replaceNode",value:$body}]}}')
+content_large=$(printf '%s' "$large_body" | jq -cRs '. as $body | {tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{body:{format:"html",value:$body}}}')
+content_large_alt=$(printf '%s' "$large_body" | jq -cRs '. as $body | {tool_name:"mcp__atlassian_rovo_mcp__createConfluenceContent",tool_input:{body:{format:"markdown",value:$body}}}')
+content_large_edits=$(printf '%s' "$large_body" | jq -cRs '. as $body | {tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{edits:[{name:"replaceNode",value:$body}]}}')
 content_title_only=$(jq -cn '{tool_name:"mcp__plugin_atlassian_atlassian__updateConfluenceContent",tool_input:{contentId:"1",title:"new title"}}')
 content_read='{"tool_name":"mcp__plugin_atlassian_atlassian__getConfluenceContent","tool_input":{"contentId":"1"}}'
 expect_rc "confluence content html body allowed" .claude/hooks/confluence-size-guard.sh "$content_small" 0
@@ -282,6 +287,31 @@ for stack_verb in link push submit sync rebase; do
   stack_cmd=$(jq -cn --arg command "gh stack $stack_verb" '{tool_name:"Bash",tool_input:{command:$command}}')
   expect_rc "gh stack $stack_verb fails closed" .claude/hooks/external-cli-write-guard.sh "$stack_cmd" 2
 done
+# The command reaches the guard on stdin, so one longer than the OS argument limit
+# (about 32K characters on Windows) is still inspected instead of failing to launch.
+long_body=$(python3 -c 'print("x" * 200000)')
+long_heredoc=$(printf 'cat > workspace/tmp/notes.md <<%sEOF%s\n%s\nEOF\n' "'" "'" "$long_body")
+long_read=$(printf '%s' "$long_heredoc" | jq -cRs '{tool_name:"Bash",tool_input:{command:.}}')
+long_write=$(printf '%s\ngh pr merge 1' "$long_heredoc" | jq -cRs '{tool_name:"Bash",tool_input:{command:.}}')
+expect_rc "200K heredoc command is inspected and allowed" .claude/hooks/external-cli-write-guard.sh "$long_read" 0
+expect_rc "mutation after a 200K heredoc is still blocked" .claude/hooks/external-cli-write-guard.sh "$long_write" 2 "raw external mutation"
+github_write_exe=$(jq -cn --arg command 'gh.exe pr merge 1' '{tool_name:"Bash",tool_input:{command:$command}}')
+expect_rc "gh.exe mutation blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_exe" 2 "raw external mutation"
+azure_build_read=$(jq -cn --arg command 'az pipelines build list --top 5' '{tool_name:"Bash",tool_input:{command:$command}}')
+expect_rc "Azure read under a build group allowed" .claude/hooks/external-cli-write-guard.sh "$azure_build_read" 0
+# A guard that cannot run blocks, and says it is a guard failure rather than a mutation.
+BROKEN_KIT="$TMP_ROOT/broken-kit/.claude"
+mkdir -p "$BROKEN_KIT/hooks" "$BROKEN_KIT/lib" "$BROKEN_KIT/scripts"
+cp .claude/hooks/external-cli-write-guard.sh "$BROKEN_KIT/hooks/"
+cp .claude/lib/* "$BROKEN_KIT/lib/"
+printf 'import sys\nsys.exit(3)\n' > "$BROKEN_KIT/scripts/external-write-action.py"
+expect_rc "guard that cannot run fails closed" "$BROKEN_KIT/hooks/external-cli-write-guard.sh" "$github_read" 2 "could not inspect"
+run_hook "$BROKEN_KIT/hooks/external-cli-write-guard.sh" "$github_read"
+if [[ "$OUTPUT" != *"raw external mutation"* ]]; then
+  report 1 "guard failure is not reported as a mutation" "rc=$RC"
+else
+  report 0 "guard failure is not reported as a mutation" "output=$OUTPUT"
+fi
 expect_rc "gh stack view read allowed" .claude/hooks/external-cli-write-guard.sh "$github_stack_view" 0
 expect_rc "raw GitHub mutation through shell wrapper blocked" .claude/hooks/external-cli-write-guard.sh "$github_write_via_shell" 2 "raw external mutation"
 expect_rc "dynamic shell eval fails closed" .claude/hooks/external-cli-write-guard.sh "$github_write_via_eval" 2 "unrecognized external CLI"

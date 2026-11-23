@@ -46,8 +46,10 @@ class HtmlPlusEmitter(HTMLParser):
         self.unlinked = 0
         self.open_links: list[bool] = []
         self.line_offsets = [0]
-        for line in source_text.splitlines(keepends=True):
-            self.line_offsets.append(self.line_offsets[-1] + len(line))
+        # HTMLParser.getpos() counts "\n" only; splitlines() would also break on
+        # U+2028, form feed and friends and shift every later offset.
+        for line in source_text.split("\n"):
+            self.line_offsets.append(self.line_offsets[-1] + len(line) + 1)
         self.rasterize = rasterize
         self.no_rasterize = no_rasterize
 

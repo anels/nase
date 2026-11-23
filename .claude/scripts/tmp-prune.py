@@ -72,14 +72,19 @@ def protected(name: str) -> bool:
 
 
 def _grep(args: list[str], sources: list[Path], stdin: str | None = None) -> set[str] | None:
-    proc = subprocess.run(
-        ["grep", "-rhoI", *args, *map(str, sources)],
-        input=stdin,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode > 1:
+    try:
+        proc = subprocess.run(
+            ["grep", "-rhoI", *args, *map(str, sources)],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return None
+    if proc.returncode > 1 or proc.stdout is None:
         return None
     return {line.removeprefix("workspace/tmp/") for line in proc.stdout.splitlines()}
 

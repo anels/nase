@@ -113,7 +113,13 @@ def run(
     """
     try:
         return subprocess.run(
-            args, text=True, capture_output=True, timeout=timeout, check=False
+            args,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired as exc:
         return subprocess.CompletedProcess(

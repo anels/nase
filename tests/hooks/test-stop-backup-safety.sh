@@ -27,6 +27,41 @@ assert_exit() {
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 
+# The hook runs on a restricted PATH so a real archiver cannot shadow the stubs. Where
+# git, python3, or jq live outside the system directories (Git Bash on Windows), reach
+# each through a one-tool wrapper instead of exposing its whole install directory.
+SYSPATH="/usr/bin:/bin:/usr/sbin:/sbin"
+sysbin="$fixture/sysbin"
+mkdir -p "$sysbin"
+for tool in git python3 jq; do
+  if ! PATH="$SYSPATH" command -v "$tool" >/dev/null 2>&1 && tool_path=$(command -v "$tool" 2>/dev/null); then
+    printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$tool_path" > "$sysbin/$tool"
+    chmod +x "$sysbin/$tool"
+  fi
+done
+SYSPATH="$SYSPATH:$sysbin"
+skips=0
+skip() {
+  printf 'SKIP  %s\n' "$1"
+  skips=$((skips + 1))
+}
+# Git Bash without native symlink support makes `ln -s` copy the target, so a symlink
+# case there would pass or fail for the wrong reason.
+if ln -s probe-target "$fixture/symlink-probe" 2>/dev/null && [ -L "$fixture/symlink-probe" ]; then
+  SYMLINKS=1
+else
+  SYMLINKS=0
+fi
+rm -rf "$fixture/symlink-probe"
+
+# Three stubs wrap a working archiver. Use the system zip where there is one, and the
+# Python stand-in defined below where there is not.
+if [ -x /usr/bin/zip ]; then
+  export REAL_ZIP=/usr/bin/zip
+else
+  export REAL_ZIP="$fixture/fakebin/zip"
+fi
+
 make_repo() {
   local repo_path="$1"
   mkdir -p "$repo_path/.claude/hooks" "$repo_path/.claude/scripts" "$repo_path/tests" "$repo_path/workspace"
@@ -115,8 +150,11 @@ printf 'backup-target=/tmp/nase-stop-backup-test/..\n' > "$repo/.local-paths"
 out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "reject canonicalized shallow target" 1 "$rc" "$out"
-if grep -qF -- "/tmp/nase-stop-backup-test/.." <<< "$out" \
-  && grep -Eq -- 'resolves to: /(private/)?tmp' <<< "$out"; then
+# On a drive-letter host the temp directory is not a shallow system path, so the same
+# target is refused as an ancestor of the fixture repo; the resolved path is still named.
+if { grep -qF -- "/tmp/nase-stop-backup-test/.." <<< "$out" \
+  && grep -Eq -- 'resolves to: /(private/)?tmp' <<< "$out"; } \
+  || grep -Eq -- 'target is ancestor of NASE_ROOT: [A-Za-z]:/' <<< "$out"; then
   printf 'PASS  rejection message includes raw and resolved paths\n'
   pass=$((pass + 1))
 else
@@ -150,7 +188,7 @@ target="$fixture/incomplete-archive-backups"
 make_repo "$repo"
 printf 'must be backed up\n' > "$repo/workspace/important.md"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$omitbin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$omitbin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup rejects an archive that omits a source file" 1 "$rc" "$out"
 assert_contains "incomplete archive rejection is explicit" "$out" "does not match its source manifest"
@@ -174,7 +212,7 @@ for arg in "$@"; do
   esac
 done
 printf '{}\n' > "$(dirname "$out")/source-manifest.json"
-exec /usr/bin/zip "$@"
+exec "$REAL_ZIP" "$@"
 SH
 chmod +x "$authoritybin/zip"
 install_7z_shim "$authoritybin"
@@ -182,7 +220,7 @@ repo="$fixture/manifest-authority-repo"
 target="$fixture/manifest-authority-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$authoritybin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$authoritybin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup rejects an archiver that rewrites the bound manifest" 1 "$rc" "$out"
 assert_contains "manifest authority rejection is explicit" "$out" "snapshot authority changed"
@@ -198,7 +236,7 @@ for arg in "$@"; do
     *) out="$arg"; break ;;
   esac
 done
-/usr/bin/zip "$@" || exit $?
+"$REAL_ZIP" "$@" || exit $?
 python3 - "$out" <<'PY'
 import stat
 import sys
@@ -217,7 +255,7 @@ repo="$fixture/extra-directory-repo"
 target="$fixture/extra-directory-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$extradirbin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$extradirbin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup rejects an archive with an extra directory" 1 "$rc" "$out"
 assert_contains "extra directory rejection is explicit" "$out" "does not match its source manifest"
@@ -243,7 +281,7 @@ repo="$fixture/no-repo-paths-repo"
 target="$fixture/no-repo-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup succeeds with only backup-target configured" 0 "$rc" "$out"
 if find "$target" -name 'nase-backup-*.zip' -print -quit | grep -q .; then
@@ -266,7 +304,7 @@ printf '%s\n' \
   "$runtime_field = input(\"Password: \")" \
   > "$repo/workspace/safe-runtime-references.py"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "safe runtime credential expressions do not block backup" 0 "$rc" "$out"
 if find "$target" -name 'nase-backup-*.zip' -print -quit | grep -q .; then
@@ -277,6 +315,11 @@ else
   fail=$((fail + 1))
 fi
 
+if [ "$SYMLINKS" != 1 ]; then
+  skip "backup rejects workspace symlink before archive (no symlink support)"
+  skip "symlink rejection names the security preflight (no symlink support)"
+  skip "symlink rejection creates no archive (no symlink support)"
+else
 repo="$fixture/symlink-source-repo"
 target="$fixture/symlink-source-backups"
 outside="$fixture/symlink-outside.txt"
@@ -284,7 +327,7 @@ make_repo "$repo"
 printf 'outside marker\n' > "$outside"
 ln -s "$outside" "$repo/workspace/external-link.txt"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup rejects workspace symlink before archive" 1 "$rc" "$out"
 assert_contains "symlink rejection names the security preflight" "$out" "workspace security preflight failed"
@@ -295,6 +338,7 @@ else
   printf 'FAIL  symlink rejection created an archive\n' >&2
   fail=$((fail + 1))
 fi
+fi
 
 racebin="$fixture/racebin"
 mkdir -p "$racebin"
@@ -302,7 +346,7 @@ cat > "$racebin/zip" <<'SH'
 #!/usr/bin/env bash
 rm -f mutable.txt
 ln -s "$RACE_OUTSIDE" mutable.txt
-exec /usr/bin/zip "$@"
+exec "$REAL_ZIP" "$@"
 SH
 chmod +x "$racebin/zip"
 install_7z_shim "$racebin"
@@ -313,7 +357,7 @@ make_repo "$repo"
 printf 'safe before preflight\n' > "$repo/workspace/mutable.txt"
 printf 'external marker\n' > "$outside"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && RACE_OUTSIDE="$outside" PATH="$racebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && RACE_OUTSIDE="$outside" PATH="$racebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup rejects symlink inserted after live preflight" 1 "$rc" "$out"
 assert_contains "raced snapshot rejection is explicit" "$out" "private workspace snapshot changed during archive creation"
@@ -331,7 +375,7 @@ make_repo "$repo"
 credential_key='ADMIN_PASSWORD'
 printf '%s\n' "$credential_key = \"two word canary\"" > "$repo/workspace/local-config.txt"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup with quoted plaintext credential still runs" 0 "$rc" "$out"
 assert_contains "quoted plaintext credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
@@ -357,7 +401,7 @@ make_repo "$repo"
 printf '{\\"%s\\":\\"%s\\"}\n' "$credential_key" "escaped-json-canary-4831" \
   > "$repo/workspace/escaped.json"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup with escaped JSON credential still runs" 0 "$rc" "$out"
 assert_contains "escaped JSON credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
@@ -375,7 +419,7 @@ make_repo "$repo"
 printf '%s=%s%s%s\n' "$credential_key" '"""' "triple-quoted-canary-4831" '"""' \
   > "$repo/workspace/local-config.py"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup with triple-quoted credential still runs" 0 "$rc" "$out"
 assert_contains "triple-quoted credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
@@ -392,7 +436,7 @@ target="$fixture/short-declaration-source-backups"
 make_repo "$repo"
 printf '%s := "%s"\n' "$credential_key" "short-declaration-canary" > "$repo/workspace/local-config.go"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup with a short-declaration credential still runs" 0 "$rc" "$out"
 assert_contains "a short-declaration credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
@@ -411,7 +455,7 @@ printf '%s="' "$credential_key" > "$repo/workspace/local-config.txt"
 printf '%04097d' 0 | tr '0' 'x' >> "$repo/workspace/local-config.txt"
 printf '"\n' >> "$repo/workspace/local-config.txt"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup with an overlong quoted credential still runs" 0 "$rc" "$out"
 assert_contains "an overlong quoted credential is reported as a warning" "$out" "credential-like values in workspace were backed up"
@@ -440,7 +484,7 @@ git -C "$commit_repo" add file.txt
 escaped_subject="{\\\"$credential_key\\\":\\\"escaped_subject_canary_2481\\\"}"
 git -C "$commit_repo" commit -q -m "$escaped_subject"
 printf 'backup-target=%s\nsource=%s\n' "$target" "$commit_repo" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "credential-like commit subject is skipped before workspace write" 0 "$rc" "$out"
 assert_contains "credential-like commit subject skip is reported" "$out" "skipped a commit summary containing a credential-like value"
@@ -465,7 +509,7 @@ target="$home_dir/nase-backups"
 mkdir -p "$home_dir"
 make_repo "$repo"
 printf 'backup-target=~/nase-backups\n' > "$repo/.local-paths"
-out=$(cd "$repo" && HOME="$home_dir" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && HOME="$home_dir" PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup expands tilde target before archive" 0 "$rc" "$out"
 if find "$target" -name 'nase-backup-*.zip' -print -quit | grep -q .; then
@@ -502,7 +546,7 @@ cat > "$repo/workspace/logs/$today.md" <<'LOG'
 manual commit note that must stay
 LOG
 printf 'backup-target=%s\nself=%s\n' "$target" "$repo" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup keeps existing commit log content" 0 "$rc" "$out"
 if grep -qF "manual commit note that must stay" "$repo/workspace/logs/$today.md"; then
@@ -536,13 +580,13 @@ cat > "$repo/workspace/logs/$(date +%Y-%m-%d).md" <<'LOG'
 - 09:00 | test: seed entry
 LOG
 
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "first backup succeeds" 0 "$rc" "$out"
 assert_exit "first run published one archive" 1 "$(count_archives "$target")" "$out"
 
 sleep 1
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "unchanged rerun succeeds" 0 "$rc" "$out"
 assert_contains "unchanged rerun reports a skip" "$out" "workspace unchanged since last archive"
@@ -550,7 +594,7 @@ assert_exit "unchanged rerun published no second archive" 1 "$(count_archives "$
 
 sleep 1
 printf 'changed content\n' > "$repo/workspace/context.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "changed workspace succeeds" 0 "$rc" "$out"
 assert_exit "changed workspace published a second archive" 2 "$(count_archives "$target")" "$out"
@@ -560,7 +604,7 @@ assert_exit "changed workspace published a second archive" 2 "$(count_archives "
 latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
 rm -f "$latest_archive"
 sleep 1
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "missing fingerprint-bound archive re-publishes" 0 "$rc" "$out"
 assert_exit "older unrelated archive does not suppress replacement" 2 "$(count_archives "$target")" "$out"
@@ -570,7 +614,7 @@ assert_exit "older unrelated archive does not suppress replacement" 2 "$(count_a
 latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
 : > "$latest_archive"
 sleep 1
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "corrupted fingerprint-bound archive re-publishes" 0 "$rc" "$out"
 assert_exit "corrupted archive does not suppress replacement" 3 "$(count_archives "$target")" "$out"
@@ -579,7 +623,7 @@ assert_exit "corrupted archive does not suppress replacement" 3 "$(count_archive
 # falls outside a days policy, the hook publishes a replacement before pruning it.
 rm -f "$target"/nase-backup-*.zip "$repo/.nase-backup-state"
 printf 'backup_retention: days:1\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "days-policy seed backup succeeds" 0 "$rc" "$out"
 latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
@@ -588,7 +632,7 @@ mv "$latest_archive" "$expired_archive"
 sed -i.bak 's/^last-archive=.*/last-archive=nase-backup-20000101-000000.zip/' "$repo/.nase-backup-state"
 rm -f "$repo/.nase-backup-state.bak"
 sleep 1
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "expired fingerprint-bound archive triggers replacement" 0 "$rc" "$out"
 assert_exit "expired archive is pruned after replacement" 1 "$(count_archives "$target")" "$out"
@@ -597,7 +641,7 @@ assert_exit "expired archive is pruned after replacement" 1 "$(count_archives "$
 # rather than trust the stored fingerprint.
 sleep 1
 rm -f "$target"/nase-backup-*.zip
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "empty target re-publishes despite matching fingerprint" 0 "$rc" "$out"
 assert_exit "empty target regained an archive" 1 "$(count_archives "$target")" "$out"
@@ -613,7 +657,7 @@ today=$(date +%Y%m%d)
 for stamp in 000001 000002 000003 000004; do
   printf 'placeholder\n' > "$target/nase-backup-${today}-${stamp}.zip"
 done
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "combined retention run succeeds" 0 "$rc" "$out"
 assert_exit "count clause caps same-day archives" 2 "$(count_archives "$target")" "$out"
@@ -625,7 +669,7 @@ make_repo "$repo"
 mkdir -p "$target"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 printf 'backup_retention: weeks:4\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "unusable retention policy still backs up" 0 "$rc" "$out"
 assert_contains "unusable retention policy warns" "$out" "invalid retention clause"
@@ -638,7 +682,7 @@ target="$fixture/retention-zero-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 printf 'backup_retention: count:0\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "zero retention count still backs up" 0 "$rc" "$out"
 assert_contains "zero retention count warns" "$out" "invalid retention clause"
@@ -650,7 +694,7 @@ repo="$fixture/same-second-collision-repo"
 target="$fixture/same-second-collision-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "same-second collision seed backup succeeds" 0 "$rc" "$out"
 latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
@@ -672,7 +716,7 @@ out=$(cd "$repo" \
   && NASE_COLLISION_TIMESTAMP="$collision_timestamp" \
   NASE_DATE_ONCE="$fixture/date-once" \
   NASE_REAL_DATE="$(command -v date)" \
-  PATH="$collisionbin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  PATH="$collisionbin:$SYSPATH" \
   bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "same-second collision publishes a replacement" 0 "$rc" "$out"
@@ -688,14 +732,14 @@ make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 # No throttle key: the production default (30 minutes) has to apply.
 printf '# Workspace Config\n' > "$repo/workspace/config.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "throttle default seed backup succeeds" 0 "$rc" "$out"
 assert_exit "throttle default published one archive" 1 "$(count_archives "$target")" "$out"
 
 sleep 1
 printf 'changed content\n' > "$repo/workspace/context.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "throttled rerun succeeds" 0 "$rc" "$out"
 assert_contains "throttled rerun reports the throttle" "$out" "throttled (backup_min_interval_minutes: 30)"
@@ -705,7 +749,7 @@ assert_exit "throttled rerun published no second archive" 1 "$(count_archives "$
 # archive has aged past the window, the next run must publish again.
 latest_archive=$(ls -1 "$target"/nase-backup-*.zip | sort | tail -1)
 mv "$latest_archive" "$target/nase-backup-20000101-000000.zip"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "aged-out archive lifts the throttle" 0 "$rc" "$out"
 assert_exit "aged-out archive got a replacement" 2 "$(count_archives "$target")" "$out"
@@ -717,7 +761,7 @@ target="$fixture/throttle-empty-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 printf '# Workspace Config\n' > "$repo/workspace/config.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "empty target backs up despite the default throttle" 0 "$rc" "$out"
 assert_exit "empty target gained an archive" 1 "$(count_archives "$target")" "$out"
@@ -728,13 +772,13 @@ target="$fixture/throttle-invalid-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 printf 'backup_min_interval_minutes: half-hour\n' > "$repo/workspace/config.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "invalid throttle interval still backs up" 0 "$rc" "$out"
 assert_contains "invalid throttle interval warns" "$out" "invalid backup_min_interval_minutes"
 sleep 1
 printf 'changed again\n' > "$repo/workspace/context.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "invalid throttle interval falls back to the default" 0 "$rc" "$out"
 assert_exit "invalid throttle interval did not disable throttling" 1 "$(count_archives "$target")" "$out"
@@ -746,7 +790,7 @@ target="$fixture/lock-window-backups"
 make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 mkdir -p "$target/.backup-lock"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "fresh lock without a pid skips the run" 0 "$rc" "$out"
 assert_contains "fresh lock without a pid is reported as in progress" "$out" "another backup is already in progress"
@@ -757,7 +801,7 @@ assert_exit "fresh lock without a pid publishes no archive" 0 "$(count_archives 
 
 # The same lock dir left behind by a run that died before writing its pid is stale.
 touch -t "$(date -v-5M +%Y%m%d%H%M.%S 2>/dev/null || date -d '-5 minutes' +%Y%m%d%H%M.%S)" "$target/.backup-lock"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "old lock without a pid is recovered" 0 "$rc" "$out"
 assert_contains "old lock without a pid is reported stale" "$out" "removing stale backup lock"
@@ -829,7 +873,7 @@ assert_contains "exit trap removes the lock its own run holds" "$lock_present" "
 repo="$fixture/no-target-line-repo"
 make_repo "$repo"
 printf 'Repo=%s\n' "$fixture/some-repo" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "missing backup-target line exits 1" 1 "$rc" "$out"
 assert_contains "missing backup-target line reports the empty target" "$out" "backup target path is empty"
@@ -841,14 +885,14 @@ make_repo "$repo"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 nongit="$fixture/nase-root-override-nongit"
 mkdir -p "$nongit"
-out=$(cd "$nongit" && NASE_ROOT="$repo" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash "$repo/.claude/hooks/stop-backup.sh" 2>&1)
+out=$(cd "$nongit" && NASE_ROOT="$repo" PATH="$fakebin:$SYSPATH" bash "$repo/.claude/hooks/stop-backup.sh" 2>&1)
 rc=$?
 assert_exit "NASE_ROOT override works from a non-git cwd" 0 "$rc" "$out"
 assert_exit "NASE_ROOT override publishes into the overridden workspace's target" 1 "$(count_archives "$target")" "$out"
 othergit="$fixture/nase-root-override-othergit"
 mkdir -p "$othergit"
 git -C "$othergit" init -q
-out=$(cd "$othergit" && NASE_ROOT="$repo" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash "$repo/.claude/hooks/stop-backup.sh" 2>&1)
+out=$(cd "$othergit" && NASE_ROOT="$repo" PATH="$fakebin:$SYSPATH" bash "$repo/.claude/hooks/stop-backup.sh" 2>&1)
 rc=$?
 assert_exit "NASE_ROOT override beats a different git repo cwd" 0 "$rc" "$out"
 if [ ! -e "$othergit/workspace" ]; then
@@ -875,13 +919,14 @@ _rename = os.rename
 
 def _kill_on_publish(src, dst, *args, **kwargs):
     if os.path.basename(str(src)).startswith(".nase-backup-"):
-        os.kill(os.getpid(), signal.SIGKILL)
+        # Windows has no SIGKILL; SIGTERM there is TerminateProcess, the same hard stop.
+        os.kill(os.getpid(), getattr(signal, "SIGKILL", signal.SIGTERM))
     return _rename(src, dst, *args, **kwargs)
 
 
 os.rename = _kill_on_publish
 PY
-out=$(cd "$repo" && PYTHONPATH="$killdir" PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PYTHONPATH="$killdir" PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "killed publish is reported as a failure" 1 "$rc" "$out"
 assert_exit "killed publish leaves no nase-backup-*.zip" 0 "$(count_archives "$target")" "$out"
@@ -891,7 +936,7 @@ assert_exit "no unhidden partial name is visible to restore/retention globs" 0 \
   "$(ls -1 "$target"/nase-backup-* 2>/dev/null | wc -l | tr -d ' ')" "$out"
 
 # The next run publishes normally, is not throttled by the debris, and keeps a young .partial.
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "run after a killed publish succeeds" 0 "$rc" "$out"
 assert_exit "run after a killed publish publishes one archive" 1 "$(count_archives "$target")" "$out"
@@ -903,7 +948,7 @@ stale_partial=$(find "$target" -maxdepth 1 -name '.nase-backup-*.partial' | head
 touch -t "$(date -v-3H +%Y%m%d%H%M.%S 2>/dev/null || date -d '-3 hours' +%Y%m%d%H%M.%S)" "$stale_partial"
 sleep 1
 printf 'changed after partial\n' > "$repo/workspace/context.md"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "run with a stale .partial succeeds" 0 "$rc" "$out"
 partials=$(find "$target" -maxdepth 1 -name '.nase-backup-*.partial' | wc -l | tr -d ' ')
@@ -935,7 +980,7 @@ done
 exec "$real_git" "\$@"
 SH
 chmod +x "$hexbin/git"
-out=$(cd "$repo" && PATH="$hexbin:$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$hexbin:$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "hex-like commit subject run succeeds" 0 "$rc" "$out"
 hex_log=$(cat "$repo/workspace/logs/$(date +%Y-%m-%d).md" 2>/dev/null)
@@ -962,7 +1007,7 @@ mkdir -p "$commit_repo"
 git -C "$commit_repo" init -q
 printf 'backup-target=%s\nSourceRepo=%s\nSourceRepo-ai-attribution=on\nOtherRepo-ai-attribution=off\n' \
   "$target" "$commit_repo" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "attribution switches in .local-paths do not break the run" 0 "$rc" "$out"
 if grep -qF 'configured repo path not found' <<< "$out"; then
@@ -994,7 +1039,7 @@ printf 'nested\n' > "$repo/workspace/logs/tmp/keep.txt"
 printf 'hidden\n' > "$repo/workspace/.hidden-note"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 export SNAPSHOT_LS="$fixture/snapshot-ls.txt"
-out=$(cd "$repo" && PATH="$cpbin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$cpbin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 assert_exit "backup with a workspace/tmp tree succeeds" 0 "$rc" "$out"
 if [ ! -s "$SNAPSHOT_LS" ]; then
@@ -1022,13 +1067,16 @@ fi
 
 # A symlinked workspace/ must still be copied (find does not descend into a symlink start
 # path unless it ends in `/.`), and an empty snapshot must never be published.
+if [ "$SYMLINKS" != 1 ]; then
+  skip "symlinked workspace is copied, not archived empty (no symlink support)"
+else
 repo="$fixture/symlink-ws-repo"
 target="$fixture/symlink-ws-backups"
 make_repo "$repo"
 mv "$repo/workspace" "$repo/real-workspace"
 ln -s real-workspace "$repo/workspace"
 printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
-out=$(cd "$repo" && PATH="$cpbin:/usr/bin:/bin:/usr/sbin:/sbin" bash .claude/hooks/stop-backup.sh 2>&1)
+out=$(cd "$repo" && PATH="$cpbin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
 link_zip=$(find "$target" -name 'nase-backup-*.zip' -print -quit 2>/dev/null)
 if [ -z "$link_zip" ]; then
@@ -1038,6 +1086,83 @@ else
   link_listing=$(python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$link_zip" 2>&1)
   assert_contains "symlinked workspace is copied, not archived empty" "$link_listing" "context.md"
 fi
+fi
 
-printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
+# --- retention owns only the names it generates, and never the archive just published ---
+repo="$fixture/retention-names-repo"
+target="$fixture/retention-names-backups"
+make_repo "$repo"
+mkdir -p "$target"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_retention: count:1\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
+printf 'placeholder\n' > "$target/nase-backup-before-migration.zip"
+printf 'placeholder\n' > "$target/nase-backup-20000101-000000.zip"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "retention run with a hand-named archive succeeds" 0 "$rc" "$out"
+assert_exit "hand-named archive is not pruned" 0   "$([ -f "$target/nase-backup-before-migration.zip" ]; printf '%s' "$?")" "$out"
+assert_exit "old timestamped archive is pruned" 1   "$([ -f "$target/nase-backup-20000101-000000.zip" ]; printf '%s' "$?")" "$out"
+published=$(sed -n 's/^last-archive=//p' "$repo/.nase-backup-state")
+assert_exit "the archive just published survives count:1" 0   "$([ -n "$published" ] && [ -f "$target/$published" ]; printf '%s' "$?")" "$out"
+
+# --- a target above the repo is refused whatever form its path takes -------------------
+repo="$fixture/ancestor-target-repo"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$fixture" > "$repo/.local-paths"
+out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "reject target that contains the repo" 1 "$rc" "$out"
+if grep -Eq -- 'ancestor of NASE_ROOT|too shallow|unsafe target' <<< "$out"; then
+  printf 'PASS  ancestor rejection names a path guard\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  ancestor rejection names a path guard\n      out: %s\n' "$out" >&2
+  fail=$((fail + 1))
+fi
+
+# Drive-letter hosts: the same guards must hold for backslash and differently-cased paths,
+# and a one-level target under a drive-style root must not be refused as too shallow.
+if command -v cygpath >/dev/null 2>&1 && [[ "$(cygpath -m "$fixture")" == [A-Za-z]:/* ]]; then
+  repo="$fixture/drive-form-repo"
+  make_repo "$repo"
+  printf 'backup-target=%s\n' "$(cygpath -w "$repo/workspace/backups")" > "$repo/.local-paths"
+  out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
+  rc=$?
+  assert_exit "reject backslash target inside workspace" 1 "$rc" "$out"
+  assert_contains "backslash inside-workspace rejection explains boundary" "$out" "backup target must be outside workspace/"
+
+  printf 'backup-target=%s\n' "$(cygpath -w "$fixture" | tr '[:upper:]' '[:lower:]')" > "$repo/.local-paths"
+  out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
+  rc=$?
+  assert_exit "reject lower-cased backslash ancestor target" 1 "$rc" "$out"
+  assert_contains "lower-cased ancestor rejection names the guard" "$out" "target is ancestor of NASE_ROOT"
+
+  printf 'backup-target=%s\n' "$(cygpath -w "$HOME")" > "$repo/.local-paths"
+  out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
+  rc=$?
+  assert_exit "reject backslash HOME target" 1 "$rc" "$out"
+
+  drive=$(cygpath -m "$fixture" | cut -c1-2)
+  printf 'backup-target=%s\n' "$drive\Windows" > "$repo/.local-paths"
+  out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
+  rc=$?
+  assert_exit "reject a system directory under the drive root" 1 "$rc" "$out"
+  assert_contains "system directory rejection is the denylist" "$out" "unsafe target path"
+
+  printf 'backup-target=%s\n' "$drive\\" > "$repo/.local-paths"
+  out=$(cd "$repo" && bash .claude/hooks/stop-backup.sh 2>&1)
+  rc=$?
+  assert_exit "reject a bare drive root" 1 "$rc" "$out"
+
+  target="$fixture/drive-form-backups"
+  printf 'backup-target=%s\n' "$(cygpath -w "$target")" > "$repo/.local-paths"
+  out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+  rc=$?
+  assert_exit "backslash target outside the repo backs up" 0 "$rc" "$out"
+  assert_exit "backslash target received an archive" 1 "$(count_archives "$target")" "$out"
+else
+  skip "drive-letter target forms (not a drive-letter host)"
+fi
+
+printf '\n--- %d pass, %d fail, %d skipped ---\n' "$pass" "$fail" "$skips"
 exit "$fail"

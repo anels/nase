@@ -274,15 +274,15 @@ def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> lis
         "gh",
         "api",
         "graphql",
-        "-F",
+        "-f",
         f"owner={pr['owner']}",
-        "-F",
+        "-f",
         f"repo={pr['repo']}",
         "-F",
         f"number={pr['number']}",
     ]
     if thread_cursor:
-        args.extend(["-F", f"threadCursor={thread_cursor}"])
+        args.extend(["-f", f"threadCursor={thread_cursor}"])
     args.extend(["-f", f"query={THREADS_QUERY}"])
     return args
 
@@ -290,9 +290,9 @@ def gh_threads_args(pr: dict[str, Any], thread_cursor: str | None = None) -> lis
 def gh_thread_comments_args(
     thread_id: str, comment_cursor: str | None = None
 ) -> list[str]:
-    args = ["gh", "api", "graphql", "-F", f"threadId={thread_id}"]
+    args = ["gh", "api", "graphql", "-f", f"threadId={thread_id}"]
     if comment_cursor:
-        args.extend(["-F", f"commentCursor={comment_cursor}"])
+        args.extend(["-f", f"commentCursor={comment_cursor}"])
     args.extend(["-f", f"query={THREAD_COMMENTS_QUERY}"])
     return args
 
@@ -578,6 +578,8 @@ def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, An
             cwd=root,
             check=False,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=KB_SEARCH_TIMEOUT_SECONDS,
         )

@@ -390,6 +390,21 @@ else
   report 0 "argv0 filter keeps git, an unresolved head, and a glob that can expand to git" "$filtered"
 fi
 
+windows_heads=$(python3 "$SCAN" --json --argv0 git --command \
+  'git.exe status; "C:\Program Files\Git\cmd\GIT.EXE" push; C:/Git/git.cmd fetch; legit.exe push; bash.exe -c "git log"')
+if jq -e '[.invocations[].argv[1]] == ["status","push","fetch","log"]' <<<"$windows_heads" >/dev/null; then
+  report 1 "argv0 filter reads git.exe, a Windows path to it, and bash.exe -c as git"
+else
+  report 0 "argv0 filter reads git.exe, a Windows path to it, and bash.exe -c as git" "$windows_heads"
+fi
+
+check "a drive-letter cd replaces the earlier directory" \
+  'cd /a && cd C:/repo/x && git push' \
+  '.invocations | any(.argv[0] == "git" and .cwds == ["C:/repo/x"])'
+check "a quoted backslash drive path is absolute too" \
+  'cd /a && cd "D:\repo\x" && git push' \
+  '.invocations | any(.argv[0] == "git" and .cwds == ["D:/repo/x"])'
+
 fields=()
 while IFS= read -r -d '' field; do
   fields+=("$field")

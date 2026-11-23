@@ -28,6 +28,8 @@ HOOK_DIR=${BASH_SOURCE[0]%/*}
 { [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
   || block "hook-common.sh is missing or unreadable; failing closed"
 
+nase_install_fail_closed_trap slack-send-guard
+
 nase_require jq || block "jq is required to parse tool input"
 
 INPUT=$(cat)

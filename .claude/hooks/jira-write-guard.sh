@@ -66,6 +66,8 @@ HOOK_DIR=${BASH_SOURCE[0]%/*}
 { [ -r "$HOOK_DIR/../lib/hook-common.sh" ] && . "$HOOK_DIR/../lib/hook-common.sh"; } 2>/dev/null \
   || block_without_log "hook-common.sh is missing or unreadable; failing closed"
 
+nase_install_fail_closed_trap jira-write-guard
+
 nase_require jq || block_without_log "jq is required to parse tool input"
 
 INPUT=$(cat)
@@ -113,21 +115,32 @@ nase_require python3 \
 [ -f "$LOCK_HELPER" ] \
   || block_without_log "workspace mutation lock helper is missing"
 
+# The lock helper checks liveness with the Windows process table, where an MSYS pid
+# means nothing, so Git Bash hands over its Windows pid.
+OWNER_PID=$$
+if [ -r "/proc/$$/winpid" ]; then
+  read -r OWNER_PID < "/proc/$$/winpid" || OWNER_PID=$$
+fi
+
+# stderr is captured for the failure message only. A successful acquire may still warn
+# there (NASE_WEAK_LOCK=1), so the lease is the last JSON line and not the whole output.
 set +e
 LOCK_OUTPUT=$(python3 "$LOCK_HELPER" acquire \
   --root "$NASE_ROOT" \
   --timeout-ms 2000 \
-  --owner-pid $$ 2>&1)
+  --owner-pid "$OWNER_PID" 2>&1)
 LOCK_RC=$?
 set -e
 if [ "$LOCK_RC" -ne 0 ]; then
-  if [ "$LOCK_OUTPUT" = "workspace mutation lock is busy" ]; then
-    block_without_log "workspace mutation lock is busy; token was not consumed"
-  fi
+  case "$LOCK_OUTPUT" in
+    *"workspace mutation lock is busy"*)
+      block_without_log "workspace mutation lock is busy; token was not consumed"
+      ;;
+  esac
   LOCK_ERROR=$(printf '%s' "$LOCK_OUTPUT" | tr '\r\n' ' ' | cut -c1-160)
   block_without_log "workspace mutation lock is unavailable: ${LOCK_ERROR:-unknown error}; token was not consumed"
 fi
-LOCK_NONCE=$(printf '%s' "$LOCK_OUTPUT" | jq -er '.nonce' 2>/dev/null || echo "")
+LOCK_NONCE=$(printf '%s\n' "$LOCK_OUTPUT" | tr -d '\r' | grep '^{' | tail -n 1 | jq -er '.nonce' 2>/dev/null || echo "")
 if [ -z "$LOCK_NONCE" ]; then
   LOCK_NONCE=$(jq -er '.nonce' "$NASE_ROOT/.nase-locks/workspace-mutation.lock/owner.json" 2>/dev/null || echo "")
   if [ -n "$LOCK_NONCE" ]; then
@@ -355,14 +368,15 @@ import os
 import sys
 
 temporary, target = sys.argv[1:]
-with open(temporary, "rb") as stream:
+with open(temporary, "rb+") as stream:
     os.fsync(stream.fileno())
 os.replace(temporary, target)
-directory_fd = os.open(os.path.dirname(target), os.O_RDONLY)
-try:
-    os.fsync(directory_fd)
-finally:
-    os.close(directory_fd)
+if sys.platform != "win32":
+    directory_fd = os.open(os.path.dirname(target), os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 PY
       then
         rm -f "$TMP"
@@ -403,7 +417,7 @@ EXPECTED_ISSUES=$(printf '%s' "$TOKEN_CONTENT" | jq -r '
   | map(select(. != null and . != "") | tostring)
   | unique
   | .[]
-')
+' | tr -d '\r')
 
 [ -z "$EXPECTED_TOOL" ] && block "token missing tool_name"
 [ "$EXPECTED_TOOL" = "$TOOL" ] || block "token tool mismatch: expected $EXPECTED_TOOL" 0

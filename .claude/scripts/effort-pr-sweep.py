@@ -189,7 +189,7 @@ def read_pr(ref: tuple[str, str, int]) -> tuple[str, dict]:
     if proc.returncode != 0:
         return key, {"state": "UNREADABLE", "error": proc.stderr.strip()[:200]}
     try:
-        return key, classify_state(json.loads(proc.stdout))
+        return key, classify_state(json.loads(proc.stdout or ""))
     except json.JSONDecodeError as exc:
         return key, {"state": "UNREADABLE", "error": f"bad json: {exc}"}
 

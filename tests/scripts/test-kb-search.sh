@@ -463,6 +463,14 @@ assert_not_contains "T19: an old level-three entry is filtered" "$out" "Old leve
 assert_contains "T19: an undated section is kept as before" "$out" "Undated current-state section"
 assert_contains "T19: a since heading is not read as an entry date" "$out" "since heading is not an entry date"
 
+# T20: from a directory with no workspace/kb, the script falls back to its own workspace.
+mkdir -p "$FIXTURE/.claude/scripts" "$FIXTURE/elsewhere"
+cp "$SCRIPT" "$FIXTURE/.claude/scripts/kb-search.sh"
+out=$(cd "$FIXTURE/elsewhere" && bash "$FIXTURE/.claude/scripts/kb-search.sh" "[" 2>&1)
+rc=$?
+assert_exit "T20: search from another directory succeeds" 0 "$rc"
+assert_contains "T20: entry found from another directory" "$out" "Literal bracket search"
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

@@ -48,6 +48,16 @@ assert_cmd "relative docs path skipped" test ! -s "$TMPDIR_TEST/docs-run.err"
 assert_cmd "relative tests path skipped" test ! -s "$TMPDIR_TEST/tests-run.err"
 assert_cmd "relative workspace path skipped" test ! -s "$TMPDIR_TEST/workspace-run.err"
 
+# A Windows path uses backslashes. Off Windows a backslash is an ordinary filename
+# character, so the file is created under that literal name to get past the exists check.
+(
+  cd "$TMPDIR_TEST"
+  [[ -f 'tests\win.py' ]] || touch tests/win.py 'tests\win.py'
+  jq -n '{tool_input:{file_path:"tests\\win.py"}}' \
+    | CLAUDE_CODE_SESSION_ID="test-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$TMPDIR_TEST/backslash-run.out" 2>&1
+)
+assert_cmd "backslash tests path skipped" test ! -s "$TMPDIR_TEST/backslash-run.out"
+
 NASE_FACT_FORCE=0 CLAUDE_CODE_SESSION_ID="disabled-session" TMPDIR="$TMPDIR_TEST" bash "$HOOK" >"$TMPDIR_TEST/disabled.out" 2>"$TMPDIR_TEST/disabled.err" <<JSON
 {"tool_input":{"file_path":"$TMPDIR_TEST/src/app.py"}}
 JSON
