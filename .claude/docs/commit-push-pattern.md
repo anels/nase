@@ -81,5 +81,5 @@ git -C {repo_or_worktree} push origin {branch}
 | Skill | Step 4 (improve) | Push deviation |
 |-------|-----------------|----------------|
 | `fsd` | Run | Uses `-u origin` on first push (`git -C {worktree} push -u origin {branch}`) |
-| `address-comments` | Skip | In "Confirm before push" mode: show staged diff and commit message, prompt user, stop if aborted |
+| `address-comments` | Skip | In "Confirm before push" mode: show staged diff and commit message, prompt user, stop if aborted. After its Phase 5.5 rebase it warns, then uses `--force-with-lease=refs/heads/{branch}:{pre_rebase_sha}`; stop if the lease fails |
 | `prep-merge` | Run | Uses `--force-with-lease`; stop if force-push fails (someone else pushed). Apply the Step 5 "commit landed" assertion first - a `0`-ahead force-push silently closes the PR (prep-merge verifies PR state afterward as a safety net) |

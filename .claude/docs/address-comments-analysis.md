@@ -70,7 +70,7 @@ gh pr checks {number} --repo {owner}/{repo} --required --json name,bucket,state,
 
 - `merge_conflict` is true when `mergeable` is `CONFLICTING`. When it is `UNKNOWN`, GitHub is still computing: re-run after a few seconds, up to 3 times. If it stays `UNKNOWN`, decide locally with `git -C {repo_path} merge-tree --write-tree origin/{headRefName} origin/{baseRefName}`: conflict blocks mean conflicts, while an error naming a missing ref is not one.
 - `required_failures` is the list of `{name, link}` whose `bucket` is `fail` or `cancel`. `pending` is not work. If `--required` reports that no required checks exist, the list is empty.
-- GitHub does not run `pull_request` workflows on a conflicting PR, so a PR with `merge_conflict` may show no check results at all. Treat an empty result there as unknown, not green. The conflict fix lands with the Phase 8 push.
+- GitHub does not run `pull_request` workflows on a conflicting PR, so a PR with `merge_conflict` may show no check results at all. Treat an empty result there as unknown, not green. The rebase and its conflict fix land with the Phase 8 push.
 
 ## Phase 3: Build Dossiers, Evaluate, & Present Plan
 
@@ -157,7 +157,7 @@ Design intent: {one-line Why from the effort doc | PR description purpose | none
      reply: {draft_reply_summary}
   ...
 
-Merge state: {clean | conflicts with origin/{baseRefName} -> Phase 5.5 merges the base and resolves}
+Rebase: Phase 5.5 rebases onto origin/{baseRefName} ({clean | conflicts to resolve}); the push becomes a --force-with-lease force-push
 Required checks failing: {none | {check names} -> reproduce locally and fix}
 ```
 
