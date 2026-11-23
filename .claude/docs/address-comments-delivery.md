@@ -3,7 +3,7 @@
 ## Contents
 
 - Phase 5: Setup Worktree
-- Phase 5.5: Resolve Merge Conflicts
+- Phase 5.5: Rebase onto the Base Branch
 - Phase 6: Execute Changes
 - Phase 6.5: Fix Failing Required Checks
 - Phase 7: Build & Test (max 5 iterations)
@@ -32,35 +32,38 @@ git -C {worktree_path} checkout -B {pr_branch} origin/{pr_branch}
 
 Finalize `module_inventory`: keep KB version or derive 5-15 lines inside `{worktree_path}` from top-level src/helper/service/util/client files. Prefer existing modules.
 
-## Phase 5.5: Resolve Merge Conflicts
+## Phase 5.5: Rebase onto the Base Branch
 
-Skip when `merge_conflict` is false. Run it before Phase 6 so thread fixes land on the merged code, not on a base that is about to change under them.
+Run it every round before Phase 6, even when `merge_conflict` is false, so thread fixes land on the latest base code.
 
-Merge the base into the PR branch. Do not rebase: a rebase rewrites the pushed history and needs a force-push, which this command never does.
+Rebase the PR branch onto the latest base. Do not merge the base in. Record the remote tip first. Phase 8 pins its force-push lease to this SHA:
 
 ```bash
-git -C {worktree_path} fetch origin {baseRefName}
-git -C {worktree_path} merge --no-ff --no-commit origin/{baseRefName}
+git -C {worktree_path} fetch origin {baseRefName} {pr_branch}
+git -C {worktree_path} rev-parse origin/{pr_branch}   # record as pre_rebase_sha
+git -C {worktree_path} rev-list --merges origin/{baseRefName}..HEAD
 ```
 
-Resolve each conflicted file (`git -C {worktree_path} diff --name-only --diff-filter=U`) by reading both sides and the merge base (`git show :1:{path}`, `:2:`, `:3:`). Keep the intent of the PR and the intent of the base change. Never use `-X ours`, `-X theirs`, or `git checkout --ours/--theirs` on a whole hand-written file to make the markers go away; that silently drops one side's work.
+If the last command lists any merge commit, a plain rebase would flatten them. Stop and ask with `AskUserQuestion`: rebase anyway, or skip Phase 5.5. On skip, set `rebased=false` and continue.
+
+If `git -C {worktree_path} merge-base --is-ancestor origin/{baseRefName} HEAD` succeeds, the branch already contains the latest base. Set `rebased=false`, record the current `HEAD` as `rebase_sha`, and continue. No force-push is needed.
+
+Otherwise run:
+
+```bash
+git -C {worktree_path} rebase origin/{baseRefName}
+```
+
+On a conflict, resolve each conflicted file (`git -C {worktree_path} diff --name-only --diff-filter=U`) by reading both sides and the merge base (`git show :1:{path}`, `:2:`, `:3:`). Keep the intent of the PR and the intent of the base change. Never use `-X ours`, `-X theirs`, or `git checkout --ours/--theirs` on a whole hand-written file to make the markers go away; that silently drops one side's work. During a rebase `--ours` is the base and `--theirs` is the PR commit, the reverse of a merge.
 
 - Lockfiles and generated files: take the base version, then regenerate with the repo's own command from KB or `CLAUDE.md`. Do not hand-merge them. This is the one whole-side case, and it is safe only because the generator rebuilds the content.
-- Both sides changed the same logic and the right result is not obvious from the code, tests, or KB: stop and ask with `AskUserQuestion`. Show the two hunks and your proposed merge.
-- Stage each resolved file (`git -C {worktree_path} add {path}`), then confirm no markers remain in those files: `git -C {worktree_path} diff HEAD --check -- {resolved_paths}` must be clean and `git -C {worktree_path} grep -n -E '^(<<<<<<<|>>>>>>>) ' -- {resolved_paths}` must find nothing.
+- Both sides changed the same logic and the right result is not obvious from the code, tests, or KB: stop and ask with `AskUserQuestion`. Show the two hunks and your proposed resolution.
+- Stage each resolved file (`git -C {worktree_path} add {path}`), confirm no markers remain in those files (`git -C {worktree_path} diff HEAD --check -- {resolved_paths}` must be clean and `git -C {worktree_path} grep -n -E '^(<<<<<<<|>>>>>>>) ' -- {resolved_paths}` must find nothing), then run `git -C {worktree_path} rebase --continue`. Repeat for each conflicting commit.
+- If the conflicts cannot be resolved with confidence, run `git -C {worktree_path} rebase --abort`. That restores the original branch. Report it, set `rebased=false`, and ask whether to continue without the rebase.
 
-Commit the merge with a subject that satisfies `gate_profile.commit_format`, such as `chore: merge {baseRefName} into {pr_branch}`:
+After the rebase finishes, record `git -C {worktree_path} rev-parse HEAD` as `rebase_sha`, and set `rebased=true`, `no_commit=false`. Phase 8 pushes the rewritten branch under its force-push warning. Phase 7.5 gates the Phase 6 thread fixes, not the rebase.
 
-```bash
-git -C {worktree_path} commit -m "chore: merge {baseRefName} into {pr_branch}"
-git -C {worktree_path} rev-parse HEAD   # record as merge_sha
-```
-
-If the merge reports `Already up to date`, there is nothing to resolve: record the current `HEAD` as `merge_sha` and continue.
-
-Set `no_commit=false` and record `merge_sha`. The merge is pushed by Phase 8 with everything else; it gets no separate push or approval gate. Phase 7.5 gates the Phase 6 thread fixes, not this merge commit.
-
-The merge moves line numbers. Re-locate each accepted thread's code in the merged tree before Phase 6 instead of trusting the Phase 3 excerpt. Phase 7 builds and tests the merged result, so a conflict that resolved textually but broke behavior fails there.
+The rebase moves line numbers. Re-locate each accepted thread's code in the rebased tree before Phase 6 instead of trusting the Phase 3 excerpt. Phase 7 builds and tests the rebased result, so a conflict that resolved textually but broke behavior fails there.
 
 ## Phase 6: Execute Changes
 
@@ -123,7 +126,7 @@ For each failing check, in this order:
 4. **Fix the cause.** Fix the production code. Do not weaken, skip, or delete a test, loosen a threshold, or add a lint ignore to turn the check green. If the test itself is wrong because the intended behavior changed, update it and say why. If the check is flaky (it passes on re-run with no code change), report it as flaky and do not edit code for it.
 5. **Re-run the same command** and keep the passing output as evidence.
 
-A Required failure that was caused by the merge conflict is already fixed by Phase 5.5; confirm it by running its command, then move on. A failure needing a secret, a deploy, or a service that is not available locally cannot be reproduced: report it as blocked with the evidence and leave it.
+A Required failure that was caused by the base drift or conflict is already fixed by Phase 5.5; confirm it by running its command, then move on. A failure needing a secret, a deploy, or a service that is not available locally cannot be reproduced: report it as blocked with the evidence and leave it.
 
 Phase 7 then runs the repo's configured gates on the whole diff. Do not wait for the new CI run after the push (see the entrypoint invariants), and say in the final report that these fixes are verified locally only.
 
@@ -179,7 +182,7 @@ follow `.claude/docs/anti-rationalization.md → Universal`.
 ## Phase 7: Build & Test (max 5 iterations)
 
 Get configured build, lint, typecheck, and test commands from the KB file or repo's `CLAUDE.md`.
-Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding. After all gates pass, apply the Step 2.6 test-presence soft gate against the Phase 6 edits (`{merge_sha}..HEAD` plus the working tree when Phase 5.5 ran, otherwise `origin/{pr_branch}`) - if an accepted thread changed logic but the diff adds no test, the Phase 6 "ensure test coverage" promise was missed; add the test or record the justification in the reply for that thread.
+Follow the build & test iteration loop in `.claude/docs/build-test-loop.md` (max 5 iterations). Every configured gate must pass before proceeding. After all gates pass, apply the Step 2.6 test-presence soft gate against the Phase 6 edits (`{rebase_sha}..HEAD` plus the working tree) - if an accepted thread changed logic but the diff adds no test, the Phase 6 "ensure test coverage" promise was missed; add the test or record the justification in the reply for that thread.
 On success: proceed to Phase 7.5.
 
 ## Phase 7.25: Optional Post-Edit CLI Gates
@@ -194,22 +197,18 @@ Follow `.claude/docs/pr-review-fix-verification.md → Review-Thread Resolution 
 
 ## Phase 8: Commit & Push
 
-Judge the accept-thread check against the Phase 6 edits only. A Phase 5.5 merge commit is base content and proves nothing about a thread, and `git diff origin/{pr_branch}` now contains it. When Phase 5.5 ran, compare against the recorded `merge_sha`; otherwise compare against `origin/{pr_branch}`:
+Judge the accept-thread check against the Phase 6 edits only. Rebased base content proves nothing about a thread, and `git diff origin/{pr_branch}` now contains it. Compare against the `rebase_sha` recorded in Phase 5.5:
 
 ```bash
-# with a merge commit
-git -C {worktree_path} diff {merge_sha}..HEAD
-git -C {worktree_path} status --porcelain
-# without one
-git -C {worktree_path} diff origin/{pr_branch}
+git -C {worktree_path} diff {rebase_sha}..HEAD
 git -C {worktree_path} status --porcelain
 ```
 
 If the final post-Phase-4 dossier/action map has any `accept` thread and that diff is empty, stop. Report `Accepted thread(s) produced no code diff; fix the code change or reclassify before replying/resolving.` Do not proceed to Phase 9.
 
-A Phase 5.5 merge commit or a Phase 6.5 fix means there is something to push: follow the commit & push sequence below, committing any uncommitted Phase 6 edits first.
+A Phase 5.5 rebase (`rebased=true`) or a Phase 6.5 fix means there is something to push: follow the commit & push sequence below, committing any uncommitted Phase 6 edits first.
 
-If there are no code changes after Phase 6 and neither a merge commit nor a Phase 6.5 fix exists:
+If there are no code changes after Phase 6 and neither a rebase nor a Phase 6.5 fix exists:
 - If the final dossier/action map has only `reply-only` / `decline` threads, skip commit and push. Set `no_commit=true`, report `No code changes; proceeding to review replies/resolution only.`, skip Phase 8b, and continue to Phase 9.
 
 **Re-verify worktree HEAD before commit** - a concurrent session can move your branch and drop edits; recover per `worktree-pattern.md`.
@@ -230,6 +229,28 @@ options:
 ```
 
 If aborted: print the worktree path so the user can continue manually, and stop.
+
+**Force-push when `rebased=true`.** A plain push is rejected after the rebase. Warn the user before every such push, in every mode, including "Full auto". The `force-push` autonomy class is `never`, so no earlier approval covers it. Show `pre_rebase_sha`, the new HEAD, and `git -C {worktree_path} log --oneline origin/{pr_branch}..HEAD`, and say that inline review threads may show as outdated on the rewritten commits. Then use `AskUserQuestion`:
+
+```
+question: "Force-push the rebased branch with --force-with-lease?"
+header: "Force Push"
+options:
+  - label: "Force-push"
+    description: "Push with --force-with-lease pinned to the SHA recorded before the rebase; it fails if someone else pushed since"
+  - label: "Abort"
+    description: "Stop here - I'll handle the push manually"
+```
+
+Apply the `commit-push-pattern.md` §5 "commit landed" check first. Then push with the lease pinned to the recorded SHA, never a bare `--force`:
+
+```bash
+git -C {worktree_path} push --force-with-lease=refs/heads/{pr_branch}:{pre_rebase_sha} origin {pr_branch}
+```
+
+If the push fails because the lease no longer matches, someone else pushed after Phase 5.5. Stop, report it, and leave the worktree for the user. Never retry with a bare `--force` or a refreshed lease without asking.
+
+When `rebased=false`, use the plain push from `commit-push-pattern.md`.
 
 ## Phase 8b: Update PR Description to Match Template
 
@@ -350,7 +371,7 @@ PR comments addressed ✓
   Replies:         {N} threads
   Resolved:        {total_resolved} / {total_threads}
   Build/test:      passed (iteration {N})
-  Merge conflict:  {resolved via merge of origin/{baseRefName} | none}
+  Rebase:          {rebased onto origin/{baseRefName}, force-pushed with lease | already up to date | skipped: reason}
   Required checks: {N} fixed (local re-run passed), {M} blocked or flaky: {names}   # omit when none failed
   Worktree:        {retained path or n/a}
   Lessons:         {N} written to {KB file or lessons.md} | none
@@ -370,8 +391,9 @@ Follow `.claude/docs/pr-next-step-handoff.md -> Address-Comments Handoff`.
 
 ## Error handling
 
-- Never force-push or change tests merely to make them pass.
-- Resolve conflicts by merging the base in, never by rebase. Never take one whole side of a hand-written source file to clear the markers; lockfiles and generated files are the exception, taken from the base and regenerated.
+- Never change tests merely to make them pass.
+- Force-push only as Phase 8 describes. Never use a bare `--force`.
+- Resolve base drift by rebasing, never by merging the base in. Never take one whole side of a hand-written source file to clear the markers; lockfiles and generated files are the exception, taken from the base and regenerated.
 - A Required check you could not reproduce, or that fails on the base too, is reported with evidence and left alone. It is never "fixed" by weakening the check.
 - Reply before resolve; never resolve a declined thread.
 - On partial API failure, report exact failed thread IDs for manual recovery.

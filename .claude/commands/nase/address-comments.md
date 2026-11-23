@@ -32,16 +32,16 @@ Follow `.claude/docs/pr-input-guard.md`. On empty input, ask for one PR URL with
 - The final post-Phase-4 dossier/action map is the only category source for delivery.
 - Every `accept` thread must produce the planned code diff plus the test evidence `.claude/docs/fsd-implementation-loop.md → Engineering Excellence Bar` requires for the changed paths. Read only that section (`python3 .claude/scripts/kb-section.py get .claude/docs/fsd-implementation-loop.md "Engineering Excellence Bar"`); the rest of the file belongs to `/nase:fsd`. A no-diff accept blocks delivery.
 - `decline` threads receive a reply but stay unresolved. `accept` and `reply-only` threads reply first, then resolve.
-- A merge conflict with the base branch and a failing **Required** check are in scope. Resolve the conflict in Phase 5.5 and fix the Required failure in Phase 6.5, even when no thread asks for it. Merge `origin/{baseRefName}` into the PR branch to resolve a conflict. Never rebase, because that needs a force-push.
+- Phase 5.5 always rebases the PR branch onto the latest `origin/{baseRefName}` before any thread fix, so fixes land on current base code. A rebase conflict and a failing **Required** check are in scope: resolve the conflict in Phase 5.5 and fix the Required failure in Phase 6.5, even when no thread asks for it. Never merge the base into the PR branch.
 - Do not poll or wait for CI after the push, and do not claim post-push gates are green. A failing check that is not Required is a finding, not work: report it and leave it. A post-push CI failure otherwise surfaces on the PR like any other; the user runs another round or fixes it directly.
 - Slack messages are drafts only. This command never sends them.
-- Never force-push and never weaken tests to make them pass.
+- Force-push only after a Phase 5.5 rebase, with `--force-with-lease` pinned to the SHA recorded before the rebase, and only after the Phase 8 warning. Never use a bare `--force`. Never weaken tests to make them pass.
 
 ## State contract
 
 Phases 1-4 produce and must return: `owner`, `repo`, `number`, `repo_path`, `baseRefName`, `headRefName`, `headRepository.nameWithOwner`, `pr_head_ref`, `gate_profile`, `design_intent` (or `none`), `module_inventory`, `merge_conflict`, `required_failures`, the PR-unique dossier path, each thread's `id` and `databaseId`, and the final dossier/action map.
 
-`worktree_path`, `pr_branch`, `merge_sha`, and `no_commit` are set inside `.claude/docs/address-comments-delivery.md` and stay live from there on. A Phase 1-4 return that omits them is complete, not truncated.
+`worktree_path`, `pr_branch`, `rebase_sha`, and `no_commit` are set inside `.claude/docs/address-comments-delivery.md` and stay live from there on. A Phase 1-4 return that omits them is complete, not truncated.
 
 ## Phase map
 
