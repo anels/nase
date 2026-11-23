@@ -33,7 +33,8 @@ nase_install_fail_closed_trap slack-send-guard
 nase_require jq || block "jq is required to parse tool input"
 
 INPUT=$(cat)
-if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
+# `tr` drops the CR a Windows jq prints: left on, no tool-name pattern matches and the guard allows.
+if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null | tr -d '\r'); then
   block "could not parse tool input JSON"
 fi
 # Empty stdin parses as nothing at all, and an empty name matches none of the patterns

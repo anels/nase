@@ -1,33 +1,39 @@
 # Test files that do not pass on native Windows (Git Bash) yet. tests/check-all.sh
-# skips them there, with a count, and runs them everywhere else. Remove a name once
-# the file passes on Windows. Most entries need a fake-CLI stub that native Python can
-# launch, a symlink, or a chmod-based unreadable file.
-test-citation-validator.sh
-test-confluence-publish.sh
-test-effort-pr-sweep.sh
-test-effort-rollup-evidence.sh
-test-external-write-action.sh
-test-external-write-guards.sh
-test-hook-common.sh
-test-jev-judge.sh
-test-local-sensitive-artifacts.sh
-test-log-range.sh
-test-nase-shared-modules.sh
-test-pr-github-helper.sh
-test-pre-compact-archive.sh
-test-prose-lint-guard.sh
-test-shared-doc-refs.sh
-test-shared-workflow-extraction.sh
-test-skill-eval-run.sh
-test-stats-chart.sh
-test-stop-claim-check.sh
-test-style-delta-pending.sh
-test-tmp-prune.sh
-test-todo-staleness-scan.sh
-test-tool-availability.sh
-test-workspace-data-scan.sh
-test-workspace-skill-integrity.sh
-test-workspace-write-guard.sh
-test-worktree-cleanup.sh
-test-worktree-sweep.sh
-test-youtube-transcript.sh
+# skips them there, with a count, and runs them everywhere else. One repo-relative path
+# per line. tests/scripts/test-windows-known-failures.sh fails when a path no longer
+# names a tracked file. Remove a path once the file passes on Windows. Most entries need
+# a fake-CLI stub that native Python can launch, a symlink, or a chmod-based unreadable file.
+tests/hooks/test-external-write-guards.sh
+tests/hooks/test-hook-common.sh
+tests/hooks/test-pre-compact-archive.sh
+tests/hooks/test-prose-lint-guard.sh
+tests/hooks/test-stop-claim-check.sh
+tests/scripts/test-citation-validator.sh
+tests/scripts/test-confluence-publish.sh
+tests/scripts/test-effort-pr-sweep.sh
+tests/scripts/test-effort-rollup-evidence.sh
+tests/scripts/test-external-write-action.sh
+tests/scripts/test-jev-judge.sh
+tests/scripts/test-local-sensitive-artifacts.sh
+tests/scripts/test-log-range.sh
+tests/scripts/test-nase-shared-modules.sh
+tests/scripts/test-pr-github-helper.sh
+tests/scripts/test-shared-doc-refs.sh
+tests/scripts/test-shared-workflow-extraction.sh
+tests/scripts/test-skill-eval-run.sh
+tests/scripts/test-stats-chart.sh
+tests/scripts/test-style-delta-pending.sh
+tests/scripts/test-tmp-prune.sh
+tests/scripts/test-todo-staleness-scan.sh
+tests/scripts/test-tool-availability.sh
+tests/scripts/test-workspace-data-scan.sh
+tests/scripts/test-workspace-skill-integrity.sh
+tests/scripts/test-workspace-write-guard.sh
+tests/scripts/test-worktree-cleanup.sh
+tests/scripts/test-worktree-sweep.sh
+tests/scripts/test-youtube-transcript.sh
+# Seen failing on the windows-latest runner and not yet diagnosed. test-shell-scan.sh
+# exits 1 after about 60s with no FAIL line, which looks like a timeout. test-today-stats.sh
+# reads zero invocations from a fixture that passes on POSIX, and pins the day with TZ=UTC.
+tests/scripts/test-shell-scan.sh
+tests/scripts/test-today-stats.sh

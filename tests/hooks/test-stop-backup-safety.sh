@@ -1097,13 +1097,33 @@ printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
 printf 'backup_retention: count:1\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
 printf 'placeholder\n' > "$target/nase-backup-before-migration.zip"
 printf 'placeholder\n' > "$target/nase-backup-20000101-000000.zip"
+# A future stamp sorts after the archive about to be written, so count:1 would prune the
+# new archive if retention did not exempt it.
+printf 'placeholder\n' > "$target/nase-backup-29990101-000000.zip"
 out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
 rc=$?
-assert_exit "retention run with a hand-named archive succeeds" 0 "$rc" "$out"
-assert_exit "hand-named archive is not pruned" 0   "$([ -f "$target/nase-backup-before-migration.zip" ]; printf '%s' "$?")" "$out"
-assert_exit "old timestamped archive is pruned" 1   "$([ -f "$target/nase-backup-20000101-000000.zip" ]; printf '%s' "$?")" "$out"
+file_state() { if [ -f "$1" ]; then printf 'present'; else printf 'absent'; fi; }
 published=$(sed -n 's/^last-archive=//p' "$repo/.nase-backup-state")
-assert_exit "the archive just published survives count:1" 0   "$([ -n "$published" ] && [ -f "$target/$published" ]; printf '%s' "$?")" "$out"
+assert_exit "retention run with a hand-named archive succeeds" 0 "$rc" "$out"
+assert_exit "hand-named archive is not pruned" present "$(file_state "$target/nase-backup-before-migration.zip")" "$out"
+assert_exit "old timestamped archive is pruned" absent "$(file_state "$target/nase-backup-20000101-000000.zip")" "$out"
+assert_exit "the archive just published survives count:1" present "$(file_state "$target/$published")" "$out"
+
+# --- a stale snapshot the hook cannot delete must not stop the backup ------------------
+repo="$fixture/stale-sweep-repo"
+target="$fixture/stale-sweep-backups"
+stale_tmp="$fixture/stale-sweep-tmp"
+make_repo "$repo"
+mkdir -p "$target" "$stale_tmp/nase-backup.AAAAAA/workspace/locked"
+printf 'x\n' > "$stale_tmp/nase-backup.AAAAAA/workspace/locked/file"
+chmod 555 "$stale_tmp/nase-backup.AAAAAA/workspace/locked"
+touch -t 200001010000 "$stale_tmp/nase-backup.AAAAAA"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+out=$(cd "$repo" && TMPDIR="$stale_tmp" PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+chmod -R u+w "$stale_tmp" 2>/dev/null || true
+assert_exit "an undeletable stale snapshot does not abort the backup" 0 "$rc" "$out"
+assert_exit "the backup is still published after a failed sweep" present "$(file_state "$target/$(sed -n 's/^last-archive=//p' "$repo/.nase-backup-state")")" "$out"
 
 # --- a target above the repo is refused whatever form its path takes -------------------
 repo="$fixture/ancestor-target-repo"

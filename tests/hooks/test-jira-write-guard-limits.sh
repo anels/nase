@@ -140,6 +140,23 @@ link_sha=$(printf '%s' "$input" | jq -cS '.tool_input' | tr -d '\r' | {
 jq -n --arg tool "$link_tool" --arg created "$(stamp 0)" --arg sha "$link_sha" \
   '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_sha256:$sha,payload_summary:"link"}' >"$TOKEN"
 expect "single-shot token with two issue keys matches both" 0
+
+# The same token under a jq that really prints CR: the guard must hash the payload the way
+# the documented recipe does, without the CR, and still read the tool name and issue keys.
+CRJQ_BIN="$TMP_ROOT/crjq-bin"
+mkdir -p "$CRJQ_BIN"
+REAL_JQ=$(command -v jq)
+cat >"$CRJQ_BIN/jq" <<EOF
+#!/usr/bin/env bash
+"$REAL_JQ" "\$@" | awk '{ printf "%s\r\n", \$0 }'
+EOF
+chmod +x "$CRJQ_BIN/jq"
+jq -n --arg tool "$link_tool" --arg created "$(stamp 0)" --arg sha "$link_sha" \
+  '{tool_name:$tool,issue_keys:["SRE-1","SRE-2"],created_at:$created,payload_sha256:$sha,payload_summary:"link"}' >"$TOKEN"
+OLD_PATH=$PATH
+PATH="$CRJQ_BIN:$PATH"
+expect "single-shot token with two issue keys matches under a CR-printing jq" 0
+PATH=$OLD_PATH
 input=$(jq -cn --arg tool "$tool" '{tool_name:$tool,tool_input:{issueIdOrKey:"SRE-1"}}')
 
 rm -f "$TOKEN"

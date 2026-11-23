@@ -70,6 +70,11 @@ nase_install_fail_closed_trap jira-write-guard
 
 nase_require jq || block_without_log "jq is required to parse tool input"
 
+# A Windows jq ends every output line with CR. Every value this guard reads from jq is
+# compared or hashed, so one stray CR makes a match miss. Left on the tool name, no pattern
+# matches and the guard allows. Strip it on every read, with pipefail keeping jq's status.
+jq() { command jq "$@" | tr -d '\r'; }
+
 INPUT=$(cat)
 if ! TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null); then
   block_without_log "could not parse tool input JSON"
@@ -427,7 +432,7 @@ if [ -z "$EXPECTED_ISSUES" ] && [[ "$TOOL" != *__createJiraIssue && "$TOOL" != *
   block "token missing issue_key"
 fi
 
-CANONICAL_TOOL_INPUT=$(printf '%s' "$INPUT" | jq -cS '.tool_input // {}' 2>/dev/null \
+CANONICAL_TOOL_INPUT=$(printf '%s' "$INPUT" | jq -cS '.tool_input // {}' 2>/dev/null | tr -d '\r' \
   || block "could not canonicalize tool_input")
 CURRENT_PAYLOAD_SHA=$(printf '%s\n' "$CANONICAL_TOOL_INPUT" | sha256_hex)
 [ "$EXPECTED_PAYLOAD_SHA" = "$CURRENT_PAYLOAD_SHA" ] \

@@ -763,5 +763,44 @@ expect_missing_jq "jira missing jq blocked" .claude/hooks/jira-write-guard.sh "$
 expect_missing_jq "confluence missing jq blocked" .claude/hooks/confluence-size-guard.sh "$small_confluence"
 expect_missing_jq "external CLI missing jq blocked" .claude/hooks/external-cli-write-guard.sh "$github_write"
 
+# A Windows jq ends every output line with CR. The tool name then no longer matches any
+# guarded pattern, and a guard that matches on it would allow the write.
+crjq_dir="$TMP_ROOT/crjq"
+mkdir -p "$crjq_dir"
+real_jq=$(command -v jq)
+cat > "$crjq_dir/jq" <<SH
+#!/usr/bin/env bash
+"$real_jq" "\$@" | awk '{ printf "%s\r\n", \$0 }'
+SH
+chmod +x "$crjq_dir/jq"
+
+expect_rc_crlf_jq() {
+  local label="$1" script="$2" input="$3" want="$4"
+  set +e
+  OUTPUT=$(printf '%s' "$input" | PATH="$crjq_dir:$PATH" NASE_ROOT="$TMP_ROOT" bash "$script" 2>&1)
+  RC=$?
+  set -e
+  if [ "$RC" -eq "$want" ]; then
+    report 1 "$label" "rc=$RC"
+  else
+    report 0 "$label" "rc=$RC want=$want output=$OUTPUT"
+  fi
+}
+expect_rc_crlf_jq "slack direct send blocked under a CR-printing jq" .claude/hooks/slack-send-guard.sh "$slack_send" 2
+expect_rc_crlf_jq "jira transition blocked under a CR-printing jq" .claude/hooks/jira-write-guard.sh "$jira_transition" 2
+expect_rc_crlf_jq "atlassian executeWrite blocked under a CR-printing jq" .claude/hooks/atlassian-generic-write-guard.sh "$atlassian_write" 2
+expect_rc_crlf_jq "oversized confluence write blocked under a CR-printing jq" .claude/hooks/confluence-size-guard.sh "$large_confluence" 2
+
+# PowerShell reads `\` as a path separator. The POSIX scanner reads it as an escape and
+# drops it, so a drive-letter path to a guarded CLI must be scanned with `/` instead.
+ps_gh_merge='{"tool_name":"PowerShell","tool_input":{"command":"C:\\tools\\gh.exe pr merge 1 -R a/b"}}'
+ps_gh_call='{"tool_name":"PowerShell","tool_input":{"command":"& C:\\tools\\gh.exe pr merge 1 -R a/b"}}'
+ps_kubectl='{"tool_name":"PowerShell","tool_input":{"command":"C:\\tools\\kubectl.exe delete pod x"}}'
+ps_benign='{"tool_name":"PowerShell","tool_input":{"command":"Get-ChildItem C:\\tools"}}'
+expect_rc "PowerShell drive-letter gh mutation blocked" .claude/hooks/external-cli-write-guard.sh "$ps_gh_merge" 2
+expect_rc "PowerShell call-operator gh mutation blocked" .claude/hooks/external-cli-write-guard.sh "$ps_gh_call" 2
+expect_rc "PowerShell drive-letter kubectl mutation blocked" .claude/hooks/external-cli-write-guard.sh "$ps_kubectl" 2
+expect_rc "PowerShell benign backslash path allowed" .claude/hooks/external-cli-write-guard.sh "$ps_benign" 0
+
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

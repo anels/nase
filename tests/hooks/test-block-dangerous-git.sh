@@ -636,6 +636,10 @@ test_case_tool PowerShell "PowerShell reset after &&" "g""it fe""tch && g""it re
 test_case_tool PowerShell "PowerShell git status" "g""it sta""tus" allow
 test_case_tool PowerShell "PowerShell command without git" "Get-ChildItem C:\\Users" allow
 test_case_tool PowerShell "PowerShell read with a backslash path" "g""it -C C:\\repos\\x sta""tus" allow
+# Runs on POSIX too. Without the backslash rewrite the scanner drops each `\`, reads the
+# program as `C:toolsgit.exe`, and allows the push.
+test_case_tool PowerShell "PowerShell drive-letter path to git.exe, force push" "C:\\tools\\g""it.exe pu""sh --force origin main" block
+test_case_tool PowerShell "PowerShell call operator with a drive-letter git.exe" "& C:\\tools\\g""it.exe re""set --hard" block
 
 # Drive-letter paths are absolute, so an earlier cd must not be joined in front of them.
 if command -v cygpath >/dev/null 2>&1; then

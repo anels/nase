@@ -26,6 +26,15 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) \
   || block 'could not parse Bash tool input JSON'
 [[ -z "$CMD" ]] && exit 0
 
+# PowerShell reads a backslash as a literal path separator, where the POSIX scanner reads
+# an escape and drops it, so `C:\tools\gh.exe pr merge` would never name `gh`. Scan with
+# forward slashes, as block-dangerous-git.sh does. `tr` drops the CR a Windows jq prints.
+TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null | tr -d '\r') \
+  || block 'could not read the tool name from the tool input'
+if [ "$TOOL_NAME" = "PowerShell" ]; then
+  CMD=${CMD//\\//}
+fi
+
 # The command goes over stdin: as an argument, one past the OS limit (about 32K
 # characters on Windows) fails to launch and reads as a blocked mutation.
 GUARD_RC=0

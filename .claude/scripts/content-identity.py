@@ -54,24 +54,35 @@ def tree_oid(repo: str, rev: str) -> str:
     return git_text(repo, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{tree}}").strip()
 
 
+def git_diff_bytes(repo: str, base: str, head: str) -> bytes:
+    # Bytes, not text: decoding a diff with errors="replace" maps every invalid byte to the
+    # same U+FFFD, so two diffs that differ only in such bytes would get one patch-id.
+    try:
+        completed = nase_git.run("diff", "--no-color", "--no-ext-diff", base, head, repo=repo, text=False)
+    except (nase_git.GitTimeout, OSError) as exc:
+        raise IdentityError(str(exc)) from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip() or f"exit {completed.returncode}"
+        raise IdentityError(f"git diff {base} {head}: {detail}")
+    return completed.stdout
+
+
 def patch_id(repo: str, base: str, head: str) -> str:
-    diff = git_text(repo, "diff", "--no-color", "--no-ext-diff", base, head)
+    diff = git_diff_bytes(repo, base, head)
     try:
         completed = subprocess.run(
             ["git", "-C", repo, "patch-id", "--stable"],
             input=diff,
             check=False,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=nase_git.GIT_TIMEOUT_SECONDS,
         )
     except (subprocess.SubprocessError, OSError) as exc:
         raise IdentityError(f"git patch-id: {exc}") from exc
     if completed.returncode != 0:
-        raise IdentityError(f"git patch-id: {completed.stderr.strip() or completed.returncode}")
-    fields = completed.stdout.split()
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise IdentityError(f"git patch-id: {detail or completed.returncode}")
+    fields = completed.stdout.decode("ascii", errors="replace").split()
     if not fields:
         raise IdentityError(f"no patch-id for {base}..{head}: empty or binary-only diff")
     return fields[0]

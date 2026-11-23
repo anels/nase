@@ -244,7 +244,8 @@ run_test_files_serially() {
     run_with_timeout "$TEST_TIMEOUT_SECONDS" bash "$test_file"
     rc=$?
     end=$(date +%s)
-    if [ "$rc" -eq 142 ]; then
+    # 142 is the Python alarm mode (128 + SIGALRM). 124 is coreutils `timeout`.
+    if [ "$rc" -eq 142 ] || [ "$rc" -eq 124 ]; then
       printf '[timeout] %s exceeded %ss (NASE_TEST_TIMEOUT)\n' \
         "$(basename "$test_file")" "$TEST_TIMEOUT_SECONDS" >&2
     fi
@@ -270,10 +271,13 @@ esac
 WINDOWS_KNOWN_FAILURES="$ROOT/tests/windows-known-failures.txt"
 skipped_windows=0
 
+# The list holds repo-relative paths, so a same-named file in another directory is not
+# skipped by accident.
 windows_known_failure() {
+  local rel="${1#"$ROOT"/}"
   (( IS_WINDOWS == 1 )) || return 1
   [[ -f "$WINDOWS_KNOWN_FAILURES" ]] || return 1
-  grep -qxF "$(basename "$1")" "$WINDOWS_KNOWN_FAILURES"
+  grep -qxF "${rel#./}" "$WINDOWS_KNOWN_FAILURES"
 }
 
 run_test_files() {
@@ -295,6 +299,8 @@ run_test_files() {
     if windows_known_failure "$test_file"; then
       printf '[skip] known Windows failure: %s\n' "$test_file"
       skipped_windows=$((skipped_windows + 1))
+      # Recorded so a file listed in two test sets is skipped, and counted, once.
+      ran_test_files+=("$test_file")
       continue
     fi
     ran_test_files+=("$test_file")

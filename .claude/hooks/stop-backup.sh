@@ -29,6 +29,7 @@ canonicalize_path() {
   local resolved
   # Expand `~` against the shell's HOME: native Windows Python expands it against
   # USERPROFILE, which is a different directory whenever HOME is overridden.
+  # shellcheck disable=SC2088 # the quoted tilde is the literal text to match, not an expansion
   case "$path" in
     "~") path="$HOME" ;;
     "~/"*) path="$HOME/${path#"~/"}" ;;
@@ -401,7 +402,7 @@ note_advisory_scan "$SCAN_OUTPUT"
 # that are more than a day old; a live run is minutes old.
 while IFS= read -r -d '' stale_snapshot; do
   [ -d "$stale_snapshot/workspace" ] || continue
-  rm -rf "$stale_snapshot"
+  rm -rf "$stale_snapshot" || log_status "WARNING" "could not remove stale backup snapshot $stale_snapshot"
 done < <(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'nase-backup.??????' -mmin +1440 -print0 2>/dev/null || true)
 SNAPSHOT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/nase-backup.XXXXXX") || {
   log_status "ERROR" "cannot create local backup snapshot directory"
