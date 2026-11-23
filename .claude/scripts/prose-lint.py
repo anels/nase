@@ -838,6 +838,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     args = parse_args(argv)
     if args.list_rules:
         print(list_rules())
@@ -846,10 +849,10 @@ def main(argv: list[str] | None = None) -> int:
         print("prose-lint: --surface and --file are required", file=sys.stderr)
         return 2
     if args.file == "-":
-        text = sys.stdin.read()
+        text = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     else:
         try:
-            with open(args.file, encoding="utf-8") as handle:
+            with open(args.file, encoding="utf-8", errors="replace") as handle:
                 text = handle.read()
         except OSError as exc:
             print(f"prose-lint: cannot read {args.file}: {exc}", file=sys.stderr)

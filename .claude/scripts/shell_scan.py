@@ -196,6 +196,24 @@ _BLANKS = " \t\r"
 _OPERATOR_CHARS = " \t\r\n;&|()<>"
 
 
+_WINDOWS_PROGRAM_SUFFIXES = (".exe", ".cmd", ".bat", ".com")
+_DRIVE_PATH_RE = re.compile(r"[A-Za-z]:[\\/]")
+
+
+def program_name(word: str) -> str:
+    """Basename of a command word, read the way Windows resolves it.
+
+    `git.exe` and a full path to it under either separator both run git, so an
+    executable suffix does not change the name.
+    """
+    name = word.replace("\\", "/").rsplit("/", 1)[-1]
+    lowered = name.lower()
+    for suffix in _WINDOWS_PROGRAM_SUFFIXES:
+        if lowered.endswith(suffix) and len(name) > len(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
 @dataclass
 class Invocation:
     """One program run: `argv` with quotes resolved and `dyn` flagging unresolved words."""
@@ -214,7 +232,7 @@ class Invocation:
 
     @property
     def name(self) -> str:
-        return posixpath.basename(self.argv[0]) if self.argv else ""
+        return program_name(self.argv[0]) if self.argv else ""
 
     @property
     def head_dynamic(self) -> bool:
@@ -607,6 +625,8 @@ def _ansi_decode(text: str) -> str:
 def _join_dir(base: str, path: str) -> str:
     if base == "?":
         return "?"
+    if _DRIVE_PATH_RE.match(path):
+        return posixpath.normpath(path.replace("\\", "/"))
     if path.startswith("/"):
         return posixpath.normpath(path)
     joined = posixpath.normpath(posixpath.join(base or ".", path))
@@ -1495,7 +1515,7 @@ class _Parser:
             word = words[index]
             if word.dyn:
                 break
-            name = posixpath.basename(word.text)
+            name = program_name(word.text)
             if name == "command":
                 j = index + 1
                 lookup = False

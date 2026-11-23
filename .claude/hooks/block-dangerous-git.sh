@@ -31,11 +31,27 @@ block_without_command() {
 
 command -v jq >/dev/null 2>&1 || block_without_command 'jq is required by block-dangerous-git.sh to parse Bash tool input'
 
-if ! CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); then
+if ! HOOK_FIELDS=$(jq -r '(.tool_name // ""), (.tool_input.command // empty)' 2>/dev/null); then
   block_without_command 'block-dangerous-git.sh could not parse Bash tool input JSON'
 fi
+NL='
+'
+case "$HOOK_FIELDS" in
+  *"$NL"*) ;;
+  *) exit 0 ;;
+esac
+TOOL_NAME=${HOOK_FIELDS%%"$NL"*}
+TOOL_NAME=${TOOL_NAME%$'\r'}
+CMD=${HOOK_FIELDS#*"$NL"}
 
 [[ -z "$CMD" ]] && exit 0
+
+# PowerShell reads a backslash as a literal path separator, where the POSIX scanner would
+# read an escape and drop it, so the command is scanned with forward slashes instead.
+SCAN_CMD=$CMD
+if [ "$TOOL_NAME" = "PowerShell" ]; then
+  SCAN_CMD=${CMD//\\//}
+fi
 
 block() {
   printf 'BLOCKED: %s\nCommand: %s\nThe user has prevented this operation. Ask before retrying.\n' "$1" "$CMD" >&2
@@ -173,6 +189,14 @@ scan_next() {
   SCAN_IDX=$((SCAN_IDX + 1))
 }
 
+# A drive-letter path (`C:/repo`) is absolute on Windows.
+is_absolute_dir() {
+  case "$1" in
+    /* | [A-Za-z]:/* | [A-Za-z]:\\*) return 0 ;;
+  esac
+  return 1
+}
+
 # Resolve the directories a bare `git push` could run in: the hook's own directory, any
 # cd/pushd the scanner saw, and every -C. "?" means the path is not a literal.
 build_candidate_dirs() {
@@ -183,7 +207,7 @@ build_candidate_dirs() {
       dir="?"
     elif [ -z "$C_CHAIN" ]; then
       dir="$cwd"
-    elif [[ "$C_CHAIN" == /* ]] || [ -z "$cwd" ]; then
+    elif is_absolute_dir "$C_CHAIN" || [ -z "$cwd" ]; then
       dir="$C_CHAIN"
     else
       dir="${cwd%/}/$C_CHAIN"
@@ -217,7 +241,7 @@ parse_git_global_options() {
         if [ $((idx + 1)) -lt "${#INV_ARGS[@]}" ]; then
           if [ "${INV_DYN[$((idx + 1))]}" -ne 0 ]; then
             C_DYNAMIC=1
-          elif [[ "${INV_ARGS[$((idx + 1))]}" == /* ]] || [ -z "$C_CHAIN" ]; then
+          elif is_absolute_dir "${INV_ARGS[$((idx + 1))]}" || [ -z "$C_CHAIN" ]; then
             C_CHAIN="${INV_ARGS[$((idx + 1))]}"
           else
             C_CHAIN="${C_CHAIN%/}/${INV_ARGS[$((idx + 1))]}"
@@ -893,4 +917,4 @@ scan_nested_command() {
   return 0
 }
 
-apply_command_string "$CMD"
+apply_command_string "$SCAN_CMD"

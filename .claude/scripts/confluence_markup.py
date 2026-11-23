@@ -518,21 +518,37 @@ def size_tables(html: str, width: int = DEFAULT_TABLE_WIDTH) -> str:
         pixels = [MIN_COLUMN_PX + round(spare * w / total_weight) for w in weights]
         pixels[-1] += total - sum(pixels)
 
-        column = 0
+        # Rows still covered by a rowspan from above, per column.
+        carried = [0] * columns
 
-        def stamp(cell: re.Match) -> str:
-            nonlocal column
-            tag, attrs = cell.group(1), cell.group(2)
-            if "data-colwidth" in attrs:
-                return cell.group(0)
-            index = column % columns
-            column += 1
-            span = re.search(r'colspan\s*=\s*["\']?(\d+)', attrs)
-            if span:
-                column += int(span.group(1)) - 1
-            return f'<{tag}{attrs} data-colwidth="{pixels[index]}">'
+        def span_of(attrs: str, name: str) -> int:
+            found = re.search(name + r'\s*=\s*["\']?(\d+)', attrs)
+            return max(int(found.group(1)), 1) if found else 1
 
-        sized = re.sub(r"<(td|th)\b([^>]*)>", stamp, table)
+        def stamp_row(row: re.Match) -> str:
+            column = 0
+
+            def stamp(cell: re.Match) -> str:
+                nonlocal column
+                tag, attrs = cell.group(1), cell.group(2)
+                while column < columns and carried[column]:
+                    column += 1
+                start = min(column, columns - 1)
+                end = min(start + span_of(attrs, "colspan"), columns)
+                column = end
+                for index in range(start, end):
+                    carried[index] = span_of(attrs, "rowspan")
+                if "data-colwidth" in attrs:
+                    return cell.group(0)
+                widths = ",".join(str(px) for px in pixels[start:end])
+                return f'<{tag}{attrs} data-colwidth="{widths}">'
+
+            stamped = re.sub(r"<(td|th)\b([^>]*)>", stamp, row.group(0))
+            for index in range(columns):
+                carried[index] = max(carried[index] - 1, 0)
+            return stamped
+
+        sized = re.sub(r"<tr\b[^>]*>.*?</tr>", stamp_row, table, flags=re.S)
         if wide:
             sized = sized.replace(
                 "<table", f'<table data-layout="center" data-width="{WIDE_TABLE_WIDTH}"', 1

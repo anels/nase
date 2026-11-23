@@ -92,6 +92,23 @@ else
   printf 'rc=%s out=%s\n' "$rc" "$out" >&2
 fi
 
+# With no python3 on PATH the hook skips quietly; it used to exit 127 under `set -e`.
+nopy="$FIXTURE/nopy-bin"
+mkdir -p "$nopy" "$FIXTURE/nopy-root/workspace/logs"
+for tool in jq head git cat; do
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "$tool")" > "$nopy/$tool"
+  chmod +x "$nopy/$tool"
+done
+out=$(printf '{"worktree_path":"/tmp/nase-nopy-wt"}' \
+  | PATH="$nopy" NASE_ROOT="$FIXTURE/nopy-root" "$BASH" "$HOOK" 2>&1)
+rc=$?
+if [ "$rc" = 0 ] && [ ! -e "$FIXTURE/nopy-root/workspace/logs/$today.md" ]; then
+  pass_msg "a missing python3 skips the hook with exit 0"
+else
+  fail_msg "a missing python3 skips the hook with exit 0"
+  printf 'rc=%s out=%s\n' "$rc" "$out" >&2
+fi
+
 total=$((pass + fail))
 printf '\n%d/%d assertions passed\n' "$pass" "$total"
 

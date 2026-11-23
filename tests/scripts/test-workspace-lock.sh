@@ -10,6 +10,23 @@ failures=0
 source "$ROOT/tests/lib/assert.sh"
 trap 'rm -rf "$TMPROOT"' EXIT
 
+skips=0
+skip() {
+  printf 'SKIP  %s\n' "$1"
+  skips=$((skips + 1))
+}
+
+# The strong lock needs fcntl and dir_fd. Where Python has neither (native Windows) the
+# CLI cases run against the opt-in weak lock, which is the only path that platform has,
+# and the cases that swap symlinks, FIFOs, and directory fds under the strong lock are
+# skipped by name.
+if python3 -c 'import fcntl' 2>/dev/null; then
+  STRONG_LOCK=1
+else
+  STRONG_LOCK=0
+  export NASE_WEAK_LOCK=1
+fi
+
 run_acquire_bounded() {
   python3 - "$SCRIPT" "$1" "$2" "$3" "$$" <<'PY'
 import subprocess
@@ -49,6 +66,8 @@ assert_cmd "first lock acquisition succeeds" test -d "$TMPROOT/.nase-locks/works
 
 sleep 11 &
 live_owner=$!
+# Git Bash reports an MSYS pid; the lock checks liveness by Windows pid.
+live_owner_pid=$(cat "/proc/$live_owner/winpid" 2>/dev/null || printf '%s' "$live_owner")
 python3 - "$TMPROOT/.nase-locks/workspace-mutation.lock" <<'PY'
 import os
 import sys
@@ -57,7 +76,7 @@ import time
 old = time.time() - 30
 os.utime(sys.argv[1], (old, old))
 PY
-python3 - "$TMPROOT/.nase-locks/workspace-mutation.lock/owner.json" "$live_owner" <<'PY'
+python3 - "$TMPROOT/.nase-locks/workspace-mutation.lock/owner.json" "$live_owner_pid" <<'PY'
 import json
 import sys
 
@@ -197,6 +216,18 @@ for n in 1 2; do
   fi
 done
 
+if [ "$STRONG_LOCK" != 1 ]; then
+  for strong_case in \
+    "parent swap after validation" \
+    "release swap during claim" \
+    "recovery guard swap" \
+    "stale lock swap" \
+    "failed acquire cleanup" \
+    "symlinked lock parent, lock, owner, guard, and stale collision" \
+    "FIFO owner, lock path, and recovery guard"; do
+    skip "$strong_case (strong lock needs fcntl and dir_fd)"
+  done
+else
 case_root="$TMPROOT/parent-swap-race"
 outside="$TMPROOT/outside-parent-swap"
 mkdir -p "$case_root/.nase-locks" "$outside"
@@ -620,8 +651,9 @@ PY
 assert_cmd "symlinked stale collision remains lexical" test -L "$case_root/.nase-locks/workspace-mutation.lock.stale-collision"
 assert_cmd "symlinked stale collision preserves outside sentinel" grep -qx 'outside sentinel' "$outside/sentinel"
 assert_cmd "symlinked stale collision creates nothing outside" test "$(find "$outside" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "1"
+fi
 
-python3 - "$SCRIPT" <<'PY'
+env -u NASE_WEAK_LOCK python3 - "$SCRIPT" <<'PY'
 import builtins
 import importlib.util
 import sys
@@ -730,6 +762,9 @@ PY
 weak_rc=$?
 assert_cmd "opt-in weak lock acquires, blocks, recovers stale, releases" test "$weak_rc" = "0"
 
+if [[ "$skips" -gt 0 ]]; then
+  printf '\n%d workspace lock case group(s) skipped on this platform.\n' "$skips"
+fi
 if [[ "$failures" -eq 0 ]]; then
   printf '\nworkspace lock tests passed.\n'
   exit 0

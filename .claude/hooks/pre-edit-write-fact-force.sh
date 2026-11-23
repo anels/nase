@@ -45,8 +45,8 @@ INPUT="$(cat || true)"
 FILE_PATH="$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Skip non-source files.
-case "$FILE_PATH" in
+# Skip non-source files. A Windows path arrives with backslashes.
+case "${FILE_PATH//\\//}" in
   workspace/*|*/workspace/*|docs/*|*/docs/*|tests/*|*/tests/*|*.md|*.json|*.yml|*.yaml|*.toml|*.txt|*.lock|*.log) exit 0 ;;
 esac
 case "$FILE_PATH" in

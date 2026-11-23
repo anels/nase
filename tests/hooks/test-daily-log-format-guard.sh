@@ -124,6 +124,26 @@ else
   bad "A log edit missing old_string and new_string fails open" "rc=$RC err=$ERR"
 fi
 
+run_hook "$(edit_payload 'C:\repo\workspace\logs\2026-10-03.md' "" "$BAD")"
+expect_block "A backslash log path is still checked" "[done]"
+
+# An edit elsewhere whose body mentions the log directory must not reach python at all.
+TRIP="$TMP/trip/.claude"
+mkdir -p "$TRIP/hooks" "$TRIP/scripts"
+cp "$HOOK" "$TRIP/hooks/"
+printf 'import sys\nprint("checker ran", file=sys.stderr)\nsys.exit(2)\n' > "$TRIP/scripts/daily-log-line-check.py"
+REAL_HOOK=$HOOK
+HOOK="$TRIP/hooks/daily-log-format-guard.sh"
+run_hook "$(edit_payload "$TMP/docs/reference.md" "" "$(printf 'see workspace/logs/2026-10-01.md\n%s' "$BAD")")"
+expect_pass "An edit that only mentions workspace/logs in its body skips the checker"
+run_hook "$(edit_payload "$LOG" "" "$GOOD")"
+if [[ "$RC" -eq 2 && "$ERR" == *"checker ran"* ]]; then
+  ok "A log edit still reaches the checker"
+else
+  bad "A log edit still reaches the checker" "rc=$RC err=$ERR"
+fi
+HOOK=$REAL_HOOK
+
 STUB="$TMP/stub/.claude"
 mkdir -p "$STUB/hooks" "$STUB/scripts"
 cp "$HOOK" "$STUB/hooks/"

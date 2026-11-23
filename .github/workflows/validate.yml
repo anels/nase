@@ -82,3 +82,35 @@ jobs:
             './**/*.md'
             '.claude/**/*.md'
           fail: true
+
+  validate-windows:
+    # Runs the test files that pass on native Windows under Git Bash. Files listed in
+    # tests/windows-known-failures.txt are skipped with a count.
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # The runner's default autocrlf=true checks files out with CRLF, which adds a byte per
+      # line and pushes the command size budget over its limit. Set it before checkout.
+      - name: Check out with LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # check-local-sensitive-artifacts.sh and several skill tests require ripgrep.
+      - name: Install ripgrep
+        run: choco install ripgrep --yes --no-progress
+
+      - name: Verify runtime prerequisites
+        run: |
+          command -v python3 >/dev/null || { echo "::error::python3 is not on PATH"; exit 1; }
+          python3 --version
+          command -v jq >/dev/null || { echo "::error::jq is not on PATH"; exit 1; }
+          command -v git >/dev/null || { echo "::error::git is not on PATH"; exit 1; }
+          command -v rg >/dev/null || { echo "::error::rg is not on PATH"; exit 1; }
+
+      - name: Full local validation gate
+        run: bash tests/check-all.sh

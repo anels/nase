@@ -26,6 +26,21 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) \
   || block 'could not parse Bash tool input JSON'
 [[ -z "$CMD" ]] && exit 0
 
-if ! python3 "$HOOK_DIR/../scripts/external-write-action.py" guard --command "$CMD"; then
-  block 'raw external mutation is not allowed; use external-write-action.py with an approved manifest'
+# PowerShell reads a backslash as a literal path separator, where the POSIX scanner reads
+# an escape and drops it, so `C:\tools\gh.exe pr merge` would never name `gh`. Scan with
+# forward slashes, as block-dangerous-git.sh does. `tr` drops the CR a Windows jq prints.
+TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null | tr -d '\r') \
+  || block 'could not read the tool name from the tool input'
+if [ "$TOOL_NAME" = "PowerShell" ]; then
+  CMD=${CMD//\\//}
 fi
+
+# The command goes over stdin: as an argument, one past the OS limit (about 32K
+# characters on Windows) fails to launch and reads as a blocked mutation.
+GUARD_RC=0
+printf '%s' "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" guard || GUARD_RC=$?
+case "$GUARD_RC" in
+  0) ;;
+  10) block 'raw external mutation is not allowed; use external-write-action.py with an approved manifest' ;;
+  *) block "the guard could not inspect this command (exit $GUARD_RC); failing closed. This is a guard failure, not a verdict on the command." ;;
+esac

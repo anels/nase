@@ -12,6 +12,8 @@ HOOK_DIR=${BASH_SOURCE[0]%/*}
 
 set -euo pipefail
 
+nase_require jq python3 || exit 0
+
 NASE_ROOT=$(nase_root) || exit 0
 
 # Parse hook JSON from stdin (cap at 8KB to guard against oversized payloads)

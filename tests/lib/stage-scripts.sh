@@ -66,6 +66,7 @@ PY
 
   local name
   while IFS= read -r name; do
+    name=${name%$'\r'}
     [ -n "$name" ] || continue
     if [ ! -f "$root/.claude/scripts/$name" ]; then
       printf 'stage_scripts: no such script: %s\n' "$name" >&2

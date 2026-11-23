@@ -8,6 +8,16 @@ TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 mkdir -p "$TMPDIR_TEST/bin" "$TMPDIR_TEST/workspace/tmp"
+
+# Windows cannot launch an extensionless bash script, and a bare `gh` would then
+# resolve to the real CLI further down PATH. A `.cmd` shim keeps the fake first.
+fake_cli() {
+  chmod +x "$1"
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) printf '@bash "%%~dp0%s" %%*
+' "${1##*/}" > "$1.cmd" ;;
+  esac
+}
 export GH_CONFIG_DIR="$TMPDIR_TEST/gh-config"
 git -C "$TMPDIR_TEST" init -q
 git -C "$TMPDIR_TEST" remote add origin https://github.com/owner/example.git
@@ -47,7 +57,7 @@ if [[ -n "${NASE_FAKE_WAIT:-}" ]]; then
 fi
 exit "${NASE_FAKE_EXIT:-0}"
 SH
-chmod +x "$TMPDIR_TEST/bin/gh"
+fake_cli "$TMPDIR_TEST/bin/gh"
 
 pass=0
 fail=0
@@ -87,9 +97,19 @@ expect_jq() {
 }
 
 expect_guard_rc() {
-  local name="$1" expected="$2" command="$3"
-  expect_rc "$name" "$expected" \
-    python3 "$SCRIPT" --root "$TMPDIR_TEST" guard --command "$command"
+  # On stdin, as the hook sends it: an argument is capped by the OS (about 32K
+  # characters on Windows), which a long heredoc command exceeds.
+  local name="$1" expected="$2" command="$3" rc
+  set +e
+  printf '%s' "$command" | python3 "$SCRIPT" --root "$TMPDIR_TEST" guard \
+    > "$TMPDIR_TEST/out" 2> "$TMPDIR_TEST/err"
+  rc=$?
+  set -e
+  if [[ "$rc" -eq "$expected" ]]; then
+    report 0 "$name"
+  else
+    report 1 "$name" "expected $expected, got $rc: $(cat "$TMPDIR_TEST/err")"
+  fi
 }
 
 prepare_action() {
@@ -214,11 +234,25 @@ expect_rc "GH_HOST cannot redirect a GitHub mutation" 2 \
   env GH_HOST=ghe.example python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
     --system github --summary "environment host target" -- \
     gh pr create --draft -R owner/example
-git -C "$TMPDIR_TEST" remote set-url origin https://evilgithub.com/owner/example.git
-expect_rc "lookalike GitHub origin is blocked" 2 \
+# The checkout's origin is owner/example, an approved owner. A write that names no
+# repository must still be refused: in real use the root is the nase workspace, so
+# `gh pr merge 12` would land on the workspace repo instead of the product repo.
+for repoless in "pr merge 12 --squash" "pr create --draft" "issue close 3" \
+  "release create v1" "label create bug" "workflow run ci.yml"; do
+  # shellcheck disable=SC2086
+  expect_rc "GitHub write without a repository is refused: gh $repoless" 2 \
+    python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+      --system github --summary "no repository named" -- gh $repoless
+  if grep -q 'names no repository' "$TMPDIR_TEST/err"; then
+    report 0 "repo-less refusal says to add -R: gh $repoless"
+  else
+    report 1 "repo-less refusal says to add -R: gh $repoless" "$(cat "$TMPDIR_TEST/err")"
+  fi
+done
+expect_rc "explicit owner does not stand in for a repository" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
-    --system github --summary "lookalike origin target" -- gh pr create --draft
-git -C "$TMPDIR_TEST" remote set-url origin https://github.com/owner/example.git
+    --system github --github-owner owner --summary "no repository named" -- \
+    gh pr merge 12 --squash
 expect_rc "enterprise PR URL is blocked" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
     --system github --github-owner owner --summary "enterprise PR target" -- \
@@ -634,21 +668,10 @@ fi
 
 GH_REPO=personal/example python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
   --system github --summary "create current-origin draft PR" -- \
-  gh pr create --draft --title "Example" --body "payload" > "$TMPDIR_TEST/gh-repo-prepared.json"
+  gh pr create --draft --title "Example" --body "payload" -R owner/example > "$TMPDIR_TEST/gh-repo-prepared.json"
 gh_repo_manifest=$(jq -r '.manifest' "$TMPDIR_TEST/gh-repo-prepared.json")
 expect_jq "GH_REPO does not redirect owner selection" \
   '.action.github_owner == "owner"' "$gh_repo_manifest"
-
-python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
-  --system github --summary "create current-repo draft PR" -- \
-  gh pr create --draft --title "Example" --body "payload" > "$TMPDIR_TEST/origin-prepared.json"
-origin_manifest=$(jq -r '.manifest' "$TMPDIR_TEST/origin-prepared.json")
-python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$origin_manifest" >/dev/null
-git -C "$TMPDIR_TEST" remote set-url origin https://github.com/personal/example.git
-expect_rc "origin target drift after approval is blocked" 2 \
-  env NASE_FAKE_OUTPUT="$TMPDIR_TEST/origin-drift-args" PATH="$TMPDIR_TEST/bin:$PATH" \
-  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$origin_manifest"
-git -C "$TMPDIR_TEST" remote set-url origin https://github.com/owner/example.git
 
 manifest=$(prepare_action)
 
@@ -680,7 +703,7 @@ cat > "$TMPDIR_TEST/bin/az" <<'SH'
 } > "$NASE_FAKE_ENV_OUTPUT"
 exit 0
 SH
-chmod +x "$TMPDIR_TEST/bin/az"
+fake_cli "$TMPDIR_TEST/bin/az"
 
 python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
   --system azure --summary "patch pipeline" -- \
@@ -943,7 +966,7 @@ if [[ "${1:-} ${2:-}" == "auth token" ]]; then
 fi
 exit 0
 SH
-chmod +x "$TMPDIR_TEST/hangbin/gh"
+fake_cli "$TMPDIR_TEST/hangbin/gh"
 manifest=$(prepare_action)
 python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$manifest" >/dev/null
 preflight_rc=0
@@ -1821,6 +1844,133 @@ then
 else
   report 1 "a manifest without a summary still records an outcome row"
 fi
+reset_ledger_state
+
+# --- Windows program names: a suffix or a full path still names the guarded CLI ---
+expect_guard_rc "gh.exe mutation is blocked" 10 "gh.exe pr merge 1 -R owner/example"
+expect_guard_rc "gh.exe read stays allowed" 0 "gh.exe pr view 1 -R owner/example"
+expect_guard_rc "quoted Windows path to gh.exe is blocked" 10 \
+  '"C:\Program Files\GitHub CLI\gh.exe" pr merge 1'
+expect_guard_rc "forward-slash Windows path to gh.exe is blocked" 10 \
+  'C:/Tools/gh.exe pr merge 1'
+expect_guard_rc "az.cmd mutation is blocked" 10 "az.cmd group delete --name example"
+expect_guard_rc "kubectl.exe mutation is blocked" 10 "kubectl.exe delete pod example"
+expect_guard_rc "terraform.exe apply is blocked" 10 "terraform.exe apply -auto-approve"
+expect_guard_rc "gh.exe behind a carrier is blocked" 10 "ssh host gh.exe pr merge 1"
+expect_guard_rc "gh.exe inside eval is blocked" 10 "eval 'gh.exe pr merge 1'"
+expect_guard_rc "a longer .exe name is not a guarded CLI" 0 "github.exe pr merge 1"
+
+# --- Azure: the last verb decides, so a read under a `build` group is a read ---
+expect_guard_rc "az pipelines build list is a read" 0 "az pipelines build list --top 5"
+expect_guard_rc "az pipelines build show is a read" 0 "az pipelines build show --id 12"
+expect_guard_rc "az pipelines build definition list is a read" 0 \
+  "az pipelines build definition list"
+expect_guard_rc "az pipelines build queue is still a write" 10 \
+  "az pipelines build queue --definition-id 3"
+expect_guard_rc "az pipelines build cancel is still a write" 10 \
+  "az pipelines build cancel --build-id 1"
+expect_guard_rc "az pipelines build tag add is still a write" 10 \
+  "az pipelines build tag add --build-id 1 --tags x"
+expect_guard_rc "az verb followed by a positional is still a write" 10 \
+  "az config set core.output=json"
+expect_rc "az pipelines build queue can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system azure --summary "queue build" -- az pipelines build queue --definition-id 3
+
+# --- read-only commands that had no route through the guard ---
+expect_guard_rc "kubectl rollout status is a read" 0 "kubectl rollout status deploy/web -n prod"
+expect_guard_rc "kubectl rollout history is a read" 0 "kubectl rollout history deploy/web"
+expect_guard_rc "kubectl rollout restart is still a write" 10 "kubectl rollout restart deploy/web"
+expect_guard_rc "kubectl explain is a read" 0 "kubectl explain pods.spec"
+expect_guard_rc "kubectl auth can-i is a read" 0 "kubectl auth can-i list pods"
+expect_guard_rc "kubectl auth reconcile is not a read" 10 "kubectl auth reconcile -f rbac.yaml"
+expect_guard_rc "kubectl events is a read" 0 "kubectl events -n prod"
+expect_guard_rc "terraform show is a read" 0 "terraform show"
+expect_guard_rc "terraform show of a plan file is a read" 0 "terraform show reviewed.tfplan"
+expect_guard_rc "terraform show -json stays blocked" 10 "terraform show -json reviewed.tfplan"
+expect_guard_rc "terraform state show is a read" 0 "terraform state show aws_instance.example"
+expect_guard_rc "terraform state rm stays blocked" 10 "terraform state rm aws_instance.example"
+expect_guard_rc "gh status is a read" 0 "gh status"
+expect_guard_rc "gh release download is local" 0 "gh release download v1 -R owner/example"
+expect_guard_rc "gh run download is local" 0 "gh run download 123 -R owner/example"
+expect_guard_rc "gh release upload stays blocked" 10 "gh release upload v1 build.zip"
+
+# --- guard reads the command from stdin, so its length is not bound by the argv limit ---
+expect_rc "guard --command still blocks a mutation" 10 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" guard --command "gh pr merge 1"
+expect_rc "guard --command still allows a read" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" guard --command "gh pr view 1"
+expect_guard_rc "guard on stdin accepts non-ASCII text" 0 "echo 'naïve — 日本語 🐛'"
+long_command=$(python3 -c 'print("cat > notes.md <<\x27EOF\x27\n" + "x" * 200000 + "\nEOF")')
+expect_guard_rc "guard on stdin allows a 200K heredoc" 0 "$long_command"
+expect_guard_rc "guard on stdin still blocks a mutation after a 200K heredoc" 10 \
+  "$long_command"$'\n'"gh pr merge 1"
+
+# --- Terraform: -chdir is the base for payload paths, -target/-replace take a value ---
+mkdir -p "$TMPDIR_TEST/infra"
+printf 'reviewed infra plan\n' > "$TMPDIR_TEST/infra/tfplan"
+expect_bound "terraform -chdir=DIR apply binds the plan inside DIR" terraform tfplan \
+  terraform -chdir=infra apply tfplan
+if jq -e '.action.payload_files | any(.[]; .path | test("infra[/\\\\]tfplan$"))' \
+  "$TMPDIR_TEST/bound.json" >/dev/null; then
+  report 0 "terraform -chdir plan path resolves under the chdir directory"
+else
+  report 1 "terraform -chdir plan path resolves under the chdir directory" \
+    "$(cat "$TMPDIR_TEST/bound.json")"
+fi
+chdir_manifest=$(jq -r '.manifest' "$TMPDIR_TEST/bound.json")
+reset_token_state
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$chdir_manifest" >/dev/null
+printf 'swapped infra plan\n' > "$TMPDIR_TEST/infra/tfplan"
+expect_rc "terraform -chdir plan changed after approval is blocked" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$chdir_manifest"
+if grep -q 'payload file changed after approval' "$TMPDIR_TEST/err"; then
+  report 0 "terraform -chdir drift is reported as a changed payload"
+else
+  report 1 "terraform -chdir drift is reported as a changed payload" "$(cat "$TMPDIR_TEST/err")"
+fi
+reset_token_state
+expect_rc "terraform -chdir=DIR apply without a plan can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system terraform --summary "apply infra" -- terraform -chdir=infra apply -auto-approve
+expect_rc "terraform -chdir DIR apply with a separate value can be prepared" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system terraform --summary "apply infra" -- terraform -chdir infra apply -auto-approve
+expect_rc "terraform apply -target ADDR is not read as a plan file" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system terraform --summary "targeted apply" -- \
+    terraform apply -target module.example -auto-approve
+expect_bound "terraform apply -replace ADDR still binds the plan file" terraform reviewed.tfplan \
+  terraform apply -replace aws_instance.example reviewed.tfplan
+expect_rc "terraform apply with a missing plan file is still refused" 2 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system terraform --summary "missing plan" -- terraform -chdir=infra apply missing.tfplan
+
+# --- a CLI that cannot be launched: an error and a ledger row, not a traceback ---
+reset_ledger_state
+mkdir -p "$TMPDIR_TEST/emptybin"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+  --system kubernetes --summary "delete pod" -- \
+  nase-missing-cli/kubectl delete pod example > "$TMPDIR_TEST/launch-prepared.json"
+launch_manifest=$(jq -r '.manifest' "$TMPDIR_TEST/launch-prepared.json")
+python3 "$SCRIPT" --root "$TMPDIR_TEST" authorize --manifest "$launch_manifest" >/dev/null
+expect_rc "a CLI that cannot be launched exits with the launch code" 12 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" execute --manifest "$launch_manifest"
+if grep -q 'could not launch' "$TMPDIR_TEST/err" && ! grep -q 'Traceback' "$TMPDIR_TEST/err"; then
+  report 0 "launch failure is an error message, not a traceback"
+else
+  report 1 "launch failure is an error message, not a traceback" "$(cat "$TMPDIR_TEST/err")"
+fi
+if [[ ! -f "$TOKEN" ]] && ! compgen -G "$TOKEN.executing-*" >/dev/null; then
+  report 0 "launch failure consumes the token"
+else
+  report 1 "launch failure consumes the token"
+fi
+expect_jq "launch failure writes a not-launched ledger row" \
+  '.outcome == "not-launched" and .exit == null and .system == "kubernetes"' "$LEDGER"
+python3 "$SCRIPT" --root "$TMPDIR_TEST" audit > "$TMPDIR_TEST/out"
+expect_jq "audit counts the launch failure and does not call it abandoned" \
+  '.not_launched == 1 and .executed == 0 and .prepared_not_executed == 0' "$TMPDIR_TEST/out"
 reset_ledger_state
 
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"

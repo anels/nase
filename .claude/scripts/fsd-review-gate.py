@@ -16,6 +16,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import nase_fs
 import nase_git
 from nase_json import canonical_bytes
 
@@ -1068,11 +1069,7 @@ def load_state(path: Path) -> dict[str, Any]:
 
 
 def write_state(path: Path, state: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False) as handle:
-        handle.write(canonical_bytes(state) + b"\n")
-        temp_path = Path(handle.name)
-    temp_path.replace(path)
+    nase_fs.atomic_write(path, canonical_bytes(state) + b"\n")
 
 
 def validate_combined_transition(

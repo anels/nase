@@ -232,8 +232,9 @@ def main():
             turn += 1
             for b in bks:
                 if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Bash":
-                    cmd = (b.get("input") or {}).get("command", "")
-                    if is_verify_run(cmd):
+                    tool_input = b.get("input") or {}
+                    cmd = tool_input.get("command", "")
+                    if is_verify_run(cmd) and not tool_input.get("run_in_background"):
                         verify_turn_of[b.get("id")] = turn
         elif role == "user":
             for b in bks:
@@ -259,7 +260,7 @@ def main():
     state = f"{last_claim_idx}:{last_success_turn}:{last_edit_idx}:{transcript_path}"
     if marker is not None:
         with contextlib.suppress(Exception):
-            if marker.exists() and marker.read_text().strip() == state:
+            if marker.exists() and marker.read_text(encoding="utf-8").strip() == state:
                 return  # already warned for this state
 
     warn = None
@@ -276,7 +277,7 @@ def main():
 
     if marker is not None:
         with contextlib.suppress(Exception):
-            marker.write_text(state)
+            marker.write_text(state, encoding="utf-8")
 
     msg = "[claim-check] " + warn + ". Re-run the verification command and confirm it passes before finishing."
     print(json.dumps({"systemMessage": msg}))

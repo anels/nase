@@ -263,7 +263,7 @@ If the description already follows the template, skip this phase.
 
 ## Phase 9: Reply & Resolve Comments
 
-Every `gh` mutation in this phase goes through `.claude/scripts/external-write-action.py`, which enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`: `prepare` binds the owner-to-account mapping into the hashed action, `execute` re-reads it and verifies the token actor). There is no snippet to run and no `gh auth` call to make - raw `gh auth token`/`login`/`logout`/`refresh`/`switch` are blocked.
+Every `gh` mutation in this phase goes through `.claude/scripts/external-write-action.py`, which enforces the account guard itself (`.claude/docs/external-mutation-policy.md → GitHub auth account guard`: `prepare` binds the owner-to-account mapping into the hashed action, `execute` re-reads it and verifies the token actor). There is no snippet to run and no `gh auth` call to make - raw `gh auth token`/`login`/`logout`/`refresh` are blocked, and `gh auth switch` changes nothing a write reads.
 
 After push or no-code skip, handle each thread: **reply first, then resolve**.
 

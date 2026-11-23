@@ -48,7 +48,7 @@ The single-shot token's `payload_sha256` is computed over the exact `jq -cS .too
 - No late edits between hashing and the call.
 
 ```bash
-PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | shasum -a 256 | awk '{print $1}')
+PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | tr -d '\r' | shasum -a 256 | awk '{print $1}')
 ```
 
 ---

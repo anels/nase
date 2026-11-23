@@ -118,6 +118,22 @@ assert_cmd "same-patch: changed own diff after rebase differs" \
   run_expect 1 python3 "$SCRIPT" same-patch --repo "$repo" \
     --old-base "$base" --old-head "$verified" --new-base "$moved" --new-head "$resolved"
 
+# Two diffs that differ only in invalid UTF-8 bytes must not share a patch-id.
+git_in checkout -q -b bytes-a "$base"
+printf 'caf\351\n' > "$repo/latin.txt"
+git_in add latin.txt
+git_in commit -q -m 'latin-1 e-acute'
+bytes_a=$(git_in rev-parse HEAD)
+git_in checkout -q -b bytes-b "$base"
+printf 'caf\350\n' > "$repo/latin.txt"
+git_in add latin.txt
+git_in commit -q -m 'latin-1 e-grave'
+bytes_b=$(git_in rev-parse HEAD)
+
+assert_cmd "same-patch: diffs differing only in invalid UTF-8 bytes differ" \
+  run_expect 1 python3 "$SCRIPT" same-patch --repo "$repo" \
+    --old-base "$base" --old-head "$bytes_a" --new-base "$base" --new-head "$bytes_b"
+
 # Errors are not verdicts.
 assert_cmd "same-tree: unknown revision exits 2" \
   run_expect 2 python3 "$SCRIPT" same-tree --repo "$repo" --expect nope --actual "$squashed"

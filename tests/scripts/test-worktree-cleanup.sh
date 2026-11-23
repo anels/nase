@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 passed=0
 failed=0
+skipped=0
 
 pass() { printf 'PASS: %s\n' "$1"; passed=$((passed + 1)); }
 fail() { printf 'FAIL: %s\n' "$1" >&2; failed=$((failed + 1)); }
@@ -172,6 +173,14 @@ expect_rc "assume-unchanged content is retained before move" 3 run_helper
 
 new_case skip-worktree
 odd_path=$'odd\nname.txt'
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*)
+    # NTFS cannot hold a newline in a filename, so the case runs with a space instead.
+    odd_path='odd name.txt'
+    skipped=$((skipped + 1))
+    printf 'SKIP: newline-in-filename variant of the skip-worktree case (NTFS)\n'
+    ;;
+esac
 printf 'baseline\n' >"$CASE_WT/$odd_path"
 git -C "$CASE_WT" add -- "$odd_path"
 git -C "$CASE_WT" commit -qm 'add odd path'
@@ -332,5 +341,5 @@ else
   pass "FSD retains worktree artifacts and cleans no-worktree artifacts"
 fi
 
-printf '\n%d passed, %d failed\n' "$passed" "$failed"
+printf '\n%d passed, %d failed, %d skipped\n' "$passed" "$failed" "$skipped"
 [[ $failed -eq 0 ]]

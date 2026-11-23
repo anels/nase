@@ -312,7 +312,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 ---
 ## Hooks at a glance
 
-Hooks run on Claude Code lifecycle events. `PreToolUse:Bash` rejects known destructive git patterns before execution: direct or wrapped `git reset --hard`, `clean -f`, `branch -D`, unsafe alias injection, hook/signing bypass flags, protected-branch pushes to any remote, and remote branch deletion. This is defense-in-depth, not a full shell sandbox.
+Hooks run on Claude Code lifecycle events. `PreToolUse` on `Bash`, `Monitor`, and `PowerShell` rejects known destructive git patterns before execution: direct or wrapped `git reset --hard`, `clean -f`, `branch -D`, unsafe alias injection, hook/signing bypass flags, protected-branch pushes to any remote, and remote branch deletion. This is defense-in-depth, not a full shell sandbox.
 
 External-write hooks block every Slack write tool except drafts, require a fresh prompted Jira write token plus explicit body format, stop oversized Confluence page writes and writes with an unset body format, and reject raw GitHub/Azure/Kubernetes/Terraform CLI mutations. Use Slack drafts, explicit Jira confirmation, a `workspace/tmp/` Confluence patch, or an approved `external-write-action.py` manifest when those guards fire.
 

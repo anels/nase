@@ -72,9 +72,13 @@ GitHub CLI, ADO, Azure, Kubernetes, Terraform, and Confluence attachment-upload 
 ```bash
 MANIFEST=$(python3 .claude/scripts/external-write-action.py prepare \
   --system github --summary "create draft PR" -- \
-  gh pr create --draft --title "{title}" --body-file "{body_file}" \
+  gh pr create -R "{owner}/{repo}" --head "{branch}" --draft \
+    --title "{title}" --body-file "{body_file}" \
   | jq -r .manifest)
 
+# `prepare` refuses a GitHub write that names no repository (`-R owner/repo`, or a
+# `repos/{owner}/...` API path): the helper runs in the nase checkout, so an
+# unqualified `gh pr merge 12` would act on the workspace repo.
 # Show the manifest and exact payload content before asking.
 cat "$body_file"
 jq . "$MANIFEST"
@@ -145,6 +149,7 @@ The ledger sees only runs routed through a manifest. A raw write that the hook m
 ## Guard limits
 
 - The CLI hook bounds honest mistakes, not a determined caller. Known gaps: a script written to a file and then run, `xargs sh -c`, and names built dynamically inside interpreter code.
+- The git and CLI hooks scan a PowerShell command as a POSIX shell word list, after rewriting `\` to `/`. They do not read PowerShell's own wrappers. `iex`, `Invoke-Expression`, `Start-Process git -ArgumentList ...`, and `pwsh -Command "..."` carry the real command inside a string, so a guarded CLI named there is not seen. Treat a PowerShell write as unguarded until those wrappers are scanned.
 - Tokens bind a payload and a TTL. They do not prove that a human approved. `workspace/.jira-write-token` and `workspace/.external-write-token` are plain files the model can write, and `external-write-action.py authorize` has no human step, so the model can run `prepare`, `authorize` and `execute` back to back. The approval gate is the `AskUserQuestion` the skill must show before it writes the token, and nothing in code enforces that order.
 - Every guard runs through `.claude/scripts/hook-dispatch.sh`. If that file is missing, `bash` exits 127, Claude Code treats that as non-blocking, and the guards are skipped. This is intentional fail-open on infrastructure failure, so a broken checkout does not lock the session. It is only reachable when `CLAUDE_PROJECT_DIR` is unset and `git rev-parse` fails.
 - `workspace/config.md → ## Autonomy → level:` may pre-authorize the low-risk classes in `Autonomy level` above (`python3 .claude/scripts/autonomy-policy.py --class {class}`). It removes the human stop, never the manifest binding, hook, drift check, or audit line.

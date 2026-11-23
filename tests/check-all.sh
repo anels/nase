@@ -85,7 +85,12 @@ else
   # subprocess startup rather than computing. Measured on a 14-core machine over the 66
   # script tests: width 1 = 470s, 4 = 263s, 8 = 211s, 14 = 208s, 24 = 177s. The knee is
   # around 8 and core-count leaves ~15% on the table.
-  TEST_JOBS=$((TEST_JOBS * 2))
+  # Not on Windows: process startup there is slow enough that a doubled width pushed
+  # test-session-start.sh past the 600s cap on a 16-core machine.
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) ;;
+    *) TEST_JOBS=$((TEST_JOBS * 2)) ;;
+  esac
 fi
 # Validate and cap AFTER the branch, so an override is held to the same bounds the
 # computed value is: `NASE_TEST_JOBS=1000` used to fan out to 1000 processes, and a
@@ -117,12 +122,22 @@ case "$TEST_TIMEOUT_SECONDS" in
 esac
 (( TEST_TIMEOUT_SECONDS < 1 )) && TEST_TIMEOUT_SECONDS=600
 TIMEOUT_PY=$(command -v python3 2>/dev/null || true)
+# Native Windows Python has no signal.alarm and its os.execvp spawns a child instead
+# of replacing the process, so the alarm carrier only works on POSIX. Probe once and
+# fall back to coreutils `timeout` (Git Bash ships it), then to no cap at all.
+TIMEOUT_MODE=none
+if [[ -n "$TIMEOUT_PY" ]] && "$TIMEOUT_PY" -c 'import signal, sys; sys.exit(0 if hasattr(signal, "alarm") else 1)' 2>/dev/null; then
+  TIMEOUT_MODE=alarm
+elif command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_MODE=coreutils
+fi
 
 run_with_timeout() {
   local seconds="$1"
   shift
-  if [[ -n "$TIMEOUT_PY" ]]; then
-    "$TIMEOUT_PY" -c '
+  case "$TIMEOUT_MODE" in
+    alarm)
+      "$TIMEOUT_PY" -c '
 import os
 import signal
 import sys
@@ -130,9 +145,10 @@ import sys
 signal.alarm(int(sys.argv[1]))
 os.execvp(sys.argv[2], sys.argv[2:])
 ' "$seconds" "$@"
-  else
-    "$@"
-  fi
+      ;;
+    coreutils) timeout "$seconds" "$@" ;;
+    *) "$@" ;;
+  esac
 }
 
 # Every tracked shell file. `bash -n` and shellcheck read the same list so a new
@@ -228,7 +244,8 @@ run_test_files_serially() {
     run_with_timeout "$TEST_TIMEOUT_SECONDS" bash "$test_file"
     rc=$?
     end=$(date +%s)
-    if [ "$rc" -eq 142 ]; then
+    # 142 is the Python alarm mode (128 + SIGALRM). 124 is coreutils `timeout`.
+    if [ "$rc" -eq 142 ] || [ "$rc" -eq 124 ]; then
       printf '[timeout] %s exceeded %ss (NASE_TEST_TIMEOUT)\n' \
         "$(basename "$test_file")" "$TEST_TIMEOUT_SECONDS" >&2
     fi
@@ -247,6 +264,22 @@ run_test_files_serially() {
 # `failures+=` cannot run in a job: a background subshell gets a copy of the array and
 # the parent never sees the append. Jobs write an rc file instead and the parent does the
 # accounting, which is also what keeps `failed` accurate.
+IS_WINDOWS=0
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) IS_WINDOWS=1 ;;
+esac
+WINDOWS_KNOWN_FAILURES="$ROOT/tests/windows-known-failures.txt"
+skipped_windows=0
+
+# The list holds repo-relative paths, so a same-named file in another directory is not
+# skipped by accident.
+windows_known_failure() {
+  local rel="${1#"$ROOT"/}"
+  (( IS_WINDOWS == 1 )) || return 1
+  [[ -f "$WINDOWS_KNOWN_FAILURES" ]] || return 1
+  grep -qxF "${rel#./}" "$WINDOWS_KNOWN_FAILURES"
+}
+
 run_test_files() {
   local test_file absent=() present=() run_dir gate
   local idx=0 pids=() rc duration skipped_optional=0
@@ -263,6 +296,13 @@ run_test_files() {
       continue
     fi
     already_ran_test_file "$test_file" && continue
+    if windows_known_failure "$test_file"; then
+      printf '[skip] known Windows failure: %s\n' "$test_file"
+      skipped_windows=$((skipped_windows + 1))
+      # Recorded so a file listed in two test sets is skipped, and counted, once.
+      ran_test_files+=("$test_file")
+      continue
+    fi
     ran_test_files+=("$test_file")
     present+=("$test_file")
   done
@@ -819,6 +859,10 @@ run_full() {
 
 print_summary() {
   local row section_name gate exit_code duration rerun
+  if (( skipped_windows > 0 )); then
+    printf '[warn] %s test file(s) skipped as known Windows failures (tests/windows-known-failures.txt).\n' \
+      "$skipped_windows" >&2
+  fi
   if [[ "$failed" -eq 0 ]]; then
     printf '\nAll gates passed.\n'
     return 0
@@ -857,4 +901,4 @@ case "$MODE" in
 esac
 
 print_summary
-exit "$failed"
+exit $(( failed > 255 ? 255 : failed ))

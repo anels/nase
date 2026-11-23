@@ -150,7 +150,7 @@ The hook verifies the tool name, freshness, issue-key parity, and
 exact Jira MCP `tool_input` that will be sent:
 
 ```bash
-PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | shasum -a 256 | awk '{print $1}')
+PAYLOAD_SHA=$(jq -cS '.tool_input // {}' "$JIRA_TOOL_CALL_JSON" | tr -d '\r' | shasum -a 256 | awk '{print $1}')
 ```
 
 `createJiraIssue` may omit issue keys because the issue does not exist yet;
@@ -232,16 +232,18 @@ unselectable, or actor-mismatched account blocks the write and consumes the one-
 token.
 
 The helper derives owners from `-R`/`--repo`, `--org`/`--owner`, REST API paths,
-repo positional targets, PR or issue URLs, or the current `origin`. Opaque
-API/GraphQL, PR or issue URL, repo positional, gist, and user-scoped mutations must
-also pass `prepare --github-owner <owner>`; that value must match any owner encoded
-in the command or current `origin`.
+repo positional targets, or PR or issue URLs. It never falls back to the current
+`origin`: the helper runs in the nase checkout, so a write that names no repository
+(`gh pr merge 12`) is refused at `prepare` instead of landing on the workspace repo.
+Opaque API/GraphQL, PR or issue URL, repo positional, gist, and user-scoped mutations
+must also pass `prepare --github-owner <owner>`; that value must match any owner
+encoded in the command.
 GitHub writes are restricted and manifest-bound to `github.com`; enterprise hosts,
 environment host overrides, and duplicate target selectors fail closed.
 Execution clears `GH_REPO` and token environment overrides so they cannot redirect
 the approved target or actor before it selects the manifest-bound token.
 
-Raw `gh auth token`, `login`, `logout`, `refresh`, and `switch` commands are blocked.
+Raw `gh auth token`, `login`, `logout`, and `refresh` commands are blocked. `gh auth switch` is allowed: it only changes which local account is active, and a write never reads that state.
 Only `gh auth status` without `-t`/`--show-token` may run outside the helper.
 Raw Azure access-token output and login/logout commands are also blocked; ordinary
 read-only account inspection remains allowed.

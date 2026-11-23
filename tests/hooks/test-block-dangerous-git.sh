@@ -51,6 +51,22 @@ test_case_in_dir() {
   fi
 }
 
+# Same as test_case, with the tool name a PowerShell call carries.
+test_case_tool() {
+  local tool="$1" desc="$2" cmd="$3" expect="$4" workdir="${5:-.}"
+  local rc out
+  out=$(jq -cn --arg tool "$tool" --arg cmd "$cmd" '{tool_name:$tool,tool_input:{command:$cmd}}' \
+    | (cd "$workdir" && bash "$HOOK") 2>&1)
+  rc=$?
+  if [[ "$expect" == "block" && "$rc" == "2" ]] || [[ "$expect" == "allow" && "$rc" == "0" ]]; then
+    printf 'PASS  [%s] %-30s rc=%s\n' "$expect" "$desc" "$rc"
+    pass=$((pass+1))
+  else
+    printf 'FAIL  [%s] %-30s rc=%s\n      out: %s\n' "$expect" "$desc" "$rc" "$out"
+    fail=$((fail+1))
+  fi
+}
+
 make_git_repo_on_branch() {
   local branch="$1" dir
   dir=$(mktemp -d)
@@ -603,12 +619,47 @@ test_case_in_dir "explicit feature refspec ignores the cwd branch" "cd \"\$X\" &
 test_case_in_dir "cd to a directory that is not a repository" "cd .. && g""it pu""sh" allow "$FEATURE_REPO"
 test_case_in_dir "subshell cd does not leak" "(cd $MAIN_REPO && g""it sta""tus); g""it pu""sh" allow "$FEATURE_REPO"
 
+# Windows program names: an executable suffix or a full path still runs git.
+test_case "git.exe reset --hard"        "g""it.exe re""set --hard HEAD~1"                  block
+test_case "git.exe force push to main"  "g""it.exe pu""sh --force origin main"             block
+test_case "GIT.EXE reset --hard"        "G""IT.EXE re""set --hard"                         block
+test_case "quoted Windows path to git.exe" "\"C:\\Program Files\\Git\\cmd\\g""it.exe\" pu""sh --force origin main" block
+test_case "forward-slash path to git.exe" "C:/Git/cmd/g""it.exe re""set --hard"            block
+test_case "bash.exe -c wrapper"         "bash.exe -c \"g""it pu""sh --force origin main\"" block
+test_case "git.exe status"              "g""it.exe sta""tus"                               allow
+test_case "a program that only ends in git" "legit.exe re""set --hard"                     allow
+
+# The PowerShell tool reaches the same guard.
+test_case_tool PowerShell "PowerShell force push to main" "g""it pu""sh --force origin main" block
+test_case_tool PowerShell "PowerShell reset after a semicolon" "g""it sta""tus; g""it re""set --hard" block
+test_case_tool PowerShell "PowerShell reset after &&" "g""it fe""tch && g""it re""set --hard origin/main" block
+test_case_tool PowerShell "PowerShell git status" "g""it sta""tus" allow
+test_case_tool PowerShell "PowerShell command without git" "Get-ChildItem C:\\Users" allow
+test_case_tool PowerShell "PowerShell read with a backslash path" "g""it -C C:\\repos\\x sta""tus" allow
+# Runs on POSIX too. Without the backslash rewrite the scanner drops each `\`, reads the
+# program as `C:toolsgit.exe`, and allows the push.
+test_case_tool PowerShell "PowerShell drive-letter path to git.exe, force push" "C:\\tools\\g""it.exe pu""sh --force origin main" block
+test_case_tool PowerShell "PowerShell call operator with a drive-letter git.exe" "& C:\\tools\\g""it.exe re""set --hard" block
+
+# Drive-letter paths are absolute, so an earlier cd must not be joined in front of them.
+if command -v cygpath >/dev/null 2>&1; then
+  MAIN_REPO_WIN=$(cygpath -m "$MAIN_REPO")
+  MAIN_REPO_BACKSLASH=$(cygpath -w "$MAIN_REPO")
+  test_case_in_dir "cd then cd to a drive path, bare push from main" "cd /tmp && cd $MAIN_REPO_WIN && g""it pu""sh" block "$FEATURE_REPO"
+  test_case_in_dir "cd then -C drive path, bare push from main" "cd /tmp && g""it -C $MAIN_REPO_WIN pu""sh" block "$FEATURE_REPO"
+  test_case_in_dir "cd then -C quoted backslash drive path" "cd /tmp && g""it -C \"$MAIN_REPO_BACKSLASH\" pu""sh" block "$FEATURE_REPO"
+  test_case_tool PowerShell "PowerShell cd to a backslash path, bare push from main" "cd $MAIN_REPO_BACKSLASH; g""it pu""sh" block "$FEATURE_REPO"
+  test_case_tool PowerShell "PowerShell -C backslash path, bare push from main" "g""it -C $MAIN_REPO_BACKSLASH pu""sh" block "$FEATURE_REPO"
+fi
+
 test_unexpected_error_fails_closed block-dangerous-git.sh 's/^block() {$/false\nblock() {/'
 # shellcheck disable=SC2016 # A sed pattern, not a shell expansion.
 INJECT_AFTER_INPUT='s/^INPUT=\$(cat)$/INPUT=$(cat)\nfalse/'
 test_unexpected_error_fails_closed confluence-size-guard.sh "$INJECT_AFTER_INPUT"
 test_unexpected_error_fails_closed atlassian-generic-write-guard.sh "$INJECT_AFTER_INPUT"
 test_unexpected_error_fails_closed external-cli-write-guard.sh "$INJECT_AFTER_INPUT"
+test_unexpected_error_fails_closed slack-send-guard.sh "$INJECT_AFTER_INPUT"
+test_unexpected_error_fails_closed jira-write-guard.sh "$INJECT_AFTER_INPUT"
 
 test_missing_jq
 test_invalid_json

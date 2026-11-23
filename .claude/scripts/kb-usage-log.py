@@ -281,7 +281,7 @@ def record(args: argparse.Namespace) -> int:
                 event["chars"] = args.chars
             if recent_duplicate(jsonl, event, now):
                 continue
-            with jsonl.open("a", encoding="utf-8") as handle:
+            with jsonl.open("a", encoding="utf-8", newline="\n") as handle:
                 handle.write(json.dumps(event, separators=(",", ":")) + "\n")
     except Exception:
         return 0
