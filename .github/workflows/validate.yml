@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same ref makes the older run pointless, so cancel it instead
+# of queueing it behind the current one.
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -20,8 +26,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 jq ripgrep p7zip-full zip unzip
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          # Pinned release binary with checksum verification against the release's
+          # actionlint_${ACTIONLINT_VERSION}_checksums.txt: no Go toolchain, no compile.
+          ACTIONLINT_VERSION=1.7.12
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${asset}"
+          curl -fsSL -o "$RUNNER_TEMP/actionlint-checksums.txt" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          (cd "$RUNNER_TEMP" && grep " ${asset}$" actionlint-checksums.txt | sha256sum -c -)
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$HOME/.local/bin" actionlint
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           # Pinned so a new ruff release cannot turn a green PR red on its own.
           # tests/check-all.sh skips this gate locally when ruff is absent, so CI
           # is the only place it is guaranteed to run.
