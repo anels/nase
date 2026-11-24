@@ -547,13 +547,6 @@
       "risk": "high"
     },
     {
-      "id": "routing-tech-debt-audit-positive",
-      "skill": "nase:tech-debt-audit",
-      "prompt": "Audit this repository broadly for prioritized technical debt, verification gaps, and an evidence-backed repayment sequence.",
-      "expect": "invoke",
-      "risk": "medium"
-    },
-    {
       "id": "routing-tech-debt-audit-near-miss",
       "skill": "nase:tech-debt-audit",
       "prompt": "Diagnose and fix this one reproducible parser crash, then run the focused regression test.",
