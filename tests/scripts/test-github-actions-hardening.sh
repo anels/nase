@@ -32,7 +32,8 @@ else
   printf '%s\n' "$unpinned_remote_uses" >&2
 fi
 
-assert_cmd "CI installs actionlint" grep -q 'github.com/rhysd/actionlint/cmd/actionlint@' "$workflow"
+assert_cmd "CI installs actionlint" grep -q 'rhysd/actionlint/releases/download' "$workflow"
+assert_cmd "CI verifies the actionlint checksum" grep -q 'actionlint_${ACTIONLINT_VERSION}_checksums.txt' "$workflow"
 assert_cmd "local gate runs actionlint" grep -q 'GitHub Actions lint' tests/check-all.sh
 
 if [[ "$failures" -eq 0 ]]; then
