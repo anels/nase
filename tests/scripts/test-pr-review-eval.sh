@@ -142,6 +142,30 @@ assert_invalid_mutation "incomplete routing pairs are rejected" 'data["routing_c
 assert_invalid_mutation "non-string risk is rejected without traceback" 'data["routing_cases"][0]["risk"] = []' risk-type
 assert_invalid_mutation "adjacent skill cannot equal target" 'data["routing_cases"][1]["adjacent_skill"] = "nase:design"' adjacent-self
 assert_invalid_mutation "workspace routing cases are rejected" 'data["routing_cases"][0].update({"id": "routing-workspace-deploy-alpha-positive", "skill": "nase:workspace:deploy-alpha"})' workspace-routing
+MANUAL_ONLY_CASE='data["cases"].append({"id": "manual", "skill": "nase:tech-debt-audit", "prompt": "/nase:tech-debt-audit x", "expected_output": "x", "assertions": [{"name": "shape", "type": "must_contain_regex", "pattern": "x"}]}); data["routing_cases"].append({"id": "routing-tech-debt-audit-near-miss", "skill": "nase:tech-debt-audit", "prompt": "Fix one crash", "expect": "not_invoke", "risk": "low"})'
+manual_only_target="$TMPDIR_TEST/schema/manual-only-ok.json"
+"$PYTHON_BIN" - "$TMPDIR_TEST/schema/evals.json" "$manual_only_target" "$MANUAL_ONLY_CASE" <<'PY'
+import json
+import sys
+source, target, expression = sys.argv[1:]
+data = json.load(open(source, encoding="utf-8"))
+exec(expression, {"data": data})
+json.dump(data, open(target, "w", encoding="utf-8"))
+PY
+assert_cmd "manual-only skill needs only a not_invoke routing case" "$PYTHON_BIN" "$SCRIPT" validate "$manual_only_target"
+assert_invalid_mutation "manual-only skill rejects an invoke routing case" "$MANUAL_ONLY_CASE"'; data["routing_cases"].append({"id": "routing-tech-debt-audit-positive", "skill": "nase:tech-debt-audit", "prompt": "Audit the repo", "expect": "invoke", "risk": "low"})' manual-only-invoke
+assert_cmd "manual-only invoke rejection comes from the case-level check" bash -c '
+  ! out=$("$1" "$2" validate "$3" 2>&1) && grep -Fq "an invoke case cannot hold" <<<"$out"
+' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/schema/manual-only-invoke.json"
+malformed_repo="$TMPDIR_TEST/malformed-frontmatter-repo"
+mkdir -p "$malformed_repo/.claude/scripts" "$malformed_repo/.claude/commands/nase"
+cp "$SCRIPT" .claude/scripts/command_catalog.py .claude/scripts/nase_git.py "$malformed_repo/.claude/scripts/"
+printf -- '---\nname: nase:tech-debt-audit\nname: dup\ndisable-model-invocation: true\n---\nbody\n' \
+  > "$malformed_repo/.claude/commands/nase/tech-debt-audit.md"
+assert_cmd "malformed command frontmatter exits 2 with an error line and no traceback" bash -c '
+  out=$("$1" "$2" validate "$3" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && ! grep -Fq Traceback <<<"$out" && grep -Fq "duplicate frontmatter key" <<<"$out"
+' _ "$PYTHON_BIN" "$malformed_repo/.claude/scripts/pr-review-eval.py" "$EVAL_SET"
 assert_invalid_mutation "missing runtime fixtures are rejected" 'data["runtime_cases"][0]["fixture_dir"] = "absent"' missing-fixture
 assert_invalid_mutation "canary prompt leakage is rejected" 'data["runtime_cases"][0]["prompt"] += " " + "SCHEMA_" + "CANARY_VALUE_5519"' canary-leak
 assert_invalid_mutation "runtime score skill mismatch is rejected" 'data["runtime_cases"][0]["skill"] = "nase:fsd"' score-skill

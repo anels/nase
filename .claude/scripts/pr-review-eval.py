@@ -9,11 +9,13 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import command_catalog
 import nase_git
 
 ASSERTION_TYPES = {
@@ -62,16 +64,22 @@ def load_eval_set(path: str) -> dict[str, Any]:
     if routing_cases is not None:
         if not isinstance(routing_cases, list) or not routing_cases:
             raise EvalError("routing_cases must be a non-empty list when present")
+        manual_only = {s for s in routeable_skills if is_manual_only(s)}
         routing_by_skill: dict[str, set[str]] = {}
         for case in routing_cases:
-            validate_routing_case(case, seen_ids, routeable_skills)
+            validate_routing_case(case, seen_ids, routeable_skills, manual_only)
             routing_by_skill.setdefault(str(case["skill"]), set()).add(
                 str(case["expect"])
             )
         for skill in sorted(routeable_skills):
-            if routing_by_skill.get(skill) != ROUTING_EXPECTATIONS:
+            required = (
+                {"not_invoke"} if skill in manual_only else ROUTING_EXPECTATIONS
+            )
+            if routing_by_skill.get(skill) != required:
                 raise EvalError(
-                    f"{skill}: routing cases need invoke and not_invoke coverage"
+                    f"{skill}: routing cases need "
+                    f"{' and '.join(sorted(required))} coverage"
+                    + (" (manual-only skill)" if skill in manual_only else "")
                 )
 
     runtime_cases = data.get("runtime_cases")
@@ -101,8 +109,23 @@ def validate_case(case: dict[str, Any], seen_ids: set[str]) -> None:
         validate_assertion(case_id, assertion)
 
 
+def is_manual_only(skill: str) -> bool:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = command_path(repo_root, skill)
+    if not path.is_file():
+        return False
+    try:
+        fields = command_catalog.parse_frontmatter(path)
+    except ValueError as exc:
+        raise EvalError(str(exc)) from exc
+    return fields.get("disable-model-invocation") == "true"
+
+
 def validate_routing_case(
-    case: dict[str, Any], seen_ids: set[str], represented_skills: set[str]
+    case: dict[str, Any],
+    seen_ids: set[str],
+    represented_skills: set[str],
+    manual_only: AbstractSet[str] = frozenset(),
 ) -> None:
     if not isinstance(case, dict):
         raise EvalError("each routing case must be an object")
@@ -126,6 +149,11 @@ def validate_routing_case(
     expectation = str(case["expect"])
     if expectation not in ROUTING_EXPECTATIONS:
         raise EvalError(f"{case_id}: invalid routing expectation {expectation!r}")
+    if skill in manual_only and expectation == "invoke":
+        raise EvalError(
+            f"{case_id}: {skill} is manual-only (disable-model-invocation), "
+            "so an invoke case cannot hold"
+        )
     suffix = skill.removeprefix("nase:").replace(":", "-")
     expected_id = (
         f"routing-{suffix}-{'positive' if expectation == 'invoke' else 'near-miss'}"
