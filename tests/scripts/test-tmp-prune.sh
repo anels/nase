@@ -129,6 +129,21 @@ assert_cmd "non-positive --days exits 2" test $? -eq 2
 python3 "$HELPER" --root "$R" --days nan >/dev/null 2>&1
 assert_cmd "nan --days exits 2" test $? -eq 2
 
+# Names the regex scan cannot match are passed to grep as fixed-string patterns on stdin.
+# A CR added to a pattern there stops a reference in an LF file from matching, and
+# --apply then deletes the referenced entry.
+N="$TMP/unusual"
+mkdir -p "$N/workspace/tmp/run (a)" "$N/workspace/kb"
+printf x >"$N/workspace/tmp/run (a)/out.txt"
+printf x >"$N/workspace/tmp/notes (b).md"
+printf x >"$N/workspace/tmp/gone (c).md"
+age 10 "$N/workspace/tmp/run (a)/out.txt" "$N/workspace/tmp/run (a)" "$N/workspace/tmp/notes (b).md" "$N/workspace/tmp/gone (c).md"
+printf 'see workspace/tmp/run (a) and workspace/tmp/notes (b).md for detail\n' >"$N/workspace/kb/ref.md"
+python3 "$HELPER" --root "$N" --apply >/dev/null
+assert_cmd "apply keeps a referenced directory with an unusual name" test -f "$N/workspace/tmp/run (a)/out.txt"
+assert_cmd "apply keeps a referenced file with an unusual name" test -f "$N/workspace/tmp/notes (b).md"
+assert_cmd "apply still removes an unreferenced unusual name" test ! -e "$N/workspace/tmp/gone (c).md"
+
 plat_skip_summary
 printf '\n%d failed\n' "$failures"
 [[ $failures -eq 0 ]]

@@ -65,6 +65,7 @@ from confluence_markup import (
     source_has_toc,
     unresolving_font_stacks,
 )
+from nase_script import utf8_stdio
 
 FENCE_LINE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
@@ -390,7 +391,7 @@ def cmd_plan(args) -> int:
             )
             return EXIT_OVERSIZE
         body_file = os.path.join(args.out_dir, f"page-{index:03d}.body.{ext}")
-        with open(body_file, "w", encoding="utf-8") as handle:
+        with open(body_file, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(body)
         visuals = [v for b in page for v in b.visuals]
         title_text, carried_heading = page_title(title, page, index, carried_heading)
@@ -443,7 +444,7 @@ def cmd_plan(args) -> int:
         else DEFAULT_CONTENT_WIDTH,
     }
     plan_path = os.path.join(args.out_dir, "plan.json")
-    with open(plan_path, "w", encoding="utf-8") as handle:
+    with open(plan_path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(plan, handle, indent=2)
 
     total_visuals = sum(len(p["visuals"]) for p in pages)
@@ -655,7 +656,7 @@ def cmd_render(args) -> int:
             if os.path.exists(html_path):
                 os.remove(html_path)
 
-    with open(args.plan, "w", encoding="utf-8") as handle:
+    with open(args.plan, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(plan, handle, indent=2)
 
     counts: dict[str, int] = {}
@@ -1009,10 +1010,10 @@ def cmd_attach(args) -> int:
         visual["media_id"] = media_id
         visual["status"] = "attached"
 
-    with open(body_path, "w", encoding="utf-8") as handle:
+    with open(body_path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(body)
     page["bytes"] = len(body.encode("utf-8"))
-    with open(args.plan, "w", encoding="utf-8") as handle:
+    with open(args.plan, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(plan, handle, indent=2)
 
     counts: dict[str, int] = {}
@@ -1082,7 +1083,7 @@ def cmd_ledger_append(args) -> int:
         "assets": args.asset or [],
     }
     os.makedirs(os.path.dirname(args.ledger) or ".", exist_ok=True)
-    with open(args.ledger, "a", encoding="utf-8") as handle:
+    with open(args.ledger, "a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
     print(f"appended page_index={args.page_index} page_id={args.page_id}")
     return 0
@@ -1169,6 +1170,7 @@ def cmd_ledger_lookup(args) -> int:
 
 
 def main() -> int:
+    utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 

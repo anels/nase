@@ -135,6 +135,11 @@ printf '## Independent\n\n- [ ] **Future** - (verified 9999-12-30)\n' > "$tmp/th
 out=$(python3 "$SCRIPT" --root "$tmp/third")
 assert_cmd "the default date is the local day" has_line "independent=1 due=0 fresh=1 parked=0 checked=0"
 
+# A mistyped year must not crash the scan: Windows cannot resolve a local offset before 1970.
+printf '## Independent\n\n- [ ] **Ancient** - (verified 0206-10-01)\n' > "$tmp/third/workspace/tasks/todo.md"
+out=$(python3 "$SCRIPT" --root "$tmp/third" --date 2026-10-10)
+assert_cmd "a pre-1970 stamp reads as an old day" has_line "independent=1 due=1 fresh=0 parked=0 checked=0"
+
 # A missing file or section degrades to zero items and exit 0.
 out=$(python3 "$SCRIPT" --root "$tmp/nowhere" --date 2026-10-10)
 assert_cmd "missing file reads as zero items" has_line "independent=0 due=0 fresh=0 parked=0 checked=0"

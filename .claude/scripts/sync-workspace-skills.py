@@ -34,6 +34,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from nase_fs import atomic_write
+from nase_script import utf8_stdio
 from nase_skill_meta import IMPORTED_MARKER_KEY, PRIVILEGED_KEYS
 
 # A stub name has to be a safe command name: lowercase, digits and dashes.
@@ -294,6 +295,7 @@ def sync(root: pathlib.Path) -> tuple[int, int, int, list[str]]:
 
 
 def main() -> int:
+    utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--root",
