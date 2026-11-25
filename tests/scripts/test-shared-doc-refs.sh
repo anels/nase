@@ -16,6 +16,7 @@ trap 'rm -rf "$TMPROOT"' EXIT
 
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+source "$ROOT/tests/lib/platform.sh"
 
 new_repo() {
   local repo="$TMPROOT/$1"
@@ -73,12 +74,18 @@ assert_contains "workspace dead ref reported" "$TMPROOT/ws-own.out" \
   "MISSING  workspace/skills/mine.md -> workspace/skills/docs/local-only.md"
 
 # --- 5. a source path containing a colon still parses ---
-repo=$(new_repo colon)
-printf 'Read .claude/docs/colon-gone.md\n' >"$repo/.claude/commands/nase/a:b.md"
-run_gate "$repo" colon
-[[ "$(rc_of colon)" == 1 ]] && pass "colon in source path still fails the gate" || fail "colon in source path still fails the gate (rc=$(rc_of colon))"
-assert_contains "colon path reported whole" "$TMPROOT/colon.out" \
-  "MISSING  .claude/commands/nase/a:b.md -> .claude/docs/colon-gone.md"
+if plat_colon_filenames; then
+  repo=$(new_repo colon)
+  printf 'Read .claude/docs/colon-gone.md\n' >"$repo/.claude/commands/nase/a:b.md"
+  run_gate "$repo" colon
+  [[ "$(rc_of colon)" == 1 ]] && pass "colon in source path still fails the gate" || fail "colon in source path still fails the gate (rc=$(rc_of colon))"
+  assert_contains "colon path reported whole" "$TMPROOT/colon.out" \
+    "MISSING  .claude/commands/nase/a:b.md -> .claude/docs/colon-gone.md"
+else
+  # Windows file names cannot contain a colon, so this probe cannot be built there.
+  plat_count_skip
+  printf 'SKIP  colon in source path (file names cannot contain a colon on this platform)\n'
+fi
 
 # --- 6. CLAUDE.md section citations must name a heading that exists ---
 # Citation text is built with printf %s so this file never contains a literal citation of
@@ -130,6 +137,7 @@ printf 'See `CLAUDE.md %b Gone Section` for details.\n' "$ARROW" >"$repo/README.
 run_gate "$repo" cite-arrow
 [[ "$(rc_of cite-arrow)" == 1 ]] && pass "a dangling arrow citation exits 1" || fail "a dangling arrow citation exits 1 (rc=$(rc_of cite-arrow))"
 
+plat_skip_summary
 if [[ "$failures" -ne 0 ]]; then
   printf '\n%d failure(s)\n' "$failures" >&2
   exit 1

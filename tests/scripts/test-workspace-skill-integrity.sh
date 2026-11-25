@@ -38,13 +38,27 @@ jq -e '.sources.alpha' "$TMPDIR_TEST/write.json" >/dev/null
 python3 "$SCRIPT" --root "$TMPDIR_TEST" check > "$TMPDIR_TEST/check.json"
 jq -e '.ok == true and (.errors | length) == 0' "$TMPDIR_TEST/check.json" >/dev/null
 
+source "$ROOT/tests/lib/platform.sh"
 printf 'victim\n' > "$TMPDIR_TEST/victim.txt"
-ln -s "$TMPDIR_TEST/victim.txt" "$TMPDIR_TEST/workspace/skills/.nase-manifest.tmp"
+if make_symlink "$TMPDIR_TEST/victim.txt" "$TMPDIR_TEST/workspace/skills/.nase-manifest.tmp"; then
+  planted=1
+else
+  planted=0
+fi
 python3 "$SCRIPT" --root "$TMPDIR_TEST" write-manifest > /dev/null
+manifest_mode_ok=1
+if plat_modes_stored; then
+  [[ "$(stat -c '%a' "$TMPDIR_TEST/workspace/skills/.nase-manifest.json" 2>/dev/null || stat -f '%Lp' "$TMPDIR_TEST/workspace/skills/.nase-manifest.json")" == "600" ]] \
+    || manifest_mode_ok=0
+else
+  # NTFS under Git Bash does not keep mode 0600, so the mode is not checked here.
+  plat_count_skip
+  printf 'SKIP  manifest mode 0600\n'
+fi
 if [[ "$(cat "$TMPDIR_TEST/victim.txt")" == "victim" ]] \
-  && [[ "$(stat -c '%a' "$TMPDIR_TEST/workspace/skills/.nase-manifest.json" 2>/dev/null || stat -f '%Lp' "$TMPDIR_TEST/workspace/skills/.nase-manifest.json")" == "600" ]] \
+  && (( manifest_mode_ok == 1 )) \
   && [[ -z "$(find "$TMPDIR_TEST/workspace/skills" -name '.nase-manifest.json.*')" ]]; then
-  printf 'PASS  manifest write ignores a planted temp symlink and stays 0600\n'
+  printf 'PASS  manifest write ignores a planted temp symlink and stays 0600 (symlink planted: %s)\n' "$planted"
 else
   printf 'FAIL  manifest write ignores a planted temp symlink and stays 0600\n' >&2
   exit 1
@@ -161,4 +175,5 @@ else
 fi
 rm -rf "$IMPORT_ROOT"
 
+plat_skip_summary
 printf 'workspace skill integrity tests passed.\n'

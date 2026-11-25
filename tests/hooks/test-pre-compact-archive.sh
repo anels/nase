@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 source "$ROOT/tests/lib/stage-scripts.sh"
+source "$ROOT/tests/lib/platform.sh"
+plat_export_weak_lock
 FIXTURE=$(mktemp -d)
 trap 'rm -rf "$FIXTURE"' EXIT
 
