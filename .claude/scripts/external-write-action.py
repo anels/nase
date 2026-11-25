@@ -38,6 +38,9 @@ EXECUTE_LAUNCH_EXIT = 12
 # would leave `execute` able to hang here instead. These are two short `gh` calls;
 # a stall in either is a clean preflight failure, because nothing has mutated yet.
 GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 30
+# Set for every launched CLI: it stops Windows, including the cmd.exe that runs a `.cmd`
+# wrapper, from looking up a bare program name in the current directory.
+NO_CWD_SEARCH_ENV_VAR = "NODEFAULTCURRENTDIRECTORYINEXEPATH"
 MANIFEST_VERSION = 1
 MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE", "PURGE"}
 READ_HTTP_METHODS = {"GET", "HEAD"}
@@ -1583,6 +1586,7 @@ def github_subprocess_environment(
         environment.pop(key, None)
     environment["GH_HOST"] = host
     environment["GH_PROMPT_DISABLED"] = "1"
+    environment[NO_CWD_SEARCH_ENV_VAR] = "1"
     if token is not None:
         environment["GH_TOKEN"] = token
     return environment
@@ -1663,9 +1667,41 @@ def validated_github_account(root: Path, action: dict[str, Any]) -> tuple[str, s
     return approved, host
 
 
+def fully_qualified(path: str) -> bool:
+    """A Windows path with both a drive (or share) and a root, so the cwd cannot move it."""
+    return bool(os.path.splitdrive(path)[0]) and os.path.isabs(path)
+
+
 def launch_argv(argv: list[str]) -> list[str]:
-    """Resolve the program on PATH; Windows ships `az` as `az.cmd`, which a bare name misses."""
-    return [shutil.which(argv[0]) or argv[0], *argv[1:]]
+    """Resolve the program on PATH; Windows ships `az` as `az.cmd`, which a bare name misses.
+
+    On Windows `shutil.which` and `CreateProcess` both try the current directory, so only a
+    fully qualified program path or PATH entry is searched here. Nothing found raises
+    `FileNotFoundError`, because handing Windows the bare name would search it again.
+    """
+    program = argv[0]
+    if os.name != "nt":
+        return [shutil.which(program) or program, *argv[1:]]
+    if os.path.splitdrive(program)[0] or os.path.dirname(program):
+        bases = [program] if fully_qualified(program) else []
+    else:
+        entries = os.environ.get("PATH", "").split(os.pathsep)
+        bases = [
+            os.path.join(entry, program)
+            for entry in (entry.strip('"') for entry in entries)
+            if fully_qualified(entry)
+        ]
+    named = program.lower().endswith(WINDOWS_EXECUTABLE_SUFFIXES)
+    # Windows' default PATHEXT order, so an `.exe` beats a `.cmd` in the same directory.
+    suffixes = ("",) if named else (".com", ".exe", ".bat", ".cmd")
+    for base in bases:
+        for suffix in suffixes:
+            if os.path.isfile(base + suffix):
+                return [base + suffix, *argv[1:]]
+    raise FileNotFoundError(
+        f"no '{program}' file in a fully qualified PATH entry or program path; "
+        "the current directory and relative paths are not searched"
+    )
 
 
 def run_github_action(
@@ -2453,6 +2489,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
                 environment = os.environ.copy()
                 for key in GITHUB_AUTH_ENV_VARS:
                     environment.pop(key, None)
+                environment[NO_CWD_SEARCH_ENV_VAR] = "1"
                 for redirect_var in TARGET_SELECTOR_ENV_VARS.get(
                     action["system"], ()
                 ):
