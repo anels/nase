@@ -68,7 +68,7 @@ make_repo() {
   git -C "$repo_path" init -q
   cp "$HOOK" "$repo_path/.claude/hooks/stop-backup.sh"
   stage_hook_lib "$repo_path"
-  stage_scripts "$repo_path/.claude/scripts" verify-bundle.py
+  stage_scripts "$repo_path/.claude/scripts" verify-bundle.py commit-log-append.py
   cp "$ROOT/tests/check-local-sensitive-artifacts.sh" "$repo_path/tests/check-local-sensitive-artifacts.sh"
   printf '# Workspace Context\n' > "$repo_path/workspace/context.md"
   # These tests drive the hook repeatedly within seconds. The production default
@@ -848,6 +848,51 @@ acq_new="$fixture/lock-acq-new.sh"
 lock_block_script "$HOOK" "$acq_new" 'if mkdir "$TARGET/held" 2>/dev/null; then sleep 0.3; rmdir "$TARGET/held"; else echo OVERLAP; fi'
 overlap_rounds=$(lock_race_rounds_with_overlap "$acq_new" 20)
 assert_exit "concurrent stale-lock reclaim never admits two holders" 0 "$overlap_rounds" "rounds with >1 holder: $overlap_rounds"
+
+# The race above only sometimes lands in the narrow windows, so each one is staged here.
+# The probe runs the hook's own lock_is_stale; its second argument sets up the interleaving.
+stale_probe="$fixture/lock-probe.sh"
+{
+  printf 'set -uo pipefail\nLOCK_DIR="$1/.backup-lock"\nLOCK_PID="$LOCK_DIR/pid"\n'
+  sed -n '/^lock_is_stale()/,/^}/p' "$HOOK"
+  printf 'eval "$2"\nif lock_is_stale; then echo stale; else echo held; fi\n'
+} > "$stale_probe"
+probe_lock() { # <setup snippet>
+  local t
+  t=$(mktemp -d "$fixture/lock-probe.XXXXXX")
+  bash "$stale_probe" "$t" "$1" 2>&1
+}
+assert_contains "fresh lock with an unwritten pid is held" \
+  "$(probe_lock 'mkdir "$LOCK_DIR"; : > "$LOCK_PID"')" "held"
+assert_contains "old lock with an empty pid is stale" \
+  "$(probe_lock 'mkdir "$LOCK_DIR"; : > "$LOCK_PID"; touch -t 200001010000 "$LOCK_DIR"')" "stale"
+assert_contains "a lock released before the check is not reclaimed" "$(probe_lock ':')" "held"
+assert_contains "a lock whose owner exits during the check is not reclaimed" \
+  "$(probe_lock 'mkdir "$LOCK_DIR"; echo 4242 > "$LOCK_PID"; kill() { rm -rf "$LOCK_DIR"; return 1; }')" "held"
+assert_contains "a dead owner that left its lock is stale" \
+  "$(probe_lock 'mkdir "$LOCK_DIR"; echo 4242 > "$LOCK_PID"; kill() { return 1; }')" "stale"
+
+# A reclaim mutex released between the failed mkdir and its age check may already belong
+# to the next reclaimer, so it must not be removed.
+acq_mutex="$fixture/lock-acq-mutex.sh"
+lock_block_script "$HOOK" "$acq_mutex" 'true'
+t=$(mktemp -d "$fixture/lock-mutex.XXXXXX")
+: > "$t/go"
+mkdir "$t/.backup-lock"
+touch -t 200001010000 "$t/.backup-lock"
+run_mutex_probe() {
+  (
+    mkdir() { case "$1" in *.reclaim) return 1 ;; esac; command mkdir "$@"; }
+    rmdir() { echo "rmdir $1"; }
+    export -f mkdir rmdir
+    bash "$acq_mutex" "$t" 2>&1
+  )
+}
+out=$(run_mutex_probe)
+assert_exit "a vanished reclaim mutex is not removed" "" "$out" "$out"
+mkdir "$t/.backup-lock.reclaim"
+touch -t 200001010000 "$t/.backup-lock.reclaim"
+assert_contains "an abandoned reclaim mutex is removed" "$(run_mutex_probe)" "rmdir $t/.backup-lock.reclaim"
 
 # The exit trap must not delete a lock that another run has since taken over.
 acq_own="$fixture/lock-acq-own.sh"

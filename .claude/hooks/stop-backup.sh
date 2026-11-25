@@ -189,20 +189,23 @@ lock_is_stale() {
   owner_pid=""
   if [ -f "$LOCK_PID" ]; then
     owner_pid=$(cat "$LOCK_PID" 2>/dev/null || true)
-    if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
-      return 1
-    fi
-  else
-    # The owner creates the lock dir before it writes its pid, so a fresh dir
-    # without a pid file belongs to a run that is still starting.
-    # Try GNU stat first, because GNU `stat -f` prints filesystem info before it fails on `%m`.
-    local lock_mtime
-    lock_mtime=$(stat -c %Y "$LOCK_DIR" 2>/dev/null || stat -f %m "$LOCK_DIR" 2>/dev/null || echo 0)
-    if [ $(( $(date +%s) - lock_mtime )) -lt 60 ]; then
-      return 1
-    fi
   fi
-  return 0
+  if [ -n "$owner_pid" ]; then
+    if kill -0 "$owner_pid" 2>/dev/null; then
+      return 1
+    fi
+    # A clean exit removes the lock before the process dies, so only a pid that is
+    # still recorded now belongs to an owner that died holding the lock.
+    [ "$(cat "$LOCK_PID" 2>/dev/null || true)" = "$owner_pid" ]
+    return
+  fi
+  # The owner creates the lock dir, then the pid file, then writes the pid, so a fresh
+  # dir without a pid belongs to a run that is still starting. A missing dir has
+  # nothing to reclaim.
+  # Try GNU stat first, because GNU `stat -f` prints filesystem info before it fails on `%m`.
+  local lock_mtime
+  lock_mtime=$(stat -c %Y "$LOCK_DIR" 2>/dev/null || stat -f %m "$LOCK_DIR" 2>/dev/null) || return 1
+  [ $(( $(date +%s) - lock_mtime )) -ge 60 ]
 }
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   if lock_is_stale; then
@@ -210,8 +213,9 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     # the lock as stale can each delete the fresh lock the other just created.
     if ! mkdir "$RECLAIM_DIR" 2>/dev/null; then
       # A reclaimer that crashed leaves the mutex behind. Clear an old one for the next run.
-      reclaim_mtime=$(stat -c %Y "$RECLAIM_DIR" 2>/dev/null || stat -f %m "$RECLAIM_DIR" 2>/dev/null || echo 0)
-      if [ $(( $(date +%s) - reclaim_mtime )) -ge 60 ]; then
+      # A mutex that is already gone has no age, and the next one may belong to a live run.
+      if reclaim_mtime=$(stat -c %Y "$RECLAIM_DIR" 2>/dev/null || stat -f %m "$RECLAIM_DIR" 2>/dev/null) \
+        && [ $(( $(date +%s) - reclaim_mtime )) -ge 60 ]; then
         rmdir "$RECLAIM_DIR" 2>/dev/null || true
       fi
       log_status "WARNING" "another backup is already in progress — skipping this run"
@@ -281,22 +285,20 @@ if [ -n "$REPOS" ]; then
     fi
   done <<< "$REPOS"
   if [ -n "$COMMITS" ]; then
-    # Dedup: compute fingerprint from sorted commit SHAs; skip if unchanged
+    # Dedup: compute fingerprint from sorted commit SHAs; the append script skips if unchanged
     FINGERPRINT=$(printf '%s' "$COMMIT_HASHES" | grep -v '^$' | sort | tr '\n' ',')
-    FP_FILE="$NASE_ROOT/workspace/logs/.last-commit-fingerprint"
-    LAST_FP=""
-    if [ -f "$FP_FILE" ]; then
-      LAST_FP=$(cat "$FP_FILE")
+    # Daily logs are append-only; the script locks so two stopping sessions cannot interleave.
+    APPEND_PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
+    APPEND_RESULT=""
+    if [ -n "$APPEND_PY" ]; then
+      APPEND_RESULT=$(printf '%s\n%s' "$FINGERPRINT" "$COMMITS" | "$APPEND_PY" \
+        "$NASE_ROOT/.claude/scripts/commit-log-append.py" --root "$NASE_ROOT" --date "$COMMIT_DATE") || APPEND_RESULT=""
     fi
-    if [ "$COMMIT_DATE:$FINGERPRINT" = "$LAST_FP" ]; then
-      echo "[stop-backup] commit summary unchanged — skipping"
-    else
-      # Daily logs are append-only; keep prior commit snapshots intact.
-      mkdir -p "$(dirname "$COMMIT_LOG")"
-      printf "\n## Commits\n%s\n" "$COMMITS" >> "$COMMIT_LOG"
-      echo "$COMMIT_DATE:$FINGERPRINT" > "$FP_FILE"
-      echo "[stop-backup] appended commit summary in $COMMIT_LOG"
-    fi
+    case "$APPEND_RESULT" in
+      appended) echo "[stop-backup] appended commit summary in $COMMIT_LOG" ;;
+      unchanged) echo "[stop-backup] commit summary unchanged — skipping" ;;
+      *) log_status "WARNING" "commit summary append failed: $COMMIT_LOG" ;;
+    esac
   fi
 fi
 
