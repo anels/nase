@@ -77,7 +77,7 @@ def _grep(args: list[str], sources: list[Path], stdin: str | None = None) -> set
         # `grep -F -f -` then keeps the CR as part of the pattern.
         proc = subprocess.run(
             ["grep", "-rhoI", *args, *map(str, sources)],
-            input=None if stdin is None else stdin.encode("utf-8"),
+            input=None if stdin is None else stdin.encode("utf-8", errors="replace"),
             capture_output=True,
             check=False,
         )

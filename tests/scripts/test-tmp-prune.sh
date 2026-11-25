@@ -144,6 +144,22 @@ assert_cmd "apply keeps a referenced directory with an unusual name" test -f "$N
 assert_cmd "apply keeps a referenced file with an unusual name" test -f "$N/workspace/tmp/notes (b).md"
 assert_cmd "apply still removes an unreferenced unusual name" test ! -e "$N/workspace/tmp/gone (c).md"
 
+# A name with bytes that are not UTF-8 reaches the pattern list as lone surrogates. Encoding
+# them strictly would stop the whole run, so they are replaced, as text mode used to do.
+printf 'see workspace/tmp/a?b here\n' >"$N/workspace/kb/ref.md"
+python3 - "$HELPER" "$N/workspace/kb/ref.md" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("tmp_prune", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+found = module._grep(["-F", "-f", "-"], [Path(sys.argv[2])], "workspace/tmp/a\udcffb\n")
+assert found == {"a?b"}, found
+PY
+assert_cmd "a name that is not UTF-8 does not stop the reference scan" test $? -eq 0
+
 plat_skip_summary
 printf '\n%d failed\n' "$failures"
 [[ $failures -eq 0 ]]
