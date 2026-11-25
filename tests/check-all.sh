@@ -154,8 +154,8 @@ os.execvp(sys.argv[2], sys.argv[2:])
 # Every tracked shell file. `bash -n` and shellcheck read the same list so a new
 # script cannot land in one gate and miss the other.
 SHELL_FILES=()
-for _shell_file in .claude/hooks/*.sh .claude/lib/*.sh .claude/scripts/*.sh tests/*.sh tests/hooks/*.sh \
-  tests/lib/*.sh tests/scripts/*.sh workspace/skills/scripts/*.sh; do
+for _shell_file in .claude/hooks/*.sh .claude/lib/*.sh .claude/scripts/*.sh .githooks/* tests/*.sh \
+  tests/hooks/*.sh tests/lib/*.sh tests/scripts/*.sh workspace/skills/scripts/*.sh; do
   [[ -f "$_shell_file" ]] && SHELL_FILES+=("$_shell_file")
 done
 unset _shell_file
@@ -762,9 +762,10 @@ run_changed_extras() {
   # Script tests also read the prose and config the scripts consume: command and doc files
   # (skill-safety-boundaries, terminology-discovery, slack-draft-templates,
   # trace-role, workspace-quality-scan), roles.yaml (roles-schema), the workflows
-  # (github-actions-hardening), and the `tests/check-*.sh` gates that tests probe directly.
+  # (github-actions-hardening), the tracked git hooks (doctor-hookspath), and the
+  # `tests/check-*.sh` gates that tests probe directly.
   # An edit to only those files used to trigger none of them.
-  if grep -qE '^(\.claude/scripts/|\.claude/commands/|\.claude/docs/|\.claude/roles\.yaml$|\.github/workflows/|tests/scripts/|tests/lib/|tests/check-[^/]*\.sh$|workspace/skills/scripts/)' <<< "$changed"; then
+  if grep -qE '^(\.claude/scripts/|\.claude/commands/|\.claude/docs/|\.claude/roles\.yaml$|\.github/workflows/|\.githooks/|tests/scripts/|tests/lib/|tests/check-[^/]*\.sh$|workspace/skills/scripts/)' <<< "$changed"; then
     run_script_tests
   fi
   run_shellcheck_changed "$changed"

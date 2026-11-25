@@ -24,6 +24,17 @@ Report each item as pass, warning, or fail with one concrete remediation.
 9. With `--deep`, run `python3 .claude/scripts/kb-hygiene-scan.py --workspace-scan --root . --json` and apply `.claude/docs/kb-staleness.md` to report KB structure, content, and access-staleness findings. This check is read-only and does not update timestamps.
 10. Run the narrow checks that exist in this checkout: `bash tests/hooks/test-claude-native-hooks.sh` for hook wiring and `bash tests/scripts/test-command-skill-size-budget.sh` for the command catalog. Do not claim full health unless `bash tests/check-all.sh` ran.
 11. Check Claude project state and flag missing local configuration or inaccessible optional integrations separately from repo defects.
+12. Check that git runs the tracked pre-push credential scan. Run the block below and report its line. On a warning, show the printed command for the user to run; do not run it yourself (`block-dangerous-git.sh` blocks it).
+
+    ```bash
+    hooks_path=$(git config --get core.hooksPath || true)
+    if [ "$hooks_path" = ".githooks" ]; then
+      echo "pass: core.hooksPath is .githooks, so .githooks/pre-push runs before a push"
+    else
+      echo "warning: core.hooksPath is '${hooks_path:-unset}', so .githooks/pre-push does not run"
+      echo "run: git config core.hooksPath .githooks"
+    fi
+    ```
 
 ## Output
 

@@ -261,10 +261,13 @@ nase/
   .github/
     workflows/validate.yml
     CODEOWNERS
+  .githooks/
+    pre-push            credential scan; runs once core.hooksPath is .githooks
   docs/                 this directory
     assets/             diagram SVGs embedded by architecture.md
   evals/                offline eval cases and fixtures
   tests/                CI gates
+  .gitleaks.toml        credential scan config for CI and pre-push
   CLAUDE.md
   README.md
 ```

@@ -1,0 +1,20 @@
+# Credential scan config shared by the `validate` CI job and `.githooks/pre-push`.
+# Fix a false positive by adding the narrowest entry here, with a reason.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test fixtures: inputs written for the tests, not live credentials"
+paths = ['''^tests/fixtures/''']
+
+[[allowlists]]
+description = "Git-ignored local workspace data, which the pre-push tree scan would otherwise read"
+paths = ['''^workspace/''']
+
+[[allowlists]]
+description = "Fake canary that proves verify-bundle.py rejects a credential in the inventory"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/scripts/test-shared-workflow-extraction\.sh$''']
+regexes = ['''^fsd_inventory_canary_17a2$''']
