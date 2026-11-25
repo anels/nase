@@ -126,7 +126,9 @@ Four forms pass only as the whole command: `gh api <path> -X OPTIONS`,
 `gh api <path> -X GET --input <file>`, `kubectl config use-context <name>`, and
 `terraform workspace select <name>`. The command text must be exactly those plain words,
 single spaced. A variable, a quote, a wrapper, an environment prefix, a redirect, a pipe,
-or a second command blocks them under check 3.
+or a second command blocks them under check 3. The hook also passes `--inexact-text` when
+the text it hands the guard can differ from what the shell runs, as with a NUL byte or a
+PowerShell backslash, and the guard then refuses all four.
 
 The git guard reads the same parse. It also fails closed on a push refspec it cannot read
 literally (`$BRANCH`, `{main,}`, `refs/heads/*:refs/heads/*`), and on a bare `git push`
