@@ -85,16 +85,26 @@ _GIT_WORD_RE = re.compile(r"\bgit\b")
 _SSH_VALUE_SHORTS = frozenset(
     {"b", "B", "c", "D", "e", "E", "F", "i", "I", "J", "l", "L", "m", "o", "O", "p", "Q", "R", "S", "W", "w"}
 )
-# Long options of `kubectl` that take a value when they appear before the subcommand.
-_KUBECTL_GLOBAL_VALUE_LONGS = frozenset(
+# `kubectl` options that take a value before the subcommand, in one table for both readers:
+# this scanner, which skips them to find `exec`, and `external-write-action.py`, which
+# skips them to find the verb. A name that only one reader skips is listed apart.
+KUBECTL_SHARED_VALUE_OPTIONS = frozenset(
     {
         "--as", "--as-group", "--as-uid", "--cache-dir", "--certificate-authority",
         "--client-certificate", "--client-key", "--cluster", "--context", "--kubeconfig",
-        "--log-backtrace-at", "--log-dir", "--log-file", "--log-file-max-size",
-        "--log-flush-frequency", "--namespace", "--output", "--password", "--request-timeout",
-        "--selector", "--server", "--stderrthreshold", "--tls-server-name", "--token",
-        "--user", "--username", "--vmodule",
+        "--namespace", "--password", "--request-timeout", "--server", "--tls-server-name",
+        "--token", "--user", "--username", "-n", "-s", "-v",
     }
+)
+# The write guard does not accept these before a verb, so such a command stays blocked.
+# It accepts the two output options for one case only: a mutating verb follows.
+KUBECTL_OUTPUT_OPTIONS = frozenset({"--output", "-o"})
+KUBECTL_SCANNER_ONLY_VALUE_OPTIONS = KUBECTL_OUTPUT_OPTIONS | {
+    "--log-backtrace-at", "--log-dir", "--log-file", "--log-file-max-size",
+    "--log-flush-frequency", "--selector", "--stderrthreshold", "--vmodule", "-l",
+}
+KUBECTL_GUARD_ONLY_VALUE_OPTIONS = frozenset(
+    {"--profile", "--profile-output", "--proxy-url", "--v"}
 )
 # Options of `kubectl exec` itself that take a value, before or after the pod.
 _KUBECTL_EXEC_VALUE_SHORTS = frozenset({"c", "n", "v"})
@@ -1918,8 +1928,12 @@ class _Parser:
         also appear after the pod (`kubectl exec mypod -c app -- git push`).
         """
         args = inv.argv[1:]
+        options = KUBECTL_SHARED_VALUE_OPTIONS | KUBECTL_SCANNER_ONLY_VALUE_OPTIONS
         index = _skip_option_words(
-            args, 0, frozenset({"l", "n", "o", "s", "v"}), _KUBECTL_GLOBAL_VALUE_LONGS
+            args,
+            0,
+            frozenset(name[1] for name in options if not name.startswith("--")),
+            frozenset(name for name in options if name.startswith("--")),
         )
         if index >= len(args) or args[index] != "exec":
             return

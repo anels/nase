@@ -118,6 +118,18 @@ bind blocked the read-only majority for nothing. One narrow exception to check 1
   unparseable command that names a shell is treated as reaching one. The commands before a
   syntax error are still parsed, since a shell runs them.
 
+Checks 2 and 3 read one answer per invocation from `classify()` in
+`external-write-action.py`. The answer is `read`, `local`, `mutation`, or `unrecognized`.
+`prepare` reads the same answer and refuses anything that is not a `mutation`.
+
+Four forms pass only as the whole command: `gh api <path> -X OPTIONS`,
+`gh api <path> -X GET --input <file>`, `kubectl config use-context <name>`, and
+`terraform workspace select <name>`. The command text must be exactly those plain words,
+single spaced. A variable, a quote, a wrapper, an environment prefix, a redirect, a pipe,
+or a second command blocks them under check 3. The hook also passes `--inexact-text` when
+the text it hands the guard can differ from what the shell runs, as with a NUL byte or a
+PowerShell backslash, and the guard then refuses all four.
+
 The git guard reads the same parse. It also fails closed on a push refspec it cannot read
 literally (`$BRANCH`, `{main,}`, `refs/heads/*:refs/heads/*`), and on a bare `git push`
 whose repository directory it cannot resolve (`cd`/`pushd`/`-C` with a variable, `GIT_DIR`,

