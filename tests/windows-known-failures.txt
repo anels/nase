@@ -1,27 +1,29 @@
 # Test files that do not pass on native Windows (Git Bash) yet. tests/check-all.sh
 # skips them there, with a count, and runs them everywhere else. One repo-relative path
 # per line. tests/scripts/test-windows-known-failures.sh fails when a path no longer
-# names a tracked file. Remove a path once the file passes on Windows. Most entries need
-# a fake-CLI stub that native Python can launch, a symlink, or a chmod-based unreadable file.
+# names a tracked file. Remove a path once the file passes on Windows. The comment above
+# each path says why it is still listed.
+# `ln -s` copies instead of linking (unsafe lock parent), and the concurrent batch case
+# admits fewer calls than max_ops under the weak lock.
 tests/hooks/test-external-write-guards.sh
+# Builds a narrow PATH with `ln -s`; the copied .exe files miss their DLLs and exit 127.
 tests/hooks/test-prose-lint-guard.sh
+# Same narrow PATH built with `ln -s` as test-prose-lint-guard.sh.
 tests/hooks/test-stop-claim-check.sh
+# One symlink-escape case: `ln -s` makes a copy.
 tests/scripts/test-citation-validator.sh
-tests/scripts/test-effort-pr-sweep.sh
-tests/scripts/test-effort-rollup-evidence.sh
+# Symlinked body files, the ledger's 0600 mode, claim and lock-wait cases, and path
+# spelling comparisons.
 tests/scripts/test-external-write-action.sh
+# One case expects an `exception:` reason and gets `net_error:ConnectionRefusedError`.
 tests/scripts/test-jev-judge.sh
+# Symlink cases, and two path assertions that meet backslashes in the report.
 tests/scripts/test-local-sensitive-artifacts.sh
-tests/scripts/test-nase-shared-modules.sh
-tests/scripts/test-pr-github-helper.sh
+# A symlink case, and a `nul.bin` fixture, which Windows reserves as a device name.
 tests/scripts/test-shared-workflow-extraction.sh
-tests/scripts/test-skill-eval-run.sh
-tests/scripts/test-tool-availability.sh
-tests/scripts/test-worktree-cleanup.sh
-tests/scripts/test-worktree-sweep.sh
-tests/scripts/test-youtube-transcript.sh
 # Seen failing on the windows-latest runner and not yet diagnosed. test-shell-scan.sh
 # exits 1 after about 60s with no FAIL line, which looks like a timeout. test-today-stats.sh
 # reads zero invocations from a fixture that passes on POSIX, and pins the day with TZ=UTC.
+# Both pass on a local Windows 11 host, which does not clear the runner.
 tests/scripts/test-shell-scan.sh
 tests/scripts/test-today-stats.sh

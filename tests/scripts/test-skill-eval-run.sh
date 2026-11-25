@@ -48,7 +48,7 @@ if model == "fake-error":
 
 skills = []
 for path in Path(".claude/commands/nase").rglob("*.md"):
-    match = re.search(r"(?m)^name:\s*(nase:[^\s]+)", path.read_text())
+    match = re.search(r"(?m)^name:\s*(nase:[^\s]+)", path.read_text(encoding="utf-8"))
     if match:
         skills.append(match.group(1))
 emit({"type": "system", "subtype": "init", "model": model, "skills": sorted(skills)})
@@ -86,7 +86,7 @@ canaries = []
 fixture_files = sorted(path for path in Path("fixture").rglob("*") if path.is_file())
 for index, path in enumerate(fixture_files):
     emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"read-{index}", "name": "Read", "input": {"file_path": str(path)}}]}})
-    content = path.read_text()
+    content = path.read_text(encoding="utf-8")
     denied = model == "fake-denied-read"
     emit({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"read-{index}", "is_error": denied, "content": "permission denied" if denied else content}]}})
     canaries.extend(re.findall(r"[A-Z][A-Z0-9_]+_CANARY_[0-9]+", content))
@@ -104,7 +104,9 @@ if model == "fake-bad-output":
     result = joined
 emit({"type": "result", "model": model, "result": result, "duration_ms": 4, "total_cost_usd": 0, **result_flags})
 PY
-chmod +x "$TMPDIR_TEST/bin/claude"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
+fake_cli_exact "$TMPDIR_TEST/bin/claude"
 
 export PATH="$TMPDIR_TEST/bin:$PATH"
 export TMPDIR="$TMPDIR_TEST"

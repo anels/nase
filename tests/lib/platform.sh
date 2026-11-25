@@ -9,6 +9,13 @@
 #   plat_export_weak_lock    export NASE_WEAK_LOCK=1 when Python has no fcntl
 #   plat_modes_stored        0 when stat reads back the mode chmod set
 #   plat_perms_enforced      0 when chmod 000 really blocks a read
+#   plat_native_path PATH    PATH as `C:/...` where cygpath exists, else unchanged. MSYS
+#                            converts a `/tmp/...` argument or variable for Windows
+#                            Python, but not one written into a file, nor an argument
+#                            that runs through a regular file; Python then reads it
+#                            against the current drive
+#   plat_sha256              SHA-256 hex digest of stdin. Git Bash keeps `shasum` in a
+#                            directory that only a login shell adds to PATH
 #   plat_colon_filenames     0 when a file name may contain a colon (Windows forbids it)
 #   plat_symlinks_real       0 when `ln -s` makes a real symlink (not a copy)
 #   make_symlink TARGET LINK ln -s, or count a skip and return 1 when links are copies;
@@ -50,6 +57,22 @@ plat_perms_enforced() {
   chmod 600 "$probe" 2>/dev/null
   rm -f "$probe"
   return "$rc"
+}
+
+plat_native_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+plat_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+  else
+    shasum -a 256
+  fi | cut -d' ' -f1
 }
 
 plat_colon_filenames() {

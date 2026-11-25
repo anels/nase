@@ -28,7 +28,7 @@ from nase_gh import (
     failure_category,
 )
 from nase_gh import run as nase_gh_run
-from nase_script import load_script, stream_secret_kind
+from nase_script import load_script, stream_secret_kind, utf8_stdio
 
 EXIT_OK = 0
 EXIT_BROKEN = 1
@@ -488,6 +488,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    utf8_stdio()
     args = parse_args()
     try:
         if args.timeout_seconds < 1:

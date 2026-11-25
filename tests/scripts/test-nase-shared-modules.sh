@@ -16,6 +16,8 @@ set -uo pipefail
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT" || exit 1
 source "$ROOT/tests/lib/platform.sh"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
 
 pass=0
 fail=0
@@ -59,7 +61,49 @@ def set_tz(olson, posix):
         import ctypes
         os.environ["TZ"] = posix
         ctypes.CDLL("ucrtbase")._tzset()
+
+def use_stub(name):
+    import os
+    stub = os.path.join(os.environ["NASE_STUBS"], name)
+    os.environ["PATH"] = stub + os.pathsep + os.environ["PATH"]
 '
+
+# Stub programs, one directory each, put on PATH by use_stub.
+STUB=$(mktemp -d)
+trap 'rm -rf "$STUB"' EXIT
+export NASE_STUBS="$STUB"
+
+# The git stubs are Python so that each is the very process a timeout or a kill has to
+# end: a shell stub leaves a child holding the pipes on Windows.
+git_stub() {
+  mkdir -p "$STUB/$1"
+  { printf '#!/usr/bin/env python3\n'; cat; } > "$STUB/$1/git"
+  fake_cli_exact "$STUB/$1/git"
+}
+
+git_stub env <<'PY'
+import os
+names = ("NASE_PROBE_AMBIENT", "NASE_PROBE_MERGED")
+print("ambient=%s merged=%s" % tuple(os.environ.get(name, "") for name in names))
+PY
+git_stub hung <<'PY'
+import time
+time.sleep(60)
+PY
+git_stub sleeper <<'PY'
+import os, pathlib, time
+pathlib.Path(os.environ["NASE_STUBS"], "sleeper-started").touch()
+time.sleep(60)
+PY
+git_stub noisy <<'PY'
+import sys
+sys.stderr.buffer.write(bytes(1048576))
+sys.stderr.flush()
+sys.stdout.write("done")
+PY
+mkdir -p "$STUB/wrapper"
+printf '#!/usr/bin/env bash\necho "stub $1"\n' > "$STUB/wrapper/gh"
+fake_cli "$STUB/wrapper/gh"
 
 # --- nase_git.run ---------------------------------------------------------
 
@@ -91,16 +135,10 @@ else:
 '
 
 run_case "run merges env over the ambient one instead of replacing it" "$PRELUDE"'
-import os, tempfile
+import os
 # The child has to report its own environment. Checking the parents proves nothing: the
 # parent keeps its variables whatever is passed down.
-stub = tempfile.mkdtemp()
-os.mkdir(os.path.join(stub, "bin"))
-script = os.path.join(stub, "bin", "git")
-with open(script, "w") as handle:
-    handle.write("#!/bin/sh\nprintf \"ambient=%s merged=%s\\n\" \"$NASE_PROBE_AMBIENT\" \"$NASE_PROBE_MERGED\"\n")
-os.chmod(script, 0o755)
-os.environ["PATH"] = os.path.join(stub, "bin") + os.pathsep + os.environ["PATH"]
+use_stub("env")
 os.environ["NASE_PROBE_AMBIENT"] = "kept"
 out = nase_git.run("anything", text=True, env={"NASE_PROBE_MERGED": "added"})
 assert out.returncode == 0, out.stderr
@@ -114,15 +152,9 @@ assert out.stdout.strip() == "true", out
 '
 
 # A stub git that never returns is the only honest way to test the bound.
-STUB=$(mktemp -d)
-trap 'rm -rf "$STUB"' EXIT
-mkdir -p "$STUB/bin"
-printf '#!/bin/sh\nsleep 60\n' > "$STUB/bin/git"
-chmod +x "$STUB/bin/git"
-
 run_case "a hung git raises GitTimeout, not TimeoutExpired" "$PRELUDE"'
-import os, subprocess, time
-os.environ["PATH"] = "'"$STUB"'/bin:" + os.environ["PATH"]
+import subprocess, time
+use_stub("hung")
 started = time.monotonic()
 try:
     nase_git.run("status", timeout=1)
@@ -195,26 +227,26 @@ assert process.returncode is not None
 '
 
 run_case "streaming kills the process when the body raises" "$PRELUDE"'
-import os, tempfile, time
+import os, time
 # A child that writes nothing and sleeps: closing its stdout gives it no SIGPIPE, so
 # only the kill ends it. A git command that streams would exit on the closed pipe by
 # itself and the case would pass with the kill removed.
-stub = tempfile.mkdtemp()
-os.mkdir(os.path.join(stub, "bin"))
-script = os.path.join(stub, "bin", "git")
-with open(script, "w") as handle:
-    handle.write("#!/bin/sh\nsleep 60\n")
-os.chmod(script, 0o755)
-os.environ["PATH"] = os.path.join(stub, "bin") + os.pathsep + os.environ["PATH"]
+use_stub("sleeper")
+marker = os.path.join(os.environ["NASE_STUBS"], "sleeper-started")
 
 
 class Boom(Exception):
     pass
 
 
-started = time.monotonic()
 try:
     with nase_git.streaming("anything", timeout=5) as process:
+        # Without this the case also passes when the real git ran and had already exited.
+        deadline = time.monotonic() + 30
+        while not os.path.exists(marker):
+            assert time.monotonic() < deadline, "the stub git never started"
+            time.sleep(0.05)
+        started = time.monotonic()
         raise Boom
 except Boom:
     pass
@@ -224,16 +256,10 @@ assert elapsed < 5, f"waited out the bound instead of killing: {elapsed}s"
 '
 
 run_case "streaming with a file for stderr does not deadlock on a large stderr" "$PRELUDE"'
-import os, tempfile, time
-stub = tempfile.mkdtemp()
-os.mkdir(os.path.join(stub, "bin"))
+import tempfile, time
 # Writes 1 MiB to stderr before finishing stdout. Against a pipe this wedges: the
 # writer blocks on a full stderr pipe while the reader is still draining stdout.
-script = os.path.join(stub, "bin", "git")
-with open(script, "w") as handle:
-    handle.write("#!/bin/sh\nhead -c 1048576 /dev/zero >&2\nprintf done\n")
-os.chmod(script, 0o755)
-os.environ["PATH"] = os.path.join(stub, "bin") + os.pathsep + os.environ["PATH"]
+use_stub("noisy")
 started = time.monotonic()
 with tempfile.TemporaryFile() as sink:
     with nase_git.streaming("anything", stderr=sink, timeout=20) as process:
@@ -246,6 +272,63 @@ assert out == b"done", out
 assert code == 0, code
 assert len(err) == 1048576, len(err)
 assert time.monotonic() - started < 20, "took the full bound; likely deadlocked"
+'
+
+# --- nase_git.launch_argv -------------------------------------------------
+
+run_case "launch_argv leaves argv alone off Windows" "$PRELUDE"'
+import os
+os.name = "posix"
+assert nase_git.launch_argv(["git", "a&b"]) == ["git", "a&b"]
+'
+
+# The Windows rules, driven by a stand-in lookup so every platform runs them.
+run_case "launch_argv resolves a PATH match and refuses the unsafe ones" "$PRELUDE"'
+import os
+
+
+def resolved(argv, found):
+    nase_git.shutil.which = lambda name: found
+    return nase_git.launch_argv(argv)
+
+
+wrapper = os.path.abspath("gh.CMD")
+program = os.path.abspath("gh.exe")
+os.name = "nt"
+assert resolved(["gh", "pr", "view"], wrapper) == [wrapper, "pr", "view"]
+assert resolved(["gh", "pr"], None) == ["gh", "pr"]
+# A match in the current directory comes back relative.
+assert resolved(["gh", "pr"], os.path.join(os.curdir, "gh.bat")) == ["gh", "pr"]
+for arg in ("a&b", "a|b", "a<b", "x>y", "a^b", "%PATH%", "!x!", "say \"hi\"", "a\rb", "a\nb"):
+    assert resolved(["gh", arg], wrapper) == ["gh", arg], arg
+    assert resolved(["gh", arg], program) == [program, arg], arg
+# The batch file path is read by cmd.exe too, so syntax in a directory name counts.
+for directory in ("R&D", "a^b", "%TEMP%", "x!y"):
+    unsafe = os.path.abspath(os.path.join(directory, "gh.cmd"))
+    assert resolved(["gh", "pr"], unsafe) == ["gh", "pr"], directory
+    assert resolved(["gh", "pr"], os.path.abspath(os.path.join(directory, "gh.exe"))) == [
+        os.path.abspath(os.path.join(directory, "gh.exe")), "pr"], directory
+'
+
+run_case "run starts a gh that Windows could only start as a .cmd wrapper" "$PRELUDE"'
+use_stub("wrapper")
+done = nase_gh.run(["gh", "probe"])
+assert done.stdout.strip() == "stub probe", done
+'
+
+# Meaningful on Windows, where the lookup also searches the current directory.
+run_case "a git.cmd in the current directory does not replace git" "$PRELUDE"'
+import os, tempfile
+os.environ.pop("NoDefaultCurrentDirectoryInExePath", None)
+with tempfile.TemporaryDirectory() as tmp:
+    (pathlib.Path(tmp) / "git.cmd").write_text("@echo planted\n")
+    previous = os.getcwd()
+    os.chdir(tmp)
+    try:
+        out = nase_git.run("--version", text=True)
+    finally:
+        os.chdir(previous)
+assert out.stdout.startswith("git version"), out
 '
 
 # --- nase_fs digests ------------------------------------------------------

@@ -52,7 +52,11 @@ stem = os.path.splitext(os.path.basename(audio))[0]
 json.dump({"segments": [{"start": 0.0, "text": " hello from whisper "}, {"start": 70.0, "text": "second minute"}]},
           open(os.path.join(out_dir, stem + ".json"), "w"))
 SH
-chmod +x "$BIN/yt-dlp" "$BIN/ffmpeg" "$BIN/mlx_whisper"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
+fake_cli_exact "$BIN/yt-dlp"
+fake_cli "$BIN/ffmpeg"
+fake_cli_exact "$BIN/mlx_whisper"
 
 write_info() {
   "$PYTHON_BIN" - "$STUB_INFO" "$1" <<'PY'
@@ -208,7 +212,7 @@ assert_cmd "every yt-dlp call ignores user config" bash -c "! grep -v -e '--igno
 mv "$STUB_SUBS.keep" "$STUB_SUBS"
 
 write_info '{}'
-rm -f "$BIN/mlx_whisper"
+rm -f "$BIN/mlx_whisper" "$BIN/mlx_whisper.exe"
 run_script "$TMPDIR_TEST/nowhisper.json" "$URL" --out-dir "$TMPDIR_TEST/nw-out"
 assert_eq "whisper_ready false without mlx_whisper" "$(json_field "$TMPDIR_TEST/nowhisper.json" whisper_ready)" "False"
 run_script "$TMPDIR_TEST/nowhisper2.json" "$URL" --whisper --out-dir "$TMPDIR_TEST/nw-out"

@@ -574,7 +574,7 @@ def kb_mentions_for_paths(paths: list[str], max_paths: int) -> list[dict[str, An
     command += ["--max-entry-lines", "8"]
     try:
         result = subprocess.run(
-            command,
+            nase_git.launch_argv(command),
             cwd=root,
             check=False,
             text=True,

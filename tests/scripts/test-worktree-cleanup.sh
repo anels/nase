@@ -5,6 +5,8 @@ ROOT=$(git rev-parse --show-toplevel)
 HELPER="$ROOT/.claude/scripts/worktree-cleanup.py"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/nase-worktree-cleanup.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
 
 passed=0
 failed=0
@@ -115,7 +117,8 @@ make_git_wrapper() {
     'fi' \
     'exec "$NASE_TEST_REAL_GIT" "$@"' \
     >"$TMP/fakebin/git"
-  chmod +x "$TMP/fakebin/git"
+  # Exact forwarding: the submodule probe passes a whole shell script as one argument.
+  fake_cli_exact "$TMP/fakebin/git"
 }
 
 run_helper_injected() {

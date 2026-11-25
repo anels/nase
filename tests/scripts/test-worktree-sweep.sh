@@ -10,6 +10,8 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 SCRIPT="$ROOT/.claude/scripts/worktree-sweep.py"
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
 
 failures=0
 
@@ -61,7 +63,7 @@ if [[ -f "$GH_STATE/$sha.missing" ]]; then
 fi
 if [[ -f "$GH_STATE/$sha.json" ]]; then cat "$GH_STATE/$sha.json"; else echo '[]'; fi
 EOF
-chmod +x "$SHIM/gh"
+fake_cli "$SHIM/gh"
 export GH_STATE
 export PATH="$SHIM:$PATH"
 
