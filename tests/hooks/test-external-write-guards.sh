@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 
 TMP_ROOT=$(mktemp -d)
 cleanup() {
@@ -720,17 +722,18 @@ python3 -c 'import os, sys, time; old=time.time()-20; os.utime(sys.argv[1], (old
 expect_rc "jira stale lock is recovered" .claude/hooks/jira-write-guard.sh "$jira_transition" 0
 
 rm -rf "$TMP_ROOT/.nase-locks"
-ln -s workspace "$TMP_ROOT/.nase-locks"
-jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
-  '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"unsafe lock parent",payload_sha256:$payload_sha}' \
-  > "$TMP_ROOT/workspace/.jira-write-token"
-expect_rc "jira unsafe lock parent reports lock failure" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "workspace mutation lock is unavailable: lock parent is not a lexical directory"
-if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
-  report 1 "jira unsafe lock parent preserves token"
-else
-  report 0 "jira unsafe lock parent preserves token" "token was consumed"
+if make_symlink workspace "$TMP_ROOT/.nase-locks"; then
+  jq -n --arg tool "$jira_transition_tool" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg payload_sha "$jira_transition_sha" \
+    '{tool_name:$tool,issue_key:"SRE-1",created_at:$created,payload_summary:"unsafe lock parent",payload_sha256:$payload_sha}' \
+    > "$TMP_ROOT/workspace/.jira-write-token"
+  expect_rc "jira unsafe lock parent reports lock failure" .claude/hooks/jira-write-guard.sh "$jira_transition" 2 "workspace mutation lock is unavailable: lock parent is not a lexical directory"
+  if [ -f "$TMP_ROOT/workspace/.jira-write-token" ]; then
+    report 1 "jira unsafe lock parent preserves token"
+  else
+    report 0 "jira unsafe lock parent preserves token" "token was consumed"
+  fi
+  rm -f "$TMP_ROOT/.nase-locks"
 fi
-rm -f "$TMP_ROOT/.nase-locks"
 
 setup_root="$TMP_ROOT/setup-failure"
 mkdir -p "$setup_root/workspace"
@@ -802,5 +805,6 @@ expect_rc "PowerShell call-operator gh mutation blocked" .claude/hooks/external-
 expect_rc "PowerShell drive-letter kubectl mutation blocked" .claude/hooks/external-cli-write-guard.sh "$ps_kubectl" 2
 expect_rc "PowerShell benign backslash path allowed" .claude/hooks/external-cli-write-guard.sh "$ps_benign" 0
 
+plat_skip_summary
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

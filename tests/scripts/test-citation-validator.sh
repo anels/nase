@@ -12,7 +12,8 @@ mkdir -p "$TMPDIR_TEST/bin" "$TMPDIR_TEST/gh-only" "$TMPDIR_TEST/one/src" "$TMPD
 printf 'first\nsecond\n' > "$TMPDIR_TEST/one/src/file.py"
 printf 'other\n' > "$TMPDIR_TEST/two/src/other.py"
 printf 'outside\n' > "$TMPDIR_TEST/outside/file.py"
-ln -s "$TMPDIR_TEST/outside/file.py" "$TMPDIR_TEST/one/link.py"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 
 cat > "$TMPDIR_TEST/bin/gh" <<'PY'
 #!/usr/bin/env python3
@@ -137,7 +138,9 @@ assert_status "qualified path resolves" 0 '`one:src/file.py:2`' OK resolved
 assert_status "missing qualified path is broken" 1 '`one:src/missing.py:1`' BROKEN missing-file
 assert_status "line overflow is broken" 1 '`one:src/file.py:9`' BROKEN line-out-of-range
 assert_status "path traversal is broken" 1 '`one:../outside/file.py:1`' BROKEN path-escape
-assert_status "symlink escape is broken" 1 '`one:link.py:1`' BROKEN symlink-escape
+if make_symlink "$TMPDIR_TEST/outside/file.py" "$TMPDIR_TEST/one/link.py"; then
+  assert_status "symlink escape is broken" 1 '`one:link.py:1`' BROKEN symlink-escape
+fi
 assert_status "unknown alias is unknown" 2 '`missing:src/file.py:1`' UNKNOWN unavailable-root
 assert_status "unique legacy path resolves" 0 '`src/file.py:1`' OK resolved
 assert_status "missing legacy path is unknown" 2 '`src/missing.py:1`' UNKNOWN unqualified-root
@@ -156,8 +159,6 @@ assert json.load(open(sys.argv[1], encoding="utf-8"))["results"] == []
 PY
 ' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one" "$TMPDIR_TEST/ignored.json"
 
-# shellcheck source=tests/lib/platform.sh
-source "$ROOT/tests/lib/platform.sh"
 # Python reads this path out of the artifact, so it must already be one it understands.
 absolute_path="$(plat_native_path "$TMPDIR_TEST/one/src/file.py")"
 write_artifact "$TMPDIR_TEST/one/artifact.md" "\`$absolute_path:1\`"
@@ -248,10 +249,11 @@ assert len(json.load(open(sys.argv[1], encoding="utf-8"))["results"]) == 1
 PY
 ' _ "$TMPDIR_TEST/stable-one.json" "$TMPDIR_TEST/stable-two.json" "$PYTHON_BIN"
 
-ln -s "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one/artifact-link.md"
-assert_cmd "symlink artifact is rejected before extraction" bash -c '! "$1" "$2" --root "one=$3" --format json >/dev/null 2>&1' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact-link.md" "$TMPDIR_TEST/one"
+if make_symlink "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one/artifact-link.md"; then
+  assert_cmd "symlink artifact is rejected before extraction" bash -c '! "$1" "$2" "$3" --root "one=$4" --format json >/dev/null 2>"$5" && grep -Fq "artifact must be a regular non-symlink file" "$5"' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact-link.md" "$TMPDIR_TEST/one" "$TMPDIR_TEST/rejected.err"
+fi
 write_artifact "$TMPDIR_TEST/outside/artifact.md" 'No citations.'
-assert_cmd "artifact outside primary root is rejected" bash -c '! "$1" "$2" --root "one=$3" --format json >/dev/null 2>&1' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/outside/artifact.md" "$TMPDIR_TEST/one"
+assert_cmd "artifact outside primary root is rejected" bash -c '! "$1" "$2" "$3" --root "one=$4" --format json >/dev/null 2>"$5" && grep -Fq "artifact must be inside the primary root" "$5"' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/outside/artifact.md" "$TMPDIR_TEST/one" "$TMPDIR_TEST/rejected.err"
 # `failure_detail` indexes its verdict table by category with no default, and it sits
 # on every citation path. A category added to nase_gh without a verdict here would
 # crash the validator rather than degrade it, and nothing else would catch that.
@@ -364,6 +366,7 @@ assert len(set(codes.values())) == len(codes), codes
 assert (codes["EXIT_OK"], codes["EXIT_BROKEN"], codes["EXIT_UNKNOWN"]) == (0, 1, 2), codes
 CODES
 
+plat_skip_summary
 if [[ "$failures" -eq 0 ]]; then
   printf '\ncitation-validator tests passed.\n'
   exit 0

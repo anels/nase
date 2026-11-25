@@ -10,6 +10,13 @@ trap 'rm -rf "$TMPROOT"' EXIT
 
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
+
+skip_case() {
+  plat_count_skip
+  printf 'SKIP  %s\n' "$1" >&2
+}
 
 run_scan() {
   local root="$1" output="$2" rc_file="$3"
@@ -77,10 +84,11 @@ assert_cmd "--advisory without a supported mode explains the refusal" \
 advisory_link_root="$TMPROOT/advisory-symlink-root"
 mkdir -p "$advisory_link_root/workspace" "$advisory_link_root/outside"
 printf 'outside marker\n' > "$advisory_link_root/outside/file.txt"
-ln -s "$advisory_link_root/outside/file.txt" "$advisory_link_root/workspace/external-link.txt"
-run_scan "$advisory_link_root" "$TMPROOT/advisory-link" "$TMPROOT/advisory-link.rc" --workspace --advisory
-assert_cmd "advisory workspace scan still fails closed on a symlink" \
-  test "$(cat "$TMPROOT/advisory-link.rc")" = "1"
+if make_symlink "$advisory_link_root/outside/file.txt" "$advisory_link_root/workspace/external-link.txt"; then
+  run_scan "$advisory_link_root" "$TMPROOT/advisory-link" "$TMPROOT/advisory-link.rc" --workspace --advisory
+  assert_cmd "advisory workspace scan still fails closed on a symlink" \
+    test "$(cat "$TMPROOT/advisory-link.rc")" = "1"
+fi
 
 unreadable_root="$TMPROOT/unreadable-workspace-root"
 mkdir -p "$unreadable_root/workspace"
@@ -92,6 +100,8 @@ if [[ ! -r "$unreadable_root/workspace/unreadable.txt" ]]; then
     test "$(cat "$TMPROOT/unreadable-workspace.rc")" = "1"
   assert_cmd "unreadable workspace path is reported" \
     grep -q 'workspace/unreadable.txt' "$TMPROOT/unreadable-workspace.err"
+else
+  skip_case "unreadable workspace file (chmod 000 leaves it readable)"
 fi
 chmod 600 "$unreadable_root/workspace/unreadable.txt"
 
@@ -106,6 +116,8 @@ if [[ ! -r "$unreadable_dir_root/workspace/private" ]]; then
     test "$(cat "$TMPROOT/unreadable-directory.rc")" = "1"
   assert_cmd "unreadable workspace directory is reported" \
     grep -q 'workspace/private' "$TMPROOT/unreadable-directory.err"
+else
+  skip_case "unreadable workspace directory (chmod 000 leaves it readable)"
 fi
 chmod 700 "$unreadable_dir_root/workspace/private"
 
@@ -120,26 +132,30 @@ if [[ ! -r "$manifest_root/snapshot/private" ]]; then
     test "$(cat "$TMPROOT/unreadable-manifest.rc")" = "1"
   assert_cmd "unreadable snapshot manifest failure is explicit" \
     grep -q 'manifest coverage is incomplete' "$TMPROOT/unreadable-manifest.err"
+else
+  skip_case "unreadable snapshot directory (chmod 000 leaves it readable)"
 fi
 chmod 700 "$manifest_root/snapshot/private"
 
 symlink_root="$TMPROOT/symlink-workspace-root"
 mkdir -p "$symlink_root/workspace" "$symlink_root/outside"
 printf 'outside marker\n' > "$symlink_root/outside/credential.txt"
-ln -s "$symlink_root/outside/credential.txt" "$symlink_root/workspace/external-link.txt"
-run_scan "$symlink_root" "$TMPROOT/symlink-workspace" "$TMPROOT/symlink-workspace.rc" --workspace
-assert_cmd "workspace symlink fails closed" test "$(cat "$TMPROOT/symlink-workspace.rc")" = "1"
-assert_cmd "workspace symlink path is reported" \
-  grep -q 'workspace/external-link.txt' "$TMPROOT/symlink-workspace.err"
+if make_symlink "$symlink_root/outside/credential.txt" "$symlink_root/workspace/external-link.txt"; then
+  run_scan "$symlink_root" "$TMPROOT/symlink-workspace" "$TMPROOT/symlink-workspace.rc" --workspace
+  assert_cmd "workspace symlink fails closed" test "$(cat "$TMPROOT/symlink-workspace.rc")" = "1"
+  assert_cmd "workspace symlink path is reported" \
+    grep -q 'workspace/external-link.txt' "$TMPROOT/symlink-workspace.err"
+fi
 
 root_symlink_root="$TMPROOT/root-symlink-workspace-root"
 mkdir -p "$root_symlink_root/outside-workspace"
-ln -s "$root_symlink_root/outside-workspace" "$root_symlink_root/workspace"
-run_scan "$root_symlink_root" "$TMPROOT/root-symlink-workspace" "$TMPROOT/root-symlink-workspace.rc" --workspace
-assert_cmd "workspace root symlink fails closed" \
-  test "$(cat "$TMPROOT/root-symlink-workspace.rc")" = "1"
-assert_cmd "workspace root symlink path is reported" \
-  grep -q '^workspace$' "$TMPROOT/root-symlink-workspace.err"
+if make_symlink "$root_symlink_root/outside-workspace" "$root_symlink_root/workspace"; then
+  run_scan "$root_symlink_root" "$TMPROOT/root-symlink-workspace" "$TMPROOT/root-symlink-workspace.rc" --workspace
+  assert_cmd "workspace root symlink fails closed" \
+    test "$(cat "$TMPROOT/root-symlink-workspace.rc")" = "1"
+  assert_cmd "workspace root symlink path is reported" \
+    grep -q '^workspace$' "$TMPROOT/root-symlink-workspace.err"
+fi
 
 redacted_path_root="$TMPROOT/redacted-path-root"
 mkdir -p "$redacted_path_root/workspace"
@@ -330,9 +346,10 @@ if command -v zip >/dev/null 2>&1; then
   assert_cmd "a malformed archived allowlist fails the archive scan closed" \
     test "$(cat "$TMPROOT/archive-malformed.rc")" = "1"
 else
-  printf 'SKIP  archive allowlist tests (zip not installed)\n'
+  skip_case "archive allowlist tests (zip not installed)"
 fi
 
+plat_skip_summary
 if [[ "$failures" -eq 0 ]]; then
   printf '\nlocal-sensitive-artifacts tests passed.\n'
   exit 0

@@ -14,6 +14,8 @@ set -uo pipefail
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 HOOK="$ROOT/.claude/hooks/stop-claim-check.sh"
 FIX="$ROOT/tests/fixtures/transcripts"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
@@ -107,8 +109,7 @@ if [ "$RC" -eq 0 ] && [ -z "$OUT" ]; then ok "a missing transcript exits 0 and p
 nopy="$SCRATCH/nopy-bin"
 mkdir -p "$nopy"
 for tool in bash cat git dirname basename printf env sed grep head tr mkdir date; do
-  src=$(command -v "$tool" 2>/dev/null || true)
-  [ -n "$src" ] && [ -x "$src" ] && ln -sf "$src" "$nopy/$tool"
+  plat_path_tool "$tool" "$nopy"
 done
 if PATH="$nopy" command -v python3 >/dev/null 2>&1; then
   bad "test setup: python3 must be absent from the restricted PATH"

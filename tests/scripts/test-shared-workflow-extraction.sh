@@ -592,7 +592,11 @@ cap_evidence="$TMPROOT/context-cap-evidence.json"
     head -c 70000 /dev/zero | tr '\0' x > "large-$n.txt"
   done
   printf 'target\n' > target.txt
-  ln -s target.txt link.txt
+  # A mode-120000 entry written straight into the index, so the case also runs where
+  # `ln -s` makes a copy.
+  git config core.symlinks false
+  printf 'target.txt' > link.txt
+  git update-index --add --cacheinfo "120000,$(git hash-object -w link.txt),link.txt"
   git add .
   git commit -q -m init
 )
@@ -757,7 +761,8 @@ binary_bundle="$TMPROOT/binary-bundle.md"
   git add README.txt
   git commit -q -m init
   head -c 1048576 /dev/urandom > large.bin
-  printf 'prefix\0suffix\n' > nul.bin
+  # Not `nul.bin`: Windows reserves `nul` as a device name, with any extension.
+  printf 'prefix\0suffix\n' > nul-byte.bin
 )
 python3 .claude/scripts/verify-bundle.py \
   --repo "$binary_repo" --base HEAD --task binary --output "$binary_bundle" >/dev/null
@@ -765,7 +770,7 @@ assert_cmd "binary patch is never embedded" bash -c '! grep -q "GIT binary patch
 assert_cmd "binary bundle is byte bounded" test "$(wc -c < "$binary_bundle")" -lt 524288
 assert_contains "binary bundle retains object metadata" "$binary_bundle" '## Binary Path Metadata'
 assert_contains "binary bundle records original byte count" "$binary_bundle" '"byte_count": 1048576'
-assert_contains "NUL-bearing blob retains binary metadata" "$binary_bundle" '"path": "nul.bin"'
+assert_contains "NUL-bearing blob retains binary metadata" "$binary_bundle" '"path": "nul-byte.bin"'
 assert_cmd "NUL-bearing patch is never embedded" python3 - "$binary_bundle" <<'PY'
 from pathlib import Path
 import sys

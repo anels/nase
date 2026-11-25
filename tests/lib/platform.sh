@@ -20,6 +20,9 @@
 #   plat_symlinks_real       0 when `ln -s` makes a real symlink (not a copy)
 #   make_symlink TARGET LINK ln -s, or count a skip and return 1 when links are copies;
 #                            a failing ln where links work ends the test
+#   plat_path_tool NAME DIR  expose command NAME in a narrow-PATH directory DIR through an
+#                            exec wrapper, because a copied or linked Windows .exe misses
+#                            its DLLs and exits 127. A builtin is left alone
 
 PLAT_SKIPPED=0
 
@@ -33,7 +36,7 @@ plat_count_skip() {
 
 plat_skip_summary() {
   if (( PLAT_SKIPPED > 0 )); then
-    printf '[warn] %s check(s) skipped: this platform lacks POSIX file modes, symlinks, or colon file names.\n' \
+    printf '[warn] %s check(s) skipped: this platform lacks something they need (file modes, symlinks, colon file names, or zip).\n' \
       "$PLAT_SKIPPED" >&2
   fi
 }
@@ -93,6 +96,13 @@ plat_symlinks_real() {
   fi
   rm -rf "$dir"
   return "$rc"
+}
+
+plat_path_tool() {
+  local name="$1" dir="$2" real
+  real=$(command -v "$name") || return 0
+  [[ "$real" == /* ]] || return 0
+  printf '#!%s\nexec %q "$@"\n' "$BASH" "$real" > "$dir/$name" && chmod +x "$dir/$name"
 }
 
 make_symlink() {
