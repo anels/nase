@@ -16,6 +16,7 @@
 #                            against the current drive
 #   plat_sha256              SHA-256 hex digest of stdin. Git Bash keeps `shasum` in a
 #                            directory that only a login shell adds to PATH
+#   shasum -a 256            defined only where no shasum is on PATH; runs sha256sum
 #   plat_colon_filenames     0 when a file name may contain a colon (Windows forbids it)
 #   plat_symlinks_real       0 when `ln -s` makes a real symlink (not a copy)
 #   make_symlink TARGET LINK ln -s, or count a skip and return 1 when links are copies;
@@ -77,6 +78,17 @@ plat_sha256() {
     shasum -a 256
   fi | cut -d' ' -f1
 }
+
+# For a test that calls `shasum -a 256` by name: where none is on PATH, run sha256sum.
+if ! command -v shasum >/dev/null 2>&1; then
+  shasum() {
+    if [ "$*" != "-a 256" ]; then
+      printf 'shasum stand-in: only "-a 256" on stdin is supported, got: %s\n' "$*" >&2
+      return 2
+    fi
+    sha256sum
+  }
+fi
 
 plat_colon_filenames() {
   local dir rc=1
