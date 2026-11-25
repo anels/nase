@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import shlex
 import shutil
 import signal
 import subprocess
@@ -715,14 +714,15 @@ def read_graphql_query_file(raw_path: str) -> str | None:
 
     Only a regular file that resolves, symlinks followed, to a place under the guard's
     working directory counts. No base directory, an empty or `-` path, a `..` part, a
-    missing or oversized file, and undecodable bytes all return None, which keeps the
-    command a write.
+    rooted path with no drive on Windows (Git Bash passes `gh` another path), a missing
+    or oversized file, and undecodable bytes all return None, which keeps the command a
+    write.
     """
     if not GRAPHQL_FILE_BASE or not raw_path or raw_path == "-":
         return None
     base = GRAPHQL_FILE_BASE[0]
     path = Path(raw_path)
-    if ".." in path.parts:
+    if ".." in path.parts or (path.anchor and not path.is_absolute()):
         return None
     try:
         root = base.resolve(strict=True)
@@ -733,6 +733,39 @@ def read_graphql_query_file(raw_path: str) -> str | None:
         return resolved.read_text(encoding="utf-8")
     except (OSError, ValueError):
         return None
+
+
+# Fields of a `query=@file` read that Bash and PowerShell both pass to `gh` unchanged:
+# ASCII with nothing to quote, expand, or split. Git Bash rewrites words such as `x=/c/y`,
+# `_/c/x`, `+/x`, and `-I/x`, so a variable value is an integer or opens with a letter or
+# digit and holds no `:`, `@`, or inner `=`. A path opens with a letter, digit, dot, or
+# slash and has no leading `//` or trailing `/`.
+GRAPHQL_QUERY_FILE_FIELD_RE = re.compile(
+    r"query=@(?=[A-Za-z0-9./])(?!//)"
+    r"(?:[A-Za-z]:/|/)?(?:[A-Za-z0-9_.+/-]|(?<=\w)~)+(?<!/)"
+)
+GRAPHQL_VARIABLE_FIELD_RE = re.compile(
+    r"[A-Za-z_]\w*=(?:-?[0-9]+|[A-Za-z0-9][A-Za-z0-9_./+-]*={0,2})", re.ASCII
+)
+
+
+def graphql_file_words(argv: list[str]) -> bool:
+    """True for `gh api graphql` followed only by plain `-f` or `-F` fields.
+
+    Any other word could send the file to another host, change the method, or read a
+    second file.
+    """
+    flags, fields = argv[3::2], argv[4::2]
+    return (
+        argv[:3] == ["gh", "api", "graphql"]
+        and len(flags) == len(fields)
+        and all(flag in ("-f", "-F") for flag in flags)
+        and all(
+            GRAPHQL_QUERY_FILE_FIELD_RE.fullmatch(field)
+            or GRAPHQL_VARIABLE_FIELD_RE.fullmatch(field)
+            for field in fields
+        )
+    )
 
 
 def graphql_read_query(argv: list[str]) -> bool:
@@ -2413,22 +2446,19 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 
 def lone_direct_gh_call(command: str, result: shell_scan.ScanResult) -> bool:
-    """True when the command is `gh` and its literal arguments, and nothing else.
+    """True when the command text is `gh` and its arguments, single-spaced, and no more.
 
     Only then does a file the guard reads match the file `gh` will open: another command
     could rewrite it or change directory first, and a wrapper could run `gh` elsewhere.
     The scanner reports no invocation for some of those, such as an assignment or a bare
-    `xargs`, so the plain word split must equal the one invocation's argv.
+    `xargs`, and PowerShell splits at quotes and some whitespace that the scanner keeps
+    inside a word, so the text itself must be the one invocation's argv joined by spaces.
     """
     if result.unparseable or len(result.invocations) != 1:
         return False
     invocation = result.invocations[0]
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        return False
     return (
-        words == invocation.argv
+        command.rstrip("\r\n").split(" ") == invocation.argv
         and invocation.name == "gh"
         and not invocation.via
         and not invocation.wrappers
@@ -2444,7 +2474,11 @@ def cmd_guard(args: argparse.Namespace) -> int:
         command = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     result = shell_scan.scan(command)
     GRAPHQL_FILE_BASE.clear()
-    if args.cwd and lone_direct_gh_call(command, result):
+    if (
+        args.cwd
+        and lone_direct_gh_call(command, result)
+        and graphql_file_words(result.invocations[0].argv)
+    ):
         GRAPHQL_FILE_BASE.append(Path(args.cwd))
     unbindable_target = bool(command) and (result.unparseable or bool(result.top_opaque))
     # Failing closed here is only justified when a guarded CLI could actually be
