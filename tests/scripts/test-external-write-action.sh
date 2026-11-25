@@ -406,7 +406,8 @@ expect_rc "GH_HOST cannot redirect a GitHub mutation" 2 \
 # repository must still be refused: in real use the root is the nase workspace, so
 # `gh pr merge 12` would land on the workspace repo instead of the product repo.
 for repoless in "pr merge 12 --squash" "pr create --draft" "issue close 3" \
-  "release create v1" "label create bug" "workflow run ci.yml"; do
+  "release create v1" "label create bug" "workflow run ci.yml" \
+  "run rerun 1" "pr update-branch 1"; do
   # shellcheck disable=SC2086
   expect_rc "GitHub write without a repository is refused: gh $repoless" 2 \
     python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
@@ -417,6 +418,37 @@ for repoless in "pr merge 12 --squash" "pr create --draft" "issue close 3" \
     report 1 "repo-less refusal says to add -R: gh $repoless" "$(cat "$TMPDIR_TEST/err")"
   fi
 done
+# gh takes the repository option before the verb; the URL owner check must still apply.
+for selector in "-R owner/example pr merge" "--repo owner/example pr merge" \
+  "pr -R owner/example merge" "pr --repo owner/example merge"; do
+  # shellcheck disable=SC2086
+  expect_rc "a PR URL of another owner is refused: gh $selector" 2 \
+    python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "other owner" -- \
+      gh $selector https://github.com/other/example/pull/1
+  if grep -q 'does not match the PR/issue URL' "$TMPDIR_TEST/err"; then
+    report 0 "the refusal names the URL mismatch: gh $selector"
+  else
+    report 1 "the refusal names the URL mismatch: gh $selector" "$(cat "$TMPDIR_TEST/err")"
+  fi
+done
+for url in https://github.com/other/example/pull/1/ https://github.com/other/example/pull/1/files \
+  "https://github.com/other/example/pull/1?w=1" http://github.com/other/example/pull/1 \
+  HTTPS://github.com/other/example/pull/1; do
+  expect_rc "an unread PR URL spelling is refused after a leading -R: $url" 2 \
+    python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "other owner" -- \
+      gh -R owner/example pr merge "$url"
+  if grep -q 'write a PR URL as' "$TMPDIR_TEST/err"; then
+    report 0 "the refusal names the URL spelling: $url"
+  else
+    report 1 "the refusal names the URL spelling: $url" "$(cat "$TMPDIR_TEST/err")"
+  fi
+done
+expect_rc "a leading -R accepts the PR URL of its own owner" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "own URL" -- \
+    gh -R owner/example pr merge https://github.com/owner/example/pull/1
+expect_rc "a leading -R accepts a repository spelled as a URL" 0 \
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "URL selector" -- \
+    gh -R https://github.com/owner/example pr merge 1
 expect_rc "explicit owner does not stand in for a repository" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
     --system github --github-owner owner --summary "no repository named" -- \
@@ -1234,7 +1266,23 @@ if grep -q 'plain-writing gate' "$TMPDIR_TEST/err"; then
 else
   report 1 "the -F prose gate failure names the gate" "$(cat "$TMPDIR_TEST/err")"
 fi
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "dash merge" -- \
+  gh -R owner/example pr merge 1 -F bind-dash.md | jq -r .manifest)
+expect_rc "a -F body after a leading -R is held to the prose gate" 2 run_gh_execute "$manifest"
+if grep -q 'plain-writing gate' "$TMPDIR_TEST/err"; then
+  report 0 "the leading -R prose gate failure names the gate"
+else
+  report 1 "the leading -R prose gate failure names the gate" "$(cat "$TMPDIR_TEST/err")"
+fi
 rm -f "$TMPDIR_TEST/.claude/scripts/prose-lint.py"
+manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "merge" -- \
+  gh -R owner/example pr merge 1 --squash | jq -r .manifest)
+expect_rc "a leading -R merge executes" 0 run_gh_execute "$manifest"
+if grep -qx -- '-R owner/example pr merge 1 --squash' "$TMPDIR_TEST/section-gh-args"; then
+  report 0 "a leading -R merge runs the argv as approved"
+else
+  report 1 "a leading -R merge runs the argv as approved" "$(cat "$TMPDIR_TEST/section-gh-args")"
+fi
 
 manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "short body" -- \
   gh pr comment 1 -F bind-body.md -R owner/example | jq -r .manifest)
@@ -1243,26 +1291,35 @@ expect_rc "a -F body edited after approval is refused" 2 run_gh_execute "$manife
 printf 'bound body\n' > "$TMPDIR_TEST/bind-body.md"
 
 # --- a symlink cannot be retargeted after approval ---------------------------
+# Git Bash can copy instead of linking, so a symlink case proves nothing there: count it.
+skipped=0
+skip_symlink_case() {
+  printf 'SKIP  %s (symlinks unavailable on this host)\n' "$1"
+  skipped=$((skipped + 1))
+}
+expect_symlink_rc() {
+  if [[ -L "$TMPDIR_TEST/link.md" ]]; then expect_rc "$@"; else skip_symlink_case "$1"; fi
+}
 # The manifest hashes the resolved file, but the CLI opens the path as written.
 printf 'approved text\n' > "$TMPDIR_TEST/link-a.md"
 printf 'swapped text\n' > "$TMPDIR_TEST/link-b.md"
 ln -sf link-a.md "$TMPDIR_TEST/link.md"
-expect_rc "a symlinked body file is rejected at prepare" 2 \
+expect_symlink_rc "a symlinked body file is rejected at prepare" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
     gh pr comment 1 --body-file link.md -R owner/example
-expect_rc "a symlinked -F body file is rejected at prepare" 2 \
+expect_symlink_rc "a symlinked -F body file is rejected at prepare" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
     gh pr comment 1 -F link.md -R owner/example
 mkdir -p "$TMPDIR_TEST/real-dir"
 printf 'in dir\n' > "$TMPDIR_TEST/real-dir/body.md"
 ln -sfn real-dir "$TMPDIR_TEST/link-dir"
-expect_rc "a body file under a symlinked directory is rejected at prepare" 2 \
+expect_symlink_rc "a body file under a symlinked directory is rejected at prepare" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
     gh pr comment 1 --body-file link-dir/body.md -R owner/example
-expect_rc "a body file behind a dotdot hop through a symlink is rejected" 2 \
+expect_symlink_rc "a body file behind a dotdot hop through a symlink is rejected" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --summary "link" -- \
     gh pr comment 1 --body-file link-dir/../real-dir/body.md -R owner/example
-expect_rc "a symlinked --input payload is rejected at prepare" 2 \
+expect_symlink_rc "a symlinked --input payload is rejected at prepare" 2 \
   python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --github-owner owner --summary "link" -- \
     gh api --method POST "$REPLY_ENDPOINT" --input link.md
 expect_rc "a symlink named only in an unrelated field is not rejected" 0 \
@@ -1284,8 +1341,10 @@ manifest=$(python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare --system github --sum
   gh pr comment 1 --body-file swap.md -R owner/example | jq -r .manifest)
 mv "$TMPDIR_TEST/swap.md" "$TMPDIR_TEST/swap.real"
 ln -s swap.real "$TMPDIR_TEST/swap.md"
-expect_rc "a file replaced by a symlink after approval is refused" 2 run_gh_execute "$manifest"
-if grep -q 'resolves elsewhere' "$TMPDIR_TEST/err"; then
+expect_symlink_rc "a file replaced by a symlink after approval is refused" 2 run_gh_execute "$manifest"
+if [[ ! -L "$TMPDIR_TEST/link.md" ]]; then
+  skip_symlink_case "the retarget refusal names the cause"
+elif grep -q 'resolves elsewhere' "$TMPDIR_TEST/err"; then
   report 0 "the retarget refusal names the cause"
 else
   report 1 "the retarget refusal names the cause" "$(cat "$TMPDIR_TEST/err")"
@@ -2142,4 +2201,5 @@ expect_jq "audit counts the launch failure and does not call it abandoned" \
 reset_ledger_state
 
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
+[[ "$skipped" -eq 0 ]] || printf '%d symlink cases skipped\n' "$skipped"
 [ "$fail" -eq 0 ]
