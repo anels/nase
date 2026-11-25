@@ -37,8 +37,9 @@ fi
 
 # The command goes over stdin: as an argument, one past the OS limit (about 32K
 # characters on Windows) fails to launch and reads as a blocked mutation.
+HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null | tr -d '\r') || HOOK_CWD=''
 GUARD_RC=0
-printf '%s' "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" guard || GUARD_RC=$?
+printf '%s' "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" guard --cwd "$HOOK_CWD" || GUARD_RC=$?
 case "$GUARD_RC" in
   0) ;;
   10) block 'raw external mutation is not allowed; use external-write-action.py with an approved manifest' ;;

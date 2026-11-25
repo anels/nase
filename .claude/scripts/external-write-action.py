@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -705,6 +706,35 @@ def option_values(argv: list[str], *names: str) -> list[str]:
     return values
 
 
+GRAPHQL_FILE_BASE: list[Path] = []
+GRAPHQL_FILE_MAX_BYTES = 1_000_000
+
+
+def read_graphql_query_file(raw_path: str) -> str | None:
+    """Return the text of a `query=@file` operation, or None when it cannot be trusted.
+
+    Only a regular file that resolves, symlinks followed, to a place under the guard's
+    working directory counts. No base directory, an empty or `-` path, a `..` part, a
+    missing or oversized file, and undecodable bytes all return None, which keeps the
+    command a write.
+    """
+    if not GRAPHQL_FILE_BASE or not raw_path or raw_path == "-":
+        return None
+    base = GRAPHQL_FILE_BASE[0]
+    path = Path(raw_path)
+    if ".." in path.parts:
+        return None
+    try:
+        root = base.resolve(strict=True)
+        resolved = (path if path.is_absolute() else root / path).resolve(strict=True)
+        resolved.relative_to(root)
+        if not resolved.is_file() or resolved.stat().st_size > GRAPHQL_FILE_MAX_BYTES:
+            return None
+        return resolved.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+
+
 def graphql_read_query(argv: list[str]) -> bool:
     """Recognize direct `gh api graphql` query requests without opening a write path."""
     if len(argv) < 3 or argv[1:3] != ["api", "graphql"]:
@@ -721,7 +751,13 @@ def graphql_read_query(argv: list[str]) -> bool:
     ]
     if len(query_values) != 1:
         return False
-    query = query_values[0].lstrip()
+    query = query_values[0]
+    if query.startswith("@"):
+        loaded = read_graphql_query_file(query[1:])
+        if loaded is None:
+            return False
+        query = loaded
+    query = query.lstrip()
     return not re.search(r"\bmutation\b", query, re.IGNORECASE) and (
         query.startswith(("query", "{", "fragment"))
     )
@@ -2376,11 +2412,40 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def lone_direct_gh_call(command: str, result: shell_scan.ScanResult) -> bool:
+    """True when the command is `gh` and its literal arguments, and nothing else.
+
+    Only then does a file the guard reads match the file `gh` will open: another command
+    could rewrite it or change directory first, and a wrapper could run `gh` elsewhere.
+    The scanner reports no invocation for some of those, such as an assignment or a bare
+    `xargs`, so the plain word split must equal the one invocation's argv.
+    """
+    if result.unparseable or len(result.invocations) != 1:
+        return False
+    invocation = result.invocations[0]
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    return (
+        words == invocation.argv
+        and invocation.name == "gh"
+        and not invocation.via
+        and not invocation.wrappers
+        and not invocation.dynamic
+        and not any(invocation.glob)
+        and invocation.cwds == ("",)
+    )
+
+
 def cmd_guard(args: argparse.Namespace) -> int:
     command = args.command
     if command is None:
         command = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     result = shell_scan.scan(command)
+    GRAPHQL_FILE_BASE.clear()
+    if args.cwd and lone_direct_gh_call(command, result):
+        GRAPHQL_FILE_BASE.append(Path(args.cwd))
     unbindable_target = bool(command) and (result.unparseable or bool(result.top_opaque))
     # Failing closed here is only justified when a guarded CLI could actually be
     # reached. Blocking every command this parser cannot bind blocks the read-only
@@ -2464,6 +2529,9 @@ def build_parser() -> argparse.ArgumentParser:
     guard = subparsers.add_parser("guard", help="reject raw known mutation commands")
     guard.add_argument(
         "--command", help="command text; read from stdin when omitted"
+    )
+    guard.add_argument(
+        "--cwd", help="working directory of the command; resolves `query=@file` reads"
     )
     guard.set_defaults(func=cmd_guard)
 
