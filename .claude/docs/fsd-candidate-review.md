@@ -49,7 +49,7 @@ Spawn one fresh-context read-only reviewer as the persisted agent `nase-verifier
 
 If `nase-verifier` is not registered in the session, stop with that error. Do not fall back to a search-oriented agent: one whose own definition says it locates code and does not review or audit it accepts the spawn and then returns an empty turn, which reads exactly like an infrastructure failure and consumes the retry budget for a reason that is really agent selection. Do not substitute a project-level or plugin reviewer that holds Edit or Write, because that is read-only by instruction alone.
 
-**Reviewer for every verification gate.** The persisted `nase-verifier` is the one reviewer for the fsd candidate review and for both `/nase:address-comments` gates (`.claude/docs/address-comments-analysis.md` Step 3d, `.claude/docs/pr-review-fix-verification.md` §9). All three are local, so none has an availability branch, and a reviewer that returns no usable result stops the run with an error.
+**Reviewer for every verification gate.** The persisted `nase-verifier` is the one reviewer for the fsd candidate review and for both `/nase:address-comments` gates (`.claude/docs/address-comments-analysis.md` Step 3d, `.claude/docs/pr-review-fix-verification.md` §9). Each gate runs it as one fresh-context read-only subagent. All three are local, so none has an availability branch, and a gate that applies is never skipped. An unregistered `nase-verifier`, or a reviewer that returns no usable result, stops the run with an error; the `verifier` role is never a fallback.
 
 Give the reviewer exactly four things:
 

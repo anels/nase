@@ -1,14 +1,21 @@
 ---
 paths:
-  - ".claude/**"
+  - ".claude/hooks/**"
+  - ".claude/lib/**"
+  - ".claude/agents/**"
+  - ".claude/scripts/**"
+  - ".claude/commands/**"
+  - ".claude/docs/**"
+  - ".claude/settings.json"
   - "tests/**"
-  - "CLAUDE.md"
-  - "README.md"
+  - ".github/workflows/**"
+  - "docs/architecture.md"
+  - ".ruff.toml"
 ---
 
 # Workspace Maintenance
 
-Rules for changing this repo's own commands, hooks, docs, scripts, and tests. They load when one of those files is read or edited.
+Rules for changing this repo's own commands, hooks, agents, docs, scripts, and tests. They load when a file matching `paths:` above is read or edited.
 
 ## CI Pipeline
 

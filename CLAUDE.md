@@ -2,7 +2,7 @@
 
 **What nase is**: a personal AI engineering workspace for Claude Code, not a product codebase. It holds KB, logs, commands, hooks, and backups; product repos live elsewhere, with their paths in `.local-paths`. Read `workspace/context.md` only for the Workspace Boundary Policy or project context.
 
-**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. The fsd/address-comments verification gates run one fresh-context read-only verifier subagent; that reviewer is the persisted `nase-verifier` agent and is local, so those gates have no availability branch and are never skipped. A reviewer that returns no usable result stops the run with an error.
+**Integrations**: GitHub flows use `gh`. Atlassian/Slack MCPs are optional for Confluence/Jira/DM lookup. The fsd/address-comments verification gates follow `.claude/docs/fsd-candidate-review.md` → "Reviewer for every verification gate."
 
 ---
 
@@ -53,12 +53,12 @@ Compacting is the last of five context moves, not the first reach. At a phase bo
 ### Logging & External Services
 - Append real-time one-line entries to `workspace/logs/YYYY-MM-DD.md` for completions, mistakes, user corrections, and decisions. Format: `.claude/docs/daily-log-format.md`.
 - Slack: never call `slack_send_message`; always draft via `slack_send_message_draft`.
-- Atlassian MCP: set `contentFormat` on every body-bearing write, never rely on the default (`.claude/docs/jira-write-pattern.md`). `searchConfluence` requires `cql`. Quote a project key that is a JQL reserved word, as in `project = "IN"`.
+- Atlassian MCP: body formats follow `.claude/docs/jira-write-pattern.md` (Jira) and `.claude/docs/confluence-adf-pattern.md` (Confluence). `searchConfluence` requires `cql`. Quote a project key that is a JQL reserved word, as in `project = "IN"`.
 - Prepare one `external-write-action.py` token at a time; execute or remove the active one before preparing the next.
 - AI attribution: `.claude/docs/ai-attribution.md`; commits/PRs follow `.local-paths` per-repo config. Inline review comments and Slack drafts stay AI-clean.
 
 ### Model Routing (subagents)
-Persisted agents live in `.claude/agents/` and role names in `.claude/roles.yaml`. Before an ad hoc `Agent()` spawn, read `.claude/docs/model-routing.md`. A role's `model` and `effort` take effect only when the spawn site passes them, and the only enforced tool whitelist is a persisted agent's `tools:` frontmatter. Default `worker`.
+Before an ad hoc `Agent()` spawn, read `.claude/docs/model-routing.md`.
 Delegate a survey - a read sweep whose answer is a conclusion, not the file contents - and delegate it in ad hoc work, not only in a named skill phase. A subagent's reads never enter this conversation, so the sweep costs a brief plus a short report instead of several file dumps. Keep a read inline when you already know the file and the line, when the raw text is the deliverable, or when you must edit what you just read.
 
 ### Bash / Path Rules
