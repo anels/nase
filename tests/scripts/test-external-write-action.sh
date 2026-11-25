@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 SCRIPT="$ROOT/.claude/scripts/external-write-action.py"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
@@ -1292,10 +1294,9 @@ printf 'bound body\n' > "$TMPDIR_TEST/bind-body.md"
 
 # --- a symlink cannot be retargeted after approval ---------------------------
 # Git Bash can copy instead of linking, so a symlink case proves nothing there: count it.
-skipped=0
 skip_symlink_case() {
   printf 'SKIP  %s (symlinks unavailable on this host)\n' "$1"
-  skipped=$((skipped + 1))
+  plat_count_skip
 }
 expect_symlink_rc() {
   if [[ -L "$TMPDIR_TEST/link.md" ]]; then expect_rc "$@"; else skip_symlink_case "$1"; fi
@@ -2200,6 +2201,6 @@ expect_jq "audit counts the launch failure and does not call it abandoned" \
   '.not_launched == 1 and .executed == 0 and .prepared_not_executed == 0' "$TMPDIR_TEST/out"
 reset_ledger_state
 
+plat_skip_summary
 printf '\n--- %d pass, %d fail ---\n' "$pass" "$fail"
-[[ "$skipped" -eq 0 ]] || printf '%d symlink cases skipped\n' "$skipped"
 [ "$fail" -eq 0 ]
