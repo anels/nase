@@ -746,17 +746,21 @@ def _unrecognized(reason: str) -> Classification:
     return Classification("unrecognized", None, reason)
 
 
-# A word the shell or xargs may still rewrite (`$VAR`, `$(...)`, a glob, `{a,b}`,
-# `<xargs-input>`) can turn into another flag.
-UNEXPANDED_WORD_RE = re.compile(r"[$`*?\[\]{}()<>]")
+# A word that bash and PowerShell both pass on as written. It has no quote, variable, glob,
+# comma, redirect or space, and no leading `@` (PowerShell splatting), `=` (zsh) or `//`
+# (a network share: opening one contacts a host the command names).
+PLAIN_WORD_RE = re.compile(r"(?!//)[A-Za-z0-9_./:-][A-Za-z0-9_./:@-]*")
 
 
-def literal_words(argv: list[str]) -> bool:
-    return not any(UNEXPANDED_WORD_RE.search(word) for word in argv[1:])
+def plain_words(argv: list[str]) -> bool:
+    """True for a bare guarded CLI name followed by plain words."""
+    return argv[0] in GUARDED_EXECUTABLES and all(
+        PLAIN_WORD_RE.fullmatch(word) for word in argv
+    )
 
 
-# These rules allow a command only because of its exact words, so the guard also checks the
-# command text (`words_may_differ`) before it trusts one.
+# These rules allow a command only because of its exact words, so the guard also requires
+# the command text to be those words and nothing else (`runs_exactly`).
 GH_API_LISTED_READ = _read("gh api OPTIONS, or GET with a request body")
 KUBECTL_CONTEXT_SWITCH = _local("switches the local kubeconfig context")
 TERRAFORM_WORKSPACE_SWITCH = _local("switches the local workspace")
@@ -771,7 +775,7 @@ def gh_api_listed_read(argv: list[str]) -> bool:
     `E` is a path: a full URL could send FILE to any host. Any other word, order or
     spelling falls through to the general `gh api` rules.
     """
-    if len(argv) < 5 or argv[1] != "api" or argv[3] != "-X" or not literal_words(argv):
+    if len(argv) < 5 or argv[1] != "api" or argv[3] != "-X" or not plain_words(argv):
         return False
     endpoint = argv[2].lower()
     if endpoint.startswith("-") or "graphql" in endpoint or "://" in endpoint:
@@ -943,11 +947,12 @@ def classify_kubectl(argv: list[str], words: list[str]) -> Classification:
     if command[0] == "config":
         if command[1:2] in (["current-context"], ["get-contexts"]):
             return _read("kubeconfig context lookup")
+        # No global option: `--kubeconfig` or `--profile-output` picks a file to write.
         if (
-            command[1:2] == ["use-context"]
-            and len(command) <= 3
-            and not any(word.startswith("-") for word in command[2:])
-            and literal_words(argv)
+            argv[1:3] == ["config", "use-context"]
+            and len(argv) <= 4
+            and not any(word.startswith("-") for word in argv[3:])
+            and plain_words(argv)
         ):
             return KUBECTL_CONTEXT_SWITCH
         return _unrecognized("kubectl config command that is not a known read")
@@ -992,12 +997,12 @@ def classify_terraform(argv: list[str], words: list[str]) -> Classification:
     ):
         return _read("terraform read")
     if (
-        subcommand == "workspace"
-        and options[:1] == ["select"]
-        and len(options) <= 2
-        # Any flag stays blocked: `-or-create` writes a new workspace to the backend.
-        and not any(word.startswith("-") for word in options)
-        and literal_words(argv)
+        argv[1:3] == ["workspace", "select"]
+        and len(argv) <= 4
+        # Any flag stays blocked: `-or-create` writes a new workspace to the backend, and
+        # `-chdir` picks another backend configuration.
+        and not any(word.startswith("-") for word in argv[3:])
+        and plain_words(argv)
     ):
         return TERRAFORM_WORKSPACE_SWITCH
     return _unrecognized("terraform command that is not a known read")
@@ -2015,18 +2020,14 @@ UNBINDABLE_HEADS = {"alias", "eval", "function", "source", "."}
 SHELL_WORD_RE = re.compile(r"(?<![\w-])(?:bash|dash|ksh|sh|zsh)(?![\w.-])")
 
 
-def words_may_differ(command: str, classes: set[Classification]) -> bool:
-    """Say whether the shell can run other words than the ones an exact-word rule allowed.
+def runs_exactly(command: str, argvs: list[list[str]]) -> bool:
+    """True when the command text is one program's words, single spaced, and nothing else.
 
-    A variable can split into an extra flag, also on a custom `IFS`, and the scan can
-    resolve a value that the shell has since replaced (`printf -v`), so such a command may
-    hold no `$` at all. `TF_CLI_ARGS*` adds flags such as `-or-create` to
-    `workspace select`. Both are searched in the whole command text, because a shell can
-    set a variable in more ways than the scanner follows.
+    The exact-word rules need this. An assignment, an earlier command, a wrapper or a
+    redirect can change where the program sends data, and a variable or a quote can give
+    it other words: PowerShell reads `'f'-X` as two arguments.
     """
-    if "$" in command and classes & EXACT_WORD_RULES:
-        return True
-    return TERRAFORM_WORKSPACE_SWITCH in classes and "TF_CLI_ARGS" in command.upper()
+    return [command.strip(" \r\n").split(" ")] == argvs
 
 
 def command_argvs(result: shell_scan.ScanResult):
@@ -2606,7 +2607,9 @@ def cmd_guard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 10
-    if "unrecognized" in kinds or words_may_differ(command, classes):
+    if "unrecognized" in kinds or (
+        classes & EXACT_WORD_RULES and not runs_exactly(command, argvs)
+    ):
         print(
             "BLOCKED: unrecognized external CLI command. Use an explicit read-only command or "
             "prepare an allowlisted payload-bound mutation action.",
