@@ -101,6 +101,12 @@ replace_first .claude/docs/kb-gap-detect.md \
   'Auto-write modes skip confirmation.'
 expect_rule_fails "auto-write rule drops its drift-check sentence" D11
 
+fresh d11-gaps
+replace_first .claude/commands/nase/kb-review.md \
+  'It runs only when the user explicitly asks for it, never from model routing or another command.' \
+  'It runs when asked.'
+expect_rule_fails "gap mode drops its manual-only rule" D11
+
 fresh d7
 replace_first .claude/commands/nase/kb-teamshare.md 'Skip symlinks entirely' 'Follow symlinks'
 expect_rule_fails "import mode stops skipping symlinks" D7

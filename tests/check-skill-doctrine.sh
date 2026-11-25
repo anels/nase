@@ -407,6 +407,13 @@ for filename, marker in targets.items():
     elif "workspace-write-guard.py apply" not in text and path.name != "extract-skills.md":
         hits.append(f"  {path}: missing helper apply reference")
 
+# kb-review is model-invocable, so this sentence is the only thing keeping `--gaps --auto`
+# from running unasked. Frontmatter used to enforce it when gap detection was its own command.
+gap_rule = "It runs only when the user explicitly asks for it, never from model routing or another command."
+review = Path(".claude/commands/nase/kb-review.md")
+if gap_rule not in review.read_text(encoding="utf-8"):
+    hits.append(f"  {review}: gap mode lost its manual-only rule")
+
 print("\n".join(hits))
 PY
 )
