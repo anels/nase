@@ -154,6 +154,18 @@ json.dump(data, open(target, "w", encoding="utf-8"))
 PY
 assert_cmd "manual-only skill needs only a not_invoke routing case" "$PYTHON_BIN" "$SCRIPT" validate "$manual_only_target"
 assert_invalid_mutation "manual-only skill rejects an invoke routing case" "$MANUAL_ONLY_CASE"'; data["routing_cases"].append({"id": "routing-tech-debt-audit-positive", "skill": "nase:tech-debt-audit", "prompt": "Audit the repo", "expect": "invoke", "risk": "low"})' manual-only-invoke
+assert_cmd "manual-only invoke rejection comes from the case-level check" bash -c '
+  ! out=$("$1" "$2" validate "$3" 2>&1) && grep -Fq "an invoke case cannot hold" <<<"$out"
+' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/schema/manual-only-invoke.json"
+malformed_repo="$TMPDIR_TEST/malformed-frontmatter-repo"
+mkdir -p "$malformed_repo/.claude/scripts" "$malformed_repo/.claude/commands/nase"
+cp "$SCRIPT" .claude/scripts/command_catalog.py .claude/scripts/nase_git.py "$malformed_repo/.claude/scripts/"
+printf -- '---\nname: nase:tech-debt-audit\nname: dup\ndisable-model-invocation: true\n---\nbody\n' \
+  > "$malformed_repo/.claude/commands/nase/tech-debt-audit.md"
+assert_cmd "malformed command frontmatter exits 2 with an error line and no traceback" bash -c '
+  out=$("$1" "$2" validate "$3" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && ! grep -Fq Traceback <<<"$out" && grep -Fq "duplicate frontmatter key" <<<"$out"
+' _ "$PYTHON_BIN" "$malformed_repo/.claude/scripts/pr-review-eval.py" "$EVAL_SET"
 assert_invalid_mutation "missing runtime fixtures are rejected" 'data["runtime_cases"][0]["fixture_dir"] = "absent"' missing-fixture
 assert_invalid_mutation "canary prompt leakage is rejected" 'data["runtime_cases"][0]["prompt"] += " " + "SCHEMA_" + "CANARY_VALUE_5519"' canary-leak
 assert_invalid_mutation "runtime score skill mismatch is rejected" 'data["runtime_cases"][0]["skill"] = "nase:fsd"' score-skill

@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any
 
@@ -113,14 +114,18 @@ def is_manual_only(skill: str) -> bool:
     path = command_path(repo_root, skill)
     if not path.is_file():
         return False
-    return command_catalog.parse_frontmatter(path).get("disable-model-invocation") == "true"
+    try:
+        fields = command_catalog.parse_frontmatter(path)
+    except ValueError as exc:
+        raise EvalError(str(exc)) from exc
+    return fields.get("disable-model-invocation") == "true"
 
 
 def validate_routing_case(
     case: dict[str, Any],
     seen_ids: set[str],
     represented_skills: set[str],
-    manual_only: set[str] = frozenset(),
+    manual_only: AbstractSet[str] = frozenset(),
 ) -> None:
     if not isinstance(case, dict):
         raise EvalError("each routing case must be an object")
