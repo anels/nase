@@ -109,7 +109,7 @@ A non-zero exit from either check stops the run before any push. The checks comp
 
 ### `/nase:skill-audit`
 
-`.claude/scripts/skill-audit-scan.py` deterministically scans skill files for command injection, prompt injection, data exfiltration, credential exposure, unsafe file operations, and supply-chain leads, then seeds privilege-boundary review for dangerous surfaces. `/nase:skill-audit` verifies context-sensitive leads and evaluates privilege hygiene before returning PASS / WARN / FAIL per file. The audit also runs during `/nase:kb-merge` when teammate skills are imported.
+`.claude/scripts/skill-audit-scan.py` deterministically scans skill files for command injection, prompt injection, data exfiltration, credential exposure, unsafe file operations, and supply-chain leads, then seeds privilege-boundary review for dangerous surfaces. `/nase:skill-audit` verifies context-sensitive leads and evaluates privilege hygiene before returning PASS / WARN / FAIL per file. The audit also runs during `/nase:kb-teamshare import` when teammate skills are imported.
 
 ### `/nase:design` telemetry blast-radius check
 

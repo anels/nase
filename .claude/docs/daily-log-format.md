@@ -33,7 +33,7 @@ Other sections may exist, but they are not counted as skill/session activity.
 
 ### Skill Tags (canonical)
 
-Renames only - i.e. tags where the form differs from the command name. Every other `/nase:*` skill uses the command name with the `/nase:` prefix stripped (e.g. `wrap-up`, `today`, `tech-digest`, `reflect`, `kb-update`, `kb-gap-detect`).
+Renames only - i.e. tags where the form differs from the command name. Every other `/nase:*` skill uses the command name with the `/nase:` prefix stripped (e.g. `wrap-up`, `today`, `tech-digest`, `reflect`, `kb-update`, `kb-review`).
 
 | Skill | Tag | Notes |
 |-------|-----|-------|
@@ -41,6 +41,7 @@ Renames only - i.e. tags where the form differs from the command name. Every oth
 | `/nase:estimate-eta` | `estimate` | Renamed for log brevity |
 | `/nase:design --auto` | `auto-design` | Sub-mode of design |
 | `/nase:design --grill` | `grill` | Sub-mode of design |
+| `/nase:kb-review --gaps` | `kb-gap-detect` | Sub-mode of kb-review; keeps the retired command's tag so earlier log lines still match |
 
 ## Rules
 

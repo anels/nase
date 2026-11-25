@@ -22,7 +22,7 @@ Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Fixed severit
 
 ## Scan Categories
 
-`.claude/scripts/skill-audit-scan.py` owns the deterministic patterns, category names, source lines, severities, and initial verdicts for Categories 1-6 and 8. A Category 1, 2, 4, or 6 lead is `FAIL`; Category 3 and 5 leads are `WARN`. Category 8, Frontmatter Privilege, is `FAIL`. It flags an `allowed-tools`, `context`, or `agent` key in a skill's frontmatter, because the generated wrapper is model-invocable and those keys pre-approve tools or change where the skill runs, which the body review never sees. The key list lives in `.claude/scripts/nase_skill_meta.py`. Verify a Category 8 lead like any other, and note that `/nase:kb-merge` stamps `imported-from:` so the sync drops these keys from imported wrappers. The scanner also emits a Category 7 review lead when Categories 1, 2, 4, or 5 expose a dangerous surface. Category 7 is always WARN-only.
+`.claude/scripts/skill-audit-scan.py` owns the deterministic patterns, category names, source lines, severities, and initial verdicts for Categories 1-6 and 8. A Category 1, 2, 4, or 6 lead is `FAIL`; Category 3 and 5 leads are `WARN`. Category 8, Frontmatter Privilege, is `FAIL`. It flags an `allowed-tools`, `context`, or `agent` key in a skill's frontmatter, because the generated wrapper is model-invocable and those keys pre-approve tools or change where the skill runs, which the body review never sees. The key list lives in `.claude/scripts/nase_skill_meta.py`. Verify a Category 8 lead like any other, and note that `/nase:kb-teamshare import` stamps `imported-from:` so the sync drops these keys from imported wrappers. The scanner also emits a Category 7 review lead when Categories 1, 2, 4, or 5 expose a dangerous surface. Category 7 is always WARN-only.
 
 Do not mechanically repeat the Category 1-6 regex scan. The scanner is a lead generator, not a completeness proof. The model has three review jobs:
 
@@ -112,5 +112,5 @@ Read `.claude/docs/skill-permission-profiles.md` when a Category 7 finding needs
 
 - This scan is pattern-based, not a full static analysis. It catches obvious threats but can miss obfuscated attacks.
 - False positives are possible - a skill teaching about security might mention `rm -rf` as an example. Use judgment: is the pattern in a code block meant to be executed, or in explanatory text?
-- When called from `/nase:kb-merge`, FAIL files are blocked from import. WARN files are flagged but importable after user confirmation.
+- When called from `/nase:kb-teamshare import`, FAIL files are blocked from import. WARN files are flagged but importable after user confirmation.
 - Run periodically as hygiene: `/nase:skill-audit all`

@@ -1,7 +1,7 @@
 # KB Teamshare - File Processing Pipeline
 
-Callers cite these sections by name, not by number, because `/nase:kb-teamshare` and
-`/nase:kb-merge` number their own workflows differently.
+Callers cite these sections by name, not by number, because the export and import modes of
+`/nase:kb-teamshare` number their own workflows differently.
 
 ## Contents
 
@@ -11,7 +11,7 @@ Callers cite these sections by name, not by number, because `/nase:kb-teamshare`
 - Privacy Review: {filename}
 - Translate to Output Language
 
-Apply these four transformations in order to every selected file. `/nase:kb-merge` applies
+Apply these four transformations in order to every selected file. `/nase:kb-teamshare import` applies
 the inverse of the first two on import: it rewrites incoming links back to local KB paths
 and records provenance rather than stripping it.
 

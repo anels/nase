@@ -1,16 +1,14 @@
----
-name: nase:kb-gap-detect
-description: "Find missing KB topics from logs and lessons. Use for knowledge gap or what should I document; kb-review finds stale entries."
-argument-hint: "[--days N] [--since D] [--until D] [--repo NAME] [--auto]"
-category: Knowledge base
-model: sonnet
-effort: medium
-disable-model-invocation: true
----
+# KB Gap Detection
 
-Detect knowledge-base gaps by mining daily logs + lessons for repeated questions and learnings that aren't yet captured in the KB.
+Procedure for `/nase:kb-review --gaps`. It detects knowledge-base gaps by mining daily logs + lessons for repeated questions and learnings that aren't yet captured in the KB. It is manual-only: run it only when the user explicitly asks for gap detection. `kb-review` being model-invocable does not extend to this mode.
 
-**Input:** $ARGUMENTS - optional flags:
+## Contents
+
+- Output Discipline
+- Steps
+- Notes
+
+**Input:** the flags that accompany `--gaps` in `$ARGUMENTS`:
 - `--days N` (default `14`) - scan logs from the last N days
 - `--since YYYY-MM-DD` / `--until YYYY-MM-DD` - explicit date range (overrides `--days`)
 - `--min-recurrence N` (default `2`) - minimum hit count per topic to flag as gap
@@ -30,9 +28,9 @@ With `--verbose`: also dump the full report inline below the summary.
 
 ## Steps
 
-### Preflight - Language (MUST run before Steps 1-2, non-negotiable)
+### Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. The report file `workspace/tmp/kb-gaps-{date}.md` follows `conversation:`; quoted KB content keeps its source language.
+The report file `workspace/tmp/kb-gaps-{date}.md` follows `conversation:`; quoted KB content keeps its source language.
 
 ### Steps 1-2: Resolve the range, then run the pre-filter scan
 
@@ -171,8 +169,8 @@ If `--verbose`, also dump the full report inline below the summary.
 
 ## Notes
 
-- **Gap ≠ stale.** This skill finds *missing* topics. For stale, duplicate, or orphaned entries use `/nase:kb-review`.
+- **Gap ≠ stale.** This mode finds *missing* topics. For stale, duplicate, or orphaned entries run `/nase:kb-review` without `--gaps`.
 - **Recurrence threshold matters.** Default `--min-recurrence 2` filters one-off events. Drop to `1` for first-pass discovery; raise to `3+` for high-precision flagging.
 - **No automatic writes** unless `--auto` is passed. Default flow is propose-then-confirm.
 - **False-positive watch:** `lookup`-only clusters and `first_time`-only clusters are noisy by nature - sanity-check before applying. The current marker set deliberately excludes the broad Chinese "原来" because of its "originally" sense.
-- **Integration:** `/nase:wrap-up` may invoke `/nase:kb-gap-detect --days 7` weekly as a hygiene complement to `/nase:kb-review`.
+- **Integration:** `/nase:wrap-up` may suggest `/nase:kb-review --gaps --days 7` weekly as a hygiene complement; the user runs it.

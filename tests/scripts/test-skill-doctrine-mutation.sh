@@ -96,10 +96,18 @@ append_line .claude/docs/plain-writing-guard.md 'Escalate through Codex MCP when
 expect_rule_fails "provider residue in a shared doc" D5
 
 fresh d11
-replace_first .claude/commands/nase/kb-gap-detect.md \
+replace_first .claude/docs/kb-gap-detect.md \
   'Auto-write modes only skip human confirmation; they never skip final drift checks.' \
   'Auto-write modes skip confirmation.'
 expect_rule_fails "auto-write rule drops its drift-check sentence" D11
+
+fresh d7
+replace_first .claude/commands/nase/kb-teamshare.md 'Skip symlinks entirely' 'Follow symlinks'
+expect_rule_fails "import mode stops skipping symlinks" D7
+
+fresh d8
+replace_first .claude/commands/nase/kb-teamshare.md 'Never copy imported frontmatter blocks wholesale' 'Copy imported frontmatter'
+expect_rule_fails "import mode stops sanitizing wrapper frontmatter" D8
 
 fresh d13
 append_line .claude/commands/nase/fsd.md 'Write the plan to `workspace/tmp/fsd-{branch}.md`.'

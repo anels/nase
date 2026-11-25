@@ -1,13 +1,13 @@
 ---
 name: nase:stats
-description: "Display workspace activity counts and charts, or KB usage. Use for show stats, how active am I, 7/30/all-time activity, or KB usage."
-argument-hint: "[7|30|week|month|all | kb-usage [--window N|all] [--top N] [--verbose]]"
+description: "Display workspace activity counts and charts, KB usage, or skill usage. Use for show stats, how active am I, 7/30/all-time activity, KB usage, skill stats, skill token cost, or deprecate skills."
+argument-hint: "[7|30|week|all | kb-usage [--window N|all] [--top N] [--verbose] | skill-usage]"
 category: Reporting
 model: haiku
 effort: low
 ---
 
-**Input:** $ARGUMENTS - optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`. A first word of `kb-usage` selects the KB usage report instead.
+**Input:** $ARGUMENTS - optional date spec accepted by `.claude/scripts/date-resolve.py`: `7` (default), `30`, `10d`, `week`, `month`, `all`, or `YYYY-MM-DD to YYYY-MM-DD`. A first word of `kb-usage` or `skill-usage` selects that report instead; `skill-usage` takes `--window N`, `--top N`, and `--verbose`.
 
 ## Steps
 
@@ -15,7 +15,7 @@ effort: low
 
 Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
 
-If the first word of `$ARGUMENTS` is `kb-usage`, run `### KB usage mode` below and skip Steps 1-6.
+If the first word of `$ARGUMENTS` is `kb-usage`, run `### KB usage mode` below and skip Steps 1-6. If it is `skill-usage`, run `### Skill usage mode` below and skip Steps 1-6.
 
 ### 1. Determine time range
 
@@ -166,7 +166,11 @@ For a narrative summary instead of metrics, suggest `/nase:recap`.
 
 Follow `.claude/docs/kb-usage-report.md`. It owns the flags, the argument handling, the helper call, and which counts to relay (the consumer-unread count, not the plain unread and unobserved lines).
 
+### Skill usage mode
+
+Follow `.claude/docs/skill-usage-report.md`. It owns the flags, the helper call, the empty-ledger diagnosis, and the report path. Unlike the default view, this mode writes `workspace/stats/skill-usage-{YYYY-MM-DD}.md` and follows `.claude/docs/skill-contract.md`.
+
 ## Notes
 
-- **Deviates from `.claude/docs/skill-contract.md` rule 1 on purpose**: the whole output is a screenful of counts plus one chart, so a file would be a pointer to something shorter than the pointer's own summary. The chat block in Step 4 is the artifact. `/nase:recap` is the one that writes a file.
-- The `Skills` tiers here (Heavy/Steady/Light/Low/Rare) are activity buckets for one range. `/nase:skill-usage` tiers the same ledger as Hot/Active/Cold/Inactive/Unused, which are lifecycle states over fixed windows. Two questions, two vocabularies - do not read one as the other.
+- **The default activity view deviates from `.claude/docs/skill-contract.md` rule 1 on purpose**: the whole output is a screenful of counts plus one chart, so a file would be a pointer to something shorter than the pointer's own summary. The chat block in Step 4 is the artifact. `/nase:recap` is the one that writes a file.
+- The `Skills` tiers here (Heavy/Steady/Light/Low/Rare) are activity buckets for one range. `skill-usage` mode tiers the same ledger as Hot/Active/Cold/Inactive/Unused, which are lifecycle states over fixed windows. Two questions, two vocabularies - each report keeps its own names, so do not read one as the other.
