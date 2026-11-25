@@ -10,6 +10,10 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 SCRIPT="$ROOT/.claude/scripts/effort-pr-sweep.py"
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 
 failures=0
 tests=0
@@ -505,7 +509,7 @@ case "$*" in
   *) exit 1 ;;
 esac
 EOF
-chmod +x "$TMPDIR_TEST/bin/gh"
+fake_cli_exact "$TMPDIR_TEST/bin/gh"
 
 cat > "$TMPDIR_TEST/live-efforts/awaiting.md" <<'EOF'
 ---
@@ -566,9 +570,11 @@ assert_jq "--json-out creates a missing parent directory" \
   "$TMPDIR_TEST/new/nested/sweep.json" 'has("efforts") and has("live")'
 
 : > "$TMPDIR_TEST/not-a-dir"
+# Native form up front: MSYS cannot convert a path that runs through a regular file.
+blocked="$(plat_native_path "$TMPDIR_TEST")/not-a-dir/sweep.json"
 rc=0
 PATH="$TMPDIR_TEST/bin:$PATH" python3 "$SCRIPT" --efforts-dir "$TMPDIR_TEST/live-efforts" \
-  --json-out "$TMPDIR_TEST/not-a-dir/sweep.json" > "$TMPDIR_TEST/unwritable.out" 2> "$TMPDIR_TEST/unwritable.err" || rc=$?
+  --json-out "$blocked" > "$TMPDIR_TEST/unwritable.out" 2> "$TMPDIR_TEST/unwritable.err" || rc=$?
 tests=$((tests + 1))
 if [[ "$rc" -ne 0 ]] && grep -q 'cannot write --json-out' "$TMPDIR_TEST/unwritable.err" \
   && jq -e 'has("live")' "$TMPDIR_TEST/unwritable.out" >/dev/null; then

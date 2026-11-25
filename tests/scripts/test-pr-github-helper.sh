@@ -11,6 +11,8 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
 
 parsed="$TMPDIR_TEST/parsed.json"
 "$PYTHON_BIN" "$SCRIPT" parse "https://github.com/acme/widgets/pull/42/files" > "$parsed"
@@ -139,7 +141,7 @@ cat > "$TMPDIR_TEST/bin/gh" <<'SH'
 printf '%s\n' "$*" > "$GH_ARGS_FILE"
 printf '{"number":42,"additions":1,"deletions":2}\n'
 SH
-chmod +x "$TMPDIR_TEST/bin/gh"
+fake_cli_exact "$TMPDIR_TEST/bin/gh"
 metadata_out="$TMPDIR_TEST/metadata.json"
 GH_ARGS_FILE="$TMPDIR_TEST/gh-args.txt" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" metadata "acme/widgets#42" --variant light > "$metadata_out"
 assert_cmd "metadata command shells out to gh safely" "$PYTHON_BIN" - "$metadata_out" "$TMPDIR_TEST/gh-args.txt" <<'PY'
@@ -173,7 +175,7 @@ JSON
     ;;
 esac
 SH
-chmod +x "$TMPDIR_TEST/bin/gh"
+fake_cli_exact "$TMPDIR_TEST/bin/gh"
 threads_out="$TMPDIR_TEST/threads.json"
 PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" review-threads "acme/widgets#42" --unresolved-only > "$threads_out"
 assert_cmd "review-threads paginates and filters unresolved threads" "$PYTHON_BIN" - "$threads_out" <<'PY'
@@ -316,7 +318,7 @@ JSON
     ;;
 esac
 SH
-chmod +x "$TMPDIR_TEST/bin/gh"
+fake_cli_exact "$TMPDIR_TEST/bin/gh"
 
 review_context="$TMPDIR_TEST/review-context.json"
 PR_HEAD_SHA="$head_sha" PATH="$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" "$SCRIPT" review-context "acme/widgets#42" --max-body-chars 12 --max-kb-paths 0 > "$review_context"
@@ -1141,7 +1143,7 @@ cat > "$TMPDIR_TEST/bin/gh" <<'SH'
 #!/usr/bin/env bash
 sleep 30
 SH
-chmod +x "$TMPDIR_TEST/bin/gh"
+fake_cli_exact "$TMPDIR_TEST/bin/gh"
 
 assert_cmd "a hung gh read is killed and reported, not waited on" \
   env "PATH=$TMPDIR_TEST/bin:$PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
@@ -1173,7 +1175,7 @@ cat > "$TMPDIR_TEST/failbin/gh" <<'SH'
 echo "gh: Not Found (HTTP 404) token ghp_""abcdefghijklmnopqrstuvwxyz0123" >&2
 exit 1
 SH
-chmod +x "$TMPDIR_TEST/failbin/gh"
+fake_cli_exact "$TMPDIR_TEST/failbin/gh"
 
 assert_cmd "a failing gh read prints redacted stderr and keeps gh's exit code" \
   env "PATH=$TMPDIR_TEST/failbin:$PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'

@@ -105,7 +105,10 @@ def size_kb(path: Path) -> int:
     for item in path.rglob("*"):
         try:
             if not item.is_symlink() and item.is_file():
-                total += item.stat().st_blocks * 512
+                info = item.stat()
+                # Windows reports no block count, so the file length stands in.
+                blocks = getattr(info, "st_blocks", None)
+                total += info.st_size if blocks is None else blocks * 512
         except OSError:
             continue
     return total // 1024

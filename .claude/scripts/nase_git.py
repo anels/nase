@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import os
 import pathlib
+import shutil
 import subprocess
 from collections.abc import Generator
 from typing import IO, Any
@@ -39,6 +40,31 @@ class GitTimeout(subprocess.SubprocessError):
             f"{' '.join(self.argv)} exceeded {timeout:g}s and was killed; "
             "its effect on the repository is unknown"
         )
+
+
+# What cmd.exe reads as syntax when it runs a batch file, whatever Python quoted.
+_CMD_SYNTAX = frozenset('&|<>^%!"\r\n')
+
+
+def launch_argv(argv: list[str]) -> list[str]:
+    """`argv` with the program resolved on PATH, so Windows can start a `.cmd` wrapper.
+
+    Windows appends only `.exe` to a bare name; elsewhere `argv` is returned unchanged.
+    Two matches are refused, which leaves the bare name and its earlier behavior: one in
+    the current directory, which `shutil.which` also searches on Windows and which may be
+    a checkout carrying its own `gh.bat`, and a batch file given an argument that cmd.exe
+    would run as a second command.
+    """
+    if os.name != "nt":
+        return argv
+    found = shutil.which(argv[0])
+    if not found or not os.path.isabs(found):
+        return argv
+    if found.lower().endswith((".cmd", ".bat")) and any(
+        _CMD_SYNTAX.intersection(arg) for arg in argv[1:]
+    ):
+        return argv
+    return [found, *argv[1:]]
 
 
 def _argv(args: tuple[str, ...], repo: pathlib.Path | str | None) -> list[str]:
@@ -74,7 +100,7 @@ def run(
 
     try:
         return subprocess.run(
-            argv,
+            launch_argv(argv),
             cwd=cwd,
             check=check,
             text=text,
@@ -106,7 +132,7 @@ def streaming(
     neither side ever moves. A file never blocks the writer.
     """
     argv = _argv(args, repo)
-    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=stderr)
+    process = subprocess.Popen(launch_argv(argv), stdout=subprocess.PIPE, stderr=stderr)
     try:
         yield process
     finally:

@@ -82,8 +82,12 @@ else:
     print("unknown TOPSECRET_FIXTURE_TOKEN", file=sys.stderr)
 raise SystemExit(1)
 PY
-chmod +x "$TMPDIR_TEST/bin/gh" "$TMPDIR_TEST/bin/acli"
 cp "$TMPDIR_TEST/bin/gh" "$TMPDIR_TEST/gh-only/gh"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
+for fake in bin/gh bin/acli gh-only/gh; do
+  fake_cli_exact "$TMPDIR_TEST/$fake"
+done
 
 export PATH="$TMPDIR_TEST/bin:$PATH"
 failures=0
@@ -152,18 +156,23 @@ assert json.load(open(sys.argv[1], encoding="utf-8"))["results"] == []
 PY
 ' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one" "$TMPDIR_TEST/ignored.json"
 
-absolute_path="$TMPDIR_TEST/one/src/file.py"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
+# Python reads this path out of the artifact, so it must already be one it understands.
+absolute_path="$(plat_native_path "$TMPDIR_TEST/one/src/file.py")"
 write_artifact "$TMPDIR_TEST/one/artifact.md" "\`$absolute_path:1\`"
 assert_cmd "absolute path resolves without leaking root" bash -c '
   "$1" "$2" "$3" --root "one=$4" --format json > "$5"
   ! grep -Fq "$4" "$5"
-  "$1" - "$5" <<"PY"
+  "$1" - "$5" "$6" <<"PY"
 import json
 import sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-assert data["results"][0]["ref"] == "one:src/file.py:1"
+raw = open(sys.argv[1], encoding="utf-8").read()
+# The temporary directory name survives every spelling of the root, native or POSIX.
+assert sys.argv[2] not in raw, raw
+assert json.loads(raw)["results"][0]["ref"] == "one:src/file.py:1"
 PY
-' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one" "$TMPDIR_TEST/absolute.json"
+' _ "$PYTHON_BIN" "$SCRIPT" "$TMPDIR_TEST/one/artifact.md" "$TMPDIR_TEST/one" "$TMPDIR_TEST/absolute.json" "${TMPDIR_TEST##*/}"
 
 assert_status "GitHub PR resolves" 0 'https://github.com/example/service/pull/1' OK resolved
 assert_status "inaccessible GitHub repository is unknown" 2 'https://github.com/hidden/private/pull/404' UNKNOWN repository-unavailable

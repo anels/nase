@@ -8,6 +8,8 @@ PYTHON_BIN=$(command -v python3)
 SCRIPT=".claude/scripts/effort-rollup-evidence.py"
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 FIXTURE="$TMPDIR_TEST/nase"
 LOCAL_REPO="$TMPDIR_TEST/service"
 BIN="$TMPDIR_TEST/bin"
@@ -33,7 +35,9 @@ work_gh_account: alice
 personal_gh_account: personal
 CFG
 
-printf 'service=%s\nignored=%s\n' "$LOCAL_REPO" "$TMPDIR_TEST/ignored" > "$FIXTURE/.local-paths"
+# The script reads these paths out of the file, so Python must understand them as written.
+printf 'service=%s\nignored=%s\n' "$(plat_native_path "$LOCAL_REPO")" \
+  "$(plat_native_path "$TMPDIR_TEST/ignored")" > "$FIXTURE/.local-paths"
 
 write_effort() {
   local name="$1" body="$2"
@@ -148,11 +152,12 @@ if args[:2] == ["pr", "view"]:
 print("unexpected command", file=sys.stderr)
 raise SystemExit(9)
 PY
-chmod +x "$BIN/gh"
-export PATH="$BIN:$PATH"
-
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
+fake_cli_exact "$BIN/gh"
+export PATH="$BIN:$PATH"
 
 collect_bundle() {
   "$PYTHON_BIN" "$SCRIPT" collect --root "$FIXTURE" --month "$MONTH" --bundle "$1" --format json

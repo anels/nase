@@ -692,8 +692,11 @@ def output_controls(
     required: dict[str, bool] = {}
     for required_path in case["required_reads"]:
         expected = f"fixture/{required_path}"
+        # Windows Read paths arrive with backslashes.
         matching = [
-            item for item in reads if str(item.get("path", "")).endswith(expected)
+            item
+            for item in reads
+            if Path(str(item.get("path", ""))).as_posix().endswith(expected)
         ]
         required[required_path] = any(
             item.get("tool_use_id") in results

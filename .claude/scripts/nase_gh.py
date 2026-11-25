@@ -21,6 +21,8 @@ from __future__ import annotations
 import re
 import subprocess
 
+from nase_git import launch_argv
+
 GH_TIMEOUT_SECONDS = 30
 TIMEOUT_RETURNCODE = 124
 MISSING_BINARY_RETURNCODE = 127
@@ -113,7 +115,7 @@ def run(
     """
     try:
         return subprocess.run(
-            args,
+            launch_argv(args),
             text=True,
             encoding="utf-8",
             errors="replace",

@@ -13,6 +13,8 @@ mkdir -p "$TMPDIR_TEST/bin"
 
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+# shellcheck source=tests/lib/fake-cli.sh
+source "$ROOT/tests/lib/fake-cli.sh"
 
 json_file="$TMPDIR_TEST/all.json"
 PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --all --format json > "$json_file"
@@ -46,7 +48,7 @@ cat > "$TMPDIR_TEST/bin/rg" <<'SH'
 #!/usr/bin/env sh
 exit 0
 SH
-chmod +x "$TMPDIR_TEST/bin/rg"
+fake_cli "$TMPDIR_TEST/bin/rg"
 
 baseline_json="$TMPDIR_TEST/baseline.json"
 PATH="$TMPDIR_TEST/bin" "$PYTHON_BIN" "$SCRIPT" --group baseline --format json > "$baseline_json"
