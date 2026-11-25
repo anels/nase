@@ -129,9 +129,9 @@ Accept only when the change measurably improves correctness/clarity. If current 
 
 Before Phase 4, run an independent read-only verification pass for any thread with `P0`, `P1`, `ask-user`, or uncertainty in the dossier.
 
-Use `Mode: comment-dossier` from `.claude/docs/review-mode-comment-threads.md` in one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`). Pass the review-thread dossier, supporting evidence, and missing-evidence notes; do not pass your intended classification - withholding it is what makes the second read independent. Tag the result `verify-override` if you proceed against it.
+Use `Mode: comment-dossier` from `.claude/docs/review-mode-comment-threads.md` in one fresh-context subagent, the persisted agent `nase-verifier` (`.claude/agents/nase-verifier.md`; `tools: Read, Grep, Glob`, so read-only is enforced). It has no Bash, so inline the review-thread dossier, supporting evidence, and missing-evidence notes in the prompt; do not pass your intended classification - withholding it is what makes the second read independent. Tag the result `verify-override` if you proceed against it.
 
-If the pass returns nothing usable, keep the uncertainty in the dossier and ask the user before executing. A verifier that produced no verdict is not a verdict.
+If the pass returns nothing usable (an empty turn or no `VERDICT:` line), stop the run with an error. A verifier that produced no verdict is not a verdict. If `nase-verifier` is not registered, stop with that error and do not substitute another agent.
 
 Verifier output is review input, not authority. Reconcile it against the dossier before changing the dossier/action map.
 
