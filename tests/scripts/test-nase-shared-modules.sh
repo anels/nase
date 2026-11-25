@@ -15,6 +15,7 @@ set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT" || exit 1
+source "$ROOT/tests/lib/platform.sh"
 
 pass=0
 fail=0
@@ -44,6 +45,20 @@ PRELUDE='
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path("'"$ROOT"'") / ".claude" / "scripts"))
 import nase_git, nase_fs, nase_gh, nase_time
+
+def set_tz(olson, posix):
+    # time.tzset does not exist on native Windows. There the C runtime reads a POSIX-style
+    # TZ ("XXX-13" is UTC+13) and must be told to re-read it. The CRT accepts no more than
+    # +13 east, so the Kiritimati (+14) case uses +13 and the Niue (-11) case uses -12, which
+    # keeps the 25 hour gap.
+    import os, time
+    if hasattr(time, "tzset"):
+        os.environ["TZ"] = olson
+        time.tzset()
+    else:
+        import ctypes
+        os.environ["TZ"] = posix
+        ctypes.CDLL("ucrtbase")._tzset()
 '
 
 # --- nase_git.run ---------------------------------------------------------
@@ -158,9 +173,14 @@ import os, tempfile, pathlib
 os.environ.pop("NASE_ROOT", None)
 with tempfile.TemporaryDirectory() as tmp:
     # A temp dir is outside any repo only if no ancestor is one; /tmp is not.
+    previous = os.getcwd()
     os.chdir(tmp)
-    resolved = nase_git.resolve_root()
-    assert resolved.is_dir(), resolved
+    try:
+        resolved = nase_git.resolve_root()
+        assert resolved.is_dir(), resolved
+    finally:
+        # Windows cannot remove the working directory, so leave it before the cleanup.
+        os.chdir(previous)
 '
 
 # --- nase_git.streaming ---------------------------------------------------
@@ -295,6 +315,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert list(directory.iterdir()) == [], list(directory.iterdir())
 '
 
+if plat_modes_stored; then
 run_case "atomic_write preserves the mode of the file it replaces" "$PRELUDE"'
 import os, stat, tempfile, pathlib
 # mkstemp creates at 0600 and os.replace carries that onto the target, so a 0644
@@ -309,7 +330,13 @@ with tempfile.TemporaryDirectory() as tmp:
         assert target.read_bytes() == b"new", target.read_bytes()
         assert actual == mode, (name, oct(actual), oct(mode))
 '
+else
+  # NTFS under Git Bash keeps no POSIX mode bits, so there is no mode to preserve or to mask.
+  plat_count_skip
+  printf 'SKIP  atomic_write preserves the mode of the file it replaces\n'
+fi
 
+if plat_modes_stored; then
 run_case "atomic_write on a new file follows the umask, not mkstemp 0600" "$PRELUDE"'
 import os, stat, tempfile, pathlib
 # With no existing file there is no mode to carry over, but a brand new durable
@@ -324,6 +351,11 @@ try:
 finally:
     os.umask(previous)
 '
+else
+  # NTFS under Git Bash keeps no POSIX mode bits, so there is no mode to preserve or to mask.
+  plat_count_skip
+  printf 'SKIP  atomic_write on a new file follows the umask, not mkstemp 0600\n'
+fi
 
 run_case "fsync_dir flushes a real directory without error" "$PRELUDE"'
 import tempfile
@@ -523,19 +555,16 @@ import os, time
 # return the same date under both and land on 0, which is the failure this pins down.
 # The gap is 1 day for 23 hours out of 24 and 2 for the hour the 25th spills into,
 # so both are correct and only 0 is not.
-os.environ["TZ"] = "Pacific/Kiritimati"
-time.tzset()
+set_tz("Pacific/Kiritimati", "XXX-13")
 east = nase_time.local_today()
-os.environ["TZ"] = "Pacific/Niue"
-time.tzset()
+set_tz("Pacific/Niue", "WST+12")
 west = nase_time.local_today()
 assert (east - west).days in (1, 2), (east, west)
 '
 
 run_case "calendar_day reads YYYY-MM-DD as local midnight" "$PRELUDE"'
 import os, time
-os.environ["TZ"] = "Asia/Shanghai"
-time.tzset()
+set_tz("Asia/Shanghai", "CST-8")
 got = nase_time.calendar_day("2026-09-26")
 assert (got.year, got.month, got.day) == (2026, 9, 26), got
 assert (got.hour, got.minute, got.second) == (0, 0, 0), got
@@ -557,8 +586,7 @@ assert nase_time.calendar_day("2026-9-26").month == 9
 
 run_case "local_now is timezone-aware and agrees with local_today" "$PRELUDE"'
 import os, time
-os.environ["TZ"] = "America/Los_Angeles"
-time.tzset()
+set_tz("America/Los_Angeles", "PST+8")
 now = nase_time.local_now()
 today = nase_time.local_today()
 if today != now.date():
@@ -570,5 +598,6 @@ assert now.tzinfo is not None, "local_now must be aware so it can be compared"
 assert now.date() == today, (now, today)
 '
 
+plat_skip_summary
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

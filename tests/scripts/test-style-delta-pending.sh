@@ -7,6 +7,7 @@ cd "$ROOT" || exit 1
 SCRIPT="$ROOT/.claude/scripts/style-delta-pending.sh"
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+source "$ROOT/tests/lib/platform.sh"
 
 # assert_exit(<name>, <expected rc>, <cmd>...): the shared helper only asserts success.
 assert_exit() {
@@ -85,6 +86,10 @@ printf -- '- 10:00 | style-delta: [STYLE-DELTA] unreadable\n' > "$TMP/locked/202
 chmod 000 "$TMP/locked/2026-01-01.md"
 if [ "$(id -u)" -eq 0 ]; then
   printf 'SKIP  %s\n' "an unreadable log exits non-zero"
+elif ! plat_perms_enforced; then
+  # chmod 000 leaves the file readable on NTFS under Git Bash, so there is no unreadable log to test.
+  plat_count_skip
+  printf 'SKIP  %s\n' "an unreadable log exits non-zero"
 else
   assert_exit "an unreadable log exits non-zero" 2 bash "$SCRIPT" --logs-dir "$TMP/locked"
   unreadable=$(bash "$SCRIPT" --logs-dir "$TMP/locked" 2>&1 >/dev/null || true)
@@ -98,4 +103,5 @@ chmod 644 "$TMP/locked/2026-01-01.md"
 assert_contains "wrap-up Step 9 calls the script" .claude/commands/nase/wrap-up.md "style-delta-pending.sh"
 assert_contains "the shared doc calls the script" .claude/docs/style-delta-capture.md "style-delta-pending.sh"
 
+plat_skip_summary
 [ "$failures" -eq 0 ] || exit 1

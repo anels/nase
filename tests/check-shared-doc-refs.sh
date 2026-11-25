@@ -46,7 +46,7 @@ def sources(paths):
         if os.path.isdir(path):
             for dirpath, _dirs, names in os.walk(path):
                 for name in names:
-                    yield os.path.join(dirpath, name)
+                    yield os.path.join(dirpath, name).replace(os.sep, "/")
         else:
             yield path
 

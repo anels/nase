@@ -8,6 +8,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+source "$ROOT/tests/lib/platform.sh"
+if plat_perms_enforced; then PERMS=1; else PERMS=0; fi
 
 # age <days-ago> <path>...: set mtime N days in the past.
 age() {
@@ -87,9 +89,12 @@ chmod 000 "$R/workspace/kb/unreadable.md"
 python3 "$HELPER" --root "$R" --apply >/dev/null 2>&1
 rc=$?
 chmod 644 "$R/workspace/kb/unreadable.md"
-if [[ $(id -u) -ne 0 ]]; then
+if [[ $(id -u) -ne 0 && $PERMS -eq 1 ]]; then
   assert_cmd "unreadable reference source exits 2" test "$rc" -eq 2
   assert_cmd "unreadable reference source deletes nothing" test -f "$T/old2.md"
+elif [[ $PERMS -eq 0 ]]; then
+  plat_count_skip  # chmod 000 leaves the file readable on NTFS under Git Bash
+  printf 'SKIP  unreadable reference source\n'
 fi
 
 mkdir -p "$T/stuck"
@@ -99,10 +104,13 @@ chmod 555 "$T/stuck"
 python3 "$HELPER" --root "$R" --apply --manifest "$TMP/fail.tsv" --json >"$TMP/fail.json"
 rc=$?
 chmod 755 "$T/stuck"
-if [[ $(id -u) -ne 0 ]]; then
+if [[ $(id -u) -ne 0 && $PERMS -eq 1 ]]; then
   assert_cmd "partial delete failure still exits 0" test "$rc" -eq 0
   assert_cmd "failed entry reported and excluded from bytes" json_is "$TMP/fail.json" "len(d['failed'])==1 and d['failed'][0].startswith('stuck:') and d['targets']==2 and d['removed']==1 and d['bytes']==1"
   assert_cmd "failed entry still in manifest" grep -q 'workspace/tmp/stuck' "$TMP/fail.tsv"
+elif [[ $PERMS -eq 0 ]]; then
+  plat_count_skip  # chmod 555 does not make the directory undeletable on NTFS under Git Bash
+  printf 'SKIP  partial delete failure\n'
 fi
 
 printf x >"$T/old3.md"
@@ -121,5 +129,6 @@ assert_cmd "non-positive --days exits 2" test $? -eq 2
 python3 "$HELPER" --root "$R" --days nan >/dev/null 2>&1
 assert_cmd "nan --days exits 2" test $? -eq 2
 
+plat_skip_summary
 printf '\n%d failed\n' "$failures"
 [[ $failures -eq 0 ]]

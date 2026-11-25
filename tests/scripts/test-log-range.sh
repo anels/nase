@@ -26,7 +26,9 @@ bad() { printf 'FAIL  %s%s\n' "$1" "${2:+: $2}" >&2; fail=$((fail + 1)); }
 seed() { : > "$TMP/workspace/logs/$1.md"; }
 
 run() { python3 "$SCRIPT" "$1" "$2" --root "$TMP" "${@:3}"; }
-days() { run "$1" "$2" | tr ' ' '\n' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ' | sed 's/ $//'; }
+# The script prints native paths, so on Windows the separator is a backslash that xargs
+# would eat. Strip the directory with sed, which accepts either separator.
+days() { run "$1" "$2" | tr ' ' '\n' | sed 's#.*[/\\]##; s/\.md$//' | tr '\n' ' ' | sed 's/ $//'; }
 
 assert_eq() {
   local name="$1" expected="$2" actual="$3"

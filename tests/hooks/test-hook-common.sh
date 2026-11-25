@@ -12,6 +12,7 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 LIB="$ROOT/.claude/lib/hook-common.sh"
 HOOKS="$ROOT/.claude/hooks"
+source "$ROOT/tests/lib/platform.sh"
 
 failures=0
 # shellcheck source=tests/lib/assert.sh
@@ -140,6 +141,10 @@ err=$(lib_eval 'nase_append_jsonl "'"$TMPROOT"'/ro/x.jsonl" "{}"' 2>&1 >/dev/nul
 chmod 755 "$TMPROOT/ro"
 if [ "$(id -u)" = "0" ]; then
   pass "nase_append_jsonl unwritable target (skipped as root)"
+elif ! plat_perms_enforced; then
+  # NTFS under Git Bash ignores chmod 555 on a directory, so the target stays writable.
+  plat_count_skip
+  printf 'SKIP  nase_append_jsonl unwritable target (chmod not enforced on this platform)\n'
 else
   assert_eq "nase_append_jsonl returns non-zero for an unwritable target" "1" "$rc"
   assert_eq "nase_append_jsonl keeps stderr quiet for an unwritable target" "" "$err"
@@ -519,6 +524,7 @@ assert_eq "track-session-failure: client_secret value is redacted" "false" \
   "$(jq 'any(.error; contains("s3cr3tvalue"))' "$ws/workspace/stats/session-failures.jsonl" 2>/dev/null | tail -1)"
 
 # ---------------------------------------------------------------------------
+plat_skip_summary
 if [ "$failures" -eq 0 ]; then
   printf '\nhook-common tests passed.\n'
   exit 0

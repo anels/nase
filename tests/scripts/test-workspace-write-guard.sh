@@ -8,6 +8,12 @@ SCRIPT="$ROOT/.claude/scripts/workspace-write-guard.py"
 TMPROOT=$(mktemp -d)
 failures=0
 source "$ROOT/tests/lib/assert.sh"
+source "$ROOT/tests/lib/platform.sh"
+plat_export_weak_lock
+# NTFS under Git Bash does not keep POSIX mode bits, so the mode assertions below run only
+# where chmod 600 sticks. Each skip is counted and printed by plat_skip_summary.
+if plat_modes_stored; then PLAT_MODES=1; else PLAT_MODES=0; fi
+export PLAT_MODES
 
 cleanup() {
   rm -rf "$TMPROOT"
@@ -125,7 +131,12 @@ python3 "$SCRIPT" apply-move \
   --expected-staged-sha256 "$move_staged_sha256" > "$TMPROOT/apply-move.json"
 assert_cmd "apply-move removes source" test ! -e "$move_source"
 assert_cmd "apply-move writes staged destination" grep -qx 'new move' "$move_destination"
-assert_cmd "apply-move preserves source mode" test "$(file_mode "$move_destination")" = "600"
+if [ "$PLAT_MODES" = "1" ]; then
+  assert_cmd "apply-move preserves source mode" test "$(file_mode "$move_destination")" = "600"
+else
+  plat_count_skip
+  printf 'SKIP  apply-move preserves source mode\n'
+fi
 assert_cmd "apply-move refreshes mtime because the content changed" \
   test "$(file_mtime_ns "$move_destination")" != "$move_mtime_ns"
 
@@ -177,16 +188,17 @@ assert_cmd "move-existing preserves fresh source" grep -qx 'fresh content' "$fre
 assert_cmd "move-existing creates no fresh destination" test ! -e "$fresh_destination"
 
 symlink_source="$TMPROOT/workspace/efforts/done/symlink.md"
-ln -s archive/2026/archive-me.md "$symlink_source"
-python3 "$SCRIPT" move-existing \
-  --root "$TMPROOT" \
-  --target workspace/efforts/done/symlink.md \
-  --destination workspace/efforts/archive/2026/symlink.md \
-  --older-than-days 60 > "$TMPROOT/symlink.out" 2> "$TMPROOT/symlink.err"
-symlink_rc=$?
-assert_cmd "move-existing rejects lexical source symlink" test "$symlink_rc" = "3"
-assert_cmd "move-existing preserves symlink" test -L "$symlink_source"
-assert_cmd "move-existing symlink creates no destination" test ! -e "$TMPROOT/workspace/efforts/archive/2026/symlink.md"
+if make_symlink archive/2026/archive-me.md "$symlink_source"; then
+  python3 "$SCRIPT" move-existing \
+    --root "$TMPROOT" \
+    --target workspace/efforts/done/symlink.md \
+    --destination workspace/efforts/archive/2026/symlink.md \
+    --older-than-days 60 > "$TMPROOT/symlink.out" 2> "$TMPROOT/symlink.err"
+  symlink_rc=$?
+  assert_cmd "move-existing rejects lexical source symlink" test "$symlink_rc" = "3"
+  assert_cmd "move-existing preserves symlink" test -L "$symlink_source"
+  assert_cmd "move-existing symlink creates no destination" test ! -e "$TMPROOT/workspace/efforts/archive/2026/symlink.md"
+fi
 
 text_source="$TMPROOT/workspace/efforts/done/archive.txt"
 printf 'text content\n' > "$text_source"
@@ -201,6 +213,8 @@ assert_cmd "move-existing rejects non-md source" test "$text_rc" = "3"
 assert_cmd "move-existing preserves non-md source" grep -qx 'text content' "$text_source"
 
 fifo_source="$TMPROOT/workspace/efforts/done/fifo.md"
+# Native Windows Python cannot see an MSYS fifo, so there the same exit 3 comes from the
+# source inspection failing and not from the regular-file check.
 mkfifo "$fifo_source"
 python3 "$SCRIPT" move-existing \
   --root "$TMPROOT" \
@@ -277,6 +291,7 @@ module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(module)
 
+modes = os.environ.get("PLAT_MODES") == "1"
 root = Path(root_arg).resolve()
 original_link = module.os.link
 original_unlink = module.Path.unlink
@@ -358,7 +373,7 @@ for name, race, expected_code in (
         assert not destination.exists()
         recoveries = list((root / "workspace/tmp").glob("move-recovery-*"))
         assert any(path.read_text(encoding="utf-8") == "source\n" for path in recoveries)
-        assert any((path.stat().st_mode & 0o777) == 0o600 for path in recoveries)
+        assert not modes or any((path.stat().st_mode & 0o777) == 0o600 for path in recoveries)
     elif race == "rename-failure":
         assert source.read_text(encoding="utf-8") == "source\n"
         assert not destination.exists()
@@ -372,7 +387,7 @@ for name, race, expected_code in (
         assert any(path.is_dir() for path in backups)
     elif race in {"destination-at-unlink", "destination-after-link", "destination-at-rollback"}:
         assert source.read_text(encoding="utf-8") == "source\n"
-        assert (source.stat().st_mode & 0o777) == 0o600
+        assert not modes or (source.stat().st_mode & 0o777) == 0o600
         assert not destination.exists()
         rollbacks = list((root / "workspace/tmp").glob("move-rollback-*"))
         assert any(
@@ -380,11 +395,15 @@ for name, race, expected_code in (
         ), (race, rollbacks, caught_message)
     else:
         assert source.read_text(encoding="utf-8") == "source\n"
-        assert (source.stat().st_mode & 0o777) == 0o600
+        assert not modes or (source.stat().st_mode & 0o777) == 0o600
         assert not destination.exists()
 PY
 race_rc=$?
 assert_cmd "apply-move preserves data across replacement races" test "$race_rc" = "0"
+if [ "$PLAT_MODES" != "1" ]; then
+  plat_count_skip  # the 0600 checks inside the race cases above; NTFS keeps no mode bits
+  printf 'SKIP  replacement race mode checks\n'
+fi
 
 python3 - "$SCRIPT" "$TMPROOT" <<'PY'
 import argparse
@@ -662,6 +681,7 @@ assert_cmd "guard doc lists recaps" \
 assert_cmd "guard doc lists stats" \
   grep -q 'workspace/stats/' "$ROOT/.claude/docs/workspace-write-guard.md"
 
+plat_skip_summary
 if [[ "$failures" -eq 0 ]]; then
   printf '\nworkspace-write-guard tests passed.\n'
   exit 0
