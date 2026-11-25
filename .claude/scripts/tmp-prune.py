@@ -73,20 +73,20 @@ def protected(name: str) -> bool:
 
 def _grep(args: list[str], sources: list[Path], stdin: str | None = None) -> set[str] | None:
     try:
+        # Bytes, not text mode: on Windows text mode writes each newline as CRLF, and
+        # `grep -F -f -` then keeps the CR as part of the pattern.
         proc = subprocess.run(
             ["grep", "-rhoI", *args, *map(str, sources)],
-            input=stdin,
+            input=None if stdin is None else stdin.encode("utf-8", errors="replace"),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             check=False,
         )
     except OSError:
         return None
     if proc.returncode > 1 or proc.stdout is None:
         return None
-    return {line.removeprefix("workspace/tmp/") for line in proc.stdout.splitlines()}
+    lines = proc.stdout.decode("utf-8", errors="replace").splitlines()
+    return {line.removeprefix("workspace/tmp/") for line in lines}
 
 
 def referenced(root: Path, log_days: int, names: list[str]) -> set[str] | None:

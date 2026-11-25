@@ -115,5 +115,15 @@ else
   bad "a row collision labels the larger axis value" "$out"
 fi
 
+# --- a legacy console encoding cannot encode the chart glyphs --------------
+# Windows defaults a pipe to cp1252. Forcing it covers the same path on every host.
+
+if out=$(PYTHONUTF8=0 PYTHONIOENCODING=cp1252 python3 "$SCRIPT" --daily-csv "$TMP/collide.csv" \
+  --start 2026-03-02 --end 2026-03-04 2>&1) && grep -q -- '┤' <<< "$out"; then
+  ok "a cp1252 stdout still renders the chart"
+else
+  bad "a cp1252 stdout still renders the chart" "$out"
+fi
+
 printf '\n--- %s pass, %s fail ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

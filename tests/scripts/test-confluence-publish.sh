@@ -656,6 +656,18 @@ check_absent   "ledger: other space never reuses the page id" "$res" '"page_id":
 res=$(python3 "$SCRIPT" ledger-lookup --ledger "$LEDGER2" --source "$SRC" --pages 1)
 check_contains "ledger: lookup without target flags still matches" "$res" '"page_id": "111"'
 
+# --- the written artifacts are the same bytes on every platform ------------
+# plan.json records each body's size, so a newline translated on write makes it wrong.
+printf '# \346\240\207\351\242\230 \342\206\222 test\n\nfirst line\nsecond line\n' > "$WORK/unicode.md"
+out="$WORK/unicode"
+rc=$(PYTHONUTF8=0 PYTHONIOENCODING=cp1252 plan_of "$WORK/unicode.md" "$out")
+check "output: a title outside cp1252 still plans" "$rc" "0"
+check "output: recorded body size matches the file" \
+  "$(jqp "$out/plan.json" "d['pages'][0]['bytes']")" \
+  "$(wc -c < "$out/page-000.body.md" | tr -d ' ')"
+check "output: body, plan and ledger carry no CR" \
+  "$(cat "$out/page-000.body.md" "$out/plan.json" "$LEDGER2" | tr -dc '\r' | wc -c | tr -d ' ')" "0"
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   printf 'OK: confluence-publish plan/render contract holds\n'

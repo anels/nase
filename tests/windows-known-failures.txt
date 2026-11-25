@@ -7,7 +7,6 @@ tests/hooks/test-external-write-guards.sh
 tests/hooks/test-prose-lint-guard.sh
 tests/hooks/test-stop-claim-check.sh
 tests/scripts/test-citation-validator.sh
-tests/scripts/test-confluence-publish.sh
 tests/scripts/test-effort-pr-sweep.sh
 tests/scripts/test-effort-rollup-evidence.sh
 tests/scripts/test-external-write-action.sh
@@ -17,12 +16,7 @@ tests/scripts/test-nase-shared-modules.sh
 tests/scripts/test-pr-github-helper.sh
 tests/scripts/test-shared-workflow-extraction.sh
 tests/scripts/test-skill-eval-run.sh
-tests/scripts/test-stats-chart.sh
-tests/scripts/test-tmp-prune.sh
-tests/scripts/test-todo-staleness-scan.sh
 tests/scripts/test-tool-availability.sh
-tests/scripts/test-workspace-data-scan.sh
-tests/scripts/test-workspace-skill-integrity.sh
 tests/scripts/test-worktree-cleanup.sh
 tests/scripts/test-worktree-sweep.sh
 tests/scripts/test-youtube-transcript.sh

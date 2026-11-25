@@ -21,6 +21,11 @@ import csv
 import datetime
 import math
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from nase_script import utf8_stdio
 
 WEEKDAY_ABBREV = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -129,6 +134,7 @@ def render_chart(labels: list[str], counts: list[int]) -> str:
 
 
 def main() -> int:
+    utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--daily-csv", required=True)
     ap.add_argument("--start", required=True, help="YYYY-MM-DD")

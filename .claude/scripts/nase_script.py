@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load a hyphenated sibling script, and scan bytes with the shared secret scanner.
+"""Load a hyphenated sibling script, set up UTF-8 output, and scan bytes for secrets.
 
 Scripts such as `verify-bundle.py` cannot be imported by name, so consumers load them by
 path. The loader raises the caller's own exception type, because each consumer reports
@@ -33,6 +33,17 @@ def load_script(name: str, path: Path, error: type[Exception] = ImportError) -> 
             sys.modules[name] = previous
         raise
     return module
+
+
+def utf8_stdio() -> None:
+    """Write stdout and stderr as UTF-8, whatever the locale says.
+
+    Windows gives a redirected stream the ANSI code page, which cannot encode the arrows,
+    box drawing, or non-Latin titles these scripts print.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def stream_secret_kind(scanner: Any, data: bytes) -> str | None:

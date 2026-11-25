@@ -62,7 +62,14 @@ def calendar_day(raw: str) -> datetime:
     Raises `ValueError` on a malformed value, exactly as `strptime` does, so callers
     keep their existing failure handling.
     """
-    return datetime.strptime(raw, "%Y-%m-%d").astimezone()
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").astimezone()
+    except (OSError, OverflowError):
+        # Windows has no local offset before 1970 or past about the year 3000, so borrow
+        # the one the same month and day carry in a year it does cover.
+        day = datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        covered = datetime(2000, day.month, day.day).astimezone()
+        return day.replace(tzinfo=covered.tzinfo)
 
 
 def utc_now_iso(*, microseconds: bool = True) -> str:
