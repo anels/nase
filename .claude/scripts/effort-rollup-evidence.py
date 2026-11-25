@@ -27,6 +27,7 @@ from nase_gh import (
     failure_category,
 )
 from nase_gh import run as gh_run
+from nase_git import launch_argv
 from nase_json import canonical_bytes
 from nase_script import load_script, stream_secret_kind
 from nase_time import utc_now_iso
@@ -963,7 +964,7 @@ def inventory_capture(root: Path, month: str, bundle: Path) -> dict[str, Any]:
         command = ["bash", str(script), month, str(directory)]
         try:
             completed = subprocess.run(
-                command,
+                launch_argv(command),
                 cwd=root,
                 capture_output=True,
                 timeout=30,

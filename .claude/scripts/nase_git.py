@@ -47,9 +47,11 @@ _CMD_SYNTAX = frozenset('&|<>^%!"\r\n')
 
 
 def launch_argv(argv: list[str]) -> list[str]:
-    """`argv` with the program resolved on PATH, so Windows can start a `.cmd` wrapper.
+    """`argv` with the program resolved on PATH, which a bare Windows launch does not do.
 
-    Windows appends only `.exe` to a bare name; elsewhere `argv` is returned unchanged.
+    Windows appends only `.exe` to a bare name, so it misses a `.cmd` wrapper, and it
+    searches System32 before PATH, where `bash.exe` is the WSL launcher. Elsewhere `argv`
+    is returned unchanged.
     Two matches are refused, which leaves the bare name and its earlier behavior: one in
     the current directory, which `shutil.which` also searches on Windows and which may be
     a checkout carrying its own `gh.bat`, and a batch file given an argument that cmd.exe

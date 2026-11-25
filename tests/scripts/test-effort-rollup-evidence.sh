@@ -206,7 +206,7 @@ assert_cmd "exact repo author and month query is owned by helper" grep -Fq $'sea
 assert_cmd "extra local-path aliases do not expand scope" bash -c '! grep -Fq ignored "$1"' _ "$BUNDLE/run.json"
 assert_cmd "pre-render validation re-derives evidence" "$PYTHON_BIN" "$SCRIPT" validate --root "$FIXTURE" --month "$MONTH" --manifest "$BUNDLE/evidence.json" --format json
 
-EVIDENCE_SHA=$(shasum -a 256 "$BUNDLE/evidence.json" | awk '{print $1}')
+EVIDENCE_SHA=$(plat_sha256 < "$BUNDLE/evidence.json")
 cat > "$BUNDLE/report.fresh.md" <<EOF
 # Rollup
 Evidence SHA: $EVIDENCE_SHA
@@ -712,6 +712,34 @@ assert search["attempt_count"] == 3
 assert search["status"] == "failed"
 assert data["coverage"]["status"] == "partial"
 assert data["totals"]["merged_delivery_prs_in_month"] == 2
+PY
+
+assert_cmd "inventory starts bash as resolved on PATH and records the bare name" "$PYTHON_BIN" - "$SCRIPT" "$FIXTURE" "$TMPDIR_TEST/launch" <<'PY'
+import importlib.util
+import pathlib
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("effort_rollup_evidence", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+started = []
+
+
+def fake_run(argv, **kwargs):
+    started.append(argv)
+    return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+
+module.launch_argv = lambda argv: ["resolved-bash", *argv[1:]]
+module.subprocess.run = fake_run
+capture = module.inventory_capture(
+    pathlib.Path(sys.argv[2]), "2026-08", pathlib.Path(sys.argv[3])
+)
+assert started and all(argv[0] == "resolved-bash" for argv in started), started
+assert all(command[0] == "bash" for command in capture["command"]), capture["command"]
 PY
 
 assert_cmd "PR views are fetched concurrently" "$PYTHON_BIN" - "$SCRIPT" <<'PY'

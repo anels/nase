@@ -14,6 +14,8 @@
 #                            Python, but not one written into a file, nor an argument
 #                            that runs through a regular file; Python then reads it
 #                            against the current drive
+#   plat_sha256              SHA-256 hex digest of stdin. Git Bash keeps `shasum` in a
+#                            directory that only a login shell adds to PATH
 #   plat_colon_filenames     0 when a file name may contain a colon (Windows forbids it)
 #   plat_symlinks_real       0 when `ln -s` makes a real symlink (not a copy)
 #   make_symlink TARGET LINK ln -s, or count a skip and return 1 when links are copies;
@@ -63,6 +65,14 @@ plat_native_path() {
   else
     printf '%s\n' "$1"
   fi
+}
+
+plat_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+  else
+    shasum -a 256
+  fi | cut -d' ' -f1
 }
 
 plat_colon_filenames() {

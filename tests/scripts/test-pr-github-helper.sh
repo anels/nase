@@ -358,6 +358,7 @@ PY
 # header and reading by position would shift every later path by one.
 assert_cmd "kb mentions sweep once and split by header" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
 import importlib.util
+import os
 import subprocess
 import sys
 
@@ -367,6 +368,13 @@ spec.loader.exec_module(module)
 
 calls = []
 real_run = subprocess.run
+
+
+# Windows starts the bash found on PATH, so argv[0] is its full path there.
+def is_kb_search(argv):
+    name = os.path.basename(str(argv[0])).lower()
+    return name in ("bash", "bash.exe") and "kb-search.sh" in str(argv[1])
+
 
 OUTPUT = "\n".join([
     '## KB Search - "mentions:src/a.ts" - 2 result(s)',
@@ -391,7 +399,7 @@ OUTPUT = "\n".join([
 
 
 def fake(argv, **kwargs):
-    if argv[:1] == ["bash"] and "kb-search.sh" in str(argv[1]):
+    if is_kb_search(argv):
         calls.append(argv)
         return subprocess.CompletedProcess(argv, 0, OUTPUT, "")
     return real_run(argv, **kwargs)
@@ -418,7 +426,7 @@ assert "alpha body" not in by_path["src/b.ts"], by_path["src/b.ts"]
 
 # A timeout is one verdict for every path now, which is the trade for one file walk.
 def slow(argv, **kwargs):
-    if argv[:1] == ["bash"] and "kb-search.sh" in str(argv[1]):
+    if is_kb_search(argv):
         raise subprocess.TimeoutExpired(argv, 45)
     return real_run(argv, **kwargs)
 
@@ -434,6 +442,7 @@ PY
 
 assert_cmd "kb mentions separate an empty answer from a failed scan" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
 import importlib.util
+import os
 import subprocess
 import sys
 
@@ -444,9 +453,14 @@ spec.loader.exec_module(module)
 real_run = subprocess.run
 
 
+def is_kb_search(argv):
+    name = os.path.basename(str(argv[0])).lower()
+    return name in ("bash", "bash.exe") and "kb-search.sh" in str(argv[1])
+
+
 def stub(exit_code, out="", err=""):
     def fake(argv, **kwargs):
-        if argv[:1] == ["bash"] and "kb-search.sh" in str(argv[1]):
+        if is_kb_search(argv):
             return subprocess.CompletedProcess(argv, exit_code, out, err)
         return real_run(argv, **kwargs)
     return fake
@@ -473,6 +487,29 @@ try:
     assert "usage error" in broken[0]["unavailable"], broken
 finally:
     subprocess.run = real_run
+PY
+
+assert_cmd "kb mention scan starts bash as resolved on PATH" "$PYTHON_BIN" - "$SCRIPT" <<'PY'
+import importlib.util
+import subprocess
+import sys
+
+spec = importlib.util.spec_from_file_location("pr_github_helper", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+started = []
+
+
+def fake_run(argv, **kwargs):
+    started.append(argv)
+    return subprocess.CompletedProcess(argv, 2, "", "")
+
+
+module.nase_git.launch_argv = lambda argv: ["resolved-bash", *argv[1:]]
+module.subprocess.run = fake_run
+assert module.kb_mentions_for_paths(["src/a.ts"], 1) == []
+assert len(started) == 1 and started[0][0] == "resolved-bash", started
 PY
 
 dossiers_out="$TMPDIR_TEST/dossiers.json"
