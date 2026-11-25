@@ -9,8 +9,6 @@ effort: medium
 
 **Task to estimate:** $ARGUMENTS
 
-**Step 0 - Language preflight (MUST run first):** follow `.claude/docs/language-config.md` → Minimum Step 0 block.
-
 ## Input Guard
 If $ARGUMENTS is empty or blank, ask for the task with `AskUserQuestion` rather than printing a usage string. Include one example in the question text (e.g. "Add caching to the alerts API"). Stop until the answer arrives.
 

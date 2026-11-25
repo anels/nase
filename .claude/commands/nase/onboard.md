@@ -7,7 +7,7 @@ model: sonnet
 effort: medium
 ---
 
-Build or refresh compact repo knowledge without dumping the repository into context. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/kb-write-routing.md -> Shared admission contract`, and `.claude/docs/kb-template.md`.
+Build or refresh compact repo knowledge without dumping the repository into context. Follow `.claude/docs/workspace-write-guard.md`, `.claude/docs/kb-write-routing.md -> Shared admission contract`, and `.claude/docs/kb-template.md`.
 
 ## Mode
 

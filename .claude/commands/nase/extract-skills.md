@@ -19,9 +19,9 @@ Follows `.claude/docs/workspace-write-guard.md` for `workspace/skills/`, wrapper
 
 <workflow>
 
-### 0. Language preflight (MUST run first, non-negotiable)
+### 0. Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Skill files written in Step 5 keep English for `name:` / `description:` / structural headers; freeform prose follows `conversation:`.
+Skill files written in Step 5 keep English for `name:` / `description:` / structural headers; freeform prose follows `conversation:`.
 
 ### 1. Mine the session for patterns
 

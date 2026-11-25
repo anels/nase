@@ -17,8 +17,6 @@ If `$ARGUMENTS` contains `--auto-accept`, used by `/nase:wrap-up`, then exactly 
 
 ## Steps
 
-**Step 0 - Language preflight (MUST run first, non-negotiable):** follow `.claude/docs/language-config.md` → Minimum Step 0 block.
-
 1. Identify the task being reflected on:
    a. From `$ARGUMENTS` if provided
    b. Otherwise, read `workspace/logs/{today}.md` to load today's activity as reflection context

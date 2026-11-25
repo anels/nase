@@ -6,7 +6,7 @@ category: Knowledge base
 model: sonnet
 effort: medium
 ---
-Audit the KB and the workspace mechanisms that keep it trustworthy, apply the repairs whose correct value is already decided, and gate the rest. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/workspace-write-guard.md`.
+Audit the KB and the workspace mechanisms that keep it trustworthy, apply the repairs whose correct value is already decided, and gate the rest. Follow `.claude/docs/skill-contract.md` and `.claude/docs/workspace-write-guard.md`.
 Content rules: kb-lifecycle-layers.md. This file owns scope, scanning, repair authority, and the report.
 
 **Gap mode.** `--gaps [--days N] [--since D] [--until D] [--min-recurrence N] [--repo NAME] [--auto] [--verbose]` finds *missing* KB topics instead of stale ones. It runs only when the user explicitly asks for it, never from model routing or another command. Follow `.claude/docs/kb-gap-detect.md` and skip every section below.

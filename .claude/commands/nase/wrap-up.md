@@ -7,7 +7,7 @@ model: sonnet
 effort: medium
 ---
 
-Close the day in one bounded pass. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
+Close the day in one bounded pass. Follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
 
 Two former steps are gone on purpose. Log compaction had no trigger, no owner, and no consumer - it mutated `workspace/logs/` between the read in Step 1 and the journal built from that read. Review-finding calibration had no doc, no script, and no output path; ETA calibration is Step 6 and is the only calibration this skill does.
 

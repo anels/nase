@@ -7,7 +7,7 @@ model: sonnet
 effort: medium
 ---
 
-Create a sourced recap from bounded workspace data. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
+Create a sourced recap from bounded workspace data. Follow `.claude/docs/confidential-marker.md` and `.claude/docs/skill-contract.md`.
 
 ## Workflow
 

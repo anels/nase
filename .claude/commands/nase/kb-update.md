@@ -17,7 +17,7 @@ Follows `.claude/docs/workspace-write-guard.md` for target KB files, `.domain-ma
 
 ## Steps
 
-0. **Language preflight (MUST run first, non-negotiable):** Follow `.claude/docs/language-config.md` → Minimum Step 0 block. KB structural headings stay English; freeform KB prose follows `conversation:` unless the target file already has a stronger local convention.
+0. **Language:** KB structural headings stay English; freeform KB prose follows `conversation:` unless the target file already has a stronger local convention.
 
 0a. **Confidential marker guard:** Follow `.claude/docs/confidential-marker.md`. Check only user-provided arguments and the session content being persisted, not this command file or policy docs. If that content contains `[CONFIDENTIAL]`, refuse to persist it and ask the user for a sanitized restatement.
 

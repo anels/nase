@@ -3,7 +3,7 @@
 ## Contents
 
 - Scope
-- 1. Language preflight (chat output)
+- 1. Language (chat output)
 - 2. External mutation = explicit gate
 - 2.5. Durable workspace writes = staged + drift-checked
 - 3. ADO CLI doctrine
@@ -29,13 +29,13 @@ This contract applies to nase **slash-commands** (`.claude/commands/nase/*.md`, 
 
 ---
 
-## 1. Language preflight (chat output)
+## 1. Language (chat output)
 
-Every chat-producing skill MUST start with a Step 0 language-preflight block. Copy the pointer verbatim from `.claude/docs/language-config.md → Canonical pointer`; never reword it and never restate the preflight rules inline. CLAUDE.md inheritance alone is **not** sufficient - auto-drift to English has been observed.
+`session-start.sh` puts the configured `conversation:` and `output:` values into the session context; `.claude/docs/language-config.md` owns how to apply them. A skill carries no preflight step and does not restate those rules. It states only its own language rule, such as which artifact follows `output:` or which labels stay English.
 
-Skills that also write to external systems (PR / Slack / Jira / Confluence) read **both** `conversation:` AND `output:` and route per channel.
+Skills that also write to external systems (PR / Slack / Jira / Confluence) use **both** `conversation:` AND `output:` and route per channel.
 
-CI checks: `tests/check-canonical-pointers.sh` (exact pointer wording, hard fail) and `tests/check-skill-doctrine.sh → D4` (a preflight of some shape exists, hard fail).
+CI checks: `tests/check-skill-doctrine.sh → D4` (the hook emits the configured values, hard fail) and `tests/hooks/test-session-start-language.sh`.
 
 ---
 

@@ -11,7 +11,7 @@ Runs `.claude/scripts/help-summary.py` so command catalog rendering, command cap
 
 ## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Translate every user-facing prose string in the helper output to `conversation:`; command names, paths, and hook labels are protocol-fixed identifiers and stay verbatim.
+Translate every user-facing prose string in the helper output to `conversation:`; command names, paths, and hook labels are protocol-fixed identifiers and stay verbatim.
 
 ## Steps
 

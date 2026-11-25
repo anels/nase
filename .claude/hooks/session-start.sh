@@ -41,6 +41,34 @@ fi
 # Detect Python interpreter — used for archival, skill sync, and date fallback
 PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || command -v py 2>/dev/null || true)
 
+# Print the configured languages as one context line. Config values are untrusted
+# text on their way into the model context: control characters, Unicode line breaks,
+# and `;` become spaces so a value cannot start a second line or forge a second field,
+# and an over-long value is dropped whole rather than cut inside a multi-byte
+# character. LC_ALL=C makes the byte-level patterns behave the same in every awk.
+language_line() {
+  LC_ALL=C awk '
+    function usable(v) {
+      gsub(/\302\205|\342\200\250|\342\200\251/, " ", v)
+      gsub(/[\001-\037\177;]/, " ", v)
+      gsub(/^ +| +$/, "", v)
+      if (v == "" || length(v) > 80)
+        return "English (fallback: no usable value under ## Language in workspace/config.md)"
+      return v
+    }
+    NR == 1 { sub(/^\357\273\277/, "") }
+    /^##?[ \t]/ { in_language = ($0 ~ /^##[ \t]+Language[ \t\r]*$/); next }
+    in_language && /^[ \t]*([-*][ \t]+)?(conversation|output)[ \t]*:/ {
+      key = ($0 ~ /^[ \t]*([-*][ \t]+)?conversation/) ? "conversation" : "output"
+      if (!(key in value)) { raw = $0; sub(/^[^:]*:/, "", raw); value[key] = raw }
+    }
+    END {
+      printf "[language] conversation: %s; output: %s; code identifiers: English.\n",
+        usable(value["conversation"]), usable(value["output"])
+    }
+  ' "$1"
+}
+
 # Buffer all diagnostic stdout so we can emit a single SessionStart JSON envelope
 # at the end. The envelope carries additionalContext (the diagnostic lines) plus
 # reloadSkills:true when the skill-sync block actually mutated stub files —
@@ -52,6 +80,16 @@ trap 'rm -f "$BUFFER"' EXIT
 SKILL_SYNC_CHANGED=0
 
 {
+  # Commands carry no language preflight of their own; this line is how the
+  # configured values reach them, again after every resume, clear, and compaction.
+  CONFIG="$NASE_ROOT/workspace/config.md"
+  if [ ! -f "$CONFIG" ]; then
+    echo "[session-start] workspace/config.md not found - run /nase:init to set up this workspace (using English until then)."
+  else
+    language_line "$CONFIG" 2>/dev/null \
+      || echo "[session-start] WARNING: workspace/config.md could not be read - using English"
+  fi
+
   # Guard dependencies. The blocking guards refuse to inspect a payload without
   # their parser, so a missing dependency blocks tool calls instead of quietly
   # dropping protection; the telemetry hooks fail open and go silent. Either way
@@ -180,10 +218,6 @@ if [ "$SKILL_SYNC_CHANGED" -eq 1 ]; then
 fi
 
 CONTEXT=$(cat "$BUFFER")
-if [ -z "$CONTEXT" ] && [ "$RELOAD" = "false" ]; then
-  # Nothing to surface and no reload needed — stay silent.
-  exit 0
-fi
 
 if command -v jq >/dev/null 2>&1; then
   jq -cn --arg ctx "$CONTEXT" --argjson reload "$RELOAD" '{

@@ -11,10 +11,6 @@ effort: low
 
 ## Steps
 
-### 0. Language preflight (MUST run first, non-negotiable)
-
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
-
 If the first word of `$ARGUMENTS` is `kb-usage`, run `### KB usage mode` below and skip Steps 1-6. If it is `skill-usage`, run `### Skill usage mode` below and skip Steps 1-6.
 
 ### 1. Determine time range

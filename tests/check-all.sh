@@ -181,7 +181,6 @@ FAST_SCRIPT_TESTS=(
   tests/scripts/test-skill-usage-report.sh
   tests/scripts/test-workspace-write-guard.sh
   tests/scripts/test-skill-overlap.sh
-  tests/scripts/test-canonical-pointers.sh
   tests/scripts/test-boundary-terms.sh
   tests/scripts/test-shared-doc-refs.sh
 )
@@ -398,7 +397,7 @@ Major gate groups:
   lint: ruff over Python, vermin for the 3.10 floor, shellcheck over every shell file, actionlint - each when installed
   catalog: command_catalog.py --check-readme
   wiring: hook registrations and workspace validation
-  docs: shared-doc reference integrity, canonical pointer wording, KB domain-map contract, skill doctrine, and advisory skill trigger overlap
+  docs: shared-doc reference integrity, KB domain-map contract, skill doctrine, and advisory skill trigger overlap
   regressions: hook tests and script tests
   links: lychee markdown link check (part of --full when lychee is installed)
 EOF
@@ -653,11 +652,6 @@ run_shared_doc_refs() {
   run_gate "check-shared-doc-refs.sh" bash tests/check-shared-doc-refs.sh
 }
 
-run_canonical_pointers() {
-  section "canonical shared-doc pointers"
-  run_gate "check-canonical-pointers.sh" bash tests/check-canonical-pointers.sh
-}
-
 run_review_gate_optionality() {
   section "FSD review-gate optionality contract"
   run_gate "check-review-gate-optionality.sh" bash tests/check-review-gate-optionality.sh
@@ -786,9 +780,6 @@ run_changed_extras() {
   if grep -qE '^(\.claude/docs/(repo-resolution|kb-staleness)\.md|\.claude/commands/nase/onboard\.md|\.claude/scripts/(kb-domain-resolve\.sh|kb-hygiene-scan\.py)|tests/check-kb-domain-map-contract\.sh)$' <<< "$changed"; then
     run_kb_domain_map_contract
   fi
-  if grep -qE '^(\.claude/commands/nase/[^/]+\.md|workspace/skills/[^/]+\.md|\.claude/docs/language-config\.md|\.claude/scripts/check-canonical-pointers\.py|tests/check-canonical-pointers\.sh)$' <<< "$changed"; then
-    run_canonical_pointers
-  fi
   if grep -qE '^(\.claude/scripts/check-effort-pointer-integrity\.py|tests/check-effort-pointer-integrity\.sh|\.claude/docs/effort-(lifecycle|model|drift|transitions)\.md|\.claude/commands/nase/kb-review\.md)$' <<< "$changed"; then
     run_effort_pointer_integrity
   fi
@@ -819,7 +810,6 @@ run_fast() {
   run_command_catalog
   run_boundary_terms
   run_shared_doc_refs
-  run_canonical_pointers
   run_review_gate_optionality
   run_kb_domain_map_contract
   run_effort_pointer_integrity
@@ -847,7 +837,6 @@ run_full() {
   run_boundary_terms
   run_script_tests
   run_shared_doc_refs
-  run_canonical_pointers
   run_review_gate_optionality
   run_kb_domain_map_contract
   run_effort_pointer_integrity

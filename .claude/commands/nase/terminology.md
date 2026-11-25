@@ -23,11 +23,9 @@ for file layout, index shape, conflict check, and retrieve/list rules.
 
 ## Steps
 
-0. **Language preflight (MUST run first, non-negotiable):** Follow
-   `.claude/docs/language-config.md` → Minimum Step 0 block. Term slugs,
-   scope labels, and structural headings stay English; freeform
-   `**Definition:**` prose follows `conversation:` unless the term file
-   already has a stronger local convention.
+0. **Language:** Term slugs, scope labels, and structural headings stay
+   English; freeform `**Definition:**` prose follows `conversation:` unless
+   the term file already has a stronger local convention.
 
 0a. **Confidential marker guard:** Follow `.claude/docs/confidential-marker.md`.
     Check only user-provided arguments and the definition being persisted,

@@ -91,6 +91,17 @@ fresh d1
 append_line .claude/commands/nase/learn.md 'curl -s -u ":$ADO_PAT" https://dev.azure.com/org/_apis/projects'
 expect_rule_fails "curl with an ADO PAT in a command" D1
 
+fresh d4
+replace_first .claude/hooks/session-start.sh 'language_line "$CONFIG"' ':'
+expect_rule_fails "session start stops emitting the language line" D4
+
+fresh d4-matcher
+replace_first .claude/settings.json '"SessionStart": [
+      {' '"SessionStart": [
+      {
+        "matcher": "startup",'
+expect_rule_fails "session start narrows to one source" D4
+
 fresh d5
 append_line .claude/docs/plain-writing-guard.md 'Escalate through Codex MCP when the review is slow.'
 expect_rule_fails "provider residue in a shared doc" D5

@@ -7,7 +7,7 @@ model: sonnet
 effort: medium
 ---
 
-Create a concise daily plan from current evidence. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `.claude/docs/closing-block.md` for the final card.
+Create a concise daily plan from current evidence. Use `.claude/docs/closing-block.md` for the final card.
 
 ## Steps
 

@@ -13,9 +13,9 @@ effort: medium
 
 Because it already does the live reads, it **applies** the deterministic repairs on the spot, then acts on what is left: it closes and validates what it can prove, and walks you through the rest. Both this skill and `/nase:today` call `.claude/docs/effort-model.md` and `.claude/docs/effort-drift.md`. It mutates effort docs and its own report and log entry, never PR, Jira, or KB state.
 
-## Step 0: Language preflight (run first)
+## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Read `workspace/config.md`; chat-facing prose uses `conversation:` language. The report file content uses `output:` language.
+Read `workspace/config.md`; chat-facing prose uses `conversation:` language. The report file content uses `output:` language.
 
 ## Mode routing
 

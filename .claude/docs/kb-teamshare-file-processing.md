@@ -101,7 +101,7 @@ Apply the user's decisions before the caller stages the file.
 
 ## Translate to Output Language
 
-After privacy decisions are applied, check whether the file's content language matches the `output:` language loaded in Step 0.
+After privacy decisions are applied, check whether the file's content language matches the configured `output:` language.
 
 **How to detect**: scan the content - if a significant portion (>20% of non-code lines) is in a language other than the configured output language, the file needs translation.
 

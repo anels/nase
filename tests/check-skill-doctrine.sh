@@ -4,7 +4,7 @@
 # FAILS on:
 #   D1. curl-with-PAT for ADO endpoints (must use az CLI per feedback_ado-az-cli-only.md)
 #   D2. mkdir line in init.md missing any workspace/kb/* subdir whose stub-write step follows
-#   D4. skill files missing a language preflight / language-config reference
+#   D4. session-start.sh no longer delivers the configured language to the session
 #   D5. verification-gate callers that still frame the gate as conditional on an
 #       external provider, which would make a mandatory gate optional again
 #   D6. restore archive flow missing path traversal / symlink hardening
@@ -165,24 +165,40 @@ else
   green "PASS"; printf ': all mutation skills reference policy doc\n'
 fi
 
-# ---------- D4: all skills have language preflight ------------------------
-section "D4: all skills declare language preflight"
+# ---------- D4: session start delivers the configured language ------------
+section "D4: session start emits the configured language"
+# Skills carry no language preflight, so session-start.sh is what puts the configured
+# values into context. Run it against a throwaway config. The registration must carry no
+# matcher: a matcher would stop it re-firing after a resume, clear, or compaction.
 d4_hits=""
-while IFS= read -r f; do
-  case "$f" in
-    *workspace/skills/docs/*) continue ;;             # shared docs under skills/docs/ are not skills
-    *.claude/commands/nase/workspace/*) continue ;;   # auto-generated wrappers; source lives under workspace/skills/
-  esac
-  if ! grep -qE 'language-config\.md|Language preflight|## Language|Read.*workspace/config\.md.*Language|conversation:' "$f" 2>/dev/null; then
-    d4_hits+="  $f"$'\n'
-  fi
-done < <(find "${SKILL_DIRS[@]}" -maxdepth 2 -name '*.md' -type f 2>/dev/null)
+if d4_root=$(mktemp -d); then
+  mkdir -p "$d4_root/workspace"
+  printf '## Language\n- conversation: d4-chat\n- output: d4-artifact\n' >"$d4_root/workspace/config.md"
+  d4_out=$(NASE_ROOT="$d4_root" bash .claude/hooks/session-start.sh </dev/null 2>/dev/null)
+  grep -qF '[language] conversation: d4-chat; output: d4-artifact; code identifiers: English.' <<<"$d4_out" \
+    || d4_hits+="  .claude/hooks/session-start.sh: configured language values missing from its output"$'\n'
+  rm -rf "$d4_root"
+else
+  d4_hits+="  mktemp failed, so the hook could not be probed"$'\n'
+fi
+python3 - <<'PY' || d4_hits+="  .claude/settings.json: session-start.sh is not registered for every SessionStart source"$'\n'
+import json
+import sys
+
+with open(".claude/settings.json", encoding="utf-8") as handle:
+    groups = json.load(handle)["hooks"].get("SessionStart", [])
+sys.exit(not any(
+    group.get("matcher", "") in ("", "*")
+    and any("session-start.sh" in hook.get("command", "") for hook in group.get("hooks", []))
+    for group in groups
+))
+PY
 if [[ -n "$d4_hits" ]]; then
-  red "FAIL"; printf ': skill files without language preflight or language-config.md reference:\n'
+  red "FAIL"; printf ': configured language does not reach the session:\n'
   printf '%s' "$d4_hits"
   failed=$((failed+1))
 else
-  green "PASS"; printf ': all skills declare language handling\n'
+  green "PASS"; printf ': session-start.sh delivers the configured language\n'
 fi
 
 # ---------- D5: the verification gate stays mandatory ----------------------

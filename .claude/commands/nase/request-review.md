@@ -13,9 +13,9 @@ Fan-out threshold: stay main-thread unless the request spans multiple repos, mor
 
 Follows `.claude/docs/external-mutation-policy.md` - all Slack messages go through `slack_send_message_draft` (never `_send`). This skill only stages Slack drafts; it does not assign reviewers on GitHub. The Slack DM is the request; the reviewer accepts (or declines) by reading the PR.
 
-## Step 0 - Language preflight (MUST run first, non-negotiable)
+## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and AskUserQuestion prompts; use `output:` for Slack drafts and any GitHub-facing text.
+Use `conversation:` for chat and AskUserQuestion prompts; use `output:` for Slack drafts and any GitHub-facing text.
 
 ## Mode: re-review-ping
 

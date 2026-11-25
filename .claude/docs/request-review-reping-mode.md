@@ -10,7 +10,7 @@ author, declined) and already chosen.
 
 ## Which steps run
 
-Run Steps 0, 1, 4, 7, 8 (Question 2 only), and 9. Skip 2, 3, 5, 6, and Step 8's Question 1 -
+Run Steps 1, 4, 7, 8 (Question 2 only), and 9. Skip 2, 3, 5, 6, and Step 8's Question 1 -
 it re-asks what the caller answered, and its confirmed list is the caller's handles. Question 2
 still runs, because preview-and-stage is the only gate before a draft is written. Still apply
 Step 3c's alumni exclusion.

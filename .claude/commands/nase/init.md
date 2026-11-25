@@ -9,8 +9,6 @@ effort: medium
 
 Initialize only this checkout's ignored workspace state. Existing values are defaults; reruns must be idempotent.
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
-
 ## Workflow
 
 1. Inspect `workspace/config.md`, `.local-paths`, backup target, and existing workspace content. Without `--reconfigure`, ask only for missing required values.

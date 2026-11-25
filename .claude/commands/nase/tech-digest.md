@@ -7,7 +7,7 @@ model: sonnet
 effort: medium
 ---
 
-Build a current, source-linked digest only when requested. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Then follow `.claude/docs/skill-contract.md` and `.claude/docs/content-hash-cache.md`.
+Build a current, source-linked digest only when requested. Follow `.claude/docs/skill-contract.md` and `.claude/docs/content-hash-cache.md`.
 
 ## Arguments
 

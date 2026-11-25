@@ -23,7 +23,7 @@ Seven lines, with a blank line above to separate the card from the previous sect
 ````
 
 - `{Name}` is the `AI engineer:` value from `workspace/config.md`, read once at section start. If the file is missing, use `nase`. Do not wrap it in `**...**`.
-- `{TLDR}` is one sentence or fragment, at most 110 chars, in the `conversation:` language (see `language-config.md`). Use `·` between items. State concrete signal only: counts, hot PR numbers, blocker names, ticket keys, stale-KB counts. Skip generic openers ("today we...") and the visible label `TLDR:`.
+- `{TLDR}` is one sentence or fragment, at most 110 chars, in the `conversation:` language. Use `·` between items. State concrete signal only: counts, hot PR numbers, blocker names, ticket keys, stale-KB counts. Skip generic openers ("today we...") and the visible label `TLDR:`.
 - `{tint}` is one short line in the `conversation:` language, no visible `tint:` label. Use a real quote only when the quote and its attribution are known; otherwise write a plain dry remark about the work. Never aim it at a teammate, customer, identity, illness, or real-world tragedy. No motivational filler ("you got this", "stay focused"), no emoji.
 - Do not use a blockquote `>`.
 

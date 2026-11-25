@@ -9,8 +9,6 @@ effort: high
 
 ## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
-
 **Discipline (read once; apply everywhere below):**
 - **Narrative prose** - Review Frame paragraphs, Sense Check evidence cells, Risk map reasons, Scorecard justifications, summary line phrasing, finding descriptions, open-question explanations, AskUserQuestion option labels/descriptions, handoff confirmations → write in the `conversation:` value.
 - **Structural skeleton** - table column headers **and fixed row labels** (Sense Check pillar names, verification-matrix layer labels), code blocks, file paths, line numbers, symbol/identifier names, **issue and ticket keys (`IN-####`) and any other ID**, daily-log entries, JSON keys/values, command output → keep English. This holds inside a narrative cell too: an evidence cell is written in `conversation:` but the `IN-####` it cites is not translated.

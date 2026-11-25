@@ -16,9 +16,9 @@ Scan skill files for security risks before they can cause damage. Returns PASS/W
 - `all`: scan `workspace/skills/` + `.claude/commands/nase/` + `.claude/commands/nase/workspace/`
 - Empty: same as `all`
 
-## Step 0 - Language preflight (MUST run first, non-negotiable)
+## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Fixed severity labels (`PASS`, `WARN`, `FAIL`) stay English.
+Fixed severity labels (`PASS`, `WARN`, `FAIL`) stay English.
 
 ## Scan Categories
 
