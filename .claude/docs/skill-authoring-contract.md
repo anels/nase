@@ -175,7 +175,7 @@ The runtime rules - artifact/chat/verbose handling and `AskUserQuestion` batchin
 
 - `/nase:wrap-up` - full journal to `workspace/journals/{YYYY-MM-DD}.md`, chat gets 4-bullet highlights + closing block.
 - `/nase:stats` - heatmap and counts to `workspace/stats/report-{YYYY-MM-DD}.md`, chat gets the top-line numbers.
-- `/nase:skill-usage` - table to `workspace/stats/skill-usage-{YYYY-MM-DD}.md`, chat gets tier counts + top N.
+- `/nase:stats skill-usage` - table to `workspace/stats/skill-usage-{YYYY-MM-DD}.md`, chat gets tier counts + top N.
 - `/nase:recap` - recap to `workspace/recaps/{period}.md`, chat gets a one-paragraph wrap.
 
 ## 10. Skill-invocation error handling

@@ -33,7 +33,6 @@ VALID_SOURCE = {
 MAINTENANCE_SKILLS = {
     "kb-review",
     "kb-update",
-    "kb-gap-detect",
     "onboard",
     "learn",
     "terminology",

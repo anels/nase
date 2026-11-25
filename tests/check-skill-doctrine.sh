@@ -8,8 +8,8 @@
 #   D5. verification-gate callers that still frame the gate as conditional on an
 #       external provider, which would make a mandatory gate optional again
 #   D6. restore archive flow missing path traversal / symlink hardening
-#   D7. kb-merge external import flow missing canonical path / symlink hardening
-#   D8. kb-merge generated skill wrappers missing frontmatter sanitization
+#   D7. kb-teamshare import external flow missing canonical path / symlink hardening
+#   D8. kb-teamshare import generated skill wrappers missing frontmatter sanitization
 #   D9. retired - it gated a `pattern:` frontmatter key nothing consumed. D18 now
 #       rejects the key outright, so reintroducing it fails there instead.
 #   D10. durable workspace write skills missing workspace-write-guard.md
@@ -269,8 +269,8 @@ else
 fi
 
 # ---------- D7: external KB import cannot write outside workspace ----------
-section "D7: kb-merge import paths are bounded"
-KB_MERGE_MD=".claude/commands/nase/kb-merge.md"
+section "D7: kb-teamshare import paths are bounded"
+KB_IMPORT_SECTION=$(awk '/^## Import mode/ { f = 1; next } /^## / { f = 0 } f' .claude/commands/nase/kb-teamshare.md)
 d7_hits=""
 for needle in \
   "Import Path Hardening" \
@@ -278,35 +278,35 @@ for needle in \
   "Skip symlinks entirely" \
   "Never use an imported path string directly as a write target" \
   "Skipped (unsafe path)"; do
-  if ! grep -qF "$needle" "$KB_MERGE_MD" 2>/dev/null; then
+  if ! grep -qF -- "$needle" <<<"$KB_IMPORT_SECTION"; then
     d7_hits+="  missing: $needle"$'\n'
   fi
 done
 if [[ -n "$d7_hits" ]]; then
-  red "FAIL"; printf ': kb-merge.md lacks external import path hardening:\n'
+  red "FAIL"; printf ': kb-teamshare.md import mode lacks external import path hardening:\n'
   printf '%s' "$d7_hits"
   failed=$((failed+1))
 else
-  green "PASS"; printf ': kb-merge import path hardening present\n'
+  green "PASS"; printf ': kb-teamshare import path hardening present\n'
 fi
 
 # ---------- D8: imported skill wrappers cannot inject frontmatter -----------
-section "D8: kb-merge wrapper frontmatter is sanitized"
+section "D8: kb-teamshare import wrapper frontmatter is sanitized"
 d8_hits=""
 for needle in \
   "YAML double-quoted strings" \
   "Strip control characters" \
   "Never copy imported frontmatter blocks wholesale"; do
-  if ! grep -qF "$needle" "$KB_MERGE_MD" 2>/dev/null; then
+  if ! grep -qF -- "$needle" <<<"$KB_IMPORT_SECTION"; then
     d8_hits+="  missing: $needle"$'\n'
   fi
 done
 if [[ -n "$d8_hits" ]]; then
-  red "FAIL"; printf ': kb-merge.md lacks generated-wrapper frontmatter sanitization:\n'
+  red "FAIL"; printf ': kb-teamshare.md import mode lacks generated-wrapper frontmatter sanitization:\n'
   printf '%s' "$d8_hits"
   failed=$((failed+1))
 else
-  green "PASS"; printf ': kb-merge wrapper frontmatter sanitization present\n'
+  green "PASS"; printf ': kb-teamshare import wrapper frontmatter sanitization present\n'
 fi
 
 # ---------- D10: durable workspace writes use shared guard -----------------
@@ -391,7 +391,7 @@ from pathlib import Path
 
 required = "Auto-write modes only skip human confirmation; they never skip final drift checks."
 targets = {
-    ".claude/commands/nase/kb-gap-detect.md": "--auto",
+    ".claude/docs/kb-gap-detect.md": "--auto",
     ".claude/commands/nase/extract-skills.md": "--auto-accept",
     ".claude/commands/nase/wrap-up.md": "automatic KB update",
 }
@@ -406,6 +406,13 @@ for filename, marker in targets.items():
         hits.append(f"  {path}: missing exact auto-write drift-check rule")
     elif "workspace-write-guard.py apply" not in text and path.name != "extract-skills.md":
         hits.append(f"  {path}: missing helper apply reference")
+
+# kb-review is model-invocable, so this sentence is the only thing keeping `--gaps --auto`
+# from running unasked. Frontmatter used to enforce it when gap detection was its own command.
+gap_rule = "It runs only when the user explicitly asks for it, never from model routing or another command."
+review = Path(".claude/commands/nase/kb-review.md")
+if gap_rule not in review.read_text(encoding="utf-8"):
+    hits.append(f"  {review}: gap mode lost its manual-only rule")
 
 print("\n".join(hits))
 PY
@@ -593,7 +600,7 @@ allowed = {
     "context",
     "agent",
     # Claude-native, like the rest: a command that only a human should trigger
-    # (restore, kb-merge, the reporting commands) sets this so its description
+    # (restore, kb-teamshare, the reporting commands) sets this so its description
     # stops sitting in every request's context. The skill side has always
     # allowed it; the command side now matches.
     "disable-model-invocation",
@@ -792,12 +799,12 @@ required = {
         "Verification triad",
         "Do not add frontmatter solely for KB metadata",
     ],
-    ".claude/commands/nase/kb-gap-detect.md": [
+    ".claude/docs/kb-gap-detect.md": [
         "verification triad",
         "current-state reconciliation",
         "admitted drafts",
     ],
-    ".claude/commands/nase/kb-merge.md": [
+    ".claude/commands/nase/kb-teamshare.md": [
         "verification triad",
         "staged proposal",
     ],
@@ -870,7 +877,7 @@ for filename in (
 for filename, forbidden in {
     ".claude/docs/kb-template.md": ["## Cross-Validation Notes", "## Knowledge Hygiene"],
     ".claude/commands/nase/kb-update.md": ["If no frontmatter exists"],
-    ".claude/commands/nase/kb-gap-detect.md": [
+    ".claude/docs/kb-gap-detect.md": [
         "**Source:** detected by /nase:kb-gap-detect",
         "**Tags:** gap-detected",
     ],

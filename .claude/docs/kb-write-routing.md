@@ -74,7 +74,7 @@ guarded write:
    nonzero as "no results" turns a malformed query into a false all-clear and admits a
    duplicate.
 
-   `/nase:kb-update`, `/nase:learn`, and `/nase:kb-gap-detect` all use this rule.
+   `/nase:kb-update`, `/nase:learn`, and `/nase:kb-review --gaps` all use this rule.
 3. Classify the delta as current state, a durable dated event, no-op/status, or
    unknown/follow-up. Reconcile current state in place. Do not persist no-op or
    unknown content.
