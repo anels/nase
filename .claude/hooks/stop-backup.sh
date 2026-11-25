@@ -177,12 +177,17 @@ mkdir -p "$TARGET" || { log_status "ERROR" "cannot create target directory: $TAR
 
 # ---------------------------------------------------------------------------
 # Concurrency lock — prevent two simultaneous Stop hooks from corrupting the backup
-# mkdir is atomic on all filesystems (including Windows NTFS via Git Bash)
+# Ownership is an exclusive file create, not mkdir: uutils mkdir before 0.11.0 (Ubuntu 26.04
+# ships it) can report success to two runs racing on one path.
 # PID file inside lock dir lets us detect stale locks from crashed/killed runs
 # ---------------------------------------------------------------------------
 LOCK_DIR="$TARGET/.backup-lock"
 LOCK_PID="$LOCK_DIR/pid"
-RECLAIM_DIR="$TARGET/.backup-lock.reclaim"
+RECLAIM_FILE="$TARGET/.backup-lock.reclaim"
+# Writes this run's pid to $1 only if $1 does not exist: bash opens it with O_EXCL under noclobber.
+claim_file() {
+  (set -C; echo $$ > "$1") 2>/dev/null
+}
 owner_pid=""
 # Returns 0 when the lock is stale. Sets owner_pid to the recorded pid, if any.
 lock_is_stale() {
@@ -211,19 +216,19 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   if lock_is_stale; then
     # Only one run may delete a stale lock. Without this mutex, two runs that both saw
     # the lock as stale can each delete the fresh lock the other just created.
-    if ! mkdir "$RECLAIM_DIR" 2>/dev/null; then
+    if ! claim_file "$RECLAIM_FILE"; then
       # A reclaimer that crashed leaves the mutex behind. Clear an old one for the next run.
       # A mutex that is already gone has no age, and the next one may belong to a live run.
-      if reclaim_mtime=$(stat -c %Y "$RECLAIM_DIR" 2>/dev/null || stat -f %m "$RECLAIM_DIR" 2>/dev/null) \
+      if reclaim_mtime=$(stat -c %Y "$RECLAIM_FILE" 2>/dev/null || stat -f %m "$RECLAIM_FILE" 2>/dev/null) \
         && [ $(( $(date +%s) - reclaim_mtime )) -ge 60 ]; then
-        rmdir "$RECLAIM_DIR" 2>/dev/null || true
+        rm -rf "$RECLAIM_FILE"
       fi
       log_status "WARNING" "another backup is already in progress — skipping this run"
       exit 0
     fi
     # Re-check under the mutex: another run may have replaced the lock since the first check.
     if ! lock_is_stale; then
-      rmdir "$RECLAIM_DIR" 2>/dev/null || true
+      rm -f "$RECLAIM_FILE"
       log_status "WARNING" "another backup is already in progress — skipping this run"
       exit 0
     fi
@@ -231,17 +236,21 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     rm -rf "$LOCK_DIR"
     # A fresh run can take the lock between the rm and this mkdir. It then owns the lock.
     if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-      rmdir "$RECLAIM_DIR" 2>/dev/null || true
+      rm -f "$RECLAIM_FILE"
       log_status "WARNING" "another backup is already in progress — skipping this run"
       exit 0
     fi
-    rmdir "$RECLAIM_DIR" 2>/dev/null || true
+    rm -f "$RECLAIM_FILE"
   else
     log_status "WARNING" "another backup is already in progress — skipping this run"
     exit 0
   fi
 fi
-echo $$ > "$LOCK_PID"
+# The run that creates the pid file owns the lock, whatever mkdir reported.
+if ! claim_file "$LOCK_PID"; then
+  log_status "WARNING" "another backup is already in progress — skipping this run"
+  exit 0
+fi
 SNAPSHOT_DIR=""
 cleanup_backup() {
   # Only remove a lock this run still owns; a reclaimer may have replaced it.

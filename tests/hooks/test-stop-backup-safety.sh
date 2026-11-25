@@ -823,14 +823,16 @@ lock_block_script() {
   } > "$out_file"
 }
 
-lock_race_rounds_with_overlap() {
-  local acq="$1" rounds="$2" bad=0 t n dead
+lock_race_rounds_with_overlap() { # <script> <rounds> [stale|free]
+  local acq="$1" rounds="$2" start="${3:-stale}" bad=0 t n dead
   for _ in $(seq "$rounds"); do
     t=$(mktemp -d "$fixture/lock-race.XXXXXX")
-    sleep 0 & dead=$!
-    wait "$dead"
-    mkdir "$t/.backup-lock"
-    printf '%s\n' "$dead" > "$t/.backup-lock/pid"
+    if [ "$start" = stale ]; then
+      sleep 0 & dead=$!
+      wait "$dead"
+      mkdir "$t/.backup-lock"
+      printf '%s\n' "$dead" > "$t/.backup-lock/pid"
+    fi
     for _ in 1 2 3 4 5 6; do
       bash "$acq" "$t" >> "$t/out" 2>/dev/null &
     done
@@ -845,9 +847,27 @@ lock_race_rounds_with_overlap() {
 }
 
 acq_new="$fixture/lock-acq-new.sh"
-lock_block_script "$HOOK" "$acq_new" 'if mkdir "$TARGET/held" 2>/dev/null; then sleep 0.3; rmdir "$TARGET/held"; else echo OVERLAP; fi'
+# The marker is claimed with bash's exclusive create, so detection stays exact where mkdir is not.
+lock_block_script "$HOOK" "$acq_new" 'if (set -C; : > "$TARGET/held") 2>/dev/null; then sleep 0.3; rm -f "$TARGET/held"; else echo OVERLAP; fi'
 overlap_rounds=$(lock_race_rounds_with_overlap "$acq_new" 20)
 assert_exit "concurrent stale-lock reclaim never admits two holders" 0 "$overlap_rounds" "rounds with >1 holder: $overlap_rounds"
+
+# uutils mkdir before 0.11.0 (Ubuntu 26.04 ships it) checks that the path is absent, then reports
+# success when the create fails on an existing directory, so two runs racing on one path can both
+# exit 0. The stub widens that gap.
+racy_mkdir_overlaps() { # <rounds> [stale|free]
+  (
+    mkdir() { [ ! -e "$1" ] || return 1; sleep 0.1; command mkdir "$1" 2>/dev/null || [ -d "$1" ]; }
+    export -f mkdir
+    lock_race_rounds_with_overlap "$acq_new" "$@"
+  )
+}
+overlap_rounds=$(racy_mkdir_overlaps 5)
+assert_exit "a non-exclusive mkdir never admits two holders" 0 "$overlap_rounds" "rounds with >1 holder: $overlap_rounds"
+
+# With no lock to reclaim, every run races on the lock mkdir itself, so only the pid claim picks one.
+overlap_rounds=$(racy_mkdir_overlaps 5 free)
+assert_exit "a non-exclusive mkdir on a free lock admits one holder" 0 "$overlap_rounds" "rounds with >1 holder: $overlap_rounds"
 
 # The race above only sometimes lands in the narrow windows, so each one is staged here.
 # The probe runs the hook's own lock_is_stale; its second argument sets up the interleaving.
@@ -872,7 +892,7 @@ assert_contains "a lock whose owner exits during the check is not reclaimed" \
 assert_contains "a dead owner that left its lock is stale" \
   "$(probe_lock 'mkdir "$LOCK_DIR"; echo 4242 > "$LOCK_PID"; kill() { return 1; }')" "stale"
 
-# A reclaim mutex released between the failed mkdir and its age check may already belong
+# A reclaim mutex released between the failed claim and its age check may already belong
 # to the next reclaimer, so it must not be removed.
 acq_mutex="$fixture/lock-acq-mutex.sh"
 lock_block_script "$HOOK" "$acq_mutex" 'true'
@@ -880,19 +900,32 @@ t=$(mktemp -d "$fixture/lock-mutex.XXXXXX")
 : > "$t/go"
 mkdir "$t/.backup-lock"
 touch -t 200001010000 "$t/.backup-lock"
-run_mutex_probe() {
-  (
-    mkdir() { case "$1" in *.reclaim) return 1 ;; esac; command mkdir "$@"; }
-    rmdir() { echo "rmdir $1"; }
-    export -f mkdir rmdir
-    bash "$acq_mutex" "$t" 2>&1
-  )
-}
-out=$(run_mutex_probe)
+mutex="$t/.backup-lock.reclaim"
+printf '1\n' > "$mutex"
+out=$(
+  stat() { case "$*" in *.reclaim) command rm -f "${@: -1}"; return 1 ;; esac; command stat "$@"; }
+  rm() { case "$*" in *.reclaim) echo "removed the mutex" ;; *) command rm "$@" ;; esac; }
+  export -f stat rm
+  bash "$acq_mutex" "$t" 2>&1
+)
 assert_exit "a vanished reclaim mutex is not removed" "" "$out" "$out"
-mkdir "$t/.backup-lock.reclaim"
-touch -t 200001010000 "$t/.backup-lock.reclaim"
-assert_contains "an abandoned reclaim mutex is removed" "$(run_mutex_probe)" "rmdir $t/.backup-lock.reclaim"
+mutex_left_after_probe() {
+  touch -t 200001010000 "$mutex"
+  bash "$acq_mutex" "$t" >/dev/null 2>&1
+  if [ -e "$mutex" ]; then echo present; else echo removed; fi
+}
+printf '1\n' > "$mutex"
+assert_contains "an abandoned reclaim mutex is removed" "$(mutex_left_after_probe)" "removed"
+# Earlier versions of the hook made the mutex a directory.
+mkdir "$mutex"
+assert_contains "an abandoned reclaim mutex directory is removed" "$(mutex_left_after_probe)" "removed"
+# A fresh directory belongs to an older hook that is reclaiming right now.
+mkdir "$mutex"
+bash "$acq_mutex" "$t" >/dev/null 2>&1
+state=reclaimed
+[ -d "$mutex" ] && [ -d "$t/.backup-lock" ] && state=held
+assert_contains "a fresh reclaim mutex directory holds the reclaim off" "$state" "held"
+rmdir "$mutex"
 
 # The exit trap must not delete a lock that another run has since taken over.
 acq_own="$fixture/lock-acq-own.sh"
