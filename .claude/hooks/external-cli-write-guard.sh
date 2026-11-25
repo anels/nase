@@ -35,10 +35,19 @@ if [ "$TOOL_NAME" = "PowerShell" ]; then
   CMD=${CMD//\\//}
 fi
 
+# The guard may read a `query=@file` under the cwd only when it scans the text the shell
+# runs. `$(...)` drops NUL bytes and backslashes are rewritten above, so withhold the cwd,
+# which keeps the file form a write, unless the raw command is printable ASCII with no
+# backslash apart from trailing newlines. The anchored match is linear: trimming with an
+# unanchored `[\r\n]+$` is quadratic and can run past the hook timeout.
+HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '
+  if .tool_input.command | test("\\A[ -\\[\\]-~]*[\r\n]*\\z")
+  then .cwd // empty else empty end' 2>/dev/null | tr -d '\r') || HOOK_CWD=''
+
 # The command goes over stdin: as an argument, one past the OS limit (about 32K
 # characters on Windows) fails to launch and reads as a blocked mutation.
 GUARD_RC=0
-printf '%s' "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" guard || GUARD_RC=$?
+printf '%s' "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" guard --cwd "$HOOK_CWD" || GUARD_RC=$?
 case "$GUARD_RC" in
   0) ;;
   10) block 'raw external mutation is not allowed; use external-write-action.py with an approved manifest' ;;

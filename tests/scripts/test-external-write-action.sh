@@ -172,6 +172,174 @@ expect_guard_rc "clustered GraphQL query stays a read" 0 \
   "gh api graphql -if 'query={ viewer { login } }'"
 expect_guard_rc "GraphQL query field with --input body is not a read" 10 \
   "gh api graphql -f 'query=query { a }' --input mutation.json"
+# `-F query=@file` is a read only when the guard can resolve the file under the hook cwd
+# and it starts with query, `{`, or fragment. Everything else stays a write.
+GQ_DIR="$TMPDIR_TEST/gq"
+mkdir -p "$GQ_DIR/sub" "$GQ_DIR/outside"
+printf 'query { viewer { login } }\n' > "$GQ_DIR/sub/q.graphql"
+printf '{ viewer { login } }\n' > "$GQ_DIR/sub/brace.graphql"
+printf 'mutation { x }\n' > "$GQ_DIR/sub/m.graphql"
+printf 'query { viewer { login } }\n' > "$GQ_DIR/outside/q.graphql"
+expect_guard_cwd_rc() {
+  local name="$1" expected="$2" cwd="$3" command="$4" rc
+  set +e
+  printf '%s' "$command" | python3 "$SCRIPT" --root "$TMPDIR_TEST" guard --cwd "$cwd" \
+    > "$TMPDIR_TEST/out" 2> "$TMPDIR_TEST/err"
+  rc=$?
+  set -e
+  if [[ "$rc" -eq "$expected" ]]; then
+    report 0 "$name"
+  else
+    report 1 "$name" "expected $expected, got $rc: $(cat "$TMPDIR_TEST/err")"
+  fi
+}
+GQ_SUB="$GQ_DIR/sub"
+# Paths inside the command text are not converted by MSYS, so give Windows Python its own form.
+GQ_DIR_NATIVE=$(cygpath -m "$GQ_DIR" 2>/dev/null || printf '%s' "$GQ_DIR")
+GQ_SUB_NATIVE=$(cygpath -m "$GQ_SUB" 2>/dev/null || printf '%s' "$GQ_SUB")
+expect_guard_cwd_rc "graphql-query-file-read: -F query=@file under cwd is a read" 0 "$GQ_SUB" \
+  "gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: -f query=@file under cwd is a read" 0 "$GQ_SUB" \
+  "gh api graphql -f query=@brace.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: absolute path under cwd is a read" 0 "$GQ_SUB" \
+  "gh api graphql -F query=@$GQ_SUB_NATIVE/q.graphql"
+expect_guard_rc "graphql-query-file-read: no cwd keeps the file form a write" 10 \
+  "gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: path outside cwd is a write" 10 "$GQ_SUB" \
+  "gh api graphql -F query=@$GQ_DIR_NATIVE/outside/q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: file starting with mutation is a write" 10 "$GQ_SUB" \
+  "gh api graphql -F query=@m.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: missing file is a write" 10 "$GQ_SUB" \
+  "gh api graphql -F query=@missing.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: .. traversal is a write" 10 "$GQ_SUB" \
+  "gh api graphql -F query=@../outside/q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: stdin query is a write" 10 "$GQ_SUB" \
+  "gh api graphql -F query=@-"
+expect_guard_cwd_rc "graphql-query-file-read: a cd before the call is a write" 10 "$GQ_DIR" \
+  "cd sub && gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: an earlier command that could rewrite the file is a write" 10 \
+  "$GQ_SUB" "cp m.graphql q.graphql && gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: a PowerShell directory change is a write" 10 "$GQ_SUB" \
+  "Set-Location ../outside; gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: a wrapped gh is a write" 10 "$GQ_SUB" \
+  "ssh host gh api graphql -F query=@q.graphql"
+# The scanner reports no invocation for a bare xargs or an assignment.
+expect_guard_cwd_rc "graphql-query-file-read: a bare xargs -a rewrite is a write" 10 "$GQ_SUB" \
+  "xargs -a m.graphql > q.graphql; gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: a bare xargs stdin rewrite is a write" 10 "$GQ_SUB" \
+  "xargs < m.graphql > q.graphql; gh api graphql -F query=@q.graphql"
+expect_guard_cwd_rc "graphql-query-file-read: a path held in a variable is a write" 10 "$GQ_SUB" \
+  "F=m.graphql || F=q.graphql; gh api graphql -F query=@\$F"
+expect_guard_cwd_rc "graphql-query-file-read: --input stays a mutation" 10 "$GQ_SUB" \
+  "gh api graphql --input q.graphql"
+ln -s "$GQ_DIR/outside/q.graphql" "$GQ_SUB/link.graphql" 2>/dev/null || true
+if [[ -L "$GQ_SUB/link.graphql" ]]; then
+  expect_guard_cwd_rc "graphql-query-file-read: symlink escaping cwd is a write" 10 "$GQ_SUB" \
+    "gh api graphql -F query=@link.graphql"
+else
+  report 0 "graphql-query-file-read: symlink escaping cwd (symlinks unavailable on this host, skipped)"
+fi
+# Golden rows driven through the hook as both shells send them. The guard splits words as
+# POSIX does; PowerShell also splits at quotes, other whitespace, and a dot after a
+# one-dash word, so `gh` could read a file the guard never opened. Commands are JSON text.
+GQ_HOOK="$(dirname "$SCRIPT")/../hooks/external-cli-write-guard.sh"
+mkdir -p "$GQ_SUB/nested"
+cp "$GQ_SUB/q.graphql" "$GQ_SUB/nested/q.graphql"
+cp "$GQ_SUB/m.graphql" "$GQ_SUB/m"
+cp "$GQ_SUB/m.graphql" "$GQ_SUB/q"
+expect_gq_hook() {
+  local expected="$1" command="$2" tool rc
+  for tool in Bash PowerShell; do
+    set +e
+    printf '{"tool_name":"%s","cwd":"%s","tool_input":{"command":"%s"}}' \
+      "$tool" "$GQ_SUB_NATIVE" "$command" |
+      bash "$GQ_HOOK" > "$TMPDIR_TEST/out" 2> "$TMPDIR_TEST/err"
+    rc=$?
+    set -e
+    if [[ "$rc" -eq "$expected" ]]; then
+      report 0 "graphql-query-file-read: [$tool] $command"
+    else
+      report 1 "graphql-query-file-read: [$tool] $command" \
+        "expected $expected, got $rc: $(cat "$TMPDIR_TEST/err")"
+    fi
+  done
+}
+GQ_READ='gh api graphql -F query=@q.graphql'
+expect_gq_hook 0 "$GQ_READ"
+expect_gq_hook 0 "$GQ_READ\\n"
+expect_gq_hook 0 'gh api graphql -f query=@brace.graphql'
+expect_gq_hook 0 'gh api graphql -F query=@./q.graphql'
+expect_gq_hook 0 'gh api graphql -F query=@nested/q.graphql'
+expect_gq_hook 0 "gh api graphql -F query=@$GQ_SUB_NATIVE/q.graphql"
+expect_gq_hook 0 'gh api graphql -F owner=a.b -F query=@q.graphql -f ref=refs/heads/x -F n=1'
+expect_gq_hook 0 "$GQ_READ -F n=-1 -F after=Y3Vyc29yOjE= -F id=PR_kwDOA-b -f path=a+b/c=="
+# Git Bash rewrites some variable values, such as a rooted path, before `gh` receives them.
+for GQ_VALUE in /c/y _/c/y +/y -I/c a=/c a:/c; do
+  expect_gq_hook 2 "$GQ_READ -F x=$GQ_VALUE"
+done
+# PowerShell would hand `gh` a second `query=@m`.
+expect_gq_hook 2 "$GQ_READ -F 'a=b'-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F \\\"a=b\\\"-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F \\u2018a=b\\u2019-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F \\u201ca=b\\u201d-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F a=b\\u00a0-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F a=b\\u2003-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F a=b\\u000b-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F a=b\\f-Fquery=@m"
+# PowerShell splats a variable into more arguments.
+expect_gq_hook 2 "$GQ_READ @extra"
+# A second statement, or text the guard receives differently from the shell.
+expect_gq_hook 2 "$GQ_READ -F a=b\\r-Fquery=@m"
+expect_gq_hook 2 "$GQ_READ -F a=b\\u0000-Fquery=@m"
+expect_gq_hook 2 'gh api graphql -F query=@nested\\q.graphql'
+# PowerShell cuts this word at the dot, so `gh` would open `q`.
+expect_gq_hook 2 'gh api graphql -Fquery=@q.graphql'
+# Anything beyond `-f`/`-F` pairs: another file read, another host, another method.
+expect_gq_hook 2 "$GQ_READ -F x=@m.graphql"
+expect_gq_hook 2 "$GQ_READ -F x=@-"
+expect_gq_hook 2 "$GQ_READ --hostname example.invalid"
+expect_gq_hook 2 "$GQ_READ -X DELETE"
+expect_gq_hook 2 "$GQ_READ --method DELETE"
+expect_gq_hook 2 "$GQ_READ -H a:b"
+expect_gq_hook 2 "$GQ_READ --%"
+expect_gq_hook 2 "$GQ_READ --jq .data"
+expect_gq_hook 2 "$GQ_READ --paginate"
+expect_gq_hook 2 'gh api graphql --field query=@q.graphql'
+expect_gq_hook 2 'gh api graphql --field=query=@q.graphql'
+expect_gq_hook 2 "gh api graphql -F 'query=@q.graphql'"
+expect_gq_hook 2 'gh api graphql  -F query=@q.graphql'
+expect_gq_hook 2 'gh api graphql -F query=@q.graphql/'
+expect_gq_hook 2 './gh api graphql -F query=@q.graphql'
+expect_gq_hook 2 'gh.exe api graphql -F query=@q.graphql'
+# Git Bash also rewrites a relative path that opens like an option, such as `_/c/` to `_C:/`.
+for GQ_ODD in _/c +/c -I/c; do
+  mkdir -p "$GQ_SUB/$GQ_ODD"
+  cp "$GQ_SUB/q.graphql" "$GQ_SUB/$GQ_ODD/q.graphql"
+  expect_gq_hook 2 "gh api graphql -F query=@$GQ_ODD/q.graphql"
+done
+# Git Bash rewrites a rooted path to a place under its install directory.
+if [[ "$GQ_SUB_NATIVE" == [A-Za-z]:/* ]]; then
+  expect_gq_hook 2 "gh api graphql -F query=@${GQ_SUB_NATIVE#??}/q.graphql"
+else
+  report 0 "graphql-query-file-read: rooted path without a drive (Windows only, skipped)"
+fi
+# The hook runs under a 15s limit, so its check on the raw command must stay linear: a long
+# run of newlines before a later command must not stall it.
+python3 - "$GQ_SUB_NATIVE" > "$TMPDIR_TEST/newlines.json" <<'PY'
+import json, sys
+command = "echo a" + "\n" * 100000 + "gh pr merge 1"
+print(json.dumps({"tool_name": "Bash", "cwd": sys.argv[1], "tool_input": {"command": command}}))
+PY
+set +e
+timeout 15 bash "$GQ_HOOK" < "$TMPDIR_TEST/newlines.json" > "$TMPDIR_TEST/out" 2> "$TMPDIR_TEST/err"
+GQ_RC=$?
+set -e
+if [[ "$GQ_RC" -eq 2 ]]; then
+  report 0 "graphql-query-file-read: a mutation after 100000 newlines is blocked within 15s"
+else
+  report 1 "graphql-query-file-read: a mutation after 100000 newlines is blocked within 15s" \
+    "expected 2, got $GQ_RC (124 is a timeout): $(cat "$TMPDIR_TEST/err")"
+fi
 expect_guard_rc "gh pr create inside git rebase -x is blocked" 10 \
   "git rebase -x 'gh pr create' HEAD~1"
 expect_guard_rc "gh pr create inside unquoted git submodule foreach is blocked" 10 \
