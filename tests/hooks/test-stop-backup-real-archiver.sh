@@ -219,9 +219,29 @@ def dos(info, attributes):
     info.external_attr = attributes
 
 
+class Unflagged(zipfile.ZipInfo):
+    # What Apple's zip writes: UTF-8 name bytes with the UTF-8 flag left clear.
+    __slots__ = ()
+
+    def _encodeFilenameFlags(self):
+        return self.filename.encode("utf-8"), self.flag_bits & ~0x800
+
+
+def real_name(info):
+    if info.flag_bits & 0x800:
+        return info.filename
+    try:
+        return info.filename.encode("cp437").decode("utf-8")
+    except UnicodeError:
+        return info.filename
+
+
 output = []
 for info, data in members:
     info = copy.copy(info)
+    if case == "unflagged-names":
+        info.filename = real_name(info)
+        info.__class__ = Unflagged
     name = info.filename
     if case == "dos-entries":
         # What 7-Zip on Windows writes: no Unix mode, only DOS attributes.
@@ -263,6 +283,11 @@ if case in {"extra-file", "extra-dir"}:
 with zipfile.ZipFile(destination, "w") as archive:
     for info, data in output:
         archive.writestr(info, data)
+if case == "unflagged-names":
+    with zipfile.ZipFile(destination) as archive:
+        flags = [i.flag_bits & 0x800 for i in archive.infolist() if not i.filename.isascii()]
+    if not flags or any(flags):
+        sys.exit("unflagged-names: the rewritten archive has no unflagged non-ASCII name")
 PY
 
 validate() {
@@ -321,6 +346,13 @@ CASES
   else
     expect_rejected "$backend: DOS entries are refused on a POSIX host" \
       "$fixture/$backend-dos.zip" "does not match its source manifest"
+  fi
+
+  # Apple's zip stores UTF-8 names without the UTF-8 flag, and no CI host runs it.
+  if python3 "$fixture/tamper.py" "$intact" "$fixture/$backend-unflagged.zip" unflagged-names; then
+    assert_cmd "$backend: UTF-8 names without the UTF-8 flag validate" validate "$fixture/$backend-unflagged.zip"
+  else
+    fail "$backend: build unflagged-names"
   fi
 
   head -c 100 "$intact" > "$fixture/$backend-truncated.zip"

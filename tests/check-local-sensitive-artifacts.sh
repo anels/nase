@@ -143,6 +143,8 @@ if spec is None or spec.loader is None:
     raise SystemExit("FAIL: cannot load the shared secret scanner.")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+sys.path.insert(0, str(module_path.parent))
+from nase_fs import zip_member_name
 
 
 def safe_member(raw):
@@ -186,7 +188,7 @@ try:
         except (UnicodeError, RuntimeError, OSError, NotImplementedError):
             allowlist_error = "the archived copy could not be read"
         for info in archive.infolist():
-            raw = info.filename.replace("\\", "/")
+            raw = zip_member_name(info).replace("\\", "/")
             parts = pathlib.PurePosixPath(raw).parts
             if not raw or raw.startswith("/") or ".." in parts:
                 unsafe.add(safe_member(raw))

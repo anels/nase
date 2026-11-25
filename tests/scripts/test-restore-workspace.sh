@@ -172,6 +172,25 @@ expected=$(python3 -c 'import time; print(int(time.mktime((2025, 3, 1, 12, 0, 0,
 actual=$(python3 -c 'import os, sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$case_dir/root/workspace/efforts/old.md")
 assert_cmd "zip restore keeps the member's stored mtime" test "$actual" = "$expected"
 
+# Apple's zip stores UTF-8 names without the UTF-8 flag. The placeholder has the same
+# byte length as the real name, so swapping it in leaves every offset valid.
+case_dir="$TMPROOT/unflagged-name"
+mkdir -p "$case_dir/root"
+python3 - "$case_dir/archive.zip" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    archive.writestr("kb/@@.md", b"accent\n")
+path = pathlib.Path(sys.argv[1])
+path.write_bytes(path.read_bytes().replace(b"kb/@@.md", "kb/é.md".encode("utf-8")))
+PY
+python3 "$SCRIPT" inspect --root "$case_dir/root" --archive "$case_dir/archive.zip" --manifest-out "$case_dir/manifest.json" >/dev/null
+python3 "$SCRIPT" apply --root "$case_dir/root" --manifest "$case_dir/manifest.json" >/dev/null
+restored=$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1], "kb", "é.md").read_text(), end="")' "$case_dir/root/workspace" 2>/dev/null)
+assert_cmd "zip restore reads a UTF-8 name stored without the UTF-8 flag" test "$restored" = accent
+
 case_dir="$TMPROOT/mtime-7z"
 mkdir -p "$case_dir/root" "$case_dir/source/efforts"
 printf 'x\n' > "$case_dir/source/efforts/old.md"

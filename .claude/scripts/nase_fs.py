@@ -37,6 +37,22 @@ def sha256_file(path: pathlib.Path | str) -> str:
     return digest.hexdigest()
 
 
+def zip_member_name(info: typing.Any) -> str:
+    """Name of a `zipfile.ZipInfo` member, as the archiver meant it.
+
+    Apple's `zip` stores UTF-8 names without setting the UTF-8 flag, so `zipfile` decodes
+    them as cp437 and a non-ASCII name comes back as mojibake. Bytes that are not valid
+    UTF-8 keep the cp437 reading.
+    """
+    name = info.filename
+    if info.flag_bits & 0x800 or name.isascii():
+        return name
+    try:
+        return name.encode("cp437").decode("utf-8")
+    except UnicodeError:
+        return name
+
+
 try:
     import fcntl
 except ImportError:  # Windows has no fcntl; msvcrt byte-range locking stands in.
