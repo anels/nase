@@ -212,6 +212,26 @@ PY
 
 check_agent_frontmatter verifier .claude/agents/nase-verifier.md nase-verifier subset Read Grep Glob
 
+# --- 6a. The address-comments gates use the persisted agent, not the role ----
+# Phase 7.5 and the Step 3d dossier pass gate outward-facing actions. Routing them
+# through the prompt-prefix role would make read-only advisory, and a no-verdict
+# result must stop the run instead of becoming a user question.
+FIX_VERIFY=.claude/docs/pr-review-fix-verification.md
+ANALYSIS=.claude/docs/address-comments-analysis.md
+
+for doc in "$FIX_VERIFY" "$ANALYSIS"; do
+  assert_contains "$doc spawns the persisted nase-verifier" "$doc" '`nase-verifier`'
+  assert_contains "$doc names the agent definition file" "$doc" '.claude/agents/nase-verifier.md'
+  if grep -Fq 'role `verifier` per' "$doc"; then
+    fail "$doc routes the gate through the advisory verifier role"
+  else
+    pass "$doc does not route the gate through the advisory verifier role"
+  fi
+  assert_contains "$doc stops the run with an error on an unusable result" "$doc" 'stop the run with an error'
+done
+assert_section_contains "Phase 7.5 gate stops instead of asking on a malformed result" \
+  "$FIX_VERIFY" '## 9. Review-Thread Resolution Gate' 'stop the run with an error'
+
 # --- 6b. The design naive-reader is persisted, Read-only, and wired in -------
 # The comprehension read is only a fresh-reader test if the agent has no way to
 # run commands or edit, and only runs if each design mode points at the contract.

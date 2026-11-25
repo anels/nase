@@ -43,8 +43,11 @@ This gate is unconditional: replying to and resolving someone's review threads i
 an outward-facing, hard-to-undo action. The verifier is a local subagent, so there
 is no availability branch to skip through.
 
-Spawn one fresh-context read-only subagent (role `verifier` per `.claude/roles.yaml`;
-read-only by its prompt prefix, not by an enforced whitelist). Give it ONLY:
+Spawn one fresh-context reviewer as the persisted agent `nase-verifier`
+(`.claude/agents/nase-verifier.md`; `tools: Read, Grep, Glob`, so read-only is an enforced
+whitelist). It has no Bash, so run the git commands below yourself and paste their output
+into the prompt; do not ask it to run them. If `nase-verifier` is not registered, stop
+with that error and do not substitute another agent. Give it ONLY:
 - the unresolved review threads from Phase 2 (full comment chains)
 - the final post-Phase-4 dossier/action map and drafted replies from Phase 6
 - the implementation diff:
@@ -87,6 +90,6 @@ Decision tree:
   - On "Fix it": re-enter Phase 6 with the failing thread(s) as requirements, then rerun build/test and this gate.
   - On "Override": log the override to the daily log (tag: `verify-override`) before proceeding.
 
-Malformed output (no `VERDICT:` line) → treat as `NEEDS-HUMAN`, present raw `content`, and ask the user.
+An empty turn or output with no `VERDICT:` line is not a verdict: stop the run with an error and do not commit, push, reply, or resolve. Never read it as `PASS` or as `NEEDS-HUMAN`.
 
 This gate checks reviewer intent, not just tests.
