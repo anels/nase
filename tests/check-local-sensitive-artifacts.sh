@@ -519,6 +519,12 @@ hits=$(rg -nIl --hidden --no-ignore \
   -e "$pattern" \
   "${existing_targets[@]}" 2>/dev/null || true)
 
+# Windows ripgrep reports `\` paths. Rewrite them here: passing `--path-separator /`
+# through MSYS makes rg fail, and the `|| true` above would turn that into a PASS.
+if [[ "$OSTYPE" == msys || "$OSTYPE" == cygwin ]]; then
+  hits=${hits//\\//}
+fi
+
 if [ -n "$hits" ]; then
   printf 'FAIL: sensitive values found in ignored local artifacts. Remove/rotate before sharing this workspace:\n' >&2
   printf '%s\n' "$hits" >&2

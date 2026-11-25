@@ -14,6 +14,8 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 HOOK="$ROOT/.claude/hooks/prose-lint-guard.sh"
 SLOP="$ROOT/tests/fixtures/prose/slack-slop.md"
 CLEAN="$ROOT/tests/fixtures/prose/slack-clean.md"
+# shellcheck source=tests/lib/platform.sh
+source "$ROOT/tests/lib/platform.sh"
 
 pass=0
 fail=0
@@ -150,10 +152,7 @@ expect_surface "an absent channel_id falls back to the channel rules" "" "slack-
 STUB_BIN=$(mktemp -d)
 trap 'rm -rf "$STUB_BIN"' EXIT
 for tool in bash git mktemp rm cat; do
-  real=$(command -v "$tool") || continue
-  # A builtin resolves to a bare name rather than a path; linking that would make a
-  # dangling symlink and the tool would be missing for a reason the test never meant.
-  [[ "$real" == /* ]] && ln -s "$real" "$STUB_BIN/$tool"
+  plat_path_tool "$tool" "$STUB_BIN"
 done
 run_hook "$(payload_with text "$SLOP")" "PATH=$STUB_BIN"
 expect_silent_pass "an unreachable linter lets a would-be-blocked body through"

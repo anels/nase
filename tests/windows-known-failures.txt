@@ -3,24 +3,17 @@
 # per line. tests/scripts/test-windows-known-failures.sh fails when a path no longer
 # names a tracked file. Remove a path once the file passes on Windows. The comment above
 # each path says why it is still listed.
-# `ln -s` copies instead of linking (unsafe lock parent), and the concurrent batch case
-# admits fewer calls than max_ops under the weak lock.
+# Two cases fail on a Windows 11 host. `jira concurrent batch respects max_ops`: of 16
+# parallel calls on max_ops=3 only 1 is admitted under the weak lock, and the rest give up
+# on the guard's 2 s lock wait. The guard fails closed; passing needs a hook or lock change.
+# `jira setup failure returns blocking status`: it relies on `chmod 500` making a directory
+# unwritable, and Windows leaves it writable.
 tests/hooks/test-external-write-guards.sh
-# Builds a narrow PATH with `ln -s`; the copied .exe files miss their DLLs and exit 127.
-tests/hooks/test-prose-lint-guard.sh
-# Same narrow PATH built with `ln -s` as test-prose-lint-guard.sh.
-tests/hooks/test-stop-claim-check.sh
-# One symlink-escape case: `ln -s` makes a copy.
-tests/scripts/test-citation-validator.sh
 # Symlinked body files, the ledger's 0600 mode, claim and lock-wait cases, and path
 # spelling comparisons.
 tests/scripts/test-external-write-action.sh
 # One case expects an `exception:` reason and gets `net_error:ConnectionRefusedError`.
 tests/scripts/test-jev-judge.sh
-# Symlink cases, and two path assertions that meet backslashes in the report.
-tests/scripts/test-local-sensitive-artifacts.sh
-# A symlink case, and a `nul.bin` fixture, which Windows reserves as a device name.
-tests/scripts/test-shared-workflow-extraction.sh
 # Seen failing on the windows-latest runner and not yet diagnosed. test-shell-scan.sh
 # exits 1 after about 60s with no FAIL line, which looks like a timeout. test-today-stats.sh
 # reads zero invocations from a fixture that passes on POSIX, and pins the day with TZ=UTC.
