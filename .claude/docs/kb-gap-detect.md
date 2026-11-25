@@ -82,7 +82,7 @@ For each confirmed gap:
 
 Route it yourself with the three rules above.
 
-Confidence is a lookup on the marker mix, not a judgment, so it takes no jev point:
+Confidence is a lookup on the marker mix, not a judgment:
 - `high` - marker mix includes `sme_teach` OR `post_error`
 - `medium` - `uncertainty + lookup` mix
 - `low` - `lookup`-only or `first_time`-only

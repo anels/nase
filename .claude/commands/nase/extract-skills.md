@@ -39,9 +39,8 @@ List 1-3 candidates with one-line descriptions. Prioritize the intervention-gap 
 ### 2. Apply the quality bar
 
 Every candidate must pass all three checks. There is no numeric score: a weighted rubric
-with no calibration source only dresses the same judgment up as arithmetic.
-
-Try jev first via `.claude/scripts/jev-judge.py`, one call per check (`.claude/docs/jev-judgment-points.md` points `extract-skills.reusable`, `extract-skills.non-obvious`, `extract-skills.self-contained`, each `--type Noul` with `--instructions` `'Will this come up again across different repos or tasks?'`, `'Is this absent from existing /nase commands, CLAUDE.md rules, and workspace skills?'`, or `'Can another Claude instance follow the steps cold, without session context?'` in that order, so yes always means the check passes; state = the candidate's one-line description with repo names, ticket IDs, and customer names removed, plus the check's own pass/fail examples below); confidence < 0.9 or unavailable → judge the check yourself against those examples.
+with no calibration source only dresses the same judgment up as arithmetic. Judge each
+check against its pass/fail examples.
 
 - **Reusable** - will this come up again in future sessions, across different repos or tasks? A pattern that only applies to one specific codebase isn't worth extracting.
   - ✅ Pass: "How to resolve a diverged git worktree before onboarding" - could happen in any repo

@@ -760,7 +760,7 @@ run_changed_extras() {
   # the shared assertion helper changes what every one of them checks, and without this
   # it triggered no test run at all.
   # Script tests also read the prose and config the scripts consume: command and doc files
-  # (skill-safety-boundaries, terminology-discovery, jev-judge, slack-draft-templates,
+  # (skill-safety-boundaries, terminology-discovery, slack-draft-templates,
   # trace-role, workspace-quality-scan), roles.yaml (roles-schema), the workflows
   # (github-actions-hardening), and the `tests/check-*.sh` gates that tests probe directly.
   # An edit to only those files used to trigger none of them.

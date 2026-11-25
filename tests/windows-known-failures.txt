@@ -12,8 +12,6 @@ tests/hooks/test-external-write-guards.sh
 # Symlinked body files, the ledger's 0600 mode, claim and lock-wait cases, and path
 # spelling comparisons.
 tests/scripts/test-external-write-action.sh
-# One case expects an `exception:` reason and gets `net_error:ConnectionRefusedError`.
-tests/scripts/test-jev-judge.sh
 # Seen failing on the windows-latest runner and not yet diagnosed. test-shell-scan.sh
 # exits 1 after about 60s with no FAIL line, which looks like a timeout. test-today-stats.sh
 # reads zero invocations from a fixture that passes on POSIX, and pins the day with TZ=UTC.
