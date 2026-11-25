@@ -302,6 +302,12 @@ assert resolved(["gh", "pr"], os.path.join(os.curdir, "gh.bat")) == ["gh", "pr"]
 for arg in ("a&b", "a|b", "a<b", "x>y", "a^b", "%PATH%", "!x!", "say \"hi\"", "a\rb", "a\nb"):
     assert resolved(["gh", arg], wrapper) == ["gh", arg], arg
     assert resolved(["gh", arg], program) == [program, arg], arg
+# The batch file path is read by cmd.exe too, so syntax in a directory name counts.
+for directory in ("R&D", "a^b", "%TEMP%", "x!y"):
+    unsafe = os.path.abspath(os.path.join(directory, "gh.cmd"))
+    assert resolved(["gh", "pr"], unsafe) == ["gh", "pr"], directory
+    assert resolved(["gh", "pr"], os.path.abspath(os.path.join(directory, "gh.exe"))) == [
+        os.path.abspath(os.path.join(directory, "gh.exe")), "pr"], directory
 '
 
 run_case "run starts a gh that Windows could only start as a .cmd wrapper" "$PRELUDE"'

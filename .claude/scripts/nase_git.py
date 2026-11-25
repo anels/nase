@@ -54,8 +54,8 @@ def launch_argv(argv: list[str]) -> list[str]:
     is returned unchanged.
     Two matches are refused, which leaves the bare name and its earlier behavior: one in
     the current directory, which `shutil.which` also searches on Windows and which may be
-    a checkout carrying its own `gh.bat`, and a batch file given an argument that cmd.exe
-    would run as a second command.
+    a checkout carrying its own `gh.bat`, and a batch file whose own path or arguments
+    hold text that cmd.exe would run as a second command.
     """
     if os.name != "nt":
         return argv
@@ -63,7 +63,7 @@ def launch_argv(argv: list[str]) -> list[str]:
     if not found or not os.path.isabs(found):
         return argv
     if found.lower().endswith((".cmd", ".bat")) and any(
-        _CMD_SYNTAX.intersection(arg) for arg in argv[1:]
+        _CMD_SYNTAX.intersection(arg) for arg in (found, *argv[1:])
     ):
         return argv
     return [found, *argv[1:]]
