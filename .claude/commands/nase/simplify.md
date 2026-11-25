@@ -11,9 +11,9 @@ Replaces the retired Anthropic bundled `/simplify` (removed in Claude Code v2.1.
 
 **Input:** `$ARGUMENTS` - optional scope override (`--scope=<glob>`), `--review`, `--dry-run`, `--verbose`.
 
-## Step 0 - Language preflight (MUST run first, non-negotiable)
+## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat. The subagent edits code identifiers and comments - those follow project conventions, not `conversation:`.
+Use `conversation:` for chat. The subagent edits code identifiers and comments - those follow project conventions, not `conversation:`.
 
 ## Steps
 

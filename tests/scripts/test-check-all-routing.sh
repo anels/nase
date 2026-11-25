@@ -32,7 +32,6 @@ run_skill_bash_blocks() { record skill-bash-blocks; }
 run_skill_overlap() { record skill-overlap; }
 run_shared_doc_bash_blocks() { record doc-bash-blocks; }
 run_kb_domain_map_contract() { record kb-domain-map; }
-run_canonical_pointers() { record canonical-pointers; }
 run_effort_pointer_integrity() { record effort-pointers; }
 run_evals() { record evals; }
 

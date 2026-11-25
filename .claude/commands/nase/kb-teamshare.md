@@ -8,7 +8,7 @@ effort: medium
 disable-model-invocation: true
 ---
 
-Move KB content between workspaces through reviewable, sanitized, path-bounded steps. Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
+Move KB content between workspaces through reviewable, sanitized, path-bounded steps.
 
 The first word of `$ARGUMENTS` picks the mode. `export` (the default when the first word is neither) runs `## Export mode` on the rest. `import` runs `## Import mode` on the rest, which is `<source-kb-path>`. Both modes are manual-only.
 

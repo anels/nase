@@ -4,7 +4,6 @@
 
 - Activation
 - Hard Gate
-- Language preflight (Step 0 - MUST run before Step 1, non-negotiable)
 - No-Ask Contract (mid-pipeline)
 - Research Ladder (per open question)
 - Step 1: Deep Context Gathering
@@ -26,10 +25,6 @@ This is the **default** mode when `/nase:design` runs with no flag and the slug 
 ## Hard Gate
 
 Same as base skill: no code, no implementation, no FSD. Only the effort doc is produced.
-
-## Language preflight (Step 0 - MUST run before Step 1, non-negotiable)
-
-The base skill's pointer applies; resolve it before Step 1, not at Step 6. Auto mode emits exactly two user-facing surfaces - the Step 4.5 `AskUserQuestion` batch and the Step 6 report - and both depend on the answer.
 
 ## No-Ask Contract (mid-pipeline)
 

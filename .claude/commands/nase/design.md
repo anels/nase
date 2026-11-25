@@ -13,7 +13,7 @@ Follow `.claude/docs/workspace-write-guard.md` and `.claude/docs/effort-model.md
 
 ## Core contract
 
-1. Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for the effort doc.
+1. Use `conversation:` for chat and `output:` for the effort doc.
 2. Apply `.claude/docs/design-principles.md`. Choose the simplest high-quality long-term shape. Development cost informs ETA, not design selection.
 3. Default to one PR. Split into multiple PRs only when a repo, compatibility/rollout, mechanical-noise, 1500-changed-line (the `git diff --stat` total for the PR), or distinct-owner boundary makes one PR harder to review safely.
 4. Record `Target PR count`, `Reviewability`, and `Validation - how to get the real number`. Write the `### PR Plan` as the table in `.claude/docs/pr-plan-readiness.md`: each PR row with `Scope`, `Depends on`, `External blockers`, `Touches`, and a derived `fsd-ready` flag. `/nase:fsd` builds every ready PR (`yes` or `yes - stacks on {PR}`) in layers: independent PRs in parallel, and a PR that only builds on a same-repo parent opens stacked on the parent's branch without waiting for its merge. A flag that is wrong either holds back work that could start or starts work that cannot finish.

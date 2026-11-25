@@ -12,10 +12,6 @@ Restores from timestamped zip backups. Creates a pre-restore snapshot before ove
 
 ## Steps
 
-### 0. Language preflight (MUST run first, non-negotiable)
-
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block.
-
 ### 1. Read backup config and open the session state file
 
 Every Bash call starts a fresh shell, so a variable set in one fence is gone in the next. This flow spans five fences separated by user gates, so it carries its state in a file that each later fence sources. That file lives under `.nase-restore/` (git-ignored), **not** `workspace/tmp/`, because Step 5 renames `workspace/` out from under anything stored there.

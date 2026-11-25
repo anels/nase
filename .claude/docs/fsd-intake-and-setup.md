@@ -12,7 +12,7 @@ Read this file only when /nase:fsd enters Phases 1-3.7. It owns context inferenc
 
 ## Phase 1: Infer Context (do the homework before asking anything)
 
-Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for both `conversation:` (chat) and `output:` (PR/commit) languages (default English if missing) - see the Language preflight above.
+Research first; minimize questions. Read `workspace/context.md`, then `workspace/config.md → ## Language` for both `conversation:` (chat) and `output:` (PR/commit) languages (default English if missing).
 
 **Effort-doc intake (design handoff):** before repo inference, scan `$ARGUMENTS` tokens for a slug matching `workspace/efforts/{slug}.md`. If found, read the effort doc and extract:
 - `### Success Criteria` → store as `success_criteria_from_design`. Phase 2 drops Q0 and uses these as the done-definition.

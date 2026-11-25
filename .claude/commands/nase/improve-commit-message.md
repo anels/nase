@@ -11,9 +11,9 @@ Good commit messages are searchable documentation. When someone runs `git log --
 
 **Input:** $ARGUMENTS - optional flags (see below)
 
-## Step 0 - Language preflight (MUST run first, non-negotiable)
+## Language
 
-Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and prompts; use `output:` for the rewritten commit message.
+Use `conversation:` for chat and prompts; use `output:` for the rewritten commit message.
 
 ## Flags
 

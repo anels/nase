@@ -17,7 +17,7 @@ Load shared docs when needed, before the gate each owns:
 - `.claude/docs/workspace-write-guard.md` (effort, topology, KB writes): before the first, Phase 3.7 or 8b.
 - `.claude/docs/external-mutation-policy.md` (external writes): before the first, by Phase 7.
 
-**Language preflight (run first):** Follow `.claude/docs/language-config.md` → Minimum Step 0 block. Use `conversation:` for chat and `output:` for commits, PRs, and GitHub text.
+**Language:** Use `conversation:` for chat and `output:` for commits, PRs, and GitHub text.
 
 ## Standing invariants
 
