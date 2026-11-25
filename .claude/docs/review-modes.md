@@ -40,7 +40,7 @@ as separate passes` / `Never self-approve in the same active context`.
 
 Default pattern: one subagent per delegation.
 
-- Spawn the persisted `nase-verifier` agent (`.claude/agents/nase-verifier.md`, `tools: Read, Grep, Glob`). Its `tools:` frontmatter is the only enforced read-only whitelist. The `verifier` role in `.claude/roles.yaml` is the same reviewer by prompt prefix only, which is advisory. The fsd and address-comments gates always spawn the persisted agent; an unregistered `nase-verifier` stops the run with an error and never falls back to the role.
+- Spawn the persisted `nase-verifier` agent (`.claude/agents/nase-verifier.md`, `tools: Read, Grep, Glob`). Its `tools:` frontmatter is the only enforced read-only whitelist. The `verifier` role in `.claude/roles.yaml` is the same reviewer by prompt prefix only, which is advisory. The fsd and address-comments gates take their reviewer and failure rules from `.claude/docs/fsd-candidate-review.md` → "Reviewer for every verification gate."
 - Pass the mode's template as the subagent's instructions verbatim, and the per-call payload as its prompt. Say that the mode's output format replaces the agent's default return shape: `nase-verifier` otherwise answers with its own `Verdict:` block, which has no `VERDICT:` line.
 - Give it the artifact and the contract, and nothing else. Withholding your classification, severity, and expected verdict is the whole mechanism: a reviewer told the answer cannot independently reach it.
 - Pass absolute paths. A subagent resolves relative paths against its own cwd, which is not necessarily the worktree under review.

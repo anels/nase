@@ -20,6 +20,8 @@ Shared rules for reading and writing Confluence pages via Atlassian MCP. Referen
 
 ## Accepted write formats by MCP generation
 
+Set the format explicitly on every body-bearing Confluence write, comments included, and never rely on the default. The hooks do not check every comment tool.
+
 Which formats a page body may carry depends on the MCP generation you are on - see *The current MCP generation* below. The current `createConfluenceContent` / `updateConfluenceContent` pair takes `html` or `markdown`; the older `createConfluencePage` / `updateConfluencePage` pair also takes `adf`. All of them go through the MCP's own converter. `adf` and `html` are lossless for `inlineCard` Jira links, panels, tables, expands, and attachment references; **`markdown` is not** - measured on the round-trip, it cannot express any of those, and a markdown Jira link stays a plain `<a href>`. Pick by what you are holding:
 
 | You are | Use | Why |
