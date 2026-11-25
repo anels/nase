@@ -266,6 +266,35 @@ expect_gq_hook() {
     fi
   done
 }
+expect_exact_word_hook() {
+  local expected="$1" command="$2" tool rc
+  for tool in Bash PowerShell; do
+    set +e
+    printf '{"tool_name":"%s","tool_input":{"command":"%s"}}' "$tool" "$command" |
+      bash "$GQ_HOOK" > "$TMPDIR_TEST/out" 2> "$TMPDIR_TEST/err"
+    rc=$?
+    set -e
+    if [[ "$rc" -eq "$expected" ]]; then
+      report 0 "exact-word-rules: [$tool] $command"
+    else
+      report 1 "exact-word-rules: [$tool] $command" \
+        "expected $expected, got $rc: $(cat "$TMPDIR_TEST/err")"
+    fi
+  done
+}
+# The exact-word rules apply only to the text the shell runs. The guard receives the command
+# without its NUL bytes, and a PowerShell backslash as a slash.
+for EXACT_COMMAND in 'gh api x -X OPTIONS' 'gh api x -X GET --input f.json' \
+  'kubectl config use-context prod' 'terraform workspace select prod'; do
+  expect_exact_word_hook 0 "$EXACT_COMMAND"
+  expect_exact_word_hook 0 "$EXACT_COMMAND\\n"
+  expect_exact_word_hook 2 "$EXACT_COMMAND\\u0000"
+done
+expect_exact_word_hook 2 'gh api x -X GET --input f.json\u0000-XDELETE'
+expect_exact_word_hook 2 'gh api x -X GET --input f\u0000--hostname\u0000evil.example'
+expect_exact_word_hook 2 'kubectl config use-context prod\u0000--kubeconfig\u0000x'
+expect_exact_word_hook 2 'terraform workspace select prod\u0000-or-create'
+expect_exact_word_hook 2 'gh api x -X GET --input dir\\f.json'
 GQ_READ='gh api graphql -F query=@q.graphql'
 expect_gq_hook 0 "$GQ_READ"
 expect_gq_hook 0 "$GQ_READ\\n"

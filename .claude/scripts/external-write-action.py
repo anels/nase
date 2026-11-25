@@ -2607,8 +2607,10 @@ def cmd_guard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 10
+    # `getattr`: a caller that builds its own namespace passes the text as run.
+    inexact = getattr(args, "inexact_text", False)
     if "unrecognized" in kinds or (
-        classes & EXACT_WORD_RULES and not runs_exactly(command, argvs)
+        classes & EXACT_WORD_RULES and (inexact or not runs_exactly(command, argvs))
     ):
         print(
             "BLOCKED: unrecognized external CLI command. Use an explicit read-only command or "
@@ -2669,6 +2671,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     guard.add_argument(
         "--cwd", help="working directory of the command; resolves `query=@file` reads"
+    )
+    guard.add_argument(
+        "--inexact-text",
+        action="store_true",
+        help="the text differs from what the shell runs; refuse the exact-word rules",
     )
     guard.set_defaults(func=cmd_guard)
 
