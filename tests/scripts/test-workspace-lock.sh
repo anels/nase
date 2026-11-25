@@ -187,6 +187,77 @@ crash_recovered_nonce=$(python3 -c 'import json,sys; print(json.load(open(sys.ar
 assert_cmd "orphaned recovery guard file does not block" test -n "$crash_recovered_nonce"
 python3 "$SCRIPT" release --root "$TMPROOT" --nonce "$crash_recovered_nonce"
 
+# A slow runner can spend longer than the timeout removing a stale lock. pid_alive runs
+# inside that removal under both lock modes, so the first case delays it there.
+mkdir -p "$TMPROOT/slow-reclaim/.nase-locks/workspace-mutation.lock"
+printf '{"pid":99999999,"nonce":"stale-slow"}\n' > "$TMPROOT/slow-reclaim/.nase-locks/workspace-mutation.lock/owner.json"
+python3 - "$TMPROOT/slow-reclaim/.nase-locks/workspace-mutation.lock" <<'PY'
+import os
+import sys
+import time
+
+old = time.time() - 30
+os.utime(sys.argv[1], (old, old))
+PY
+python3 - "$SCRIPT" "$TMPROOT/slow-reclaim" <<'PY'
+import importlib.util
+import os
+import sys
+import time
+from pathlib import Path
+
+script, root_arg = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("workspace_lock_slow_reclaim", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+real_pid_alive = module.pid_alive
+
+
+def slow_pid_alive(pid):
+    time.sleep(0.1)
+    return real_pid_alive(pid)
+
+
+module.pid_alive = slow_pid_alive
+module.release(module.acquire(Path(root_arg), 10, owner_pid=os.getpid()))
+PY
+slow_reclaim_rc=$?
+assert_cmd "a stale reclaim slower than the timeout still acquires" test "$slow_reclaim_rc" = "0"
+
+mkdir -p "$TMPROOT/endless-reclaim/.nase-locks/workspace-mutation.lock"
+python3 - "$SCRIPT" "$TMPROOT/endless-reclaim" <<'PY'
+import importlib.util
+import os
+import sys
+from pathlib import Path
+
+script, root_arg = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("workspace_lock_endless_reclaim", script)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+reclaims = []
+
+
+def claims_success(*_args):
+    reclaims.append(1)
+    assert len(reclaims) < 100, "acquire never gave up"
+    return True
+
+
+module._weak_recover_stale = claims_success
+module._quarantine_stale_at = claims_success
+try:
+    module.acquire(Path(root_arg), 10, owner_pid=os.getpid())
+except module.LockBusyError:
+    pass
+else:
+    raise AssertionError("expected the held lock to stay busy")
+PY
+endless_reclaim_rc=$?
+assert_cmd "a reclaim that keeps reporting success still times out" test "$endless_reclaim_rc" = "0"
+
 mkdir -p "$TMPROOT/.nase-locks/workspace-mutation.lock"
 printf '{"pid":99999999,"nonce":"stale-race"}\n' > "$TMPROOT/.nase-locks/workspace-mutation.lock/owner.json"
 python3 - "$TMPROOT/.nase-locks/workspace-mutation.lock" <<'PY'

@@ -504,15 +504,15 @@ def _weak_remove(locks: Path, lock: Path, tag: str, nonce: object) -> bool:
     return True
 
 
-def _weak_recover_stale(locks: Path, lock: Path) -> None:
+def _weak_recover_stale(locks: Path, lock: Path) -> bool:
     try:
         age = time.time() - lock.stat().st_mtime
     except OSError:
-        return
+        return False
     owner = _weak_read_owner(lock) or {}
     if age <= STALE_AFTER_SECONDS or pid_alive(owner.get("pid")):
-        return
-    _weak_remove(locks, lock, "stale", owner.get("nonce"))
+        return False
+    return _weak_remove(locks, lock, "stale", owner.get("nonce"))
 
 
 _WEAK_WARNED: list[bool] = []
@@ -530,11 +530,16 @@ def _weak_acquire(root: Path, timeout_ms: int, pid: int) -> Lease:
     locks, lock = _weak_dirs(root, create=True)
     deadline = time.monotonic() + max(timeout_ms, 0) / 1000
     nonce = uuid.uuid4().hex
+    reclaimed = False
     while True:
         try:
             lock.mkdir()
         except FileExistsError:
-            _weak_recover_stale(locks, lock)
+            # Removing a stale lock can outlast the timeout, so the first removal
+            # always gets one more attempt at the lock.
+            if _weak_recover_stale(locks, lock) and not reclaimed:
+                reclaimed = True
+                continue
             if time.monotonic() >= deadline:
                 raise LockBusyError("workspace mutation lock is busy") from None
             time.sleep(0.05)
@@ -583,6 +588,7 @@ def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
     root_fd, _, locks_fd, locks_metadata = _open_lock_roots(root, create=True)
     deadline = time.monotonic() + max(timeout_ms, 0) / 1000
     nonce = uuid.uuid4().hex
+    reclaimed = False
     try:
         while True:
             if not _entry_matches(root_fd, LOCKS_NAME, locks_metadata):
@@ -590,7 +596,13 @@ def acquire(root: Path, timeout_ms: int, owner_pid: int | None = None) -> Lease:
             try:
                 os.mkdir(LOCK_NAME, dir_fd=locks_fd)
             except FileExistsError:
-                _quarantine_stale_at(root_fd, locks_fd, locks_metadata)
+                # As in _weak_acquire: the first removal gets one more attempt.
+                if (
+                    _quarantine_stale_at(root_fd, locks_fd, locks_metadata)
+                    and not reclaimed
+                ):
+                    reclaimed = True
+                    continue
                 if time.monotonic() >= deadline:
                     raise LockBusyError("workspace mutation lock is busy") from None
                 time.sleep(0.05)
