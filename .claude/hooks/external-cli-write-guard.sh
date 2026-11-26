@@ -46,12 +46,18 @@ EXACT=$(printf '%s' "$INPUT" | jq -r '
   if .tool_input.command | test("\\A[ -\\[\\]-~]*[\r\n]*\\z")
   then "=" + (.cwd // "") else empty end' 2>/dev/null | tr -d '\r') || EXACT=''
 
+# The exact command as one ASCII JSON string, so no NUL or CR is lost on the way: the
+# guard also judges it as the shell that runs it reads it.
+RAW=$(printf '%s' "$INPUT" | jq -ac '.tool_input.command' 2>/dev/null | tr -d '\r') \
+  || block 'could not read the command from the tool input'
+
 # The command goes over stdin: as an argument, one past the OS limit (about 32K
 # characters on Windows) fails to launch and reads as a blocked mutation.
-GUARD_ARGS=(guard --cwd "${EXACT#=}")
+GUARD_ARGS=(guard --cwd "${EXACT#=}" --raw-line)
 [ -n "$EXACT" ] || GUARD_ARGS+=(--inexact-text)
+[ "$TOOL_NAME" != "PowerShell" ] || GUARD_ARGS+=(--powershell)
 GUARD_RC=0
-printf '%s' "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" "${GUARD_ARGS[@]}" || GUARD_RC=$?
+printf '%s\n%s' "$RAW" "$CMD" | python3 "$HOOK_DIR/../scripts/external-write-action.py" "${GUARD_ARGS[@]}" || GUARD_RC=$?
 case "$GUARD_RC" in
   0) ;;
   10) block 'raw external mutation is not allowed; use external-write-action.py with an approved manifest' ;;
