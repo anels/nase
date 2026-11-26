@@ -760,7 +760,9 @@ binary_bundle="$TMPROOT/binary-bundle.md"
   printf 'base\n' > README.txt
   git add README.txt
   git commit -q -m init
-  head -c 1048576 /dev/urandom > large.bin
+  # Fixed bytes, not /dev/urandom: a megabyte of random bytes sometimes spells a
+  # credential-shaped assignment, and the secret preflight then writes no bundle.
+  python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256)) * 4096)' > large.bin
   # Not `nul.bin`: Windows reserves `nul` as a device name, with any extension.
   printf 'prefix\0suffix\n' > nul-byte.bin
 )
