@@ -23,7 +23,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from nase_fs import fsync_dir, sha256_bytes, sha256_file
+from nase_fs import fsync_dir, sha256_bytes, sha256_file, zip_member_name
 from nase_json import canonical_bytes
 from workspace_lock import LockError, held
 
@@ -112,7 +112,7 @@ def zip_members(archive: Path) -> list[dict[str, Any]]:
                         )
                 records.append(
                     {
-                        "archive_path": info.filename,
+                        "archive_path": zip_member_name(info),
                         "type": "directory" if is_dir else "file",
                         "size": 0 if is_dir else info.file_size,
                         "mode": stat.S_IMODE(mode) if mode else None,
@@ -463,7 +463,7 @@ def extract_zip(archive: Path, candidate: Path, members: list[dict[str, Any]]) -
     written_bytes = 0
     with zipfile.ZipFile(archive) as source:
         for info in source.infolist():
-            normalized = normalize_member(info.filename)
+            normalized = normalize_member(zip_member_name(info))
             item = by_archive.get(normalized)
             if item is None and normalized == "workspace":
                 continue

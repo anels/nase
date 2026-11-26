@@ -143,6 +143,8 @@ if spec is None or spec.loader is None:
     raise SystemExit("FAIL: cannot load the shared secret scanner.")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+sys.path.insert(0, str(module_path.parent))
+from nase_fs import zip_member_name
 
 
 def safe_member(raw):
@@ -186,7 +188,7 @@ try:
         except (UnicodeError, RuntimeError, OSError, NotImplementedError):
             allowlist_error = "the archived copy could not be read"
         for info in archive.infolist():
-            raw = info.filename.replace("\\", "/")
+            raw = zip_member_name(info).replace("\\", "/")
             parts = pathlib.PurePosixPath(raw).parts
             if not raw or raw.startswith("/") or ".." in parts:
                 unsafe.add(safe_member(raw))
@@ -195,12 +197,21 @@ try:
             member = safe_member(canonical)
             mode = (info.external_attr >> 16) & 0xFFFF
             kind = stat.S_IFMT(mode)
-            if info.is_dir() or kind == stat.S_IFDIR:
+            is_directory = info.is_dir() or kind == stat.S_IFDIR
+            permissions = stat.S_IMODE(mode)
+            # 7-Zip on Windows writes MS-DOS entries with no Unix mode. A Windows st_mode
+            # comes from the DOS read-only bit, which they do carry, so compare that.
+            # Every other entry, and every other host, compares the stored Unix mode.
+            if os.name == "nt" and info.create_system == 0 and mode == 0:
+                permissions = 0o444 if info.external_attr & 0x01 else 0o666
+                if is_directory:
+                    permissions |= 0o111
+            if is_directory:
                 if canonical in actual:
                     unsafe.add(member)
                     continue
                 actual[canonical] = {
-                    "mode": stat.S_IMODE(mode),
+                    "mode": permissions,
                     "type": "directory",
                 }
                 continue
@@ -226,7 +237,7 @@ try:
                 unreadable.add(member)
                 continue
             actual[canonical] = {
-                "mode": stat.S_IMODE(mode),
+                "mode": permissions,
                 "sha256": digest.hexdigest(),
                 "type": "file",
             }
@@ -368,7 +379,13 @@ def walk_error(error):
     unreadable.add(safe_path(error.filename or workspace))
 
 
-if workspace.is_symlink():
+def is_junction(path):
+    # A Windows junction is a directory link that is_symlink() does not report.
+    tag = getattr(os.lstat(path), "st_reparse_tag", 0)
+    return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1)
+
+
+if workspace.is_symlink() or (workspace.is_dir() and is_junction(workspace)):
     unsafe_links.add(safe_path(workspace))
 elif workspace.is_dir():
     for directory, dirnames, filenames in os.walk(
@@ -388,7 +405,7 @@ elif workspace.is_dir():
                 continue
             path = parent / name
             try:
-                if path.is_symlink():
+                if path.is_symlink() or is_junction(path):
                     unsafe_links.add(safe_path(path))
                 else:
                     retained_dirs.append(name)
