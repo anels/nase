@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Scan the working tree for credentials before a push, with the config CI uses.
+# Git runs this only after `core.hooksPath` is set to `.githooks`; `/nase:doctor`
+# prints that command. History is not scanned.
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-push] warning: gitleaks is not installed, so no credential scan ran." >&2
+  exit 0
+fi
+
+# Git starts this hook at the top of the working tree, where the config paths resolve.
+if ! gitleaks detect --no-git --redact --no-banner --config .gitleaks.toml; then
+  echo "[pre-push] push blocked: the credential scan did not pass." >&2
+  echo "[pre-push] For rule, file and line: gitleaks detect --no-git --redact --verbose --config .gitleaks.toml" >&2
+  exit 1
+fi
