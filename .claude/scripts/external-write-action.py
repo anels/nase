@@ -20,6 +20,7 @@ from typing import Any, NamedTuple
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import shell_scan
+import shell_text
 from nase_fs import lock_exclusive, sha256_bytes, sha256_file
 from nase_json import canonical_bytes
 from nase_time import parse_ts, utc_now_iso
@@ -2604,18 +2605,16 @@ def lone_direct_gh_call(command: str, result: shell_scan.ScanResult) -> bool:
     )
 
 
-def cmd_guard(args: argparse.Namespace) -> int:
-    command = args.command
-    if command is None:
-        command = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+def guard_scan(command: str, cwd: str | None, inexact: bool) -> int:
+    """Judge one reading of a command: 0 to allow it, 10 to block it."""
     result = shell_scan.scan(command)
     GRAPHQL_FILE_BASE.clear()
     if (
-        args.cwd
+        cwd
         and lone_direct_gh_call(command, result)
         and graphql_file_words(result.invocations[0].argv)
     ):
-        GRAPHQL_FILE_BASE.append(Path(args.cwd))
+        GRAPHQL_FILE_BASE.append(Path(cwd))
     unbindable_target = bool(command) and (result.unparseable or bool(result.top_opaque))
     # Failing closed here is only justified when a guarded CLI could actually be
     # reached. Blocking every command this parser cannot bind blocks the read-only
@@ -2644,8 +2643,6 @@ def cmd_guard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 10
-    # `getattr`: a caller that builds its own namespace passes the text as run.
-    inexact = getattr(args, "inexact_text", False)
     if "unrecognized" in kinds or (
         classes & EXACT_WORD_RULES and (inexact or not runs_exactly(command, argvs))
     ):
@@ -2656,6 +2653,58 @@ def cmd_guard(args: argparse.Namespace) -> int:
         )
         return 10
     return 0
+
+
+def mentions_guarded_in_any_shell(text: str) -> bool:
+    """Like `mentions_guarded_executable`, through quotes, NULs, and Windows paths.
+
+    A quote or NUL can sit inside a name or end it, so both readings count.
+    """
+    marks = "[\0'\"`\u2018-\u201e]"
+    return any(
+        mentions_guarded_executable(variant)
+        or mentions_guarded_executable(variant.replace("\\", "/"))
+        for variant in (text, re.sub(marks, "", text), re.sub(marks, " ", text))
+    )
+
+
+def guard_shell_text(raw: str, scanned: str, powershell: bool) -> int:
+    """Judge the exact command text as the shell that runs it reads it.
+
+    This can only add a block: `scanned`, the text the hook passes on, already passed.
+    It drops NUL bytes, and a Windows `jq` ends each of its lines with CRLF.
+    """
+    if not mentions_guarded_in_any_shell(raw):
+        return 0
+    reason, reading = shell_text.read(raw, powershell, mentions_guarded_in_any_shell)
+    if reason:
+        shell = "PowerShell" if powershell else "the shell"
+        print(
+            f"BLOCKED: {shell} reads this command differently than the guard does: "
+            f"it holds {reason}. Rewrite it with plain quotes, spaces, and line breaks.",
+            file=sys.stderr,
+        )
+        return 10
+    if powershell:
+        reading = reading.replace("\\", "/")
+    if reading.rstrip("\r\n") == scanned.rstrip("\r\n"):
+        return 0
+    return guard_scan(reading, None, True)
+
+
+def cmd_guard(args: argparse.Namespace) -> int:
+    command = args.command
+    if command is None:
+        command = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+    raw = None
+    # `getattr`: a caller that builds its own namespace passes only the text as run.
+    if getattr(args, "raw_line", False):
+        head, _, command = command.partition("\n")
+        raw = json.loads(head)
+    verdict = guard_scan(command, args.cwd, getattr(args, "inexact_text", False))
+    if verdict or raw is None:
+        return verdict
+    return guard_shell_text(raw, command, args.powershell)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2713,6 +2762,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--inexact-text",
         action="store_true",
         help="the text differs from what the shell runs; refuse the exact-word rules",
+    )
+    guard.add_argument(
+        "--raw-line",
+        action="store_true",
+        help="stdin opens with the exact command as one JSON string line",
+    )
+    guard.add_argument(
+        "--powershell", action="store_true", help="PowerShell runs the command"
     )
     guard.set_defaults(func=cmd_guard)
 
