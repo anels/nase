@@ -14,6 +14,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(sys.argv[1])
@@ -750,6 +751,315 @@ class DiffOmissionGapTest(unittest.TestCase):
             },
             metadata["evidence_gaps"],
         )
+
+
+class AcknowledgedRemovalTest(unittest.TestCase):
+    """A fully acknowledged deletion loses its gap, and nothing else does."""
+
+    MODES = {"full": (), "sample": ("--max-full-diff-lines", "0")}
+    FIELD = b"PASS" + b"WORD"
+    UNINDENTED = b"DEFAULT_" + FIELD + b' = "removal-canary-4831"'
+    INDENTED = b"    ADMIN_" + FIELD + b' = "removal-canary-9962"'
+    BEARER = b"Authorization: " + b"Bearer " + b"removal_canary_17a2"
+    SECTION = "## Acknowledged Removals"
+
+    def fresh_repo(self) -> None:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        self.root = Path(directory)
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        self.git("config", "user.email", "test@example.com")
+        self.git("config", "user.name", "Test")
+        self.git("config", "core.autocrlf", "false")
+
+    def git(self, *args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(self.repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    def write(self, path: str, *lines: bytes) -> None:
+        target = self.repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"".join(line + b"\n" for line in lines))
+
+    def commit(self) -> None:
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "base")
+
+    def base_with_fixture(self, *lines: bytes) -> None:
+        self.fresh_repo()
+        self.write("fixture.sh", *lines)
+        self.write("other.txt", b"one")
+        self.commit()
+
+    def build(
+        self, acknowledged: list[tuple[bytes, str]] | None, mode: str, *extra: str
+    ) -> tuple[subprocess.CompletedProcess, dict, str]:
+        output = self.root / "bundle.md"
+        output.unlink(missing_ok=True)
+        command = [
+            sys.executable, str(BUNDLE), "--repo", str(self.repo), "--base", "HEAD",
+            "--task", "remove the fixture", "--output", str(output),
+            *self.MODES[mode], *extra,
+        ]
+        if acknowledged is not None:
+            allowlist = self.root / "allowlist"
+            allowlist.write_text(
+                "".join(
+                    f"{hashlib.sha256(line).hexdigest()}  {path}  # fake\n"
+                    for line, path in acknowledged
+                ),
+                encoding="utf-8",
+            )
+            command += ["--secret-scan-allowlist", str(allowlist)]
+        completed = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotIn("canary", completed.stderr)
+        if not output.is_file():
+            return completed, {}, ""
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        text = output.read_text(encoding="utf-8")
+        self.assertNotIn("canary", text)
+        head = text.splitlines()[0]
+        metadata = json.loads(head[len("<!-- fsd-artifact: ") : -len(" -->")])
+        return completed, metadata, text
+
+    def gap(self, path: str = "fixture.sh", tree: str = "BASE") -> dict:
+        return {"path": path, "reason": "credential_like_diff_omitted", "tree": tree}
+
+    def assert_gap_stays(
+        self, acknowledged: list[tuple[bytes, str]] | None, expected: dict | None = None
+    ) -> None:
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                completed, metadata, text = self.build(acknowledged, mode)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertNotIn(self.SECTION, text)
+                self.assertIn(expected or self.gap(), metadata["evidence_gaps"])
+
+    def test_every_fully_acknowledged_removal_is_declared_without_a_gap(self):
+        self.base_with_fixture(b"#!/bin/sh", self.UNINDENTED, self.INDENTED)
+        self.write("second.sh", self.BEARER)
+        self.commit()
+        (self.repo / "fixture.sh").unlink()
+        (self.repo / "second.sh").unlink()
+        self.write("other.txt", b"two")
+        acknowledged = [
+            (self.UNINDENTED, "fixture.sh"),
+            (self.INDENTED, "fixture.sh"),
+            (self.BEARER, "second.sh"),
+        ]
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                _, metadata, text = self.build(acknowledged, mode)
+                self.assertEqual(metadata["evidence_gaps"], [])
+                section = text.split(self.SECTION, 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
+                records = {item["path"]: item for item in json.loads(section)}
+                self.assertEqual(set(records), {"fixture.sh", "second.sh"})
+                self.assertEqual(records["fixture.sh"]["acknowledged_line_count"], 2)
+                self.assertEqual(
+                    records["fixture.sh"]["base_blob_oid"],
+                    self.git("rev-parse", "HEAD:fixture.sh"),
+                )
+                self.assertIn("-one\n+two", text)
+                self.assertNotIn("#!/bin/sh", text)
+
+    def test_no_line_of_a_qualifying_removal_is_embedded(self):
+        self.base_with_fixture(b"keep-out-of-bundle", self.UNINDENTED)
+        (self.repo / "fixture.sh").unlink()
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                _, metadata, text = self.build([(self.UNINDENTED, "fixture.sh")], mode)
+                self.assertEqual(metadata["evidence_gaps"], [])
+                self.assertIn(self.SECTION, text)
+                self.assertNotIn("keep-out-of-bundle", text)
+
+    def test_removal_without_a_complete_acknowledgement_keeps_its_gap(self):
+        self.base_with_fixture(self.UNINDENTED, self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        for acknowledged in (
+            None,
+            [],
+            [(self.INDENTED, "fixture.sh")],
+            [(self.UNINDENTED, "other.txt"), (self.INDENTED, "other.txt")],
+            [(self.UNINDENTED + b" ", "fixture.sh"), (self.INDENTED, "fixture.sh")],
+        ):
+            with self.subTest(acknowledged=acknowledged):
+                self.assert_gap_stays(acknowledged)
+
+    def test_every_hit_needs_its_own_acknowledgement(self):
+        self.base_with_fixture(self.INDENTED, b"x", self.BEARER)
+        (self.repo / "fixture.sh").unlink()
+        self.assert_gap_stays([(self.BEARER, "fixture.sh")])
+
+    def test_hit_spanning_lines_keeps_the_gap(self):
+        spanning = (b"    Authorization:", b"    Bearer " + b"removal_canary_55c1")
+        self.base_with_fixture(*spanning, self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        self.assert_gap_stays([(self.INDENTED, "fixture.sh")])
+
+    def test_removal_past_the_acknowledgement_budget_keeps_the_gap(self):
+        lines = [
+            b"    KEY_%d_" % number + self.FIELD + b' = "removal-canary-%04d"' % number
+            for number in range(module.ALLOWLIST_MAX_SKIPS + 1)
+        ]
+        self.base_with_fixture(*lines)
+        (self.repo / "fixture.sh").unlink()
+        self.assert_gap_stays([(line, "fixture.sh") for line in lines])
+
+    def test_removal_larger_than_a_context_item_keeps_the_gap(self):
+        self.base_with_fixture(self.INDENTED, b"filler " * (module.ITEM_LIMIT // 7 + 1))
+        (self.repo / "fixture.sh").unlink()
+        self.assert_gap_stays([(self.INDENTED, "fixture.sh")])
+
+    def test_modified_path_keeps_its_gap(self):
+        self.base_with_fixture(b"x", self.INDENTED)
+        self.write("fixture.sh", b"x")
+        self.assert_gap_stays([(self.INDENTED, "fixture.sh")])
+
+    def test_added_path_keeps_its_gap_beside_a_removal(self):
+        self.base_with_fixture(self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        self.write("added.sh", self.BEARER)
+        acknowledged = [(self.INDENTED, "fixture.sh"), (self.BEARER, "added.sh")]
+        added_gap = self.gap("added.sh", "CANDIDATE")
+        _, metadata, text = self.build(acknowledged, "full")
+        self.assertNotIn(self.SECTION, text)
+        self.assertCountEqual(metadata["evidence_gaps"], [self.gap(), added_gap])
+        _, metadata, text = self.build(acknowledged, "sample")
+        self.assertIn(self.SECTION, text)
+        self.assertEqual(metadata["evidence_gaps"], [added_gap])
+
+    def test_renamed_path_keeps_its_gap(self):
+        filler = [b"filler %d" % number for number in range(30)]
+        self.base_with_fixture(*filler, self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        self.write("renamed.sh", *filler, b"replacement")
+        self.git("config", "diff.renames", "false")
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                _, metadata, text = self.build([(self.INDENTED, "fixture.sh")], mode)
+                self.assertNotIn(self.SECTION, text)
+                self.assertIn(
+                    "credential_like_diff_omitted",
+                    [item["reason"] for item in metadata["evidence_gaps"]],
+                )
+
+    def test_file_replaced_by_a_directory_keeps_its_gap(self):
+        self.base_with_fixture(self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        self.write("fixture.sh/child.txt", b"child")
+        # The candidate has a tree at the path, which the bundle already declares missing.
+        self.assert_gap_stays(
+            [(self.INDENTED, "fixture.sh")],
+            {"path": "fixture.sh", "reason": "missing_blob", "tree": "CANDIDATE"},
+        )
+
+    def test_rename_onto_a_directory_does_not_carry_the_removal_inside_it(self):
+        filler = [b"filler %d" % number for number in range(30)]
+        for line in (self.UNINDENTED, self.INDENTED):
+            self.fresh_repo()
+            self.write("nested/fixture.sh", line)
+            self.write("moved", *filler)
+            self.commit()
+            (self.repo / "nested/fixture.sh").unlink()
+            (self.repo / "nested").rmdir()
+            (self.repo / "moved").unlink()
+            self.write("nested", *filler, b"replacement-content")
+            for mode in self.MODES:
+                with self.subTest(line=line, mode=mode):
+                    _, metadata, text = self.build([(line, "nested/fixture.sh")], mode)
+                    self.assertEqual(metadata["evidence_gaps"], [])
+                    self.assertIn(self.SECTION, text)
+                    self.assertIn("+replacement-content", text)
+
+    def test_file_replaced_by_a_symlink_keeps_its_gap(self):
+        self.base_with_fixture(self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        try:
+            (self.repo / "fixture.sh").symlink_to("other.txt")
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+        self.git("config", "core.symlinks", "true")
+        self.assert_gap_stays([(self.INDENTED, "fixture.sh")])
+
+    def test_credential_shaped_path_name_keeps_its_gaps(self):
+        name = "ADMIN_" + "PASS" + "WORD=name_canary_17a2.sh"
+        self.fresh_repo()
+        self.write(name, self.INDENTED)
+        self.commit()
+        (self.repo / name).unlink()
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                _, metadata, text = self.build([(self.INDENTED, name)], mode)
+                self.assertNotIn(self.SECTION, text)
+                self.assertEqual(
+                    {item["reason"] for item in metadata["evidence_gaps"]},
+                    {"credential_like_path_redacted", "credential_like_diff_omitted"},
+                )
+
+    def test_unsafe_unchanged_line_elsewhere_withholds_the_whole_full_diff(self):
+        self.base_with_fixture(self.INDENTED)
+        filler = [b"filler %d" % number for number in range(30)]
+        self.write("config.sh", self.UNINDENTED, *filler, b"old")
+        self.commit()
+        (self.repo / "fixture.sh").unlink()
+        self.write("config.sh", self.UNINDENTED, *filler, b"new")
+        acknowledged = [(self.INDENTED, "fixture.sh"), (self.UNINDENTED, "config.sh")]
+        _, metadata, text = self.build(acknowledged, "full")
+        self.assertIn("## Full Diff Omitted", text)
+        self.assertNotIn(self.SECTION, text)
+        self.assertIn(self.gap(), metadata["evidence_gaps"])
+        self.assertIn(self.gap("config.sh", "CANDIDATE"), metadata["evidence_gaps"])
+
+    def test_unacknowledged_candidate_hit_still_stops_the_bundle(self):
+        self.base_with_fixture(self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        self.write("added.sh", self.BEARER)
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                completed, _, text = self.build([(self.INDENTED, "fixture.sh")], mode)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("CANDIDATE:added.sh at line 1", completed.stderr)
+                self.assertEqual(text, "")
+
+    def test_requested_base_context_shows_the_removed_file_redacted(self):
+        self.base_with_fixture(b"visible-context-line", self.UNINDENTED)
+        (self.repo / "fixture.sh").unlink()
+        acknowledged = [(self.UNINDENTED, "fixture.sh")]
+        _, metadata, _ = self.build(acknowledged, "full")
+        request = self.root / "request.json"
+        request.write_text(
+            json.dumps(
+                {
+                    "base_oid": metadata["base_oid"],
+                    "candidate_tree_oid": metadata["candidate_tree_oid"],
+                    "contract_inventory_sha256": metadata["contract_inventory_sha256"],
+                    "context_requests": [{"tree": "BASE", "path": "fixture.sh"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        _, metadata, text = self.build(
+            acknowledged, "full", "--context-request-file", str(request)
+        )
+        self.assertIn("visible-context-line", text)
+        self.assertIn("<redacted-line:", text)
+        self.assertEqual(metadata["evidence_gaps"], [])
+
+    def test_final_scan_still_covers_the_removal_section(self):
+        self.base_with_fixture(self.INDENTED)
+        (self.repo / "fixture.sh").unlink()
+        args = module.build_parser().parse_args(
+            ["--repo", str(self.repo), "--base", "HEAD", "--task", "t"]
+        )
+        metadata, data = module.build_artifact(args)
+        leaked = {"fixture.sh": {"path": self.BEARER.decode()}}
+        with mock.patch.object(module, "acknowledged_removals", return_value=(leaked, [])):
+            with self.assertRaises(SystemExit) as raised:
+                module.build_bundle(args, metadata, data)
+        self.assertIn("assembled bundle", str(raised.exception))
+        self.assertNotIn("canary", str(raised.exception))
 
 
 class RepoShapeTest(unittest.TestCase):

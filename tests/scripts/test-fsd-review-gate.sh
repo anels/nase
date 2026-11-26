@@ -908,6 +908,72 @@ class ReviewGateTests(unittest.TestCase):
         self.assertNotIn("large_diff_canary_17a2", self.bundle.read_text(encoding="utf-8"))
         self.assertEqual(self.reduce("combined", 1, self.combined())["action"], "CONTEXT")
 
+    def delete_credential_fixture(self, acknowledged: int, *extra_args: str) -> str:
+        """Commit a fixture holding two fake credential lines, delete it, and rebuild.
+
+        The allowlist acknowledges the first `acknowledged` of those lines. A negative
+        count builds without `--secret-scan-allowlist`.
+        """
+        field = "PASS" + "WORD"
+        credentials = [
+            f'DEFAULT_{field} = "removal_canary_first_17a2"',
+            f'    ADMIN_{field} = "removal_canary_second_17a2"',
+        ]
+        fixture = self.repo / "fixture.py"
+        fixture.write_text(
+            "".join(f"{line}\n" for line in ["# removed fixture", *credentials]),
+            encoding="utf-8",
+            newline="\n",
+        )
+        run("git", "add", "fixture.py", cwd=self.repo)
+        run("git", "commit", "-q", "-m", "fixture base", "--", "fixture.py", cwd=self.repo)
+        self.base_oid = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+        fixture.unlink()
+        if acknowledged >= 0:
+            allowlist = self.artifacts / "allowlist.txt"
+            allowlist.write_text(
+                "".join(
+                    f"{hashlib.sha256(line.encode()).hexdigest()}  fixture.py  # fake\n"
+                    for line in credentials[:acknowledged]
+                ),
+                encoding="utf-8",
+            )
+            extra_args = (*extra_args, "--secret-scan-allowlist", str(allowlist))
+        self.refresh_bundle(*extra_args)
+        bundle = self.bundle.read_text(encoding="utf-8")
+        self.assertNotIn("removal_canary", bundle)
+        return bundle
+
+    def test_fully_acknowledged_deletion_reaches_proceed(self) -> None:
+        for extra_args in ((), ("--max-full-diff-lines", "0")):
+            with self.subTest(extra_args=extra_args):
+                self.tearDown()
+                self.setUp()
+                bundle = self.delete_credential_fixture(2, *extra_args)
+                self.assertEqual(self.metadata["evidence_gaps"], [])
+                self.assertIn("## Acknowledged Removals", bundle)
+                self.assertIn('"path": "fixture.py"', bundle)
+                # Every other changed file keeps its diff.
+                self.assertIn("+    return 2", bundle)
+                self.assertIn("+    assert value() == 2", bundle)
+                self.assertEqual(self.reduce("combined", 1, self.combined())["action"], "PROCEED")
+
+    def test_partly_or_never_acknowledged_deletion_blocks_proceed(self) -> None:
+        for acknowledged in (-1, 0, 1):
+            for extra_args in ((), ("--max-full-diff-lines", "0")):
+                with self.subTest(acknowledged=acknowledged, extra_args=extra_args):
+                    self.tearDown()
+                    self.setUp()
+                    bundle = self.delete_credential_fixture(acknowledged, *extra_args)
+                    self.assertNotIn("## Acknowledged Removals", bundle)
+                    self.assertIn(
+                        {"path": "fixture.py", "reason": "credential_like_diff_omitted", "tree": "BASE"},
+                        self.metadata["evidence_gaps"],
+                    )
+                    self.assertEqual(
+                        self.reduce("combined", 1, self.combined())["action"], "CONTEXT"
+                    )
+
     def test_deleted_credential_bearing_path_is_redacted_and_blocks_proceed(self) -> None:
         sensitive_name = "ADMIN_" + "PASS" + "WORD=deleted_path_canary_17a2.txt"
         (self.repo / sensitive_name).write_text("safe content\n", encoding="utf-8")

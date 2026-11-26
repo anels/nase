@@ -1050,6 +1050,100 @@ def dirty_submodule_gaps(repo: Path, tree_oid: str) -> list[dict[str, str]]:
     return gaps
 
 
+def blob_has_secret(repo: Path, tree_oid: str, path: str) -> bool:
+    entry = tree_entry(repo, tree_oid, path)
+    return bool(
+        entry and entry["type"] == "blob" and scan_blob_for_secret(repo, entry["oid"])
+    )
+
+
+def acknowledged_removal(
+    repo: Path,
+    base_oid: str,
+    tree_oid: str,
+    path: str,
+    allowlist: set[tuple[str, str]],
+) -> dict[str, Any] | None:
+    """Describe a deleted file whose every credential-shaped base line is acknowledged.
+
+    `None` leaves the path to the ordinary omitted-diff handling. Each line is judged on
+    its own, so no acknowledgement answers for another line. The whole blob is then
+    rescanned with the acknowledged lines blanked, which catches a hit that shows only
+    across the remaining lines.
+    """
+    if secret_kind(path.encode("utf-8", "surrogateescape")):
+        return None
+    if tree_entry(repo, tree_oid, path) is not None:
+        return None
+    entry = tree_entry(repo, base_oid, path)
+    if entry is None or entry["mode"] not in ("100644", "100755"):
+        return None
+    projection = project_blob(repo, entry)
+    if projection["encoding"] != "utf-8" or projection["truncated"]:
+        return None
+    lines = projection["content"].split("\n")
+    acknowledged = 0
+    for index, line in enumerate(lines):
+        encoded = line.rstrip("\r").encode("utf-8")
+        if not secret_kind(encoded):
+            continue
+        if (sha256_bytes(encoded), path) not in allowlist:
+            return None
+        lines[index] = ""
+        acknowledged += 1
+    if not 0 < acknowledged <= ALLOWLIST_MAX_SKIPS:
+        return None
+    if secret_kind("\n".join(lines).encode("utf-8")):
+        return None
+    return {
+        "path": path,
+        "base_mode": entry["mode"],
+        "base_blob_oid": entry["oid"],
+        "byte_count": projection["byte_count"],
+        "acknowledged_line_count": acknowledged,
+    }
+
+
+def acknowledged_removals(
+    repo: Path, base_oid: str, tree_oid: str, allowlist: set[tuple[str, str]]
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Split the changed paths into acknowledged removals and everything else.
+
+    Rename detection is forced on, so the source of a rename is never read as a deletion.
+    """
+    removals: dict[str, dict[str, Any]] = {}
+    others: list[str] = []
+    if not allowlist:
+        return removals, others
+    fields = git(
+        repo,
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-status",
+        "-z",
+        "--find-renames",
+        base_oid,
+        tree_oid,
+    ).split(b"\0")
+    index = 0
+    while index < len(fields) - 1:
+        status = fields[index].decode("ascii")
+        width = 2 if status.startswith(("R", "C")) else 1
+        names = [item.decode("utf-8", "strict") for item in fields[index + 1 : index + 1 + width]]
+        index += 1 + width
+        record = (
+            acknowledged_removal(repo, base_oid, tree_oid, names[0], allowlist)
+            if status == "D"
+            else None
+        )
+        if record:
+            removals[names[0]] = record
+        else:
+            others.extend(names)
+    return removals, others
+
+
 def diff_omission_gaps(
     repo: Path, base_oid: str, tree_oid: str, paths: list[str]
 ) -> list[dict[str, str]]:
@@ -1057,14 +1151,15 @@ def diff_omission_gaps(
 
     The scan ignores the `--secret-scan-allowlist`. An acknowledgement lets the bundle
     build; it does not restore the diff, so the missing evidence still has to reach the
-    reducer. When no blob explains the omission, every path is declared on the candidate
-    side rather than leaving a diff-less bundle with no gap.
+    reducer. The one exception, a fully acknowledged deletion, is decided by
+    `acknowledged_removals` before this is called. When no blob explains the omission,
+    every path is declared on the candidate side rather than leaving a diff-less bundle
+    with no gap.
     """
     gaps: list[dict[str, str]] = []
     for path in paths:
         for tree, oid in (("BASE", base_oid), ("CANDIDATE", tree_oid)):
-            entry = tree_entry(repo, oid, path)
-            if entry and entry["type"] == "blob" and scan_blob_for_secret(repo, entry["oid"]):
+            if blob_has_secret(repo, oid, path):
                 gaps.append(
                     {
                         "path": safe_display_path(path),
@@ -1180,11 +1275,19 @@ def resolve_contexts(
 
 
 def limited_diff(
-    repo: Path, base_oid: str, tree_oid: str, source_path: str, destination_path: str
+    repo: Path,
+    base_oid: str,
+    tree_oid: str,
+    source_path: str,
+    destination_path: str,
+    excluded: tuple[str, ...] = (),
 ) -> tuple[str, bool]:
     pathspecs = [f":(literal){source_path}"]
     if destination_path != source_path:
         pathspecs.append(f":(literal){destination_path}")
+    # A literal pathspec also matches everything under a directory of that name, so the
+    # acknowledged removals have to be excluded here as well.
+    pathspecs.extend(excluded)
     # Same reason as `project_blob`: stderr must not be a pipe when stdout is read first.
     # `wait` cannot block on a full stdout pipe here either - a read that did not hit the
     # limit means git already finished writing, and one that did kills the process first.
@@ -1310,6 +1413,7 @@ def build_artifact(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         "evidence": evidence_projection,
         "contexts": contexts,
         "per_file_lines": per_file_lines,
+        "allowlist": allowlist,
     }
 
 
@@ -1402,11 +1506,28 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
         + blob_size(repo, tree_entry(repo, base_oid, path))
         for path in data["paths"]
     )
+    removals, other_paths = acknowledged_removals(repo, base_oid, tree_oid, data["allowlist"])
+    excluded = tuple(f":(exclude,literal){path}" for path in removals)
     if not binary_files and total <= args.max_full_diff_lines and changed_blob_bytes <= FULL_DIFF_BYTE_LIMIT:
         full_diff = git(
-            repo, "diff", "--no-ext-diff", "--no-textconv", "--text", base_oid, tree_oid
+            repo,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--text",
+            base_oid,
+            tree_oid,
+            *(["--", ".", *excluded] if excluded else []),
         )
-        if secret_kind(full_diff):
+        # A clean diff scan alone does not clear what is left after excluding the
+        # removals; the blobs of every other changed path must be clean as well.
+        unsafe_remainder = bool(removals) and any(
+            blob_has_secret(repo, oid, path)
+            for path in other_paths
+            for oid in (base_oid, tree_oid)
+        )
+        if secret_kind(full_diff) or unsafe_remainder:
+            removals = {}
             metadata["evidence_gaps"].extend(
                 diff_omission_gaps(repo, base_oid, tree_oid, data["paths"])
             )
@@ -1449,9 +1570,12 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
             ]
         )
         for item in sample_candidates:
-            projection, credential_omitted = limited_diff(
-                repo, base_oid, tree_oid, item["source_path"], item["path"]
-            )
+            if item["path"] in removals:
+                projection, credential_omitted = "(removal diff withheld; see Acknowledged Removals)", False
+            else:
+                projection, credential_omitted = limited_diff(
+                    repo, base_oid, tree_oid, item["source_path"], item["path"], excluded
+                )
             if credential_omitted:
                 omitted_paths = [item["source_path"]]
                 if item["path"] != item["source_path"]:
@@ -1460,6 +1584,21 @@ def build_bundle(args: argparse.Namespace, metadata: dict[str, Any], data: dict[
                     diff_omission_gaps(repo, base_oid, tree_oid, omitted_paths)
                 )
             lines.append(fenced(safe_display_path(item["display"]), projection, "diff"))
+    if removals:
+        lines.extend(
+            [
+                "## Acknowledged Removals",
+                "",
+                "The candidate deletes these files. Every credential-shaped line in each base blob is "
+                "acknowledged, so no removal diff is embedded and no evidence gap is declared. "
+                "Request a path as BASE context to read it with those lines redacted.",
+                "",
+                "```json",
+                json.dumps(list(removals.values()), ensure_ascii=False, sort_keys=True, indent=2),
+                "```",
+                "",
+            ]
+        )
     metadata["evidence_gaps"] = unique_gaps(metadata["evidence_gaps"])
     # The diff sections above can append gaps, so rewrite the already-emitted JSON payload
     # and the leading metadata comment. Offset 3 skips the heading, blank line, and fence.
