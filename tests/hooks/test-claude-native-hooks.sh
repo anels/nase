@@ -93,10 +93,10 @@ printf '{"session_id":"absent-fields","tool_name":"Bash"}' \
 assert_jq "PostToolUseFailure logs an absent error as empty, not the string null" "$FIXTURE/workspace/stats/tool-failures.jsonl" \
   'select(.session == "absent-fields" and .error == "")'
 
-# Slack write tools beyond send/canvas must be gated by the guard and by settings.json wiring.
+# Slack write tools beyond send must be gated by the guard and by settings.json wiring.
 settings="$ROOT/.claude/settings.json"
-slack_write_tools="slack_send_message slack_schedule_message slack_create_canvas slack_update_canvas slack_add_reaction slack_create_conversation slack_add_list_record slack_update_list_record slack_create_list slack_update_list slack_complete_file_upload"
-slack_allowed_tools="slack_send_message_draft slack_read_channel slack_get_file_upload_url slack_read_list slack_get_reactions slack_search_users"
+slack_write_tools="slack_send_message slack_schedule_message slack_add_reaction slack_create_conversation slack_add_list_record slack_update_list_record slack_create_list slack_update_list slack_complete_file_upload"
+slack_allowed_tools="slack_create_canvas slack_update_canvas slack_send_message_draft slack_read_channel slack_get_file_upload_url slack_read_list slack_get_reactions slack_search_users"
 slack_matcher=$(jq -r '[.hooks.PreToolUse[] | select(.hooks[].command | contains("slack-send-guard.sh")) | .matcher] | first // ""' "$settings")
 for t in $slack_write_tools; do
   full="mcp__plugin_slack_slack__$t"

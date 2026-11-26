@@ -163,8 +163,7 @@ guarded_tool_names = [
     ("jira-write-guard.sh", ("addCommentToJiraIssue", "addOrEditJiraIssueComment",
                              "transitionJiraIssue", "editJiraIssue", "createJiraIssue",
                              "createIssueLink", "addGraphContext")),
-    ("slack-send-guard.sh", ("slack_send_message", "slack_schedule_message",
-                             "slack_create_canvas", "slack_update_canvas")),
+    ("slack-send-guard.sh", ("slack_send_message", "slack_schedule_message")),
     ("atlassian-generic-write-guard.sh", ("executeWrite", "executeDestructive")),
 ]
 for script, tool_names in guarded_tool_names:

@@ -90,14 +90,16 @@ slack_read='{"tool_name":"mcp__plugin_slack_slack__slack_read_channel","tool_inp
 expect_rc "slack scheduled send blocked" .claude/hooks/slack-send-guard.sh "$slack_schedule" 2 "slack_schedule_message is forbidden"
 expect_rc "slack read allowed" .claude/hooks/slack-send-guard.sh "$slack_read" 0
 
-# A canvas is a Slack write with no draft path, so it goes through the same
-# preview-and-approve route as a message.
+# Canvases are allowed by the owner's decision, while every other Slack write
+# without a draft path stays blocked.
 slack_canvas_create='{"tool_name":"mcp__plugin_slack_slack__slack_create_canvas","tool_input":{"title":"t","document_content":{"markdown":"x"}}}'
 slack_canvas_update='{"tool_name":"mcp__plugin_slack_slack__slack_update_canvas","tool_input":{"canvas_id":"F1","changes":[]}}'
 slack_canvas_read='{"tool_name":"mcp__plugin_slack_slack__slack_read_canvas","tool_input":{"canvas_id":"F1"}}'
-expect_rc "slack canvas create blocked" .claude/hooks/slack-send-guard.sh "$slack_canvas_create" 2 "slack_create_canvas writes to Slack"
-expect_rc "slack canvas update blocked" .claude/hooks/slack-send-guard.sh "$slack_canvas_update" 2 "slack_update_canvas writes to Slack"
+slack_reaction='{"tool_name":"mcp__plugin_slack_slack__slack_add_reaction","tool_input":{"channel_id":"C1","name":"eyes","timestamp":"1.1"}}'
+expect_rc "slack canvas create allowed" .claude/hooks/slack-send-guard.sh "$slack_canvas_create" 0
+expect_rc "slack canvas update allowed" .claude/hooks/slack-send-guard.sh "$slack_canvas_update" 0
 expect_rc "slack canvas read allowed" .claude/hooks/slack-send-guard.sh "$slack_canvas_read" 0
+expect_rc "slack reaction still blocked" .claude/hooks/slack-send-guard.sh "$slack_reaction" 2 "slack_add_reaction writes to Slack"
 expect_rc "slack empty stdin blocked" .claude/hooks/slack-send-guard.sh "" 2 "no tool_name"
 
 # The Atlassian generic runners perform any catalog write under an opaque

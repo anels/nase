@@ -149,7 +149,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*__(slack_(send|schedule)_message|slack_(create|update)_canvas|slack_add_reaction|slack_create_conversation|slack_(add|update)_list_record|slack_(create|update)_list|slack_complete_file_upload)$",
+        "matcher": "mcp__.*__(slack_(send|schedule)_message|slack_add_reaction|slack_create_conversation|slack_(add|update)_list_record|slack_(create|update)_list|slack_complete_file_upload)$",
         "hooks": [
           {
             "type": "command",

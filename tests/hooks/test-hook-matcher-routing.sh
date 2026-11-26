@@ -38,8 +38,8 @@ PreToolUse|Write|$EDIT_PRE
 PreToolUse|MultiEdit|$EDIT_PRE
 PreToolUse|${SLACK}slack_send_message|slack-send-guard.sh
 PreToolUse|${SLACK}slack_schedule_message|slack-send-guard.sh
-PreToolUse|${SLACK}slack_create_canvas|slack-send-guard.sh
-PreToolUse|${SLACK}slack_update_canvas|slack-send-guard.sh
+PreToolUse|${SLACK}slack_create_canvas|
+PreToolUse|${SLACK}slack_update_canvas|
 PreToolUse|${SLACK}slack_add_reaction|slack-send-guard.sh
 PreToolUse|${SLACK}slack_create_conversation|slack-send-guard.sh
 PreToolUse|${SLACK}slack_add_list_record|slack-send-guard.sh

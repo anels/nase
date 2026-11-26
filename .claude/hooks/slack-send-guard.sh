@@ -2,8 +2,9 @@
 # PreToolUse guard: hard-block direct Slack API sends.
 # Slack drafts are allowed; direct sends are irreversible from the model side.
 # slack_schedule_message is the same send with a delay, so it is blocked too -
-# the draft path substitutes for it exactly. Canvases, reactions, conversations,
-# lists and file-upload completion also publish to Slack with no draft path.
+# the draft path substitutes for it exactly. Reactions, conversations, lists and
+# file-upload completion also publish to Slack with no draft path. Canvases are
+# allowed by the owner's decision: a canvas you create stays private until shared.
 set -euo pipefail
 
 block() {
@@ -53,8 +54,7 @@ if [[ "$TOOL" == *__slack_schedule_message ]]; then
 fi
 
 case "$TOOL" in
-  *__slack_create_canvas | *__slack_update_canvas | \
-    *__slack_add_reaction | *__slack_create_conversation | \
+  *__slack_add_reaction | *__slack_create_conversation | \
     *__slack_add_list_record | *__slack_update_list_record | \
     *__slack_create_list | *__slack_update_list | \
     *__slack_complete_file_upload)
