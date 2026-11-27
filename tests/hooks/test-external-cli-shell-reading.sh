@@ -451,10 +451,15 @@ if [ "$have_powershell" -eq 1 ]; then
   query_dir="$TMP_ROOT/query"
   mkdir -p "$query_dir"
   printf 'query { viewer { login } }\n' > "$query_dir/q.graphql"
+  # A Windows short name such as `RUNNER~1` puts a `~` inside a path.
+  cp "$query_dir/q.graphql" "$query_dir/q~1.graphql"
+  printf 'mutation { closePullRequest }\n' > "$query_dir/m~1.graphql"
   query_cwd=$(cygpath -m "$query_dir" 2>/dev/null || printf '%s' "$query_dir")
-  expect_rc "shell reading [PowerShell] file-backed GraphQL query" \
-    .claude/hooks/external-cli-write-guard.sh \
-    "{\"tool_name\":\"PowerShell\",\"cwd\":\"$query_cwd\",\"tool_input\":{\"command\":\"gh api graphql -F query=@q.graphql\"}}" 0
+  for row in 'q.graphql 0' 'q~1.graphql 0' 'm~1.graphql 2'; do
+    expect_rc "shell reading [PowerShell] file-backed GraphQL ${row% *}" \
+      .claude/hooks/external-cli-write-guard.sh \
+      "{\"tool_name\":\"PowerShell\",\"cwd\":\"$query_cwd\",\"tool_input\":{\"command\":\"gh api graphql -F query=@${row% *}\"}}" "${row##* }"
+  done
 
   # The guard parses the command and never runs it.
   marker="$query_cwd/invoked"
