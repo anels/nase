@@ -29,6 +29,7 @@ Rules for changing this repo's own commands, hooks, agents, docs, scripts, and t
 ## Runtime Dependencies
 
 - Required: `git`, `gh`, `jq`, and `python3` 3.10+. Backups require `7z` or `zip`; restoring legacy `.7z` archives requires `7z` or `7zz`.
+- The external-CLI guard needs `pwsh` or `powershell` to judge PowerShell commands that name a guarded CLI.
 - Optional agent tools are warning-only. Use `/nase:doctor` for the baseline set, `/nase:doctor --deep` for the full probe, and `.claude/docs/cli-tooling.md` before adding new tool-dependent skill behavior.
 - `.local-paths` lives at repo root, is not backed up, and stores `backup-target=` plus `RepoName=/absolute/path` entries managed by `/nase:init` and `/nase:onboard`.
 
