@@ -2676,18 +2676,19 @@ def guard_shell_text(raw: str, scanned: str, powershell: bool) -> int:
     """
     if not mentions_guarded_in_any_shell(raw):
         return 0
-    reason, reading = shell_text.read(raw, powershell, mentions_guarded_in_any_shell)
+    reason, reading = shell_text.read(
+        raw, powershell, mentions_guarded_in_any_shell, launch_argv
+    )
     if reason:
         shell = "PowerShell" if powershell else "the shell"
         print(
-            f"BLOCKED: {shell} reads this command differently than the guard does: "
-            f"it holds {reason}. Rewrite it with plain quotes, spaces, and line breaks.",
+            f"BLOCKED: the guard cannot confirm how {shell} reads this command: "
+            f"{reason}. Rewrite it with plain quotes, spaces, and line breaks.",
             file=sys.stderr,
         )
         return 10
-    if powershell:
-        reading = reading.replace("\\", "/")
-    if reading.rstrip("\r\n") == scanned.rstrip("\r\n"):
+    # Outer spaces and line ends add no word, and `runs_exactly` ignores them too.
+    if reading.strip(" \r\n") == scanned.strip(" \r\n"):
         return 0
     return guard_scan(reading, None, True)
 

@@ -68,11 +68,21 @@ expect_rc_crlf_jq() {
   fi
 }
 
+# The guard asks PowerShell to parse a PowerShell command, so those rows need one.
+have_powershell=1
+command -v pwsh >/dev/null 2>&1 || command -v powershell >/dev/null 2>&1 \
+  || have_powershell=0
+skipped=0
+
 # The shell that runs a command can read it differently from the guard's POSIX word
 # reader. Each row is `tool`, wanted exit code, and the command as a JSON string body.
 shell_rows() {
   local runner="$1" tool want body
   while IFS=$'\t' read -r tool want body; do
+    if [ "$tool" = PowerShell ] && [ "$have_powershell" -eq 0 ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
     "$runner" "shell reading [$tool] $body" .claude/hooks/external-cli-write-guard.sh \
       "{\"tool_name\":\"$tool\",\"tool_input\":{\"command\":\"$body\"}}" "$want"
   done
@@ -83,7 +93,7 @@ shell_rows expect_rc <<'ROWS'
 PowerShell	2	gh api repos/o/r/issues/1 -H 'a:b'-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -H \"a:b\"-XDELETE
 PowerShell	2	gh api graphql -f query='query{viewer{login}}' -f 'a=b'-fquery=mutation_x
-PowerShell	2	gh pr view 1 --json 'title'--web
+PowerShell	0	gh pr view 1 --json 'title'--web
 PowerShell	2	az rest --url 'https://example.invalid/x'--method delete
 PowerShell	2	kubectl --context 'prod'delete get pod x
 PowerShell	2	terraform '-chdir=x'apply output
@@ -103,13 +113,13 @@ PowerShell	2	gh api repos/o/r/issues/1 2>&1-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 2>-a:-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 *> -x:-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 --% #x -XDELETE
-PowerShell	2	gh pr view 1 `-`-web
+PowerShell	0	gh pr view 1 `-`-web
 PowerShell	2	gh api repos/o/r/issues/1 {;} -XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 {\n} -XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 \"`-`XDELETE\"
 PowerShell	2	gh api repos/o/r/issues/1 @'\n-XDELETE\n'@
 PowerShell	2	gh api repos/o/r/issues/1 @\"\n`-XDELETE\n\"@
-PowerShell	2	gh pr view 1 \"`u{2d}`u{2d}web\"
+PowerShell	0	gh pr view 1 \"`u{2d}`u{2d}web\"
 PowerShell	2	terraform apply{}
 PowerShell	2	kubectl delete{} pod x
 ROWS
@@ -154,7 +164,7 @@ PowerShell	2	$^=gh pr merge 1
 PowerShell	2	$::a=az group delete -n x
 PowerShell	2	Write-Output a<<E\ngh pr merge 1\nE
 PowerShell	2	Write-Output x <# ' #> ; terraform apply # '
-PowerShell	2	Write-Output \u2018 ' \u2019 ; kubectl delete pod x ; Write-Output \u2018 ' \u2019
+PowerShell	0	Write-Output \u2018 ' \u2019 ; kubectl delete pod x ; Write-Output \u2018 ' \u2019
 PowerShell	2	Write-Output @'\nit's\n'@\ngh pr merge 1\nWrite-Output @'\nit's\n'@
 PowerShell	2	Write-Output x\u00a0#'\ngh pr merge 1 #'
 ROWS
@@ -175,7 +185,7 @@ PowerShell	2	gh api repos/o/r/issues/1 @${x}-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -H >$x..a -XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -H >$x. -XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -H >$::..a -XDELETE
-PowerShell	2	az group list >$x.y--debug
+PowerShell	0	az group list >$x.y--debug
 PowerShell	2	kubectl get pods $x.y--raw
 PowerShell	2	terraform output $x[0]-json
 PowerShell	0	gh pr view $pr.number --json title
@@ -210,16 +220,16 @@ PowerShell	2	gh api repos/o/r/issues/1 -q.${x}.y-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -q.$x::y-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -q.(1)-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -q.@(1)-XDELETE
-PowerShell	2	az group list -q.$x[0]--debug
+PowerShell	0	az group list -q.$x[0]--debug
 PowerShell	2	gh api repos/o/r/issues/1 -t:.'y'-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -t: .'y'-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -t:-u.'y'-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -t:.$x.y-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -t:-u${x}-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -t:[-u$${x}-XDELETE
-PowerShell	2	gh api repos/o/r/issues/1 -t:${x}${x}-XDELETE
+PowerShell	0	gh api repos/o/r/issues/1 -t:${x}${x}-XDELETE
 PowerShell	2	gh api repos/o/r/issues/1 -t:<#y#> -XDELETE
-PowerShell	2	az group list -t:.'y'--debug
+PowerShell	0	az group list -t:.'y'--debug
 PowerShell	0	gh pr view 1 -R:$repo --json title
 PowerShell	0	gh pr view 1 -R:${repo} --json title
 PowerShell	0	gh pr view 1 -R:'o/r' --json title
@@ -276,9 +286,9 @@ shell_rows expect_rc <<'ROWS'
 PowerShell	2	Write-Output @'\f\na'b\n'@\ngh pr merge 1 #'
 PowerShell	2	Write-Output @' \na'b\n'@\ngh pr merge 1 #'
 PowerShell	2	(Get-Variable x).Value =@'\na'b\n'@\ngh pr merge 1 #'
-PowerShell	2	Write-Output a=@'\nx'; gh pr status
-PowerShell	2	Write-Output $a=@'\nx'; gh pr status
-PowerShell	2	& { Write-Output a=@'\nx'; gh pr status }
+PowerShell	0	Write-Output a=@'\nx'; gh pr status
+PowerShell	0	Write-Output $a=@'\nx'; gh pr status
+PowerShell	0	& { Write-Output a=@'\nx'; gh pr status }
 PowerShell	0	gh pr status | % { $x +=@\"\nit's\n\"@ }
 PowerShell	0	gh pr list | ForEach-Object { $env:x=@'\nhello\n'@ }
 PowerShell	0	@{x=@'\nhello\n'@}\ngh pr status
@@ -328,15 +338,217 @@ PowerShell	0	gh pr list --json number,title,state
 PowerShell	0	Write-Output 'a',\n  'b'\ngh pr status
 ROWS
 
-# A hook that outlives its time limit does not block, so a long command with many
-# escapes must still be read quickly.
-long_command=$(python3 -c 'print("gh pr status; echo " + "a\u0060a" * 20000)')
-started=$SECONDS
-expect_rc "shell reading [PowerShell] long command stays quick" \
-  .claude/hooks/external-cli-write-guard.sh \
-  "{\"tool_name\":\"PowerShell\",\"tool_input\":{\"command\":\"$long_command\"}}" 0
-took=$((SECONDS - started))
-report "$((took < 15 ? 1 : 0))" "shell reading long command time" "${took}s, limit 15s"
+# A doubled parenthesis in an expandable here-string still runs.
+shell_rows expect_rc <<'ROWS'
+PowerShell	2	Write-Output @\"\n$((gh pr merge 1))\n\"@
+PowerShell	2	Write-Output @\"\n$( ((az group delete -n x)) )\n\"@
+PowerShell	2	Write-Output @\"\n\"$((terraform apply))\"\n\"@
+PowerShell	2	Write-Output @\"\n$( \"$((kubectl delete pod x))\" )\n\"@
+PowerShell	0	gh api graphql -f query='query($n: Int!){viewer{repositories(first: $n){totalCount}}}' -F n=1
+PowerShell	0	'{\"title\": \"a b\", \"draft\": true}' | Set-Content body.json; gh pr status
+PowerShell	0	gh pr list --json number --jq '{n: .[0].number}'
+PowerShell	0	python3 .claude/scripts/external-write-action.py prepare --system github --action x -- gh pr comment 1 -R o/r --body '{\"a\": \"b c\"}'
+ROWS
+
+# A script block holds commands, a split block can hide a flag, and a quoted stop-parsing
+# token still makes PowerShell drop words. `using` and `Import-DscResource` are refused
+# unparsed, because the parser may load what they name.
+shell_rows expect_rc <<'ROWS'
+PowerShell	2	Start-Job -ScriptBlock{gh pr merge 1}
+PowerShell	2	gh pr view 1 --jq { gh pr merge 1 }
+PowerShell	2	gh api repos/o/r/issues/1 -t:a{b}-XDELETE
+PowerShell	2	gh api repos/o/r/issues -f title=x -t '--%' -XGET
+PowerShell	2	gh api repos/o/r/issues -f title=x -t ('--%') -XGET
+PowerShell	2	using module x; gh pr view 1
+PowerShell	2	<# n #> using assembly x.dll\ngh pr view 1
+PowerShell	2	configuration c { Import-DscResource -ModuleName x }; gh pr view 1
+PowerShell	2	gh pr view 1 )
+ROWS
+
+# `& { ... }` runs a block written out in the command, so its commands are judged and the
+# block is not a program named at run time.
+shell_rows expect_rc <<'ROWS'
+PowerShell	0	& { gh pr view 1 }
+PowerShell	0	1..3 | ForEach-Object { & {gh pr view $_} }
+PowerShell	2	& { gh pr merge 1 }
+PowerShell	2	& { gh api repos/o/r/issues/1 -H 'a:b'-XDELETE }
+ROWS
+
+# A program named by a parenthesized expression is blocked only when the expression names
+# a guarded CLI, reads included. Commands written elsewhere in the text are still judged.
+shell_rows expect_rc <<'ROWS'
+PowerShell	0	& (Join-Path $root 'tool.ps1'); gh pr status
+PowerShell	0	& (Get-Command python).Source script.py; gh pr status
+PowerShell	0	&( Get-Command  github-tool )pr list; gh pr status
+PowerShell	2	& (Get-Command gh) pr view 1
+PowerShell	2	& (Get-Command gh) pr merge 1
+PowerShell	2	& (Get-Command gh).Source pr merge 1
+PowerShell	2	& (Get-Command az) group delete -n x --yes
+PowerShell	2	&(gcm GH.exe)pr merge 1
+PowerShell	2	& ( ( Get-Command 'g''h' , gh )[1] ).Source pr merge 1
+PowerShell	2	& (\n  Get-Command `\n  g`h\n) pr merge 1
+PowerShell	2	& (Get-Command \"C:\\tools\\gh\") pr merge 1
+PowerShell	2	& (Join-Path $root 'tool.ps1'); gh pr merge 1
+PowerShell	2	& (Join-Path $root 'tool.ps1'); gh api repos/o/r/issues/1 -H 'a:b'-XDELETE
+PowerShell	2	& (Get-Command python).Source (gh api repos/o/r/issues/1 -H 'a:b'-XDELETE)
+ROWS
+
+# A word that joins literal text to a variable keeps the text before the first `$`, so a
+# flag or field name stays visible and the word itself is still unknown.
+shell_rows expect_rc <<'ROWS'
+PowerShell	0	kubectl --context=$ctx get pods
+PowerShell	0	kubectl --namespace=$ns get pods
+PowerShell	0	kubectl \"--context=$ctx\" get pods
+PowerShell	0	kubectl --context=\"$env:CTX\" get pods
+PowerShell	0	terraform \"-chdir=$dir\" output
+PowerShell	0	terraform -chdir=\"$root\\infra\" validate
+PowerShell	0	gh api graphql -f query=\"query { viewer { login } } # $note\"
+PowerShell	0	terraform -chdir=C:\\infra\\$envName plan
+PowerShell	0	terraform output -state=C:\\state\\$name.tfstate
+PowerShell	0	kubectl -s=https://$apiHost get pods
+PowerShell	2	terraform -chdir=C:\\infra\\$envName apply
+PowerShell	2	gh api repos/o/r/issues/1 -t:\"$x\"-XDELETE
+PowerShell	2	gh api repos/o/r -XDEL$x
+PowerShell	2	gh api repos/o/r/issues/1 -H 'a:b'-XDEL$x
+PowerShell	2	gh api repos/o/r/issues/1 -H 'a:b'\"-XDEL$x\"
+PowerShell	2	gh api repos/o/r/issues/1 -H 'a:b'\"-X$m\"
+PowerShell	2	gh api repos/o/r/issues/1 -H 'a:b'\"--method=$m\"
+PowerShell	2	kubectl \"--context=$ctx\" delete pod x
+PowerShell	2	terraform \"-chdir=$dir\" apply
+PowerShell	2	gh api graphql -f query='query{viewer{login}}' -f 'a=b'-fquery=\"query{a} $y\"
+PowerShell	2	gh api graphql -f query='query{viewer{login}}' -f 'a=b'-fquery=\"query{a} $y mutation{b}\"
+PowerShell	2	gh api graphql -f query=query\u201c{a} $y mutation{b}\u201d
+PowerShell	2	gh api graphql -f query=query\u201c{a} $mutation\u201d
+ROWS
+
+# The other commands in such a text are judged too, so they keep their meaning: `select`
+# is Select-Object, not the shell keyword, and a script path keeps its file extension.
+shell_rows expect_rc <<'ROWS'
+PowerShell	0	gh pr list --json number,title | ConvertFrom-Json | select -Property number, title
+PowerShell	0	gh pr list --json number,title | ConvertFrom-Json | select -Property number,title
+PowerShell	0	python3 \"$env:CLAUDE_PROJECT_DIR/.claude/scripts/external-write-action.py\" prepare --system github --action x -- gh pr comment 1 -R o/r --body hi
+PowerShell	0	python3 \"$root\\.claude\\scripts\\external-write-action.py\" prepare --system github --action x -- gh pr comment 1 -R o/r --body hi
+PowerShell	0	python3 $root/x.py prepare --system github --action x -- gh pr comment 1 -R o/r --body hi
+PowerShell	2	gh pr list | select -Property a, b; gh pr merge 1
+PowerShell	2	gh pr list | select -Property a, b; gh api repos/o/r/issues/1 -H 'a:b'-XDELETE
+PowerShell	2	gh pr merge \"$n.py\"
+PowerShell	2	python3 \"$root/x\" gh api repos/o/r/issues/1 -H 'a:b'-XDELETE
+ROWS
+
+# The exact-word reads stay allowed, because their reading is the text already judged,
+# outer spaces and line ends aside.
+shell_rows expect_rc <<'ROWS'
+PowerShell	0	gh api repos/o/r/issues -X OPTIONS
+PowerShell	0	gh api repos/o/r/issues -X GET --input body.json
+PowerShell	0	kubectl config use-context prod
+PowerShell	0	terraform workspace select dev
+PowerShell	0	 kubectl config use-context prod
+PowerShell	0	terraform workspace select dev \n
+PowerShell	0	 gh api repos/o/r/issues -X OPTIONS \n
+ROWS
+
+if [ "$have_powershell" -eq 1 ]; then
+  query_dir="$TMP_ROOT/query"
+  mkdir -p "$query_dir"
+  printf 'query { viewer { login } }\n' > "$query_dir/q.graphql"
+  query_cwd=$(cygpath -m "$query_dir" 2>/dev/null || printf '%s' "$query_dir")
+  expect_rc "shell reading [PowerShell] file-backed GraphQL query" \
+    .claude/hooks/external-cli-write-guard.sh \
+    "{\"tool_name\":\"PowerShell\",\"cwd\":\"$query_cwd\",\"tool_input\":{\"command\":\"gh api graphql -F query=@q.graphql\"}}" 0
+
+  # The guard parses the command and never runs it.
+  marker="$query_cwd/invoked"
+  expect_rc "shell reading [PowerShell] parsed command" \
+    .claude/hooks/external-cli-write-guard.sh \
+    "{\"tool_name\":\"PowerShell\",\"tool_input\":{\"command\":\"Set-Content -Path '$marker' -Value x; gh pr status\"}}" 0
+  report "$([ -e "$marker" ] && echo 0 || echo 1)" "shell reading runs nothing"
+
+  # A hook that outlives its time limit does not block, so a long command with many
+  # escapes must still be read quickly.
+  long_command=$(python3 -c 'print("gh pr status; echo " + ("a" + chr(96) + "a") * 20000)')
+  started=$SECONDS
+  expect_rc "shell reading [PowerShell] long command stays quick" \
+    .claude/hooks/external-cli-write-guard.sh \
+    "{\"tool_name\":\"PowerShell\",\"tool_input\":{\"command\":\"$long_command\"}}" 0
+  took=$((SECONDS - started))
+  report "$((took < 15 ? 1 : 0))" "shell reading long command time" "${took}s, limit 15s"
+fi
+
+# Whatever keeps the parser from answering is a reason to refuse the command.
+cat > "$TMP_ROOT/fake_parser.py" <<'PY'
+import base64
+import sys
+import time
+
+mode = sys.argv[1]
+one_word = b'{"errors":0,"commands":[{"words":[%s]}]}'
+answers = {
+    "shape": b'{"errors":0}',
+    "errors": b'{"errors":1,"commands":[]}',
+    "no value": one_word % b'{"kind":"other","text":"x"}',
+    "no string": one_word % b'{"kind":"expandable","text":"x","value":null}',
+}
+if mode == "exit":
+    sys.exit(1)
+if mode == "text":
+    sys.stdout.write("not base64")
+if mode == "sleep":
+    time.sleep(60)
+if mode in answers:
+    sys.stdout.write(base64.b64encode(answers[mode]).decode())
+PY
+cat > "$TMP_ROOT/fail_closed.py" <<'PY'
+import os
+import sys
+import time
+
+sys.path.insert(0, ".claude/scripts")
+import shell_text
+
+folder = os.path.dirname(os.path.abspath(__file__))
+
+
+def missing(argv):
+    raise FileNotFoundError(argv[0])
+
+
+def fake(mode):
+    return lambda argv: [sys.executable, os.path.join(folder, "fake_parser.py"), mode]
+
+
+USING = "it opens with a `using` statement"
+cases = [
+    ("using after `<#>`", missing, USING, "<#> n #> using module x; gh pr view 1"),
+    ("using after comments", missing, USING, "# n\r\n`\n <# n #> UsInG module x; gh pr view 1"),
+    ("not found", missing, "no PowerShell was found"),
+    ("relative path", lambda argv: argv, "no PowerShell was found"),
+    ("cannot start", lambda argv: [os.path.join(folder, "absent")], "PowerShell could not start"),
+    ("exits non-zero", fake("exit"), "PowerShell exited with code 1"),
+    ("not base64", fake("text"), "PowerShell's answer could not be read"),
+    ("wrong shape", fake("shape"), "PowerShell's answer could not be read"),
+    ("word without value", fake("no value"), "PowerShell's answer could not be read"),
+    ("expandable without text", fake("no string"), "PowerShell's answer could not be read"),
+    ("parse error", fake("errors"), "PowerShell reports a parse error"),
+    ("too slow", fake("sleep"), "PowerShell did not answer in time"),
+]
+for label, find, want, *command in cases:
+    started = time.monotonic()
+    reason, _ = shell_text.read(
+        *command or ["gh pr view 1"], True, lambda text: "gh" in text, find
+    )
+    took = time.monotonic() - started
+    ok = int(reason == want and took < 10)
+    print(f"{ok}\tshell reading fails closed: {label}\t{reason}, {took:.1f}s")
+PY
+python3 "$TMP_ROOT/fail_closed.py" | tr -d '\r' > "$TMP_ROOT/fail_closed.tsv"
+while IFS=$'\t' read -r ok label detail; do
+  report "$ok" "$label" "$detail"
+done < "$TMP_ROOT/fail_closed.tsv"
+
+if [ "$skipped" -gt 0 ]; then
+  printf 'SKIP  %d PowerShell row(s): no pwsh or powershell on PATH\n' "$skipped"
+  [ -z "${CI:-}" ] || report 0 "shell reading PowerShell rows run in CI" "skipped=$skipped"
+fi
 
 printf '
 --- %d pass, %d fail ---
