@@ -1210,7 +1210,8 @@ import sys
 spec = importlib.util.spec_from_file_location("external_write_action", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-module.GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 1
+for name in ("external_write.account", "external_write.lifecycle"):
+    sys.modules[name].GITHUB_PREFLIGHT_TIMEOUT_SECONDS = 1
 sys.argv = ["external-write-action.py", "--root", sys.argv[2], "execute", "--manifest", sys.argv[3]]
 raise SystemExit(module.main())
 PY

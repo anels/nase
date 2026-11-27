@@ -86,8 +86,8 @@ _SSH_VALUE_SHORTS = frozenset(
     {"b", "B", "c", "D", "e", "E", "F", "i", "I", "J", "l", "L", "m", "o", "O", "p", "Q", "R", "S", "W", "w"}
 )
 # `kubectl` options that take a value before the subcommand, in one table for both readers:
-# this scanner, which skips them to find `exec`, and `external-write-action.py`, which
-# skips them to find the verb. A name that only one reader skips is listed apart.
+# this scanner, which skips them to find `exec`, and `external_write/classification.py`,
+# which skips them to find the verb. A name that only one reader skips is listed apart.
 KUBECTL_SHARED_VALUE_OPTIONS = frozenset(
     {
         "--as", "--as-group", "--as-uid", "--cache-dir", "--certificate-authority",

@@ -425,12 +425,12 @@ run_bash_syntax() {
 
 run_python_syntax() {
   section "python syntax"
-  local py_files=(.claude/scripts/*.py)
+  local py_files=(.claude/scripts/*.py .claude/scripts/external_write/*.py)
   local f
   for f in workspace/skills/scripts/*.py; do
     [[ -f "$f" ]] && py_files+=("$f")
   done
-  run_gate "compile .claude/scripts/*.py workspace/skills/scripts/*.py" python3 -m py_compile "${py_files[@]}"
+  run_gate "compile .claude/scripts/*.py .claude/scripts/external_write/*.py workspace/skills/scripts/*.py" python3 -m py_compile "${py_files[@]}"
 }
 
 run_ruff() {
