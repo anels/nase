@@ -119,8 +119,9 @@ bind blocked the read-only majority for nothing. One narrow exception to check 1
   syntax error are still parsed, since a shell runs them.
 
 Checks 2 and 3 read one answer per invocation from `classify()` in
-`external-write-action.py`. The answer is `read`, `local`, `mutation`, or `unrecognized`.
-`prepare` reads the same answer and refuses anything that is not a `mutation`.
+`.claude/scripts/external_write/classification.py`. The answer is `read`, `local`,
+`mutation`, or `unrecognized`. `prepare` reads the same answer and refuses anything that
+is not a `mutation`.
 
 Four forms pass only as the whole command: `gh api <path> -X OPTIONS`,
 `gh api <path> -X GET --input <file>`, `kubectl config use-context <name>`, and

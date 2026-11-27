@@ -88,9 +88,9 @@ do
 done
 check_contains "runtime config defines owner-mapped GitHub mutation accounts" .claude/docs/workspace-runtime-config.md '`github_org` maps that organization owner'
 check_contains "init collects the GitHub owner mapping" .claude/commands/nase/init.md 'collect the exact top-level owner mapping'
-check_contains "GitHub mutation binds the target-mapped account" .claude/scripts/external-write-action.py 'action["github_account"] = configured_github_account(root, owner)'
-check_contains "GitHub mutation selects the manifest-bound token" .claude/scripts/external-write-action.py 'token = github_account_token(executable, host, approved)'
-check_contains "GitHub mutation verifies the token actor" .claude/scripts/external-write-action.py 'github_token_actor(executable, root, host, token)'
+check_contains "GitHub mutation binds the target-mapped account" .claude/scripts/external_write/manifest.py 'action["github_account"] = configured_github_account(root, owner)'
+check_contains "GitHub mutation selects the manifest-bound token" .claude/scripts/external_write/account.py 'token = github_account_token(executable, host, approved)'
+check_contains "GitHub mutation verifies the token actor" .claude/scripts/external_write/account.py 'github_token_actor(executable, root, host, token)'
 check_contains "opaque GitHub mutations require an explicit owner" .claude/docs/github-queries.md '--github-owner "{owner}"'
 check_contains "FSD uses candidate review gate guard" .claude/commands/nase/fsd.md "fsd-candidate-review.md"
 check_contains "FSD delivery gates use payload-bound GitHub actions" .claude/docs/fsd-pr-delivery.md "external-write-action.py"

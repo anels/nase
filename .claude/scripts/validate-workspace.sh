@@ -22,7 +22,7 @@ bash -n .claude/hooks/*.sh
 bash -n .claude/scripts/*.sh
 ok "hook and script bash syntax"
 
-python3 -m py_compile .claude/scripts/*.py
+python3 -m py_compile .claude/scripts/*.py .claude/scripts/external_write/*.py
 [ -f .claude/scripts/external-write-action.py ]
 ok "python helpers compile"
 

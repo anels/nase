@@ -213,7 +213,7 @@ assert skipped == 2, skipped
 run_case "no script defines its own canonical_bytes, load_module or file_sha" "$PRELUDE"'
 import re
 pattern = re.compile(r"^def (canonical_bytes|load_module|file_sha)\(", re.M)
-offenders = [p.name for p in sorted(SCRIPTS.glob("*.py"))
+offenders = [p.name for p in sorted(SCRIPTS.rglob("*.py"))
              if p.name != "nase_json.py" and pattern.search(p.read_text(encoding="utf-8"))]
 assert not offenders, offenders
 '
