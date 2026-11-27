@@ -34,6 +34,9 @@ LONE_CR_RE = re.compile(r"\r(?!\n)")
 DYNAMIC_WORD = "$NASE_DYNAMIC"
 MUTATION_RE = re.compile(r"\bmutation\b", re.IGNORECASE)
 FILE_EXTENSION_RE = re.compile(r"\.[A-Za-z0-9]+\Z")
+# `shlex.quote`'s bare set, plus a `~` after a letter, digit, or `_`: both shells pass
+# it as written, and a `query=@file` read is allowed only when its text stays unquoted.
+BARE_WORD_RE = re.compile(r"(?:[\w@%+=:,./-]|(?<=\w)~)+", re.ASCII)
 
 
 def odd_space(char: str) -> bool:
@@ -142,7 +145,7 @@ def reading_word(word: dict) -> str:
     # `shell_scan` reads a backslash as an escape; PowerShell passes it as written.
     value = word["value"].replace("\\", "/")
     if word["kind"] == "constant":
-        return shlex.quote(value)
+        return value if BARE_WORD_RE.fullmatch(value) else shlex.quote(value)
     # The text before the first `$` stays, so a flag or field name stays visible.
     prefix, _, rest = value.partition("$")
     head, field, _ = prefix.partition("query=")
