@@ -7,7 +7,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from external_write.account import (
-    GITHUB_PREFLIGHT_TIMEOUT_SECONDS,  # noqa: F401 - loaded by path in tests
     launch_argv,  # noqa: F401 - loaded by path in tests
 )
 from external_write.base import (
