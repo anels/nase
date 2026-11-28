@@ -9,8 +9,15 @@ Do not treat hardcoded company IDs, project names, page IDs, model names, or
 tool names as the source of truth. They are examples or fallbacks only.
 
 Before using any drift-prone value, read `workspace/config.md` and any
-skill-specific registry section first. GitHub identity keys are top-level because
-the pre-mutation guard reads that exact placement:
+skill-specific registry section first. `.claude/scripts/nase_config.py` is the one
+parser of that file. Scripts and hooks call it and never parse the file themselves.
+
+Placement is part of the key. A top-level key must sit before the first `## `
+heading, so `/nase:init` inserts new top-level keys there and never appends them at
+the end of the file. A section key must sit under its own `## ` heading. A key in the
+wrong place reads as `absent` with reason `misplaced`, and every caller reports it
+or refuses instead of falling back silently. GitHub identity keys are top-level
+because the pre-mutation guard reads that exact placement:
 
 ```markdown
 github_org:
