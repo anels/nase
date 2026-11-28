@@ -64,7 +64,7 @@ make_repo() {
   git -C "$repo" init -q
   cp "$ROOT/.claude/hooks/stop-backup.sh" "$repo/.claude/hooks/"
   stage_hook_lib "$repo"
-  stage_scripts "$repo/.claude/scripts" verify-bundle.py restore-workspace.py
+  stage_scripts "$repo/.claude/scripts" verify-bundle.py restore-workspace.py nase_config.py
   cp "$SCAN" "$repo/tests/"
   populate_workspace "$repo/workspace"
   printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
