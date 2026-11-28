@@ -48,6 +48,24 @@ run_scan "$md_root" "$TMPROOT/md-log" "$TMPROOT/md-log.rc"
 assert_cmd "markdown daily log bearer token fails scan" test "$(cat "$TMPROOT/md-log.rc")" = "1"
 assert_cmd "markdown daily log path is reported" grep -q 'workspace/logs/2026-06-10.md' "$TMPROOT/md-log.err"
 
+clean_root="$TMPROOT/clean-log-root"
+mkdir -p "$clean_root/workspace/logs"
+printf 'nothing sensitive here\n' >"$clean_root/workspace/logs/2026-06-11.md"
+fakebin="$TMPROOT/fakebin"
+mkdir -p "$fakebin"
+printf '#!/bin/sh\nprintf "rg: simulated read error\\n" >&2\nexit 2\n' >"$fakebin/rg"
+chmod +x "$fakebin/rg"
+
+run_scan "$clean_root" "$TMPROOT/clean" "$TMPROOT/clean.rc"
+assert_cmd "a clean log root passes the scan" test "$(cat "$TMPROOT/clean.rc")" = "0"
+
+PATH="$fakebin:$PATH" run_scan "$clean_root" "$TMPROOT/rg-error" "$TMPROOT/rg-error.rc"
+assert_cmd "an rg error with no hit fails the scan" test "$(cat "$TMPROOT/rg-error.rc")" = "1"
+assert_cmd "an rg error is reported as an unfinished scan" \
+  grep -q 'scan did not finish (rg exit 2)' "$TMPROOT/rg-error.err"
+assert_cmd "an rg error never prints PASS" \
+  bash -c '! grep -q "^PASS" "$1"' _ "$TMPROOT/rg-error.out"
+
 workspace_root="$TMPROOT/full-workspace-root"
 mkdir -p "$workspace_root/workspace/scripts"
 credential_key='ADMIN_PASSWORD'

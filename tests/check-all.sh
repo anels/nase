@@ -368,7 +368,7 @@ run_test_files() {
     gate=$(basename "$test_file")
     read -r rc duration 2>/dev/null < "$run_dir/$idx.rc" || { rc=1; duration=0; }
     printf '[gate] %s\n' "$gate"
-    if [ "$rc" -eq 142 ]; then
+    if [ "$rc" -eq 142 ] || [ "$rc" -eq 124 ]; then
       printf '[timeout] %s exceeded %ss (NASE_TEST_TIMEOUT)\n' "$gate" "$TEST_TIMEOUT_SECONDS" >&2
     fi
     cat "$run_dir/$idx.out" 2>/dev/null
