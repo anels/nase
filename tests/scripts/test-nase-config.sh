@@ -169,7 +169,11 @@ expect_cli "cli: invalid UTF-8 is unavailable" 5 "unavailable: undecodable" a
 
 rm -f "$TMP/workspace/config.md"
 mkdir "$TMP/workspace/config.md"
-expect_cli "cli: unreadable file names the exception" 5 "unavailable: unreadable:IsADirectoryError" a
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) dir_read_error=PermissionError ;;
+  *) dir_read_error=IsADirectoryError ;;
+esac
+expect_cli "cli: unreadable file names the exception" 5 "unavailable: unreadable:$dir_read_error" a
 rmdir "$TMP/workspace/config.md"
 
 write_config 'a: x\\ty\n'
