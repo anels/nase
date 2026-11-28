@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import nase_config
+
 from .base import ActionError
 from .classification import WINDOWS_EXECUTABLE_SUFFIXES, gh_noun_first
 
@@ -190,17 +192,25 @@ def github_target_owner(
 
 
 def configured_github_account(root: Path, owner: str) -> str:
-    config = root / "workspace" / "config.md"
-    try:
-        text = config.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise ActionError(
-            "workspace/config.md GitHub account mapping is required"
-        ) from exc
+    config = nase_config.load(root)
 
     def value(key: str) -> str:
-        match = re.search(rf"(?m)^{re.escape(key)}:\s*(.*?)\s*$", text)
-        return match.group(1).strip().strip("\"'") if match else ""
+        result = config.get(key)
+        if result.status == nase_config.FOUND:
+            return result.value
+        if result.status == nase_config.UNAVAILABLE:
+            raise ActionError("workspace/config.md GitHub account mapping is required")
+        if result.reason == "misplaced":
+            raise ActionError(
+                f"workspace/config.md key {key} must be a top-level key before the first "
+                "`## ` heading"
+            )
+        if result.status == nase_config.AMBIGUOUS:
+            raise ActionError(
+                f"workspace/config.md key {key} is ambiguous ({result.reason}); "
+                "fix the file before a GitHub write"
+            )
+        return ""
 
     personal = value("personal_gh_account")
     if personal and owner.casefold() == personal.casefold():
