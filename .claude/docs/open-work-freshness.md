@@ -15,7 +15,7 @@ Inputs: `repo_path`, the effort doc's `created:` date, and candidate work items 
    Store the verified commit output as `fresh_default_oid`. A generic `git fetch origin`, a cached remote ref, or the current checkout is not freshness evidence.
 3. Build `candidate_items`:
    - New auto design: every proposed implementation-plan item and success criterion that is not explicitly baseline behavior.
-   - Review, grill, or FSD: every implementation-plan item or success criterion the effort doc still presents as work to implement, plus anything described as open, remaining, next action, frontier, or unresolved.
+   - Review, grill, or FSD: every implementation-plan item or success criterion the effort doc still presents as work to implement, plus anything described as open, remaining, next action, frontier, or unresolved. Items under `### Not yet specified` are fog, not candidate items.
    - If an effort doc has no executable candidate item, return `blocked` instead of treating an empty list as proof that work is complete.
 4. For each item, inspect history and the implementation at `fresh_default_oid`:
 

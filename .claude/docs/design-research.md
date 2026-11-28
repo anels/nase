@@ -108,7 +108,19 @@ This is what makes a design **junior-implementable**: a competent junior enginee
 
 ### C1. Goals AND Non-Goals (separate, required)
 
-State Goals, then **Non-Goals** - reasonable things explicitly cut from scope (not negations of goals). Non-goals are the highest-leverage scoping tool and the most-omitted. A silent omission becomes an implementer's wrong guess.
+State Goals, then **Non-Goals** - reasonable things explicitly cut from scope, each with a one-line reason (not negations of goals). Non-goals are the highest-leverage scoping tool and the most-omitted. A silent omission becomes an implementer's wrong guess.
+
+### C1b. Fog of war - say what you cannot specify yet
+
+Do not spec what you cannot yet see. An in-scope decision that cannot be stated as a precise question until an earlier result lands goes under `### Not yet specified` in the effort doc, placed right after the non-goals. Write one line each, with the suspected question and the step or result that will make it specifiable.
+
+The test is whether you can state the question precisely now, not whether you can answer it now. A sharp question that is only unanswered is an open question or a `[NEEDS CLARIFICATION]` marker, not fog.
+
+- No implementation step, PR row, or success criterion may depend on a fog item. If one does, it is not fog, so specify it.
+- Fog carries no `[NEEDS CLARIFICATION]` marker and never trips the C3 gate.
+- Fog is not out of scope. Out of scope work is ruled out of this effort and belongs under Non-Goals with a one-line reason. It never graduates.
+- When a step lands and a fog item becomes specifiable, move it into the design body and delete it from the fog in the same edit.
+- A quick fix usually has no fog. Do not invent some to look careful.
 
 ### C2. Concreteness - replace intent with artifacts
 
@@ -143,7 +155,7 @@ Not just an ordered list:
 
 - Decompose into **vertical slices** (each cuts through layers to deliver observable value and is independently testable) - not one task per layer.
 - Model dependencies as a **DAG**: mark which steps are **sequential** (edge: producer before consumer) and which can run **in parallel** (no edge between them). Note the **critical path** (longest dependent chain = true minimum duration); non-critical branches have slack and are the parallelizable ones.
-- For **each step**: the files it touches, the **tests it needs** (level chosen by risk + test pyramid: many unit, fewer integration, few E2E; contract tests at shared/external seams), and its **definition of done** (the concrete, verifiable condition that closes it).
+- For **each step**: the files it touches, the **tests it needs** (level chosen by risk + test pyramid: many unit, fewer integration, few E2E; contract tests at shared/external seams; test a module through its interface, and replace rather than stack tests when it is deepened, per `design-principles.md → Module shape`), and its **definition of done** (the concrete, verifiable condition that closes it).
 - This feeds `/nase:fsd`'s phase decomposition directly (`fsd-phase-decomposition.md`) - write it so fsd can lift phases out without re-deriving them.
 
 ### C7. Tier the depth to scope

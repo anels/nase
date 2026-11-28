@@ -65,9 +65,27 @@ A workaround is allowed only with a stated reason it is not treating a symptom, 
 
 Every new abstraction, parameter, file, flag, or branch must trace to a success criterion or the Intent. If it traces to neither, remove it.
 
+## Module shape
+
+Use these four terms when a design adds or reshapes a module, and use them consistently. Prefer them over "component", "service", or "boundary" when you describe that module.
+
+- **Interface** - everything a caller must know, including invariants, ordering, error modes, required config, and performance. It is more than the signature.
+- **Depth** - how much behavior sits behind a small interface. A deep module is good. A shallow one has an interface nearly as complex as its body.
+- **Seam** - the place where behavior can change without editing there. It is where an interface lives.
+- **Adapter** - a thing that fills the interface at a seam.
+
+Checks to run on the chosen option.
+
+- **Deletion test.** Imagine deleting the module. If complexity vanishes, it was a pass-through, so cut it. If complexity reappears in several callers, it earns its place.
+- **One adapter is a hypothetical seam, two is a real one.** Add a seam only when something varies across it, such as a production adapter and a test fake. This is YAGNI applied to seams.
+- **The interface is the test surface.** A test that must reach past the interface says the module has the wrong shape. Write new tests at the interface and delete the old unit tests they replace, instead of keeping both.
+- **The dependency decides the test.** In-process code is tested directly. A dependency with a local stand-in (in-memory filesystem, SQLite) is tested with the stand-in. A remote service you own gets a port with a production adapter and an in-memory one. A true external service gets a port with a mock.
+
+Depth means leverage at the interface, not a ratio of implementation lines to interface lines, which rewards padding.
+
 ## How callers use this
 
-- **`/nase:design`** - declare the ordering as the lens before presenting options; evaluate each option by which principles it honors or violates, with Elegance as an explicit dimension.
+- **`/nase:design`** - declare the ordering as the lens before presenting options; evaluate each option by which principles it honors or violates, with Elegance as an explicit dimension. When an option adds or reshapes a module, run the Module shape checks on it.
 - **`/nase:fsd` Phase 3.6** - classify `task_type`, store the matching `principle_order`, and apply the lead principle during Green (implement only what the principle requires) and the full order during Refactor.
 - **`/nase:simplify`** - use the order to decide what to cut; the reuse-first ladder operationalizes DRY + YAGNI, and the merge gate decides which duplicates to consolidate.
 - **`/nase:fsd` Phase 6.4 review** - apply Solution selection and the Over-engineering check to the diff: a workaround without a stated reason, or an addition that traces to no success criterion or the Intent, is a finding.

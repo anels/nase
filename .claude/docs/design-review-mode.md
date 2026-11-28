@@ -76,7 +76,7 @@ Step 1b covers `## Human Input Required`, which only Auto Mode writes. Most docs
 
 This runs after Step 2 on purpose. Half of what looks like an open question is already answered by the code, the freshness result, or the KB delta you just gathered, and asking the user something the evidence settles is the failure this whole skill exists to prevent.
 
-1. **Collect** every unresolved item from the three sources above into one list. Deduplicate - the same question often appears in both `## Open Questions` and `### Open after grill`.
+1. **Collect** every unresolved item from the three sources above into one list. Leave out `### Not yet specified` items, because fog is not a question for the user yet. If a step, PR row, or success criterion depends on one, it is not fog, so collect it. Deduplicate - the same question often appears in both `## Open Questions` and `### Open after grill`.
 
 2. **Try to close each one from evidence first**, using what Step 2 already gathered plus a targeted lookup where it is cheap. Anything the evidence answers is recorded as resolved with its citation and never reaches the user.
 
@@ -95,11 +95,11 @@ Skip this step only when all three sources are empty.
 
 ## Step 3: Evaluate Against Quality Criteria
 
-Score **every** criterion in `.claude/commands/nase/design.md → Quality criteria` - one row each. Do not re-list them here and do not silently score a subset: a criterion this step omits can never fail a review, because the APPROVED bar below counts only the rows that were scored.
+Score **every** criterion in `.claude/commands/nase/design.md → Quality criteria` - one row each. Do not re-list them here and do not silently score a subset: a criterion this step omits can never fail a review, because the verdict below judges only the rows that were scored.
 
 Use `PASS` / `WEAK` / `FAIL`, plus `N/A` for the two criteria that are conditional by construction - `Root cause` on work that is not a bug, and `Risk` where the design carries none of the listed surfaces. `N/A` needs the one-line reason it does not apply, and does not count toward the APPROVED bar either way. Reach for it only on those two; anywhere else, a criterion you cannot score is a `WEAK`.
 
-**Who scores.** Step 2 edits the doc on the main thread, so the main thread must not also score its own edits. Spawn the persisted `nase-verifier` (`.claude/docs/review-modes.md → Default pattern`) with one fresh `Agent` call. Pass the absolute path of the doc as it stands after Step 2, a pointer to `design.md → Quality criteria` for the verifier to read, and the scoring scale above. Do not pass what Step 2 changed or why. The verifier scores every criterion with a one-line reason each, and the main thread records those rows unchanged as the scorecard that Step 4 counts. The main thread never edits a verifier row, and the staleness check below can only add an issue, never clear a `FAIL` or `WEAK` row. On an empty or malformed result, follow `review-modes.md → Error handling`; a second failure stops the review with `scoring: not run` instead of a verdict.
+**Who scores.** Step 2 edits the doc on the main thread, so the main thread must not also score its own edits. Spawn the persisted `nase-verifier` (`.claude/docs/review-modes.md → Default pattern`) with one fresh `Agent` call. Pass the absolute path of the doc as it stands after Step 2, a pointer to `design.md → Quality criteria` and `design.md → Approval bar` for the verifier to read, and the scoring scale above. Ask it to label each `WEAK` blocking or non-blocking and to name the rule it applied. Do not pass what Step 2 changed or why. The verifier scores every criterion with a one-line reason each, and the main thread records those rows unchanged as the scorecard that Step 4 judges. The main thread never edits a verifier row, and the staleness check below can only add an issue, never clear a `FAIL` or `WEAK` row. On an empty or malformed result, follow `review-modes.md → Error handling`; a second failure stops the review with `scoring: not run` instead of a verdict.
 
 Also check for **unresolved staleness** on the main thread, because it needs the Step 2 evidence the verifier is not given: after the Step 2 repair, does the codebase or KB still invalidate an assumption in the design? A repaired already-shipped item remains in the audit evidence but is not reopened.
 
@@ -133,7 +133,7 @@ Report the pinned default-branch OID, shipping commit, merged PR, and path-level
 
 ### APPROVED
 
-Every scored criterion PASS, or at most 1 WEAK, and no unresolved staleness or freshness blocker remains. An `N/A` row is not a criterion that failed to pass - it is outside the count, which is why only `Root cause` and `Risk` may take it. The design holds.
+No `FAIL`, no blocking `WEAK`, and no unresolved staleness or freshness blocker remains, per `.claude/commands/nase/design.md → Approval bar`. The number of `WEAK` rows does not matter. An `N/A` row is outside the scoring, which is why only `Root cause` and `Risk` may take it. Add each non-blocking `WEAK` under `### Implementation notes` in the effort doc, in the guarded write that records this verdict. The design holds.
 
 Present the scorecard to the user, then ask via `AskUserQuestion`:
 
@@ -148,7 +148,7 @@ options:
 
 ### Needs Revision
 
-Any FAIL, 2+ WEAK, unresolved staleness, or freshness blocker. List specific issues:
+Any `FAIL`, blocking `WEAK`, unresolved staleness, or freshness blocker. List only those as issues. Non-blocking `WEAK` rows go to `### Implementation notes` in the guarded write that records this verdict, and never hold the verdict:
 
 ```markdown
 ## Issues found

@@ -137,23 +137,23 @@ Runs on the in-memory effort-doc draft updated by the Codebase Grill Pass.
 
 ### 4a. Score the design
 
-Score via a fresh-context, read-only `verifier` from `.claude/roles.yaml`. Give it only the draft, criteria table, and cited references, never the authoring reasoning. For each FAIL or WEAK, record the specific gap.
+Score via a fresh-context, read-only `verifier` from `.claude/roles.yaml`. Give it only the draft, criteria table, and cited references, never the authoring reasoning. For each FAIL or WEAK, record the specific gap, and have the verifier label each WEAK blocking or non-blocking per `design.md → Approval bar`.
 
 Also check: has any codebase or KB data gathered in Steps 1–3 revealed assumptions in the design that don't hold?
 
 ### 4b. Exit condition
 
-All criteria PASS or ≤1 WEAK → verdict: **APPROVED**. Exit loop → 4e.
+The bar is `.claude/commands/nase/design.md → Approval bar`. No `FAIL` and no blocking `WEAK` → verdict: **APPROVED**. Exit loop → 4e. Write each non-blocking `WEAK` under `### Implementation notes` in the draft.
 
 ### 4c. Resolve remaining issues
 
-For each FAIL/WEAK criterion, for each specific gap: run the Research Ladder, fix in-place. If the ladder is exhausted and the issue is still unknowable → add to `human_input_queue`.
+For each FAIL or blocking WEAK, for each specific gap: run the Research Ladder, fix in-place. If the ladder is exhausted and the issue is still unknowable → add to `human_input_queue`. Do not spend a round on a non-blocking WEAK.
 
 ### 4d. Re-score and iterate
 
-Re-evaluate Quality Criteria. If APPROVED: exit loop → 4e. If not APPROVED and iterations < 3: increment and repeat from 4a.
+Re-evaluate Quality Criteria against the Approval bar. If APPROVED: exit loop → 4e. If not APPROVED and iterations < 3: increment and repeat from 4a.
 
-After 3 iterations: exit with status `max-iterations`. Remaining issues go to `human_input_queue` for Step 4.5; anything deferred there becomes Human Input Required.
+After 3 iterations: exit with status `max-iterations`. On this exit too, write each non-blocking `WEAK` under `### Implementation notes` in the draft. Remaining issues go to `human_input_queue` for Step 4.5; anything deferred there becomes Human Input Required.
 
 ### 4e. Naive-reader check
 
