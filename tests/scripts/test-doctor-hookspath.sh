@@ -112,6 +112,9 @@ if command -v gitleaks >/dev/null 2>&1; then
   assert_cmd "real gitleaks passes the tree once the token is gone" real_push real-clean
 else
   printf 'SKIP: gitleaks is not on PATH, so the real-binary push cases did not run.\n'
+  # The Linux CI job installs gitleaks. A skip there is a broken install, not a missing
+  # tool. The Windows job has no gitleaks, so it may skip.
+  [ "${RUNNER_OS:-}" != "Linux" ] || fail "real gitleaks push cases run on the Linux CI runner"
 fi
 
 if [[ "$failures" -eq 0 ]]; then

@@ -526,6 +526,11 @@ fi
 
 pattern='([Aa]uthorization[":[:space:]]*[[:space:]]*[Bb]earer[[:space:]]+[A-Za-z0-9._-]{20,}|(access_token|id_token|refresh_token)[A-Za-z0-9_"[:space:]=:-]{0,24}eyJ[A-Za-z0-9._-]+|-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----)'
 
+# rg exits 0 on a hit, 1 on none, and 2 on an error. An error with no hit printed would
+# read as a clean scan, so it fails below.
+rg_err=$(mktemp "${TMPDIR:-/tmp}/sensitive-scan-rg.XXXXXX")
+trap 'rm -f "$rg_err"' EXIT
+rg_rc=0
 hits=$(rg -nIl --hidden --no-ignore \
   -g '*.log' \
   -g '*.json' \
@@ -534,7 +539,7 @@ hits=$(rg -nIl --hidden --no-ignore \
   -g '*.yml' \
   -g '*.yaml' \
   -e "$pattern" \
-  "${existing_targets[@]}" 2>/dev/null || true)
+  "${existing_targets[@]}" 2>"$rg_err") || rg_rc=$?
 
 # Windows ripgrep reports `\` paths. Rewrite them here: passing `--path-separator /`
 # through MSYS makes rg fail, and the `|| true` above would turn that into a PASS.
@@ -545,6 +550,12 @@ fi
 if [ -n "$hits" ]; then
   printf 'FAIL: sensitive values found in ignored local artifacts. Remove/rotate before sharing this workspace:\n' >&2
   printf '%s\n' "$hits" >&2
+  exit 1
+fi
+
+if [ "$rg_rc" -gt 1 ]; then
+  printf 'FAIL: the scan did not finish (rg exit %s), so a clean result cannot be trusted:\n' "$rg_rc" >&2
+  head -n 5 "$rg_err" >&2
   exit 1
 fi
 

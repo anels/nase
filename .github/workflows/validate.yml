@@ -35,8 +35,11 @@ jobs:
           curl -fsSL -o "$RUNNER_TEMP/${asset}" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${asset}"
           echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/${asset}" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/${asset}" -C "$RUNNER_TEMP" gitleaks
-          "$RUNNER_TEMP/gitleaks" detect --no-git --redact --no-banner --config .gitleaks.toml
+          # On PATH so tests/scripts/test-doctor-hookspath.sh runs its real-gitleaks cases.
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/${asset}" -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/gitleaks" detect --no-git --redact --no-banner --config .gitleaks.toml
 
       - name: Install tools
         run: |
