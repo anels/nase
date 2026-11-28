@@ -299,7 +299,7 @@ python3 .claude/scripts/pr-review-eval.py validate evals/core-workflows/evals.js
 | Command | Purpose |
 |---------|---------|
 | `/nase:skill-audit` | Scan skills for injection, exfiltration, unsafe operations, and credential risks. Use for audit skills or skill security. |
-| `/nase:tech-debt-audit` | Audit a repo for tech debt, architecture gaps, modernization, and AI verification debt. Use for a tech debt audit. |
+| `/nase:tech-debt-audit` | Audit a repo for tech debt, architecture gaps and shallow modules, modernization, and AI verification debt. Use for a tech debt audit or deepening opportunities. |
 
 ### Backup & restore
 

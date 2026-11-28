@@ -42,8 +42,8 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 2. Prove applicable reproduction, root cause, scale/usage, coverage, rollout, and observability assumptions. Mark missing evidence as a gap that cannot support another claim.
 3. Map entry points, changed functions/types, downstream callers, tests, and operational surfaces. Do not invent paths.
 4. Present 2-3 materially distinct options together with principle alignment, operational tradeoffs, KB/source citations, PR shape, and a recommendation. At least one option fixes the root cause at the system level. Quick fixes keep the compact format (one line per option), but an option that treats a symptom is labelled as such and defaults to rejected. Model routing: default to `verifier` (sonnet) for scoring and `worker` (sonnet) for traces; route to `architect` (opus) only when the decision is a cross-repo or security-shaped architecture call with no local precedent a verifier pass cannot cover (see `.claude/roles.yaml` → `architect` use_when). "This feels important" is not a trigger.
-5. Produce the design with: context; goals/non-goals; scope; exact files/interfaces/data contracts; intent (why, done looks like, not wanted); success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
-6. Self-review up to three times against the quality criteria below, scoring each round with a **verifier** subagent (`Agent(model="sonnet", effort="medium")` with the `verifier` `prompt_prefix`, started with a fresh context window, the role `.claude/roles.yaml` assigns to draft scoring) so the pass is read-only and independent. Give it only the draft, the criteria, and the cited references, never the authoring reasoning, as `.claude/docs/design-auto-mode.md → 4a` specifies. Research fixable gaps before asking the user. After APPROVED, run the naive-reader check in `.claude/docs/design-comprehension-reader.md`, including its re-score after a fix, and ask the user only about a gap you cannot decide.
+5. Produce the design with: context; goals/non-goals (each non-goal with its reason); scope; fog under `### Not yet specified` when any; exact files/interfaces/data contracts; intent (why, done looks like, not wanted); success criteria; runnable validation; risks; ordered implementation steps with tests/done conditions; ETA; PR plan; open questions.
+6. Self-review up to three times against the quality criteria and the Approval bar below, scoring each round with a **verifier** subagent (`Agent(model="sonnet", effort="medium")` with the `verifier` `prompt_prefix`, started with a fresh context window, the role `.claude/roles.yaml` assigns to draft scoring) so the pass is read-only and independent. Give it only the draft, the criteria, and the cited references, never the authoring reasoning, as `.claude/docs/design-auto-mode.md → 4a` specifies. Research fixable gaps before asking the user. After APPROVED, run the naive-reader check in `.claude/docs/design-comprehension-reader.md`, including its re-score after a fix, and ask the user only about a gap you cannot decide.
 7. Stage the complete effort doc, show the diff, and apply with recorded mtime/hash/staged hash. Run `citation-validator.py` and `effort-state.py --evaluate-transition` against the staged content first, as `.claude/docs/design-auto-mode.md → 5a` specifies. Follow `.claude/docs/effort-transitions.md → Design Creation` for frontmatter and initial state.
 8. Optional Jira creation: read `.claude/docs/external-mutation-policy.md`, then use a fresh payload-bound token and a concrete approval immediately before the write. Skip this step, and that read, when no Jira issue is being created.
 9. Stop after saving. Chat returns the file path and a short decision summary.
@@ -54,17 +54,29 @@ For non-trivial work, run read-only `nase-context-kb-researcher`, `nase-repo-sta
 - Specificity: measurable values replace vague adjectives.
 - Testability: success criteria are observable and have runnable checks. A count or match criterion records its baseline: the value the same check returns at the current HEAD, so a gate that already holds is caught before implementation starts.
 - Grounding: load-bearing claims cite paths, commands, telemetry, or primary sources.
-- Scope: goals and non-goals define clear boundaries.
+- Scope: goals and non-goals define clear boundaries, and each non-goal says why it is out. An in-scope decision that cannot be stated precisely yet sits under `### Not yet specified`, not in open questions (`.claude/docs/design-research.md → C1b`).
 - Root cause: bug designs include reproduction evidence and fix the originating cause.
 - Intent: the `### Intent` section is written (why, done looks like, not wanted) and the design stays within it.
 - System-level fix: the chosen option fixes the cause, not the symptom, per `.claude/docs/design-principles.md` → Solution selection.
 - Risk: failure, migration, rollout, security, observability, and recovery paths are addressed where applicable.
-- Elegance: few moving parts, clear ownership, existing patterns, no speculative layer.
+- Elegance: few moving parts, clear ownership, existing patterns, no speculative layer. A new module passes the deletion test and a new seam has two adapters, per `.claude/docs/design-principles.md → Module shape`.
 - Reviewability: one PR by default; justified splits include order and independent value.
 - PR readiness: every PR has `Depends on`, `External blockers`, `Touches`, and `fsd-ready`, each `none` backed by evidence; a code-only dependency on a same-repo PR is `yes - stacks on {PR}`, not a wait for the merge; no two ready PRs that are not stacked on each other share a path in the same repo unless the overlap is marked safe.
 - Readiness: a junior can implement without making another design decision.
 - ETA: derived from the implementation steps with an honest confidence range.
 
+## Approval bar
+
+Score each criterion `PASS`, `WEAK`, or `FAIL`, plus `N/A` where `.claude/docs/design-review-mode.md` Step 3 allows it. A design is APPROVED when it has no `FAIL`, no unresolved staleness or freshness blocker, and no blocking `WEAK`. The number of `WEAK` rows does not decide the verdict.
+
+A `WEAK` is blocking only when one of these holds.
+- It conflicts with `Intent` or `Not wanted`.
+- An implementer would have to make a decision that is hard to reverse, touches security, or writes to an external system, and the design gives no rule for it.
+- The missing information would send the implementation in the wrong direction.
+
+Items under `### Not yet specified` are fog, not gaps, so they are neither `WEAK` nor blocking. The exception is a step, PR row, or success criterion that depends on one. Then it is not fog and scores as a gap under Scope or Readiness.
+
+Every other `WEAK` is non-blocking. Record it under `### Implementation notes` in the effort doc (placed after `### Resolved Decisions`, or at the end of `## Open Questions` when there is no such table) with the gap and the safe default, and do not loop on it. The scorer labels each `WEAK` blocking or non-blocking and names which of the three rules applies, and the author never downgrades that label.
 ## Lifecycle
 
 This command creates or updates the effort design. `/nase:fsd`, `/nase:prep-merge`, and `/nase:wrap-up` own later lifecycle transitions through `.claude/docs/effort-transitions.md`.

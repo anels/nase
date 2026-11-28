@@ -20,7 +20,7 @@ Design owns these rules here, so no design step needs the author-only skill-auth
 - Show the concrete payload in the question prompt. Generic "should we proceed?" is not a gate.
 - After the gate fires, act immediately on the answer. Do not wait for an additional confirmation turn.
 - Recommendation first. The first option is the default the design already applied, with ` (Recommended)` appended and a `description` that gives the evidence or principle behind it. Remaining options state their trade-off. Never ask without an opinion. The harness adds "Other" as the free-form escape.
-- Record what the answer changed. A design whose answers alter its doc appends a `### Resolved Decisions` block with columns `#`, `Question`, `Decision`, `Applied to`, and keeps the table cumulative across runs, so a later reader can tell an auto-selected default from a human call.
+- Word each question so a plain yes accepts the recommended option. Do not phrase it as a negation ("Should we not ...") or as a challenge to the default, because then agreeing reads as saying no.- Record what the answer changed. A design whose answers alter its doc appends a `### Resolved Decisions` block with columns `#`, `Question`, `Decision`, `Applied to`, and keeps the table cumulative across runs, so a later reader can tell an auto-selected default from a human call.
 - Order a large batch by load-bearingness: security, data-loss, irreversibility, and cross-team coordination first.
 
 ## Deferred items

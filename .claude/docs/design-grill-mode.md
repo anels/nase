@@ -60,7 +60,7 @@ Remaining work is also a load-bearing premise. Follow `.claude/docs/open-work-fr
 Read the plan content (effort doc body or raw text). Extract every branch where a real decision is implied or unresolved. Sources of branches:
 
 - Explicit `## Open Questions` section → each item is a branch.
-- Ambiguous wording in design body ("we could", "either X or Y", "TBD", "later") → each is a branch.
+- Ambiguous wording in design body ("we could", "either X or Y", "TBD", "later") → each is a branch. Items under `### Not yet specified` are fog and are not branches, unless an in-scope decision depends on one. Then graduate it into the design body first.
 - Missing constraints - invariants the plan asserts without specifying (error mode, retry semantics, idempotency, ordering, concurrency, schema migration, rollout, observability, ownership).
 - Architectural choices the plan glosses over - interface shape, seam location, data path.
 - Review packaging ambiguity - proposed multi-PR split without a merge/release/owner boundary, missing `Target PR count`, a PR row missing `Depends on` / `External blockers` / `Touches` / `fsd-ready` (`.claude/docs/pr-plan-readiness.md`), an `External blockers: none` with no evidence, two ready PRs that are not stacked on each other sharing a `Touches` path in the same repo with no safe-overlap note, a `Depends on` row marked `waits on {PR} to merge` although the dependency is stackable per `pr-plan-readiness.md` *Stacking*, a `yes - stacks on {PR}` row whose parent is not ready, or implementation phases being treated as PRs without justification.
@@ -85,6 +85,7 @@ Lead with whichever personas matter most for this design (a CLI util needs littl
 - Where are the system boundaries, and which interfaces are load-bearing - what breaks if one moves?
 - Blast radius of coupling: if component X changes, how many others must change with it?
 - Which competing quality attribute did this sacrifice (modifiability vs performance vs availability), and was that explicit?
+- Does each new module pass the deletion test (delete it: does complexity vanish, or reappear in several callers)? Is any seam backed by only one adapter? (`design-principles.md → Module shape`)
 - Does this belong in this service/codebase, or is it a library/platform concern leaking in?
 - What's the 10× failure point - which dimension (data, traffic, fan-out) saturates first?
 - What tech debt does this create, and what's the documented paydown trigger?

@@ -29,6 +29,8 @@ developer-instructions:
   - Read-only. Never propose file writes.
   - Prefer high-ROI, evidence-backed items over broad modernization wishes.
   - Treat AI provenance as explicit-only; do not infer authorship from code style.
+  - A shallow-module finding must state its deletion test result. If deleting the module would make its complexity reappear across several callers, list it under FALSE POSITIVE / OVERSTATED.
+  - A finding that contradicts a documented decision (ADR, KB constraint, CLAUDE.md) must name that decision and show real friction. Otherwise list it under FALSE POSITIVE / OVERSTATED.
   - Skip generic advice and style nits.
   - Every item must cite repo evidence or say "none".
 ```
