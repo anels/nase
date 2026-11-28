@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -20,6 +21,7 @@ from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import nase_config
 from nase_fs import atomic_write, sha256_bytes, sha256_file
 from nase_gh import (
     MISSING_BINARY_RETURNCODE,
@@ -199,15 +201,18 @@ def parse_scope(context: Path, repo_filter: str | None) -> list[dict[str, str]]:
     return repos
 
 
-def config_values(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^([A-Za-z0-9_]+):\s*(\S.*?)\s*$", line)
-        if match:
-            if match.group(1) in values:
-                raise EvidenceError(f"duplicate config key: {match.group(1)}")
-            values[match.group(1)] = match.group(2)
-    return values
+def config_value(lookup: Callable[[str], nase_config.Lookup], key: str) -> str | None:
+    result = lookup(key)
+    if result.status == nase_config.FOUND:
+        return result.value
+    if result.status == nase_config.ABSENT:
+        if result.reason != "misplaced":
+            return None
+        raise EvidenceError(
+            f"config key {key} is set outside the top level: "
+            "top-level keys must precede the first `## ` heading"
+        )
+    raise EvidenceError(f"config key {key} is {result.status}: {result.reason}")
 
 
 def local_path_values(path: Path, aliases: set[str]) -> dict[str, Path]:
@@ -271,11 +276,15 @@ def local_availability(
     return records
 
 
-def discovery_account(repo: dict[str, str], config: dict[str, str]) -> str | None:
+def discovery_account(
+    repo: dict[str, str], lookup: Callable[[str], nase_config.Lookup]
+) -> str | None:
     owner = repo["owner"].lower()
-    if owner == config.get("github_org", "").lower():
-        return config.get("work_gh_account") or config.get("gh_account")
-    personal = config.get("personal_gh_account", "")
+    if owner == (config_value(lookup, "github_org") or "").lower():
+        return config_value(lookup, "work_gh_account") or config_value(
+            lookup, "gh_account"
+        )
+    personal = config_value(lookup, "personal_gh_account") or ""
     if owner == personal.lower():
         return personal
     return None
@@ -1058,7 +1067,7 @@ def collect(args: argparse.Namespace) -> int:
     context = required_file(root, "workspace/context.md")
     config_path = required_file(root, "workspace/config.md")
     local_paths_path = required_file(root, ".local-paths")
-    config = config_values(config_path)
+    lookup = nase_config.load(root).get
     scope = parse_scope(context, args.repo)
     mappings = local_path_values(local_paths_path, {repo["alias"] for repo in scope})
     local = local_availability(scope, mappings)
@@ -1081,7 +1090,7 @@ def collect(args: argparse.Namespace) -> int:
     search_keys: set[str] = set()
     source_coverage: list[dict[str, Any]] = []
     for repo in scope:
-        author = discovery_account(repo, config)
+        author = discovery_account(repo, lookup)
         if not author:
             reason = "discovery-account-unresolved"
             source_coverage.append(
@@ -1763,14 +1772,15 @@ def validate(args: argparse.Namespace) -> int:
         raise EvidenceError("evidence bundle is stale")
     validate_capture_contract(evidence["captures"], run)
     values = capture_data(bundle, evidence["captures"], started, finished)
-    config = config_values(required_file(root, "workspace/config.md"))
+    required_file(root, "workspace/config.md")
+    lookup = nase_config.load(root).get
     current_scope = parse_scope(
         required_file(root, "workspace/context.md"), run["scope"].get("repo_filter")
     )
     if current_scope != run["scope"].get("expected_repos"):
         raise EvidenceError("scope drift")
     expected_accounts = {
-        repo["alias"]: discovery_account(repo, config) for repo in current_scope
+        repo["alias"]: discovery_account(repo, lookup) for repo in current_scope
     }
     recorded_accounts = {
         source["alias"]: source.get("account")

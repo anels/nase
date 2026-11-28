@@ -484,6 +484,18 @@ PY
 assert_cmd "duplicate context repo fails closed" expect_fail "$PYTHON_BIN" "$SCRIPT" collect --root "$FIXTURE" --month "$MONTH" --bundle "$TMPDIR_TEST/duplicate-context" --format json
 cp "$TMPDIR_TEST/context.valid" "$FIXTURE/workspace/context.md"
 
+cp "$FIXTURE/workspace/config.md" "$TMPDIR_TEST/config.valid"
+collect_error() {
+  local bundle="$1" needle="$2" err
+  err=$(collect_bundle "$bundle" 2>&1 >/dev/null) && return 1
+  printf '%s\n' "$err" | grep -Fq -- "$needle"
+}
+printf 'github_org: example\ngithub_org: other\nwork_gh_account: alice\n' > "$FIXTURE/workspace/config.md"
+assert_cmd "conflicting github_org fails closed and names the key" collect_error "$TMPDIR_TEST/conflicting-org" "config key github_org is ambiguous: conflicting-values"
+printf 'github_org: example\n\n## Accounts\nwork_gh_account: alice\n' > "$FIXTURE/workspace/config.md"
+assert_cmd "misplaced work_gh_account fails closed with the placement rule" collect_error "$TMPDIR_TEST/misplaced-work" "top-level keys must precede the first \`## \` heading"
+cp "$TMPDIR_TEST/config.valid" "$FIXTURE/workspace/config.md"
+
 printf '%s\n' '---
 status: completed
 repo: service
