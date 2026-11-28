@@ -332,6 +332,57 @@ PY
 check "attach: hostile --site values are rejected before token or network" "$sitecheck" \
   "2:True:False 2:True:False 2:True:False 2:True:False 2:True:False 2:True:False 2:True:False 2:True:False touched=[]"
 
+# --- the default site comes from baseUrl under ## Jira in workspace/config.md ---
+# A top-level or conflicting baseUrl must stop the upload, not fall through to another root.
+write_site_config() {
+  mkdir -p "$WORK/site-$1/workspace"
+  printf '%s' "$2" > "$WORK/site-$1/workspace/config.md"
+}
+write_site_config good $'github_org: example\n\n## Jira\nbaseUrl: https://cfg-org.atlassian.net/\n'
+write_site_config misplaced $'baseUrl: https://cfg-org.atlassian.net\n\n## Jira\nproject: X\n'
+write_site_config conflict $'## Jira\nbaseUrl: https://one.atlassian.net\nbaseUrl: https://two.atlassian.net\n'
+mkdir -p "$WORK/site-none"
+siteconf=$(python3 - "$SCRIPT" "$WORK" "$WORK/selfclose/plan.json" <<'PY'
+import contextlib, importlib.util, io, os, sys, types
+spec = importlib.util.spec_from_file_location("cp", sys.argv[1])
+cp = importlib.util.module_from_spec(spec)
+sys.modules["cp"] = cp
+spec.loader.exec_module(cp)
+work = sys.argv[2]
+os.chdir(os.path.join(work, "site-none"))
+
+def attach(root):
+    cp.REPO_ROOT = os.path.join(work, root)
+    err = io.StringIO()
+    args = types.SimpleNamespace(
+        plan=sys.argv[3], page_index=0, page_id="900", account="a@b.c",
+        site=None, keychain_service="svc",
+    )
+    cp.api_token = lambda *a, **k: (_ for _ in ()).throw(AssertionError("token read"))
+    with contextlib.redirect_stderr(err):
+        rc = cp.cmd_attach(args)
+    return rc, err.getvalue()
+
+cp.REPO_ROOT = os.path.join(work, "site-good")
+good = cp.resolve_site("")
+rc, err = attach("site-misplaced")
+misplaced = "%s:%s" % (rc, "under the `## Jira` heading" in err)
+rc, err = attach("site-conflict")
+conflict = "%s:%s" % (rc, "ambiguous (conflicting-values)" in err)
+rc, err = attach("site-none")
+none = "%s:%s" % (rc, "no Atlassian site to upload to" in err)
+print(good)
+print(misplaced)
+print(conflict)
+print(none)
+PY
+)
+check "site: baseUrl is read from a real config under ## Jira" "$(printf '%s\n' "$siteconf" | sed -n 1p)" \
+  "cfg-org.atlassian.net"
+check "site: a top-level baseUrl exits 2 with the placement message" "$(printf '%s\n' "$siteconf" | sed -n 2p)" "2:True"
+check "site: conflicting baseUrl values exit 2" "$(printf '%s\n' "$siteconf" | sed -n 3p)" "2:True"
+check "site: no baseUrl in any root exits 2 with the usage message" "$(printf '%s\n' "$siteconf" | sed -n 4p)" "2:True"
+
 # an attachment response with no fileId is a visible failure, not a broken <img>
 noid=$(python3 - "$SCRIPT" <<'PY'
 import importlib.util, sys

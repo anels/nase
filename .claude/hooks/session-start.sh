@@ -47,7 +47,35 @@ PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || comm
 # and an over-long value is dropped whole rather than cut inside a multi-byte
 # character. LC_ALL=C makes the byte-level patterns behave the same in every awk.
 language_line() {
-  LC_ALL=C awk '
+  local script="$HOOK_DIR/../scripts/nase_config.py"
+  local key rc value conversation="" output="" warnings=""
+  for key in conversation output; do
+    rc=0
+    value=$("$PYTHON" "$script" get --root "$NASE_ROOT" --section Language "$key" 2>/dev/null) || rc=$?
+    case "$rc" in
+      0) ;;
+      3) value="" ;;
+      4)
+        value=""
+        warnings+="[session-start] WARNING: workspace/config.md is ambiguous for Language/$key (conflicting values, a repeated heading, or an unclosed comment or code fence) - using English for it"$'\n'
+        ;;
+      5) return 1 ;;
+      6)
+        value=""
+        warnings+="[session-start] WARNING: $key is set outside ## Language in workspace/config.md and was ignored - using English for it"$'\n'
+        ;;
+      *)
+        value=""
+        warnings+="[session-start] WARNING: nase_config.py failed (exit $rc) while reading Language/$key - using English for it"$'\n'
+        ;;
+    esac
+    case "$key" in
+      conversation) conversation=$value ;;
+      output) output=$value ;;
+    esac
+  done
+  printf '%s' "$warnings"
+  LC_ALL=C LANG_CONVERSATION=$conversation LANG_OUTPUT=$output awk '
     function usable(v) {
       gsub(/\302\205|\342\200\250|\342\200\251/, " ", v)
       gsub(/[\001-\037\177;]/, " ", v)
@@ -56,17 +84,11 @@ language_line() {
         return "English (fallback: no usable value under ## Language in workspace/config.md)"
       return v
     }
-    NR == 1 { sub(/^\357\273\277/, "") }
-    /^##?[ \t]/ { in_language = ($0 ~ /^##[ \t]+Language[ \t\r]*$/); next }
-    in_language && /^[ \t]*([-*][ \t]+)?(conversation|output)[ \t]*:/ {
-      key = ($0 ~ /^[ \t]*([-*][ \t]+)?conversation/) ? "conversation" : "output"
-      if (!(key in value)) { raw = $0; sub(/^[^:]*:/, "", raw); value[key] = raw }
-    }
-    END {
+    BEGIN {
       printf "[language] conversation: %s; output: %s; code identifiers: English.\n",
-        usable(value["conversation"]), usable(value["output"])
+        usable(ENVIRON["LANG_CONVERSATION"]), usable(ENVIRON["LANG_OUTPUT"])
     }
-  ' "$1"
+  '
 }
 
 # Buffer all diagnostic stdout so we can emit a single SessionStart JSON envelope

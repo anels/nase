@@ -356,8 +356,8 @@ The kit is tracked by git; `workspace/` is ignored and stays local. `git pull` u
 - Add a repo: `/nase:onboard <path-or-url>`; refresh all with `/nase:onboard`
 - Change tech news sources, topics, or output sections: edit `workspace/tech-digest-config.md`
 - Change identity/language: edit `workspace/config.md` or rerun `/nase:init`
-- Change backup retention: edit `backup_retention:` in `workspace/config.md` (e.g. `count:100` or `days:7`)
-- Change how often backups run: edit `backup_min_interval_minutes:` in `workspace/config.md` (default `30`, `0` disables the throttle)
+- Change backup retention: edit `backup_retention:` in `workspace/config.md`, above the first `## ` heading (e.g. `count:100` or `days:7`). An unusable value skips cleanup and logs a warning.
+- Change how often backups run: edit `backup_min_interval_minutes:` in `workspace/config.md`, above the first `## ` heading (default `30`, `0` disables the throttle)
 - Change backup target: edit `backup-target=` in root `.local-paths`
 
 > **Input formats**: `/nase:onboard` accepts Unix/macOS/Windows/Git Bash paths and GitHub URLs. GitHub URLs resolve via `.local-paths`; no clone/network required.

@@ -497,6 +497,35 @@ expect_jq "explicit repo outranks links in GitHub payload text" \
   '.action.github_owner == "owner" and .action.github_account == "expected"' \
   "$(jq -r '.manifest' "$TMPDIR_TEST/linked-prepared.json")"
 
+cp "$TMPDIR_TEST/workspace/config.md" "$TMPDIR_TEST/config.saved"
+prepare_config_case() {
+  printf '%b' "$1" > "$TMPDIR_TEST/workspace/config.md"
+  python3 "$SCRIPT" --root "$TMPDIR_TEST" prepare \
+    --system github --summary "config case" -- \
+    gh pr create --draft --title "Example" --body "payload" -R owner/example
+}
+expect_err_has() {
+  if grep -Fq -- "$2" "$TMPDIR_TEST/err"; then
+    report 0 "$1"
+  else
+    report 1 "$1" "stderr lacks '$2': $(cat "$TMPDIR_TEST/err")"
+  fi
+}
+
+prepare_config_case 'github_org: owner\nwork_gh_account:\ngh_account: expected\n' > "$TMPDIR_TEST/empty-prepared.json"
+expect_jq "empty work_gh_account never reads the next line as its value" \
+  '.action.github_account == "expected"' \
+  "$(jq -r '.manifest' "$TMPDIR_TEST/empty-prepared.json")"
+expect_rc "conflicting work_gh_account lines refuse the write" 2 \
+  prepare_config_case 'github_org: owner\nwork_gh_account: a\nwork_gh_account: b\n'
+expect_err_has "conflicting lines name the key" "work_gh_account is ambiguous"
+expect_rc "an account key under a heading refuses the write" 2 \
+  prepare_config_case 'github_org: owner\n## Other\nwork_gh_account: expected\n'
+expect_err_has "a misplaced key says top-level keys precede the first heading" "must be a top-level key before the first"
+expect_rc "a conflicting personal_gh_account refuses even for the organization owner" 2 \
+  prepare_config_case 'personal_gh_account: a\npersonal_gh_account: b\ngithub_org: owner\nwork_gh_account: expected\n'
+cp "$TMPDIR_TEST/config.saved" "$TMPDIR_TEST/workspace/config.md"
+
 GRAPHQL_FILE="$TMPDIR_TEST/graphql.json"
 printf '%s\n' '{"query":"mutation { example }"}' > "$GRAPHQL_FILE"
 expect_rc "opaque GraphQL mutation requires an explicit owner" 2 \

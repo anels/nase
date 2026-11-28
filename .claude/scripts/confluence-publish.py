@@ -40,6 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import nase_config
 from confluence_html_emitter import HtmlPlusEmitter
 from confluence_markup import (
     CAP_BYTES,
@@ -913,14 +914,20 @@ def resolve_site(explicit: str) -> str:
     # REPO_ROOT is the checkout holding this script; cwd covers a worktree,
     # where `workspace/` is git-ignored and therefore absent.
     for root in (REPO_ROOT, os.getcwd()):
-        config = os.path.join(root, "workspace", "config.md")
-        if not os.path.exists(config):
+        result = nase_config.load(Path(root)).get("baseUrl", "Jira")
+        if result.status == nase_config.AMBIGUOUS:
+            raise RuntimeError(
+                f"baseUrl in workspace/config.md is ambiguous ({result.reason}): "
+                "keep one `baseUrl:` line under `## Jira` and close any open comment or code fence"
+            )
+        if result.status == nase_config.ABSENT and result.reason == "misplaced":
+            raise RuntimeError(
+                "baseUrl in workspace/config.md is outside the `## Jira` section: "
+                "move `baseUrl: https://<your-org>.atlassian.net` under the `## Jira` heading"
+            )
+        if result.status != nase_config.FOUND:
             continue
-        found = re.search(
-            r"^\s*baseUrl:\s*(?:https://)?([A-Za-z0-9.-]+)",
-            Path(config).read_text(encoding="utf-8"),
-            re.MULTILINE,
-        )
+        found = re.match(r"(?:https://)?([A-Za-z0-9.-]+)", result.value)
         if found:
             return validate_site(found.group(1).rstrip("/"))
     raise RuntimeError(

@@ -102,7 +102,18 @@ check_level "fenced key only" guided no-level
 write_config '## Autonomy
 ~~~
 level: auto'
-check_level "unterminated fence blanks the rest" guided no-level
+check_level "unterminated fence blanks the rest" guided unterminated-config-block
+
+write_config 'level: auto'
+check_level "top-level level with no Autonomy section" guided misplaced-level
+
+write_config '## Autonomy
+<!-- level: auto'
+check_level "unclosed comment" guided unterminated-config-block
+
+mkdir -p "$TMP/workspace"
+printf '## Autonomy\nlevel: \377\n' > "$TMP/workspace/config.md"
+check_level "non-UTF-8 config" guided unreadable-config:undecodable
 
 write_config '```
 ## Autonomy

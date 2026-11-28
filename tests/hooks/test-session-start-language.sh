@@ -19,6 +19,7 @@ repo="$fixture/repo"
 mkdir -p "$repo/.claude/hooks" "$repo/workspace"
 cp "$ROOT/.claude/hooks/session-start.sh" "$repo/.claude/hooks/session-start.sh"
 stage_hook_lib "$repo"
+stage_scripts "$repo/.claude/scripts" nase_config.py
 config="$repo/workspace/config.md"
 
 fallback='English (fallback: no usable value under ## Language in workspace/config.md)'
@@ -97,8 +98,8 @@ expect_language_line "a config without ## Language falls back for both values" \
 
 printf '%s\n' '## Language' '- conversation:' '- output: English' '- output: German' > "$config"
 run_hook
-expect_language_line "an empty value falls back and the first duplicate wins" \
-  "$(expected_line "$fallback" 'English')"
+expect_language_line "an empty value falls back and conflicting duplicates fall back" \
+  "$(expected_line "$fallback" "$fallback")"
 
 # --- untrusted values ---
 printf '## Language\n- conversation: say "hi" \\n to C:\\tmp $(id)\n- output: English; code identifiers: Klingon\n' > "$config"
@@ -116,6 +117,33 @@ printf '## Language\n- conversation: %s\n- output: %s\n' "$long" "${long:0:80}" 
 run_hook
 expect_language_line "a value over 80 bytes falls back and one at the limit is kept" \
   "$(expected_line "$fallback" "${long:0:80}")"
+
+# --- ambiguous, misplaced, and broken-module paths ---
+printf '%s\n' '## Language' '- conversation: German' '- output: English' '- output: French' > "$config"
+run_hook
+expect_language_line "conflicting output values fall back while conversation keeps its value" \
+  "$(expected_line 'German' "$fallback")"
+expect_context_line "conflicting values print the ambiguous warning" \
+  '[session-start] WARNING: workspace/config.md is ambiguous for Language/output (conflicting values, a repeated heading, or an unclosed comment or code fence) - using English for it'
+
+printf '%s\n' '## Language' '- output: Spanish' '' '## Tech Digest' '- conversation: Klingon' > "$config"
+run_hook
+expect_language_line "a key outside ## Language falls back and the configured key still applies" \
+  "$(expected_line "$fallback" 'Spanish')"
+expect_context_line "a misplaced key prints the misplaced warning" \
+  '[session-start] WARNING: conversation is set outside ## Language in workspace/config.md and was ignored - using English for it'
+
+printf '%s\n' '## Language' '- conversation: German' '- output: Spanish' > "$config"
+rm "$repo/.claude/scripts/nase_config.py"
+run_hook
+expect_language_line "a missing config reader falls back for both values" \
+  "$(expected_line "$fallback" "$fallback")"
+expect_context_line "a missing config reader prints one warning per key" \
+  '[session-start] WARNING: nase_config.py failed (exit 2) while reading Language/output - using English for it'
+stage_scripts "$repo/.claude/scripts" nase_config.py
+run_hook
+expect_language_line "restoring the config reader restores the configured values" \
+  "$(expected_line 'German' 'Spanish')"
 
 if [[ "$failures" -ne 0 ]]; then
   printf '\n%d failure(s)\n' "$failures" >&2

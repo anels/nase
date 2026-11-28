@@ -68,7 +68,7 @@ make_repo() {
   git -C "$repo_path" init -q
   cp "$HOOK" "$repo_path/.claude/hooks/stop-backup.sh"
   stage_hook_lib "$repo_path"
-  stage_scripts "$repo_path/.claude/scripts" verify-bundle.py commit-log-append.py
+  stage_scripts "$repo_path/.claude/scripts" verify-bundle.py commit-log-append.py nase_config.py
   cp "$ROOT/tests/check-local-sensitive-artifacts.sh" "$repo_path/tests/check-local-sensitive-artifacts.sh"
   printf '# Workspace Context\n' > "$repo_path/workspace/context.md"
   # These tests drive the hook repeatedly within seconds. The production default
@@ -662,7 +662,8 @@ rc=$?
 assert_exit "combined retention run succeeds" 0 "$rc" "$out"
 assert_exit "count clause caps same-day archives" 2 "$(count_archives "$target")" "$out"
 
-# An unparsable clause must not silently disable retention.
+# An unusable value must not fall back to a default that could delete archives the
+# user chose to keep, so the run warns and skips cleanup.
 repo="$fixture/retention-invalid-repo"
 target="$fixture/retention-invalid-backups"
 make_repo "$repo"
@@ -673,10 +674,10 @@ out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2
 rc=$?
 assert_exit "unusable retention policy still backs up" 0 "$rc" "$out"
 assert_contains "unusable retention policy warns" "$out" "invalid retention clause"
-assert_contains "unusable retention policy falls back" "$out" "using default count:100"
+assert_contains "unusable retention policy skips cleanup" "$out" "no usable retention clause in 'weeks:4' - retention cleanup skipped for this run"
 
 # A zero count would delete the archive that was just published. Treat it as
-# unusable input and keep the fail-safe default instead.
+# unusable input and skip cleanup for the run.
 repo="$fixture/retention-zero-repo"
 target="$fixture/retention-zero-backups"
 make_repo "$repo"
@@ -782,6 +783,114 @@ out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2
 rc=$?
 assert_exit "invalid throttle interval falls back to the default" 0 "$rc" "$out"
 assert_exit "invalid throttle interval did not disable throttling" 1 "$(count_archives "$target")" "$out"
+
+# A configured interval must take effect. A fixture that lost nase_config.py reads
+# nothing and runs on the 30 minute default, so only the configured number in the
+# throttle message proves the script ran.
+repo="$fixture/throttle-configured-repo"
+target="$fixture/throttle-configured-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_min_interval_minutes: 7\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "configured interval seed backup succeeds" 0 "$rc" "$out"
+sleep 1
+printf 'changed content\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "configured interval rerun succeeds" 0 "$rc" "$out"
+assert_contains "configured interval takes effect" "$out" "throttled (backup_min_interval_minutes: 7)"
+
+# A conflicting duplicate or a key outside the top level must fall back to the default
+# interval with a WARNING, never to the first entry or a silent default.
+repo="$fixture/throttle-conflict-repo"
+target="$fixture/throttle-conflict-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf 'backup_min_interval_minutes: 0\nbackup_min_interval_minutes: 5\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "conflicting interval still backs up" 0 "$rc" "$out"
+assert_contains "conflicting interval warns" "$out" "backup_min_interval_minutes is ambiguous in workspace/config.md"
+sleep 1
+printf 'changed content\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+assert_contains "conflicting interval falls back to the default" "$out" "throttled (backup_min_interval_minutes: 30)"
+
+repo="$fixture/throttle-misplaced-repo"
+target="$fixture/throttle-misplaced-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+printf '## Backup\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "misplaced interval still backs up" 0 "$rc" "$out"
+assert_contains "misplaced interval warns" "$out" "backup_min_interval_minutes is set outside the top level of workspace/config.md"
+sleep 1
+printf 'changed content\n' > "$repo/workspace/context.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+assert_contains "misplaced interval falls back to the default" "$out" "throttled (backup_min_interval_minutes: 30)"
+
+# --- retention fails closed on a value the hook cannot trust --------------------------
+# Seeding 102 archives separates a skip from the count:100 default: the default would
+# delete the 3 oldest of the 103 that exist after the run, a skip deletes none.
+seed_archives() {
+  local dir="$1" n="$2" i
+  mkdir -p "$dir"
+  for ((i = 1; i <= n; i++)); do
+    printf 'placeholder\n' > "$dir/nase-backup-$(date +%Y%m%d)-$(printf '%06d' "$i").zip"
+  done
+}
+
+repo="$fixture/retention-skip-repo"
+target="$fixture/retention-skip-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+seed_archives "$target" 102
+printf 'backup_retention: weeks:4\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "skipped retention still backs up" 0 "$rc" "$out"
+assert_exit "skipped retention removed none of the 102 seeded archives" 103 "$(count_archives "$target")" "$out"
+assert_contains "skipped retention is recorded in .backup-status" "$(cat "$repo/workspace/logs/.backup-status")" "retention cleanup skipped for this run"
+
+repo="$fixture/retention-configured-repo"
+target="$fixture/retention-configured-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+seed_archives "$target" 102
+printf 'backup_retention: count:50\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "configured retention backs up" 0 "$rc" "$out"
+assert_exit "configured retention count takes effect" 50 "$(count_archives "$target")" "$out"
+
+repo="$fixture/retention-conflict-repo"
+target="$fixture/retention-conflict-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+seed_archives "$target" 102
+printf 'backup_retention: count:5\nbackup_retention: count:6\nbackup_min_interval_minutes: 0\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "conflicting retention still backs up" 0 "$rc" "$out"
+assert_contains "conflicting retention warns" "$out" "backup_retention is ambiguous in workspace/config.md"
+assert_contains "conflicting retention skips cleanup" "$out" "retention cleanup skipped for this run"
+assert_exit "conflicting retention removed no archive" 103 "$(count_archives "$target")" "$out"
+
+repo="$fixture/retention-misplaced-repo"
+target="$fixture/retention-misplaced-backups"
+make_repo "$repo"
+printf 'backup-target=%s\n' "$target" > "$repo/.local-paths"
+seed_archives "$target" 102
+printf 'backup_min_interval_minutes: 0\n## Backup\nbackup_retention: count:5\n' > "$repo/workspace/config.md"
+out=$(cd "$repo" && PATH="$fakebin:$SYSPATH" bash .claude/hooks/stop-backup.sh 2>&1)
+rc=$?
+assert_exit "misplaced retention still backs up" 0 "$rc" "$out"
+assert_contains "misplaced retention warns" "$out" "backup_retention is set outside the top level of workspace/config.md"
+assert_contains "misplaced retention skips cleanup" "$out" "retention cleanup skipped for this run"
+assert_exit "misplaced retention removed no archive" 103 "$(count_archives "$target")" "$out"
 
 # A concurrent owner creates the lock dir before it writes its pid. A run that lands in
 # that window must treat the lock as held, not delete it as stale and race the owner.

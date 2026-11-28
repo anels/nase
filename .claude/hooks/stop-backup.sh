@@ -348,16 +348,30 @@ print(int((datetime.datetime.now() - stamp).total_seconds()))
 PY
 }
 
+CONFIG_PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
+CONFIG_CLI="$HOOK_DIR/../scripts/nase_config.py"
+
 MIN_INTERVAL_MINUTES="30"
 if [ -f "$NASE_ROOT/workspace/config.md" ]; then
-  CFG_INTERVAL=$(sed -n 's/^backup_min_interval_minutes:[[:space:]]*//p' "$NASE_ROOT/workspace/config.md" 2>/dev/null | tr -d ' ' || true)
-  if [ -n "$CFG_INTERVAL" ]; then
-    if [[ "$CFG_INTERVAL" =~ ^[0-9]+$ ]]; then
-      MIN_INTERVAL_MINUTES="$CFG_INTERVAL"
-    else
-      log_status "WARNING" "invalid backup_min_interval_minutes '$CFG_INTERVAL' - using default $MIN_INTERVAL_MINUTES"
-    fi
-  fi
+  CFG_RC=0
+  CFG_INTERVAL=$("${CONFIG_PY:-python3}" "$CONFIG_CLI" get --root "$NASE_ROOT" backup_min_interval_minutes 2>/dev/null) || CFG_RC=$?
+  case "$CFG_RC" in
+    0)
+      CFG_INTERVAL=${CFG_INTERVAL// /}
+      if [ -n "$CFG_INTERVAL" ]; then
+        if [[ "$CFG_INTERVAL" =~ ^[0-9]+$ ]]; then
+          MIN_INTERVAL_MINUTES="$CFG_INTERVAL"
+        else
+          log_status "WARNING" "invalid backup_min_interval_minutes '$CFG_INTERVAL' - using default $MIN_INTERVAL_MINUTES"
+        fi
+      fi
+      ;;
+    3) ;;
+    4) log_status "WARNING" "backup_min_interval_minutes is ambiguous in workspace/config.md (conflicting values, a repeated heading, or an unclosed comment or code fence) - using default $MIN_INTERVAL_MINUTES" ;;
+    5) log_status "WARNING" "workspace/config.md is unreadable or not valid UTF-8, so backup_min_interval_minutes was not read - using default $MIN_INTERVAL_MINUTES" ;;
+    6) log_status "WARNING" "backup_min_interval_minutes is set outside the top level of workspace/config.md (top-level keys must precede the first ## heading) and was ignored - using default $MIN_INTERVAL_MINUTES" ;;
+    *) log_status "WARNING" "nase_config.py failed (exit $CFG_RC), so backup_min_interval_minutes was not read - using default $MIN_INTERVAL_MINUTES" ;;
+  esac
 fi
 
 if [ "$MIN_INTERVAL_MINUTES" -gt 0 ]; then
@@ -486,11 +500,27 @@ SOURCE_MANIFEST_SHA=$(manifest_sha "$SOURCE_MANIFEST") || {
 # the replacement that the policy requires.
 # ---------------------------------------------------------------------------
 RETENTION="count:100"
+RETENTION_SKIP=""
 if [ -f "$NASE_ROOT/workspace/config.md" ]; then
-  CFG_LINE=$(sed -n 's/^backup_retention:[[:space:]]*//p' "$NASE_ROOT/workspace/config.md" 2>/dev/null | tr -d ' ' || true)
-  if [ -n "$CFG_LINE" ]; then
-    RETENTION="$CFG_LINE"
-  fi
+  CFG_RC=0
+  CFG_LINE=$("${CONFIG_PY:-python3}" "$CONFIG_CLI" get --root "$NASE_ROOT" backup_retention 2>/dev/null) || CFG_RC=$?
+  case "$CFG_RC" in
+    0)
+      CFG_LINE=${CFG_LINE// /}
+      if [ -n "$CFG_LINE" ]; then
+        RETENTION="$CFG_LINE"
+      fi
+      ;;
+    3) ;;
+    4) RETENTION_SKIP="backup_retention is ambiguous in workspace/config.md (conflicting values, a repeated heading, or an unclosed comment or code fence)" ;;
+    5) RETENTION_SKIP="workspace/config.md is unreadable or not valid UTF-8, so backup_retention was not read" ;;
+    6) RETENTION_SKIP="backup_retention is set outside the top level of workspace/config.md (top-level keys must precede the first ## heading)" ;;
+    *) RETENTION_SKIP="nase_config.py failed (exit $CFG_RC), so backup_retention was not read" ;;
+  esac
+fi
+if [ -n "$RETENTION_SKIP" ]; then
+  log_status "WARNING" "$RETENTION_SKIP - retention cleanup skipped for this run"
+  RETENTION=""
 fi
 
 RETENTION_COUNT=""
@@ -517,9 +547,8 @@ IFS="$OLD_IFS"
 if [ -n "$RETENTION_INVALID" ]; then
   log_status "WARNING" "invalid retention clause '$RETENTION_INVALID' - ignored"
 fi
-if [ -z "$RETENTION_COUNT" ] && [ -z "$RETENTION_DAYS" ]; then
-  log_status "WARNING" "no usable retention clause in '$RETENTION' - using default count:100"
-  RETENTION_COUNT="100"
+if [ -z "$RETENTION_SKIP" ] && [ -z "$RETENTION_COUNT" ] && [ -z "$RETENTION_DAYS" ]; then
+  log_status "WARNING" "no usable retention clause in '$RETENTION' - retention cleanup skipped for this run"
 fi
 
 RETENTION_CUTOFF=""
